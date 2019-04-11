@@ -53,7 +53,7 @@ The result should look something like this:
     ## location of your json file here
     data = ip.load_json("dir/path.json")
 
-    print data._ipcluster
+    print data.ipcluster
 
 .. code-block:: python
 
@@ -65,7 +65,7 @@ The result should look something like this:
     data.run('1')
 
     print data.stats
-    print data._ipcluster
+    print data.ipcluster
 
 .. parsed-literal::
 

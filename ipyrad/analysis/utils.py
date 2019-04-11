@@ -26,7 +26,7 @@ from ..assemble.utils import IPyradError, IPyradWarningExit
 
 
 def get_parallel(self, ipyclient, show_cluster):
-    "Start a parallel client with _ipcluster dict or start a new one."
+    "Start a parallel client with ipcluster dict or start a new one."
 
     # connect to a running client or raise an error if not found.
     if not ipyclient:
@@ -39,12 +39,12 @@ def get_parallel(self, ipyclient, show_cluster):
     # store ipyclient engine pids so we can hard-interrupt
     # later if assembly is interrupted. Only stores pids of engines
     # that aren't busy at this moment, otherwise it would block.
-    self._ipcluster["pids"] = {}
+    self.ipcluster["pids"] = {}
     for eid in ipyclient.ids:
         engine = ipyclient[eid]
         if not engine.outstanding:
             pid = engine.apply(os.getpid).get()
-            self._ipcluster["pids"][eid] = pid
+            self.ipcluster["pids"][eid] = pid
 
     # return new or existing ipyclient
     return ipyclient
@@ -54,18 +54,18 @@ def get_parallel(self, ipyclient, show_cluster):
 
 def parallelize_run(self, run_kwargs, show_cluster=False, auto=False):
     """
-    Takes an analysis tools object with an associated _ipcluster attribute
+    Takes an analysis tools object with an associated ipcluster attribute
     dictionary and either launches an ipcluster instance or connects to a 
     running one. 
     """
     try:
         # launch ipcluster and get the parallel client with cluster-id
         if auto:
-            if not self._ipcluster["cores"]:
+            if not self.ipcluster["cores"]:
 
                 # set default to 4
-                if not self._ipcluster["cores"]:
-                    self._ipcluster["cores"] = 4
+                if not self.ipcluster["cores"]:
+                    self.ipcluster["cores"] = 4
 
                 # start ipcluster and attach ipyrad-cli cluster-id
                 register_ipcluster(self)
@@ -103,7 +103,7 @@ def parallelize_run(self, run_kwargs, show_cluster=False, auto=False):
                 try:
                     ipyclient.abort()
                     time.sleep(1)
-                    for engine_id, pid in self._ipcluster["pids"].items():
+                    for engine_id, pid in self.ipcluster["pids"].items():
                         if ipyclient.queue_status()[engine_id]["tasks"]:
                             os.kill(pid, 2)
                     time.sleep(1)
@@ -153,9 +153,9 @@ def get_client(data):
     # wrapped search for ipcluster
     try: 
         args = {
-            "profile": data._ipcluster["profile"],
-            "timeout": data._ipcluster["timeout"],
-            "cluster_id": data._ipcluster["cluster_id"],            
+            "profile": data.ipcluster["profile"],
+            "timeout": data.ipcluster["timeout"],
+            "cluster_id": data.ipcluster["cluster_id"],            
         }
         ipyclient = Client(**args)
         sys.stdout = save_stdout
@@ -170,12 +170,12 @@ def get_client(data):
             ## If MPI then wait for all engines to start so we can report
             ## how many cores are on each host. If Local then only wait for
             ## one engine to be ready and then just go.
-            if (data._ipcluster["engines"] == "MPI") or ("ipyrad-cli-" in data._ipcluster["cluster_id"]):
+            if (data.ipcluster["engines"] == "MPI") or ("ipyrad-cli-" in data.ipcluster["cluster_id"]):
 
                 # wait for cores to be connected
-                if data._ipcluster["cores"]:
+                if data.ipcluster["cores"]:
                     time.sleep(0.1)
-                    if initid == data._ipcluster["cores"]:
+                    if initid == data.ipcluster["cores"]:
                         break
 
                 if initid:
@@ -184,8 +184,8 @@ def get_client(data):
                         break
 
             else:
-                if data._ipcluster["cores"]:
-                    if initid == data._ipcluster["cores"]:
+                if data.ipcluster["cores"]:
+                    if initid == data.ipcluster["cores"]:
                         break
                 else:
                     if initid:

@@ -99,7 +99,7 @@ class Baba:
         self.results_boots = None
        
         # cluster attributes
-        self._ipcluster = {
+        self.ipcluster = {
             "cluster_id": "", 
             "profile": "default",
             "engines": "Local", 

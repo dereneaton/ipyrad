@@ -118,7 +118,7 @@ class Tetrad(object):
                 self._init_seqarray()
 
         # default ipcluster information for finding a running Client
-        self._ipcluster = {
+        self.ipcluster = {
             "cluster_id": "", 
             "profile": "default",
             "engines": "Local", 
@@ -353,7 +353,7 @@ class Tetrad(object):
                     os.remove(oldfile)
 
         # store old ipcluster info
-        oldcluster = copy.deepcopy(self._ipcluster)
+        oldcluster = copy.deepcopy(self.ipcluster)
 
         # reinit the tetrad object data.
         self.__init__(
@@ -373,7 +373,7 @@ class Tetrad(object):
             )
 
         # retain the same ipcluster info
-        self._ipcluster = oldcluster
+        self.ipcluster = oldcluster
 
 
     def _store_N_samples(self, ipyclient):
@@ -579,11 +579,11 @@ class Tetrad(object):
 
     def _get_parallel(self, ipyclient):
         if not ipyclient:
-            #args = list(self._ipcluster.items()) + [("spacer", "")]
+            #args = list(self.ipcluster.items()) + [("spacer", "")]
             ipyclient = ip.core.parallel.get_client(self) # **dict(args))
 
             # if THAT fails, launch a custom ipcluster in cli mode
-            # self._ipcluster["cluster_id"] = 'ipyrad-cli'
+            # self.ipcluster["cluster_id"] = 'ipyrad-cli'
             # ... cli = True
             # ... ipcluster_register()
 
@@ -595,12 +595,12 @@ class Tetrad(object):
         ## hard-interrupt them later if assembly is interrupted. 
         ## Only stores pids of engines that aren't busy at this moment, 
         ## otherwise it would block here while waiting to find their pids.
-        self._ipcluster["pids"] = {}
+        self.ipcluster["pids"] = {}
         for eid in ipyclient.ids:
             engine = ipyclient[eid]
             if not engine.outstanding:
                 pid = engine.apply(os.getpid).get()
-                self._ipcluster["pids"][eid] = pid
+                self.ipcluster["pids"][eid] = pid
         return ipyclient
 
 
@@ -615,13 +615,13 @@ class Tetrad(object):
                 ## send SIGINT (2) to all engines
                 ipyclient.abort()
                 time.sleep(1)
-                for engine_id, pid in self._ipcluster["pids"].items():
+                for engine_id, pid in self.ipcluster["pids"].items():
                     if ipyclient.queue_status()[engine_id]["tasks"]:
                         os.kill(pid, 2)
                     time.sleep(0.25)
                 
                 ## if CLI, stop jobs and shutdown
-                if 'ipyrad-cli' in self._ipcluster["cluster_id"]:
+                if 'ipyrad-cli' in self.ipcluster["cluster_id"]:
                     ipyclient.shutdown(hub=True, block=False)
                     ipyclient.close()
                 else:
@@ -664,7 +664,7 @@ class Tetrad(object):
         # wrap the run in a try statement to ensure we properly shutdown
         try:
             # find and connect to an ipcluster instance given the information
-            # in the _ipcluster dict. Connect to running one, or launch new. 
+            # in the ipcluster dict. Connect to running one, or launch new. 
             ipyclient = self._get_parallel(ipyclient)
 
             # fill the input array with quartets to sample
