@@ -21,8 +21,6 @@ from ipyrad.assemble.utils import ObjDict
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
 from ipyrad.core.params import Params, Hackers
-# from ipyrad.core.parallel import register_ipcluster
-
 
     
 
@@ -184,6 +182,9 @@ class Assembly(object):
 
 
     def save(self):
+        """
+        Save the Assembly object in JSON format. Writes to [workdir][name].json
+        """
         save_json(self)
 
 
@@ -505,73 +506,68 @@ class Assembly(object):
         Returns a copy of the Assembly object. Does not allow Assembly
         object names to be replicated in namespace or path.
         """
-        # subsample by removal or keeping.
-        remove = 0
-
-        # does json file already exist?
+        # get full JSON file path of new name
         exists = os.path.exists(os.path.join(
             self.params.project_dir, 
             "{}.json".format(newname)
         ))
 
-        # print warning and return if name exists
+        # Error if new name already exists and not forced overwrite
         if (newname == self.name) or (exists and not force):
-            self._print(
-                "Assembly object named {} already exists".format(newname))
-            return 
+            raise IPyradError(
+                "Assembly object {} already exists. Use force to overwrite."
+                .format(newname))
 
-        # else do the branching
-        else:
-            # Make sure the new name doesn't have any wacky characters
-            check_name(newname)
+        # Make sure the new name doesn't have any wacky characters
+        check_name(newname)
 
-            # Bozo-check. Carve off 'params-' if it's in the new name.
-            if newname.startswith("params-"):
-                newname = newname.split("params-")[1]
+        # Bozo-check. Carve off 'params-' if it's in the new name.
+        if newname.startswith("params-"):
+            newname = newname.split("params-")[1]
 
-            # create a copy of the Assembly obj
-            newobj = copy.deepcopy(self)
-            newobj.name = newname
-            newobj.params._assembly_name = newname
+        # create a copy of the Assembly obj
+        newobj = copy.deepcopy(self)
+        newobj.name = newname
+        newobj.params._assembly_name = newname
 
-            # warn user to only use one of these at a time
-            if subsamples and infile:
-                print(BRANCH_NAMES_AND_INPUT)
+        # warn user to only use one of these at a time
+        if subsamples and infile:
+            print(BRANCH_NAMES_AND_INPUT)
 
-            # parse infile 
-            if infile:
-                if infile[0] == "-":
-                    remove = 1
-                    infile = infile[1:]
-                if os.path.exists(infile):
-                    subsamples = read_sample_names(infile)
+        # CLI: parse infile 
+        if infile:
+            if infile[0] == "-":
+                remove = 1
+                infile = infile[1:]
+            if os.path.exists(infile):
+                subsamples = read_sample_names(infile)
 
-            ## if remove then swap the samples
+            # if remove then swap the samples
             if remove:
                 subsamples = list(set(self.samples.keys()) - set(subsamples))
 
-            ## create copies of each subsampled Sample obj
-            if subsamples:
-                for sname in subsamples:
-                    if sname in self.samples:
-                        newobj.samples[sname] = copy.deepcopy(self.samples[sname])
-                    else:
-                        if sname != "reference":
-                            print("Sample name not found: {}".format(sname))
+        # create copies of each subsampled Sample obj
+        if subsamples:
+            for sname in subsamples:
+                if sname in self.samples:
+                    newobj.samples[sname] = copy.deepcopy(self.samples[sname])
+                else:
+                    if sname != "reference":
+                        print("Sample name not found: {}".format(sname))
 
-                ## reload sample dict w/o non subsamples
-                newobj.samples = {
-                    name: sample for name, sample in newobj.samples.items() 
-                    if name in subsamples}
+            # reload sample dict w/o non subsamples
+            newobj.samples = {
+                name: sample for name, sample in newobj.samples.items() 
+                if name in subsamples}
 
-            ## create copies of each subsampled Sample obj
-            else:
-                for sample in self.samples:
-                    newobj.samples[sample] = copy.deepcopy(self.samples[sample])
+        # create copies of each subsampled Sample obj
+        else:
+            for sample in self.samples:
+                newobj.samples[sample] = copy.deepcopy(self.samples[sample])
 
-            ## save json of new obj and return object
-            newobj.save()
-            return newobj
+        ## save json of new obj and return object
+        newobj.save()
+        return newobj
 
 
     def _compatible_params_check(self):
@@ -664,8 +660,6 @@ class Assembly(object):
 
 
 
-
-
 class Encoder(json.JSONEncoder):
     """ 
     Save JSON string with tuples embedded as described in stackoverflow
@@ -685,7 +679,7 @@ class Encoder(json.JSONEncoder):
             if isinstance(item, dict):
                 return {
                     key: hint_tuples(val) for key, val in item.items()
-                    }
+                }
             else:
                 return item
         return super(Encoder, self).encode(hint_tuples(obj))
@@ -745,7 +739,7 @@ def save_json(data):
     )
 
     ## save to file
-    assemblypath = os.path.join(data.dirs.project, data.name + ".json")
+    assemblypath = os.path.join(data.params.project_dir, data.name + ".json")
     if not os.path.exists(data.dirs.project):
         os.mkdir(data.dirs.project)
     
@@ -812,8 +806,8 @@ def merge(name, assemblies, rename_dict=None):
                 # update stats
                 msample.stats.reads_raw += sample.stats.reads_raw
                 if sample.stats.reads_passed_filter:
-                    msample.stats.reads_passed_filter += \
-                    sample.stats.reads_passed_filter
+                    msample.stats.reads_passed_filter += (
+                        sample.stats.reads_passed_filter)
 
                 # append files
                 if sample.files.fastqs:
@@ -842,7 +836,6 @@ def merge(name, assemblies, rename_dict=None):
     # return the new Assembly object
     merged.save()
     return merged
-
 
 
 def check_name(name):

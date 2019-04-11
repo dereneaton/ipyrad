@@ -430,6 +430,7 @@ class Processor:
 
     def set_params(self):
         # set max limits
+        self.nalleles = 1
         self.tmpnum = int(self.chunkfile.split(".")[-1])
         self.optim = int(self.chunkfile.split(".")[-2])
         self.este = self.data.stats.error_est.mean()
@@ -479,31 +480,46 @@ class Processor:
     # ---------------------------------------------
     def process_chunk(self):
         # stream through the clusters
-        with open(self.chunkfile, 'rb') as inclust:
-            pairdealer = izip(*[iter(inclust)] * 2)
-            done = 0
-            while not done:
-                done, chunk = clustdealer(pairdealer, 1)
-                if chunk:  
-                    self.parse_cluster(chunk)
+        inclust = open(self.chunkfile, 'rb')
+        pairdealer = izip(*[iter(inclust)] * 2)
+        done = 0
+        while not done:
+            done, chunk = clustdealer(pairdealer, 1)
+            if chunk:  
 
-                    # enough reads at this locus position
-                    if self.filter_mindepth():
+                # fills .name and .seqs attributes
+                self.parse_cluster(chunk)
 
-                        # enough overlapping bases for at least one call in loc
-                        if self.build_consens_and_array():
-                            self.get_heteros()
+                # return 1 if enough reads at this locus position
+                if self.filter_mindepth():
 
-                            # not too many heterozygote calls
-                            if self.filter_maxhetero():
+                    # return 1 if enough overlapping bases for calls
+                    # and fills .consens and .arrayed attributes
+                    if self.build_consens_and_array():
 
-                                # trimmed loc can't be too N or too short
-                                if self.filter_maxN_minLen():
-                                    self.get_alleles()
+                        # denovo only: mask repeats
+                        if not self.isref:
+                            # drops false columns from consens and arrayed
+                            self.mask_repeats()
 
-                                    # nfilter4 should be put back in here 
-                                    # ...
-                                    self.store_data()
+                        # fills .hidx and .nheteros
+                        self.get_heteros()
+
+                        # return 1 if not too many heterozygote calls
+                        if self.filter_maxhetero():
+
+                            # return 1 if not too many N or too short 
+                            if self.filter_maxN_minLen():
+                                
+                                # filter for max haplotypes...
+                                # self.get_alleles()
+                                # ...
+
+                                # store result
+                                self.store_data()
+
+        # cleanup close handle
+        inclust.close()
 
 
     def parse_cluster(self, chunk):
@@ -532,10 +548,13 @@ class Processor:
         "return 1 if READ depth > minimum param"
         bool1 = sum(self.reps) >= self.data.params.mindepth_majrule
         bool2 = sum(self.reps) <= self.data.params.maxdepth
+        # return that this cluster passed filtering
         if bool1 & bool2:       
-            return 0
+            return 1
+
+        # return that this cluster was filtered out
         self.filters['depth'] += 1
-        return 1
+        return 0
 
 
 
@@ -584,8 +603,27 @@ class Processor:
                 self.ref_position[0], 
                 self.ref_position[1] + ltrim,
                 self.ref_position[1] + ltrim + rtrim + 1,
-                )
+            )
             return 1
+
+
+    def mask_repeats(self):
+        """
+        Removes mask columns with low depth repeats from denovo clusters.
+        """
+        # get column counts of -s        
+        idepths = np.sum(self.arrayed == b"-", axis=0).astype(float)
+
+        # get proportion of bases that are - at each site
+        props = idepths / self.arrayed.shape[0] 
+
+        # is proportion of - sites more than 0.8?
+        keep = np.invert(props >= 0.8)
+
+        # apply filter
+        self.consens = self.consens[keep]
+        self.arrayed = self.arrayed[:, keep]            
+
 
     def get_heteros(self):
         self.hidx = [
@@ -595,19 +633,23 @@ class Processor:
 
 
     def filter_maxhetero(self):
+        "Return 1 if it PASSED the filter, else 0"
         if self.nheteros > (len(self.consens) * self.maxhet):
             self.filters['maxh'] += 1
-            return 1
-        return 0
+            return 0
+        return 1
 
 
     def filter_maxN_minLen(self):
+        "Return 1 if it PASSED the filter, else 0"        
         if self.consens.size >= 32:
             nns = self.consens[self.consens == b"N"].size
-            if nns > (len(self.consens) * self.maxns):
+            if nns > (len(self.consens) * self.maxn):
                 self.filters['maxn'] += 1
-                return 1
+                return 0
+            return 1
         return 0
+
 
     def get_alleles(self):
         # if less than two Hs then there is only one allele
@@ -621,6 +663,7 @@ class Processor:
             harray = harray[~np.any(harray == b"N", axis=1)]
             # get counts of each allele (e.g., AT:2, CG:2)
             ccx = Counter([tuple(i) for i in harray])
+
             # remove low freq alleles if more than 2, since they may reflect
             # seq errors at hetero sites, making a third allele, or a new
             # allelic combination that is not real.
@@ -644,9 +687,11 @@ class Processor:
         cidx = self.counters["nconsens"]
         self.nallel[cidx] = self.nalleles
         self.refarr[cidx] = self.ref_position
+
         # store a reduced array with only CATG
         catg = np.array(
-            [np.sum(self.arrayed == i, axis=0) for i in [b'C', b'A', b'T', b'G']],
+            [np.sum(self.arrayed == i, axis=0) for i in
+             [b'C', b'A', b'T', b'G']],
             dtype='uint16').T
         # do not allow ints larger than 65535 (uint16)
         self.catarr[cidx, :catg.shape[0], :] = catg
@@ -735,7 +780,7 @@ class Processor:
         self.counters['nsites'] = sum(
             sum(1 if j != 78 else 0 for j in i) 
             for i in self.storeseq.values()
-            )
+        )
         del self.storeseq
 
 
@@ -1160,8 +1205,11 @@ def get_binom(base1, base2, estE, estH):
 
 
 
+
+
+
 # not currently used in reference assemblies
-def removerepeats(consens, arrayed):
+def mask_repeats(consens, arrayed):
     """
     Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3

@@ -215,12 +215,7 @@ class TreeSlider():
      
 
 
-    def run(
-        self, 
-        ipyclient=None, 
-        force=False, 
-        show_cluster=False, 
-        auto=False):
+    def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
         """
         Run command for tree slider.
         """
@@ -234,11 +229,7 @@ class TreeSlider():
         pool.wrap_run()
 
 
-    def _run(
-        self, 
-        force=False,
-        ipyclient=None,
-        ):
+    def _run(self, force=False, ipyclient=None):
         """
         Hidden func to run parallel job.
         """
@@ -297,12 +288,17 @@ class TreeSlider():
                 # subset phymap for this window range
                 mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
                 cmap = phymap[mask, :]
-                wmin = cmap[:, 1].min()
-                wmax = cmap[:, 2].max()
 
-                # store async result
-                args = (self.data, wmin, wmax, self.minsnps, self.boots)
-                rasyncs[jidx] = lbview.apply(remote_tree_inference, *args)
+                # only if there is RAD sequence data in this window send job
+                if cmap.size:
+                    wmin = cmap[:, 1].min()
+                    wmax = cmap[:, 2].max()
+
+                    # store async result
+                    args = (self.data, wmin, wmax, self.minsnps, self.boots)
+                    rasyncs[jidx] = lbview.apply(remote_tree_inference, *args)
+
+                # advance fill counter, leaves NaN in rows with no data.
                 jidx += 1
 
         # close database
