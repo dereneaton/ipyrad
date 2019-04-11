@@ -525,6 +525,7 @@ class Params(object):
     @max_Ns_consens.setter
     def max_Ns_consens(self, value):       
         # complain if old params format
+        ## TODO: This doesn't actually catch the old style param (e.g., 5, 5)
         if isinstance(value, tuple):
             raise IPyradParamsError(
                 "The format of max_Ns_consens is now a float (e.g., 0.05)")
