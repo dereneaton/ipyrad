@@ -95,7 +95,7 @@ class Twisst(object):
             show_cluster=show_cluster,
             auto=auto,
             rkwargs={"force": force},
-            )
+        )
         pool.wrap_run()
 
 
