@@ -492,6 +492,11 @@ class Processor:
 
                         # enough overlapping bases for at least one call in loc
                         if self.build_consens_and_array():
+
+                            # denovo only: mask repeats
+                            # mask_repeats(self)
+
+                            # store heterozyg info
                             self.get_heteros()
 
                             # not too many heterozygote calls
@@ -501,8 +506,10 @@ class Processor:
                                 if self.filter_maxN_minLen():
                                     self.get_alleles()
 
-                                    # nfilter4 should be put back in here 
+                                    # filter for max haplotypes...
                                     # ...
+
+                                    # store result
                                     self.store_data()
 
 
@@ -584,7 +591,7 @@ class Processor:
                 self.ref_position[0], 
                 self.ref_position[1] + ltrim,
                 self.ref_position[1] + ltrim + rtrim + 1,
-                )
+            )
             return 1
 
     def get_heteros(self):
@@ -604,7 +611,7 @@ class Processor:
     def filter_maxN_minLen(self):
         if self.consens.size >= 32:
             nns = self.consens[self.consens == b"N"].size
-            if nns > (len(self.consens) * self.maxns):
+            if nns > (len(self.consens) * self.maxn):
                 self.filters['maxn'] += 1
                 return 1
         return 0
@@ -735,7 +742,7 @@ class Processor:
         self.counters['nsites'] = sum(
             sum(1 if j != 78 else 0 for j in i) 
             for i in self.storeseq.values()
-            )
+        )
         del self.storeseq
 
 
@@ -1161,7 +1168,7 @@ def get_binom(base1, base2, estE, estH):
 
 
 # not currently used in reference assemblies
-def removerepeats(consens, arrayed):
+def mask_repeats(consens, arrayed):
     """
     Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
