@@ -524,11 +524,12 @@ class Params(object):
         return self._max_Ns_consens
     @max_Ns_consens.setter
     def max_Ns_consens(self, value):       
-        # complain if old params format
-        ## TODO: This doesn't actually catch the old style param (e.g., 5, 5)
-        if isinstance(value, tuple):
-            raise IPyradParamsError(
-                "The format of max_Ns_consens is now a float (e.g., 0.05)")
+        # warning if old style params
+        if isinstance(value, (tuple, int)):
+            print(
+    "Warning: The format of max_Ns_consens is now a float (e.g., 0.05) " + 
+    "and was automatically set on load to 0.05")
+            value = 0.05
         self._max_Ns_consens = float(value)
 
 
@@ -539,8 +540,10 @@ class Params(object):
     def max_Hs_consens(self, value):
         # complain if old params format
         if isinstance(value, tuple):
-            raise IPyradParamsError(
-                "The format of max_Hs_consens is now a float (e.g., 0.05)")
+            print(
+    "Warning: The format of max_Hs_consens is now a float (e.g., 0.05) " + 
+    "and was automatically set on load to 0.05")
+            value = 0.05
         self._max_Hs_consens = float(value)
 
 
@@ -594,9 +597,10 @@ class Params(object):
         return self._max_Indels_locus
     @max_Indels_locus.setter
     def max_Indels_locus(self, value):
-        value = tuplecheck(value, int)
-        assert isinstance(value, tuple), (
-            "max_Indels_locus should be a tuple e.g., (5, 100)")
+        if isinstance(value, tuple):
+            value = value[0]
+        assert isinstance(value, int), (
+            "max_Indels_locus is max indel SIZE, and should be an int e.g., 5")
         self._max_Indels_locus = value
 
 
