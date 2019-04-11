@@ -24,21 +24,25 @@ def load_json(json_path, quiet=False, cli=False):
     # expand HOME in JSON path name
     json_path = json_path.replace("~", os.path.expanduser("~"))
 
-    # load JSON file or raise error
-    if os.path.exists(json_path):
-        with open(json_path, 'rb') as infile:
-            fullj = json.loads(infile.read(), object_hook=tup_and_byte)
-
-        oldname = fullj["assembly"].pop("name")
-        olddir = fullj["assembly"]["dirs"]["project"]
-        oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
-        null = Assembly(oldname, quiet=True, cli=cli)
-    else:
+    # raise error if JSON not found
+    if not os.path.exists(json_path):
         raise IPyradError("""
-    Could not find saved Assembly file (.json) in expected location.
-    Checks in: [project_dir]/[assembly_name].json
-    Checked: {}
-    """.format(json_path))
+            Could not find saved Assembly file (.json) in expected location.
+            Checks in: [project_dir]/[assembly_name].json
+            Checked: {}
+            """.format(json_path))
+
+    # load JSON file
+    with open(json_path, 'rb') as infile:
+        fullj = json.loads(infile.read(), object_hook=tup_and_byte)
+
+    # get name and project_dir from loaded JSON
+    oldname = fullj["assembly"].pop("name")
+    olddir = fullj["assembly"]["dirs"]["project"]
+    oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
+
+    # create a fresh new Assembly
+    null = Assembly(oldname, quiet=True, cli=cli)       
 
     # print Loading message with shortened path
     if not quiet:
@@ -46,19 +50,23 @@ def load_json(json_path, quiet=False, cli=False):
         print("{}loading Assembly: {}".format(null._spacer, oldname))
         print("{}from saved path: {}".format(null._spacer, oldpath))
 
-    # First get the samples. Create empty sample dict of correct length 
+    # get the samples. Create empty sample dict of correct length 
     samplekeys = fullj["assembly"].pop("samples")
     null.samples = {name: "" for name in samplekeys}
 
-    # Update new assembly with params from the JSON/params file.
+    # set params from JSON
     oldparams = fullj["assembly"].pop("paramsdict")
-    for param in null.params._keys:
-        param = param.lstrip("_")
-        if param not in ["assembly_name", "keys"]:
-            try:
-                null.set_params(param, oldparams[param])
-            except Exception:
-                pass
+    for _param in null.params._keys:
+
+        # support legacy JSON files
+        param = _param.lstrip("_")
+        try:
+            value = oldparams[param]
+        except KeyError:
+            value = oldparams[_param]
+        if param not in ["assembly_name", "_assembly_name", "_keys", "keys"]:
+            null.set_params(param, value)
+
 
     # Update hackers dict.
     try:
@@ -74,31 +82,10 @@ def load_json(json_path, quiet=False, cli=False):
 
     # find shared keys and deprecated keys
     sharedkeys = set(oldkeys).intersection(set(newkeys))
-    # lostkeys = set(oldkeys).difference(set(newkeys))
-    # # raise warning if there are lost/deprecated keys
-    # if lostkeys:
-    #     LOGGER.warning("""
-    # load_json found {a} keys that are unique to the older Assembly.
-    #     - assembly [{b}] v.[{c}] has: {d}
-    #     - current assembly is v.[{e}]
-    #     """.format(a=len(lostkeys), 
-    #                b=oldname,
-    #                c=fullj["assembly"]["_version"],
-    #                d=lostkeys,
-    #                e=null._version))
 
     # load in remaining shared Assembly attributes to null
     for key in sharedkeys:
-        setattr(null, key, fullj["assembly"][key])
-        null.__setattr__(key, fullj["assembly"][key])
-
-    # ## load in svd results if they exist
-    # try:
-    #     if fullj["assembly"]["svd"]:
-    #         null.__setattr__("svd", fullj["assembly"]["svd"])
-    #         null.svd = ObjDict(null.svd)
-    # except Exception:
-    #     LOGGER.debug("skipping: no svd results present in old assembly")
+        setattr(null, key, fullj["assembly"][key])        
 
     # Now, load in the Sample objects json dicts
     sample_names = list(fullj["samples"].keys())
