@@ -513,7 +513,7 @@ class Assembly(object):
         ))
 
         # Error if new name already exists and not forced overwrite
-        if (newname == self.name) or (exists and not force):
+        if (newname == self.name) & exists & (not force):
             raise IPyradError(
                 "Assembly object {} already exists. Use force to overwrite."
                 .format(newname))
