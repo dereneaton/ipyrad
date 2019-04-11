@@ -11,7 +11,7 @@ import pandas as pd
 from ..core.sample import Sample
 from ..core.assembly import Assembly
 from ..assemble.utils import ObjDict
-from ..assemble.utils import IPyradWarningExit, IPyradError, IPyradParamsError
+from ..assemble.utils import IPyradWarningExit, IPyradError
 
 
 
@@ -20,9 +20,11 @@ def load_json(json_path, quiet=False, cli=False):
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-    # create a new empty Assembly
+
+    # expand HOME in JSON path name
     json_path = json_path.replace("~", os.path.expanduser("~"))
 
+    # load JSON file or raise error
     if os.path.exists(json_path):
         with open(json_path, 'rb') as infile:
             fullj = json.loads(infile.read(), object_hook=tup_and_byte)
@@ -31,7 +33,6 @@ def load_json(json_path, quiet=False, cli=False):
         olddir = fullj["assembly"]["dirs"]["project"]
         oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
         null = Assembly(oldname, quiet=True, cli=cli)
-
     else:
         raise IPyradError("""
     Could not find saved Assembly file (.json) in expected location.
@@ -39,7 +40,7 @@ def load_json(json_path, quiet=False, cli=False):
     Checked: {}
     """.format(json_path))
 
-    # print msg with shortpath
+    # print Loading message with shortened path
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
         print("{}loading Assembly: {}".format(null._spacer, oldname))
@@ -49,50 +50,29 @@ def load_json(json_path, quiet=False, cli=False):
     samplekeys = fullj["assembly"].pop("samples")
     null.samples = {name: "" for name in samplekeys}
 
-    # Next get paramsdict and use set_params to convert values back to 
-    # the correct dtypes. Allow set_params to fail because the object will 
-    # be subsequently updated by the params from the params file, which may
-    # correct any errors/incompatibilities in the old params file
+    # Update new assembly with params from the JSON/params file.
     oldparams = fullj["assembly"].pop("paramsdict")
-    for param, val in oldparams.items():
-        # backwards compatiblity with <0.8.0
+    for param in null.params._keys:
         param = param.lstrip("_")
         if param not in ["assembly_name", "keys"]:
             try:
-                null.set_params(param, val)
-            except (IPyradWarningExit, IPyradParamsError) as inst:
+                null.set_params(param, oldparams[param])
+            except Exception:
                 pass
 
-    # Import the hackersonly dict. In this case we don't have the nice
-    # set_params so we're shooting from the hip to reset the values
-
-    # legacy support for private hackers
+    # Update hackers dict.
     try:
         oldhackersonly = fullj["assembly"].pop("hackersonly")
     except KeyError:
         oldhackersonly = fullj["assembly"].pop("_hackersonly")
-
-    # update new hackers with old values
     null.hackersonly._data.update(oldhackersonly)
-
-
-    # for param, val in oldhackersonly.items():
-    #     if val is None:
-    #         null.hackersonly.param = None
-    #     else:
-    #         null.hackersonly.param = val
-    # except Exception as inst:
-    # pass
-    #     LOGGER.warning("""
-    # Load assembly error resetting hackersonly dict element. We will just use
-    # the default value in the current assembly.""")
 
     # Check remaining attributes of Assembly and Raise warning if attributes
     # do not match up between old and new objects
     newkeys = list(null.__dict__.keys())
     oldkeys = list(fullj["assembly"].keys())
 
-    ## find shared keys and deprecated keys
+    # find shared keys and deprecated keys
     sharedkeys = set(oldkeys).intersection(set(newkeys))
     # lostkeys = set(oldkeys).difference(set(newkeys))
     # # raise warning if there are lost/deprecated keys
@@ -130,14 +110,14 @@ def load_json(json_path, quiet=False, cli=False):
 
     If you fully completed step 1 and you see this message you should probably
     contact the developers.
-    """.format(inpath))
+    """.format(json_path))
         
     sample_keys = list(fullj["samples"][sample_names[0]].keys())
     stats_keys = list(fullj["samples"][sample_names[0]]["stats"].keys())
     stats_dfs_keys = list(fullj["samples"][sample_names[0]]["stats_dfs"].keys())
     ind_statkeys = (
         [fullj["samples"][sample_names[0]]["stats_dfs"][i].keys() 
-        for i in stats_dfs_keys])
+         for i in stats_dfs_keys])
     ind_statkeys = list(itertools.chain(*ind_statkeys))
 
     # check against a null sample
@@ -186,8 +166,8 @@ def load_json(json_path, quiet=False, cli=False):
                 pd.Series(fullj["samples"][sample]["stats_dfs"][statskey])
                 .reindex(
                     list(nsamp.__dict__["stats_dfs"][statskey].keys())
-                    )
                 )
+            )
 
         # save Sample files
         for filehandle in fullj["samples"][sample]["files"].keys():
