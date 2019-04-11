@@ -47,17 +47,17 @@ def start_ipcluster(data):
 
     ## if MPI argument then use --ip arg to view all sockets
     iparg = ""
-    if "MPI" in data._ipcluster["engines"]:
+    if "MPI" in data.ipcluster["engines"]:
         iparg = "--ip=*"
 
     # make ipcluster arg call
     standard = [
         "ipcluster", "start",
         "--daemonize", 
-        "--cluster-id={}".format(data._ipcluster["cluster_id"]),
-        "--engines={}".format(data._ipcluster["engines"]),
-        "--profile={}".format(data._ipcluster["profile"]),
-        "--n={}".format(data._ipcluster["cores"]),
+        "--cluster-id={}".format(data.ipcluster["cluster_id"]),
+        "--engines={}".format(data.ipcluster["engines"]),
+        "--profile={}".format(data.ipcluster["profile"]),
+        "--n={}".format(data.ipcluster["cores"]),
         "{}".format(iparg),
     ]
                    
@@ -72,7 +72,7 @@ def start_ipcluster(data):
     except subprocess.CalledProcessError:
         subprocess.check_call([
             "ipcluster", "stop", 
-            "--cluster-id", data._ipcluster["cluster_id"],
+            "--cluster-id", data.ipcluster["cluster_id"],
         ], 
             stderr=subprocess.STDOUT,
             stdout=subprocess.PIPE,
@@ -103,7 +103,7 @@ def register_ipcluster(data):
     """
     ## check if this random/pid already has a running cluster
     rand = random.randint(0, 1000)
-    data._ipcluster["cluster_id"] = "ipyrad-cli-{}".format(rand)
+    data.ipcluster["cluster_id"] = "ipyrad-cli-{}".format(rand)
     start_ipcluster(data)
     return data
 
@@ -121,7 +121,7 @@ def get_client(data):
     # shorthand for ipcluster dict
     class ipclusterdict:
         def __init__(self, data):
-            for key, val in data._ipcluster.items():
+            for key, val in data.ipcluster.items():
                 self.__setattr__(key, val)
             self.spacer = data._spacer
     ipd = ipclusterdict(data)
@@ -232,5 +232,5 @@ NO_IPCLUSTER_API = """
     up an ipcluster instance when running the ipyrad Python API. In short, 
     you must run 'ipcluster start' to initiate a local or remote cluster. 
     Also, if you changed the 'profile' or 'cluster_id' setting from their 
-    default values you must enter these into the Assembly._ipcluster dictionary.
+    default values you must enter these into the Assembly.ipcluster dictionary.
     """

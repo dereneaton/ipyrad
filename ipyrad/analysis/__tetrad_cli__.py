@@ -236,16 +236,16 @@ def main():
     ## if ipyclient is running (and matched profile) then use that one
     if args.ipcluster:
         ipyclient = ipp.Client(profile=args.ipcluster)
-        data._ipcluster["cores"] = len(ipyclient)
+        data.ipcluster["cores"] = len(ipyclient)
 
     ## if not then we need to register and launch an ipcluster instance
     else:
         ## set CLI ipcluster terms
         ipyclient = None
-        data._ipcluster["cores"] = args.cores if args.cores else detect_cpus()
-        data._ipcluster["engines"] = "Local"
+        data.ipcluster["cores"] = args.cores if args.cores else detect_cpus()
+        data.ipcluster["engines"] = "Local"
         if args.MPI:
-            data._ipcluster["engines"] = "MPI"
+            data.ipcluster["engines"] = "MPI"
             if not args.cores:
                 raise IPyradWarningExit("must provide -c argument with --MPI")
         ## register to have a cluster-id with "ip- name"

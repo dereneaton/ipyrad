@@ -700,7 +700,7 @@ def save_json(data):
     """ 
     Save assembly and samples as json 
     ## data as dict
-    #### skip _ipcluster because it's made new
+    #### skip ipcluster because it's made new
     #### statsfiles save only keys
     #### samples save only keys
     """

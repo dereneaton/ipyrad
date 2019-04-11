@@ -196,9 +196,9 @@ class Step6:
                 thr = min(thr, nids)
                 eids.extend(self.hostd[node][::thr])
 
-        # set nthreads based on _ipcluster dict (default is 2)        
-        #if "threads" in self.data._ipcluster.keys():
-        #    self.nthreads = int(self.data._ipcluster["threads"])
+        # set nthreads based on ipcluster dict (default is 2)        
+        #if "threads" in self.data.ipcluster.keys():
+        #    self.nthreads = int(self.data.ipcluster["threads"])
         self.nthreads = 2
         if self.data.ncpus > 4:
             self.nthreads = 4
