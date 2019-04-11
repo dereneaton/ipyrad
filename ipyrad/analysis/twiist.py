@@ -19,23 +19,27 @@ import pandas as pd
 import numpy as np
 import toytree
 import toyplot
+from ..core.Parallel import Parallel
+
+# these plots are big so we'll set PNG format as default format
+toyplot.config.autoformat = "png"
 
 
-class Twisst:
+class Twisst(object):
     """
     Perform tree weighting on a tree_table.
     """
     def __init__(
-        self, 
-        data, 
-        imap, 
-        minmap,
-        name=None, 
-        workdir="analysis-twisst",
-        minsnps=1,
-        minsupport=0,
-        ipyclient=None,
-        ):
+            self, 
+            data, 
+            imap, 
+            minmap,
+            name=None, 
+            workdir="analysis-twisst",
+            minsnps=1,
+            minsupport=0,
+            ipyclient=None,
+            ):
 
         # store attrs
         self.imap = imap
@@ -60,8 +64,8 @@ class Twisst:
             "acbd": np.nan,
             "adbc": np.nan,
             "unk": np.nan
-        }, 
-        columns=["minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
+        }, columns=[
+            "minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
         )
 
         # reverse of imap
@@ -80,8 +84,22 @@ class Twisst:
         }
 
 
-    # TODO: collapse engines if there is a quit or failure...
-    def run(self, ipyclient, force=False):
+
+    def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
+        """
+        Run command for twisst sampling.
+        """
+        pool = Parallel(
+            tool=self, 
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={"force": force},
+        )
+        pool.wrap_run()
+
+
+    def _run(self, ipyclient, force=False):
         "distribute jobs in parallel client"
 
         # do not overwrite tree table

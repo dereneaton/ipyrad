@@ -439,6 +439,10 @@ class Step6:
 
 
     def concat_alignments(self):
+        """
+        This step is not necessary... we just chunk it up again in step 7...
+        it's nice having a file as a product, but why bother...
+        """
         # get files
         globlist = glob.glob(os.path.join(self.data.tmpdir, "aligned_*.fa"))
         clustbits = sorted(
@@ -450,6 +454,15 @@ class Step6:
         self.data.clust_database = os.path.join(
             self.data.dirs.across, 
             self.data.name + "_clust_database.fa")
+
+        # TODO: count nsnps and save it to the JSON for step 7
+
+
+        # TODO: use cat to concatenate chunks
+
+
+        # TODO: with cat be sure empty chunks don't cause problems.
+
 
         # write clusters to file with a header that has all samples in db        
         snames = sorted([i.name for i in self.samples])
@@ -464,8 +477,6 @@ class Step6:
         # final cleanup
         if os.path.exists(self.data.tmpdir):
             shutil.rmtree(self.data.tmpdir)
-
-
 
 
     ## REFERENCE BASED FUNCTIONS ---------------------------------

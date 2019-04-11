@@ -475,12 +475,12 @@ class Step7:
         start = time.time()
         printstr = ("building arrays     ", "s7")
         rasyncs = {}
-        args0 = (self.data,)
         args1 = (self.data, self.ntaxa, self.nbases, self.nloci)
         args2 = (self.data, self.ntaxa, self.nsnps)
-        rasyncs[0] = self.lbview.apply(write_loci_and_alleles, *args0)
+        rasyncs[0] = self.lbview.apply(write_loci_and_alleles, self.data)
         rasyncs[1] = self.lbview.apply(fill_seq_array, *args1)
         rasyncs[2] = self.lbview.apply(fill_snp_array, *args2)
+
         # track progress.
         while 1:
             ready = [rasyncs[i].ready() for i in rasyncs]
@@ -601,6 +601,7 @@ class Processor:
         """
         Takes a chunk of aligned loci and (1) applies filters to it; 
         (2) gets edges, (3) builds snpstring, (4) returns chunk and stats.
+        (5) writes 
         """
         # init data
         self.data = data
