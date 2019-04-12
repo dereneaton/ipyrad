@@ -527,8 +527,8 @@ class Params(object):
         # warning if old style params
         if isinstance(value, (tuple, int)):
             print(
-    "Warning: The format of max_Ns_consens is now a float (e.g., 0.05) " + 
-    "and was automatically set on load to 0.05")
+    "Warning: The format of max_Ns_consens should now be a float " + 
+    "and was set on load to 0.05")
             value = 0.05
         self._max_Ns_consens = float(value)
 
@@ -541,8 +541,8 @@ class Params(object):
         # complain if old params format
         if isinstance(value, tuple):
             print(
-    "Warning: The format of max_Hs_consens is now a float (e.g., 0.05) " + 
-    "and was automatically set on load to 0.05")
+    "Warning: The format of max_Hs_consens should now be a float " + 
+    "and was set on load to 0.05")
             value = 0.05
         self._max_Hs_consens = float(value)
 
