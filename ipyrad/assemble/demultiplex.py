@@ -17,7 +17,6 @@ import io
 import gzip
 import glob
 import time
-import string
 import shutil
 import pickle
 import numpy as np
@@ -26,11 +25,8 @@ from collections import Counter
 
 # ipyrad imports
 from ipyrad.core.sample import Sample
-from ipyrad.assemble.utils import IPyradError, ambigcutters
-
-
-BAD_CHARACTERS = string.punctuation.replace("_", "").replace("-", "") + " "
-        
+from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
+      
         
 
 class Step1:
@@ -383,15 +379,7 @@ class Demultiplexer:
         assert self.cutters, "Must enter a restriction_overhang for demultiplexing."
 
         # get matchdict
-        tmpdict = inverse_barcodes(self.data)
-
-        # check bad names
-        self.matchdict = {}
-        for key, value in tmpdict.items():
-            key = "".join([
-                i.replace(i, "_") if i in BAD_CHARACTERS else i for i in key
-            ])
-            self.matchdict[key] = value
+        self.matchdict = inverse_barcodes(self.data)
 
 
     def setup_for_splitting(self, omin=int(8e6)):
@@ -1022,7 +1010,7 @@ def get_name_from_file(fname, splitnames, fields):
 
     # replace any bad characters from name with _
     base = "".join([
-        i.replace(i, "_") if i in BAD_CHARACTERS else i for i in base
+        i.replace(i, "_") if i in BADCHARS else i for i in base
     ])        
 
     # don't allow empty names
