@@ -20,7 +20,7 @@ import ipyrad
 import string
 
 
-BAD_CHARACTERS = string.punctuation.replace("_", "").replace("-", "") + " "
+BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
 
 
 
