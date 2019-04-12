@@ -17,6 +17,11 @@ import socket
 import pandas as pd
 import numpy as np
 import ipyrad
+import string
+
+
+BAD_CHARACTERS = string.punctuation.replace("_", "").replace("-", "") + " "
+
 
 
 ### custom Exception classes
