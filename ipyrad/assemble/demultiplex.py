@@ -17,6 +17,7 @@ import io
 import gzip
 import glob
 import time
+import string
 import shutil
 import pickle
 import numpy as np
@@ -27,6 +28,10 @@ from collections import Counter
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters
 
+
+BAD_CHARACTERS = string.punctuation.replace("_", "").replace("-", "") + " "
+        
+        
 
 class Step1:
     def __init__(self, data, force, ipyclient):
@@ -125,6 +130,9 @@ class Step1:
 
 
 class FileLinker:
+    """
+    Loads Samples from file names and check sample names for bad chars.
+    """
     def __init__(self, step):
         self.data = step.data
         self.input = step.sfiles
@@ -361,17 +369,29 @@ class Demultiplexer:
 
 
     def get_barcode_dict(self):
-        # returns a list of both resolutions of cut site 1
+        """
+        Checks sample names and replaces bad chars in dict with _
+        And returns a list of both resolutions of cut site 1 for ambigs.
         # (TGCAG, ) ==> [TGCAG, ]
         # (TWGC, ) ==> [TAGC, TTGC]
         # (TWGC, AATT) ==> [TAGC, TTGC]
+        """
+        # expand ambigs
         self.cutters = [
             ambigcutters(i) for i in self.data.params.restriction_overhang
         ]
         assert self.cutters, "Must enter a restriction_overhang for demultiplexing."
 
         # get matchdict
-        self.matchdict = inverse_barcodes(self.data)
+        tmpdict = inverse_barcodes(self.data)
+
+        # check bad names
+        self.matchdict = {}
+        for key, value in tmpdict.items():
+            key = "".join([
+                i.replace(i, "_") if i in BAD_CHARACTERS else i for i in key
+            ])
+            self.matchdict[key] = value
 
 
     def setup_for_splitting(self, omin=int(8e6)):
@@ -660,7 +680,7 @@ class Demultiplexer:
             # allow multiple barcodes if its a replicate. 
             barcodes = []
             for n in range(500):
-                fname = sname + "-technical-replicate-{}".format(n)
+                fname = "{}-technical-replicate-{}".format(sname, n)
                 fbar = self.data.barcodes.get(fname)
                 if fbar:
                     barcodes.append(fbar)
@@ -999,6 +1019,11 @@ def get_name_from_file(fname, splitnames, fields):
             except IndexError:
                 pass
         base = splitnames.join(base)
+
+    # replace any bad characters from name with _
+    base = "".join([
+        i.replace(i, "_") if i in BAD_CHARACTERS else i for i in base
+    ])        
 
     # don't allow empty names
     if not base:
