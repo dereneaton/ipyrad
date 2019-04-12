@@ -17,7 +17,7 @@ import ipyrad as ip
 
 from collections import OrderedDict
 from ipyrad.assemble.utils import IPyradParamsError, IPyradError
-from ipyrad.assemble.utils import ObjDict
+from ipyrad.assemble.utils import ObjDict, BADCHARS
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
 from ipyrad.core.params import Params, Hackers
@@ -294,7 +294,17 @@ class Assembly(object):
         
             # We'll concatenate them with a plus and split them later
             bdf[2] = bdf[2].str.upper()
-            self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))               
+            self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+
+        # check barcodes sample names
+        backup = self.barcodes 
+        self.barcodes = {}
+        for key, value in backup.items():
+            key = "".join([
+                i.replace(i, "_") if i in BADCHARS else i for i in key
+            ])
+            self.barcodes[key] = value
+
 
 
     def _link_populations(self, popdict=None, popmins=None):
