@@ -599,7 +599,7 @@ class Params(object):
     def max_Indels_locus(self, value):
         if isinstance(value, tuple):
             value = value[0]
-        assert isinstance(value, int), (
+        assert not isinstance(value, int), (
             "max_Indels_locus is max indel SIZE, and should be an int e.g., 5")
         self._max_Indels_locus = value
 
