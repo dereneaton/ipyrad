@@ -599,8 +599,10 @@ class Params(object):
     def max_Indels_locus(self, value):
         if isinstance(value, tuple):
             value = value[0]
-        assert not isinstance(value, int), (
-            "max_Indels_locus is max indel SIZE, and should be an int e.g., 5")
+        try:
+            value = int(value)
+        except ValueError:
+            raise IPyradError("max_Indels_locus should be an integer value e.g., 5. You entered: {}".format(value))
         self._max_Indels_locus = value
 
 
