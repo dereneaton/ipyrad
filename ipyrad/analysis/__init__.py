@@ -13,6 +13,7 @@ from ipyrad import __version__
 
 # conda install raxml -c bioconda
 from .raxml import Raxml as raxml
+from .mrbayes import MrBayes as mrbayes
 from .twiist import Twisst as twisst
 from .treeslider import TreeSlider as treeslider
 
