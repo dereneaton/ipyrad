@@ -1757,7 +1757,7 @@ def build_clusters_from_cigars(data, sample):
     """
     Directly building clusters relative to reference. Uses the function 
     cigared() to impute indels relative to reference. This means add - for 
-    insertion and skip* deletions. Skipping is temporary solution...
+    insertion and skip* deletions. Skipping is not a good final solution.
     """
     # get all regions with reads. Generator to yield (str, int, int)
     fullregions = bedtools_merge(data, sample).strip().split("\n")
