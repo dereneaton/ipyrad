@@ -1,5 +1,6 @@
+#!/usr/bin/env python 
 
-
+"Params Class objects"
 
 import os
 import glob
@@ -42,6 +43,7 @@ class Hackers(object):
             ("declone_PCR_duplicates", False),
             ("merge_technical_replicates", False),
             ("exclude_reference", False),
+            ("trim_loci_min_sites", (4, 4)),
         ])
 
     # pretty printing of object
@@ -172,8 +174,14 @@ class Hackers(object):
     @exclude_reference.setter
     def exclude_reference(self, value):
         self._data["exclude_reference"] = bool(value)
-    
 
+    @property
+    def trim_loci_min_sites(self):
+        return self._data["trim_loci_min_sites"]
+    @trim_loci_min_sites.setter
+    def trim_loci_min_sites(self, value):
+        self._data["trim_loci_min_sites"] = tuple(int(i) for i in value)
+   
 
 class Params(object):
     def __init__(self, data):
@@ -631,7 +639,7 @@ class Params(object):
     def trim_loci(self, value):
         value = tuplecheck(value, str)
         assert isinstance(value, tuple), (
-            "trim_loci should be a tuple e.g., (0, -5, -5, 0)")
+            "trim_loci should be a tuple e.g., (5, 0, 0, 5)")
         self._trim_loci = tuple([int(i) for i in value])
 
 
