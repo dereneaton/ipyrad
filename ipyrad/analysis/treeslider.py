@@ -21,6 +21,7 @@ from numba import njit
 
 # internal librries
 from .raxml import Raxml as raxml
+from .mrbayes import MrBayes as mrbayes
 from ..core.Parallel import Parallel
 
 # suppress the terrible h5 warning
@@ -51,6 +52,7 @@ class TreeSlider():
     imap: optional dictionary mapping of sample names to new names. 
     minmap: optional dictionary of minimum sampling per imap group.
     minsnps: minimum number of SNPs to include window in analysis.
+    inference_method: 'raxml' or 'mb'
     """
     def __init__(
         self,
@@ -62,6 +64,7 @@ class TreeSlider():
         scaffold_idxs=None,
         minsnps=1,
         bootstraps=0,
+        inference_method="raxml"
         # imap=None,
         # minmap=None,
         ):
@@ -158,7 +161,6 @@ class TreeSlider():
             )
 
 
-
     def _parse_tree_table(self):
         "Build DataFrame for storing results"
         dfs = []
@@ -198,7 +200,6 @@ class TreeSlider():
         self.tree_table.reset_index(drop=True, inplace=True)
 
 
-
     def _parse_scaffold_phymap(self, scaffold_idx):
         "scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table"
         with h5py.File(self.data) as io5:
@@ -213,7 +214,6 @@ class TreeSlider():
                 columns=[i.decode() for i in colnames],
             )
      
-
 
     def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
         """
@@ -333,47 +333,127 @@ class TreeSlider():
 
 
 
-def remote_tree_inference(db, wmin, wmax, minsnps, boots, threads=2):
-    "remote job to run raxml inference."
+def remote_tree_inference(
+    database, 
+    wmin, 
+    wmax, 
+    minsnps, 
+    boots, 
+    threads=2, 
+    mincov=4,
+    inference_method="raxml",
+    ):
+    "remote job to run phylogenetic inference."
 
     # get seqarr for phy indices
-    phystring = None
     tree = np.nan
     nsamplecov = np.nan
     nsnps = np.nan
 
     # parse phylip string if there is sequence in this window
     if wmax > wmin:
-        nsnps, nsamplecov, phystring = parse_phystring(db, wmin, wmax)
+
+        # PARSE hdf5 window into a dictionary {name+spacer: seq} and info
+        nsnps, nsamplecov, phydict = parse_phydict(database, wmin, wmax)
 
         # infer a tree if there is variation in this window
-        if nsamplecov >= 4 and nsnps >= minsnps:
-            fname = os.path.join(
-                tempfile.gettempdir(), str(os.getpid()) + ".tmp")
-            with open(fname, 'w') as temp:
-                temp.write(phystring)
+        if (nsamplecov >= mincov) and (nsnps >= minsnps):
+            
+            # RAxML ML inference
+            if inference_method == "raxml":
 
-            # init raxml object and run with blocking
-            rax = raxml(
-                data=fname,
-                name="temp_" + str(os.getpid()),
-                workdir=tempfile.gettempdir(),
-                T=max(1, threads),
-                N=max(1, boots),
-            )
-            rax.run(force=True, quiet=True, block=True)
+                # write a temporary phylip file
+                fname = write_phydict_to_phy(phydict)
 
-            if os.path.exists(rax.trees.bipartitions):
-                tree = toytree.tree(rax.trees.bipartitions).newick
+                # init raxml object and run with blocking
+                rax = raxml(
+                    data=fname,
+                    name="temp_" + str(os.getpid()),
+                    workdir=tempfile.gettempdir(),
+                    T=max(1, threads),
+                    N=max(1, boots),
+                )
+                rax.run(force=True, quiet=True, block=True)
+
+                # get tree file result
+                if os.path.exists(rax.trees.bipartitions):
+                    tree = toytree.tree(rax.trees.bipartitions).newick
+                else:
+                    tree = toytree.tree(rax.trees.bestTree).newick
+
             else:
-                tree = toytree.tree(rax.trees.bestTree).newick
+                # write a temporary NEXUS file
+                fname = write_phydict_to_nex(phydict)
+
+                # init raxml object and run with blocking
+                mb = mrbayes(
+                    data=fname,
+                    name="temp_" + str(os.getpid()),
+                    workdir=tempfile.gettempdir(),
+                    clock_model={
+                        "clockratepr": "lognorm(-7,0.6)",
+                        "clockvarpr": "tk02",
+                        "tk02varpr": "exp(1.0)",
+                        "brlenspr": "clock:birthdeath",
+                        "samplestrat": "diversity",
+                        "sampleprob": "0.1",
+                        "speciationpr": "exp(10)",
+                        "extinctionpr": "beta(2, 200)",
+                        "treeagepr": "offsetexp(1, 5)",
+                        "ngen": "1000000",
+                        "nruns": "2",
+                        "nchains": "4",
+                        "samplefreq": "1000",
+                    },                   
+                )
+                mb.run(force=True, quiet=True, block=True)
+
+                # get tree file result
+                tree = toytree.tree(mb.trees.constre)
 
     return nsnps, nsamplecov, tree
 
 
 
-def parse_phystring(database, wmin, wmax):
-    "Returns phystring else 0 if filtered."
+def write_phydict_to_phy(phydict):
+
+    # dress up as phylip format
+    phylip = ["{} {}".format(len(phydict), len(next(iter(phydict.values()))))]
+    for name, seq in phydict.items():
+        phylip.append("{} {}".format(name, seq))
+    phystring = ("\n".join(phylip))
+
+    # write to temp file
+    fname = os.path.join(
+        tempfile.gettempdir(), str(os.getpid()) + ".tmp")
+    with open(fname, 'w') as temp:
+        temp.write(phystring)
+    return fname
+
+
+def write_phydict_to_nex(phydict):
+
+    # dress up as phylip format
+    ntax = len(phydict)
+    nchar = len(next(iter(phydict.values())))
+    matrix = ""
+    for i in phydict.items():
+        matrix += i[0] + i[1] + "\n"
+    
+    # format into NEXUS data string
+    nex_string = NEX_MATRIX.format(
+        **{"ntax": ntax, "nchar": nchar, "matrix": matrix})
+    
+    # write to temp file
+    fname = os.path.join(
+        tempfile.gettempdir(), str(os.getpid()) + ".tmp")
+    with open(fname, 'w') as temp:
+        temp.write(nex_string)
+    return fname
+
+
+def parse_phydict(database, wmin, wmax):
+    "Returns phy data as a dict with stats on sub matrix."
 
     with h5py.File(database, 'r') as io5:
 
@@ -389,19 +469,17 @@ def parse_phystring(database, wmin, wmax):
     nsamplecov = seqarr.shape[0] - all_ns.sum()
     nsnps = count_snps(seqarr)
 
-    # dress up as phylip format, drop all N samples
+    # drop all N samples(?)
     pnames = pnames[~all_ns]
     pseqs = seqarr[~all_ns, :]
-    phylip = ["{} {}".format(len(pnames), pseqs.shape[1])]
-    for name, seq in zip(pnames, pseqs):
-        phylip.append("{} {}{}".format(
-            name,
-            " " * (longname - len(name)),
-            b"".join(seq.view("S1")).decode(),
-        ))
-    phystring = ("\n".join(phylip))
-    return nsnps, nsamplecov, phystring
 
+    # return dictionary
+    phydict = {}
+    for name, seq in zip(pnames, pseqs):
+        name = name + " " * (longname - len(name))
+        seq = b"".join(seq.view("S1")).decode()
+        phydict[name] = seq
+    return nsnps, nsamplecov, phydict
 
 
 def progressbar(finished, total, start, message):
@@ -460,6 +538,18 @@ def count_snps(seqarr):
     return nsnps
 
 
+
+
+NEX_MATRIX = """
+#NEXUS
+begin data;
+  dimensions ntax={ntax} nchar={nchar};
+  format datatype=dna interleave=yes gap=- missing=N;
+  matrix
+{matrix}
+    ;
+end;
+"""
 
 # proc = subprocess.Popen([
 #     self.raxml_binary, 
