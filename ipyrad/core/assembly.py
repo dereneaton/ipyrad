@@ -770,7 +770,9 @@ def merge(name, assemblies, rename_dict=None):
     Creates and returns a new Assembly object in which samples from two or more
     Assembly objects with matching names are 'merged'. Merging does not affect 
     the actual files written on disk, but rather creates new Samples that are 
-    linked to multiple data files, and with stats summed.
+    linked to multiple data files, and with stats summed. Rename dict should 
+    have each sample as a key and the new name for that sample as value. If 
+    two or more samples have the same new name (value) then they are merged.
 
     # merge two assemblies
     new = ip.merge('newname', (assembly1, assembly2))
@@ -778,10 +780,18 @@ def merge(name, assemblies, rename_dict=None):
     # merge two assemblies and rename samples
     rename = {"1A_0", "A", "1B_0", "A"}
     new = ip.merge('newname', (assembly1, assembly2), rename_dict=rename)
+
     """
     # null rename dict if empty
     if not rename_dict:
         rename_dict = {}
+
+    # Correct bad character names in rename dict
+    for key, value in rename_dict.items():
+        value = "".join([
+            i.replace(i, "_") if i in BADCHARS else i for i in value
+        ])
+        rename_dict[key] = value
 
     # create new Assembly
     merged = Assembly(name)
