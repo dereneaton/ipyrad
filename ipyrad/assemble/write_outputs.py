@@ -578,6 +578,8 @@ def process_chunks(data, chunksize, chunkfile):
     proc = Processor(data, chunksize, chunkfile)
     proc.run()
 
+    # TODO: if no loci passed filters then it crashes here...
+
     # shorten dictionaries
     iii = max([i for i in proc.var if proc.var[i]])
     proc.var = {i: j for (i, j) in proc.var.items() if i <= iii}
@@ -932,7 +934,10 @@ class Edges:
         self.minlen = self.data.params.filter_min_trim_len
 
         # get edges of good locus
-        self.trim_for_coverage()
+        self.trim_for_coverage(
+            minsite_left=self.data.hackersonly.trim_loci_min_sites[0],
+            minsite_right=self.data.hackersonly.trim_loci_min_sites[1],
+        )
         self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
 
         # apply edge filtering to locus
@@ -948,22 +953,23 @@ class Edges:
         self.trim_check()
 
 
-    def trim_for_coverage(self):
+    def trim_for_coverage(self, minsite_left=4, minsite_right=4):
         "trim edges to where data is not N or -"
 
-        # at least this much cov at each site
-        minsamp = min(4, self.seqs.shape[0])
+        # what is the limit of site coverage for trimming?
+        minsamp_left = min(minsite_left, self.seqs.shape[0])
+        minsamp_right = min(minsite_right, self.seqs.shape[0])        
 
-        # how much cov at each site?
+        # how much cov is there at each site?
         mincovs = np.sum((self.seqs != 78) & (self.seqs != 45), axis=0)
 
         # locus left trim
-        self.edges[0] = locus_left_trim(self.seqs, minsamp, mincovs)
-        self.edges[3] = locus_right_trim(self.seqs, minsamp, mincovs)
+        self.edges[0] = locus_left_trim(self.seqs, minsamp_left, mincovs)
+        self.edges[3] = locus_right_trim(self.seqs, minsamp_right, mincovs)
         if self.edges[3] <= self.edges[0]:
             self.bad = True
 
-        # find insert region for paired data to mask it
+        # find insert region for paired data to mask it...
         self.edges[1] = 0
         self.edges[2] = 0
 
@@ -1513,8 +1519,8 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         mapstart = mapend = 0
         locidx = 0
 
-        # array to store until writing
-        tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
+        # array to store until writing; TODO: Accomodate large files...
+        tmparr = np.zeros((ntaxa, maxsize + 50000), dtype=np.uint8)
         
         # iterate over chunkfiles
         for bit in sortbits:
@@ -1604,7 +1610,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     mappos1 = []
                     
                     # reset
-                    tmparr = np.zeros((ntaxa, maxsize + 5000), dtype=np.uint8)
+                    tmparr = np.zeros((ntaxa, maxsize + 50000), dtype=np.uint8)
                     gstart += trim
                     start = end = 0
 
