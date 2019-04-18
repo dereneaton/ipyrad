@@ -240,7 +240,7 @@ class Raxml(object):
 
 
 def _find_binary():
-    ## check for binary
+    # check for binary
     list_binaries = [
         "raxmlHPC-PTHREADS-AVX2",
         "raxmlHPC-PTHREADS-AVX",            
@@ -248,17 +248,17 @@ def _find_binary():
         "raxmlHPC-PTHREADS", 
         ]
 
-    ## check user binary first, then backups
+    # check user binary first, then backups
     for binary in list_binaries:
         proc = subprocess.Popen(["which", binary],
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.STDOUT).communicate()
-        ## update the binary
+        # if a binary was found then stop
         if proc[0]:
             return binary
 
-    ## if not binaries found
-    raise Exception("cannot find raxml binary")
+    # if not binaries found
+    raise Exception("cannot find raxml; run 'conda install raxml -c bioconda'")
 
 
 def _call_raxml(command_list):
