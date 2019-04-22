@@ -127,7 +127,7 @@ class DigestGenome(object):
             for ridx in range(len(read1s)):
                 read1 = read1s[ridx]
                 for copy in range(self.ncopies):
-                    fastq = "@name_loc{loc}_rep{copy}\n{read}\n+\n{qual}"
+                    fastq = "@name_loc{loc}_rep{copy} 1:N:0:\n{read}\n+\n{qual}"
                     fastq = fastq.format(**{
                         'name': self.name,
                         'loc': iloc, 
@@ -140,7 +140,7 @@ class DigestGenome(object):
                 if self.paired:
                     read2 = read2s[ridx]
                     for copy in range(self.ncopies):
-                        fastq = "@{name}_loc{loc}_rep{copy}\n{read}\n+\n{qual}"
+                        fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
                             'name': self.name,
                             'loc': iloc, 
