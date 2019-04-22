@@ -43,7 +43,7 @@ class Hackers(object):
             ("declone_PCR_duplicates", False),
             ("merge_technical_replicates", False),
             ("exclude_reference", False),
-            ("trim_loci_min_sites", (4, 4)),
+            ("trim_loci_min_sites", 4),
         ])
 
     # pretty printing of object
@@ -180,7 +180,7 @@ class Hackers(object):
         return self._data["trim_loci_min_sites"]
     @trim_loci_min_sites.setter
     def trim_loci_min_sites(self, value):
-        self._data["trim_loci_min_sites"] = tuple(int(i) for i in value)
+        self._data["trim_loci_min_sites"] = int(value)
    
 
 class Params(object):
