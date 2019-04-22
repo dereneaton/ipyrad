@@ -600,7 +600,24 @@ class Assembly(object):
         show_cluster=False, 
         auto=False):
         """
-
+        Run assembly steps (1-7) of an ipyrad analysis.
+        
+        Parameters:
+        ===========
+        steps: (str, default=None)
+            The steps of assembly to run, e.g., "123", "1234567".
+        force: (bool, default=False)
+            Whether to overwrite an existing assembly with the same name.
+        ipyclient: (obj, default=None)
+            An ipyparallel.Client() object to tune parallelization. See
+            docs for details. Or, use auto=True. 
+        quiet: (bool, default=False)
+            Print progress information to stdout.
+        show_cluster: (bool, default=False)
+            Print parallelization information to stdout.
+        auto: (bool, default=False)
+            Automatically launch an ipcluster instance for parallelization 
+            of this run and shut it down when finished. 
         """
         # save assembly at state of run start
         self.save()
@@ -632,24 +649,7 @@ class Assembly(object):
         auto=False,
         ):
         """
-        Run assembly steps (1-7) of an ipyrad analysis.
-        
-        Parameters:
-        ===========
-        steps: (str, default=None)
-            The steps of assembly to run, e.g., "123", "1234567".
-        force: (bool, default=False)
-            Whether to overwrite an existing assembly with the same name.
-        ipyclient: (obj, default=None)
-            An ipyparallel.Client() object to tune parallelization. See
-            docs for details. Or, use auto=True. 
-        quiet: (bool, default=False)
-            Print progress information to stdout.
-        show_cluster: (bool, default=False)
-            Print parallelization information to stdout.
-        auto: (bool, default=False)
-            Automatically launch an ipcluster instance for parallelization 
-            of this run and shut it down when finished. 
+        Run subfunction run inside parallel wrapper.
         """
         # function dictionary
         stepdict = {
@@ -661,7 +661,12 @@ class Assembly(object):
             "6": ip.assemble.clustmap_across.Step6, 
             "7": ip.assemble.write_outputs.Step7,
         }
-          
+         
+        # require steps
+        if steps is None:
+            print("You must enter one or more steps to run, e.g., '123'")
+            return 
+
         # run step fuctions and save and clear memory after each
         for step in steps:
             stepdict[step](self, force, ipyclient).run()
