@@ -935,8 +935,8 @@ class Edges:
 
         # get edges of good locus
         self.trim_for_coverage(
-            minsite_left=self.data.hackersonly.trim_loci_min_sites[0],
-            minsite_right=self.data.hackersonly.trim_loci_min_sites[1],
+            minsite_left=self.data.hackersonly.trim_loci_min_sites,
+            minsite_right=self.data.hackersonly.trim_loci_min_sites,
         )
         self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
 
