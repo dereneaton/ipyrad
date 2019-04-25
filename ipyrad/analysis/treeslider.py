@@ -125,7 +125,7 @@ class TreeSlider():
         # default to all scaffolds if none entered.
         self._parse_scaffolds()
         if not self.scaffold_idxs:
-            self.scaffold_idxs = self.scaffold_table.index.to_list()
+            self.scaffold_idxs = self.scaffold_table.index.tolist()
         if isinstance(self.scaffold_idxs, (list, tuple, set)):
             self.scaffold_idxs = sorted(self.scaffold_idxs)
 
