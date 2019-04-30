@@ -3,8 +3,9 @@
 """ wrapper to make simple calls to raxml """
 
 import os
+import glob
 import subprocess
-from ipyrad.assemble.utils import Params
+from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
 ## alias
@@ -33,7 +34,8 @@ class Raxml(object):
     m: str
         (-m GTRGAMMA) The model to use.
     N: str
-        (-N 100) The number of bootstrap replicates to run.
+        (-N 100) The number of distinct starting trees from which to run full
+        search, or number of bootstrap replicates to run if using -f a.
     x: str
         (-x 12345) The bootstrap random seed.
     p: str
@@ -80,7 +82,10 @@ class Raxml(object):
             "o": None,
             "binary": "",
             }
+
+        # update kwargs for user args and drop key if value is None
         self._kwargs.update(kwargs)
+        self._kwargs = {i: j for (i, j) in self._kwargs.items() if j is not None}
 
         ## check workdir
         if workdir:
@@ -115,29 +120,37 @@ class Raxml(object):
 
         ## results files        
         self.trees = Params()
-        self.trees.bestTree = OPJ(workdir, "RAxML_bestTree."+name)
-        self.trees.bipartitionsBranchLabels = OPJ(workdir, "RAxML_bipartitionsBranchLabels."+name)
-        self.trees.bipartitions = OPJ(workdir, "RAxML_bipartitions."+name)
-        self.trees.bootstrap = OPJ(workdir, "RAxML_bootstrap."+name)
-        self.trees.info = OPJ(workdir, "RAxML_info."+name)
+        self.trees.bestTree = OPJ(workdir, "RAxML_bestTree." + name)
+        self.trees.bipartitionsBranchLabels = OPJ(workdir, "RAxML_bipartitionsBranchLabels." + name)
+        self.trees.bipartitions = OPJ(workdir, "RAxML_bipartitions." + name)
+        self.trees.bootstrap = OPJ(workdir, "RAxML_bootstrap." + name)
+        self.trees.info = OPJ(workdir, "RAxML_info." + name)
 
 
     @property
     def _command_list(self):
         """ build the command list """
-        cmd = [self.params.binary, 
-                "-f", str(self.params.f), 
-                "-T", str(self.params.T), 
-                "-m", str(self.params.m),
-                "-N", str(self.params.N),
-                "-x", str(self.params.x),
-                "-p", str(self.params.p),
-                "-n", str(self.params.n),
-                "-w", str(self.params.w),
-                "-s", str(self.params.s),
-               ]
+        cmd = [
+            self.params.binary, 
+            "-f", str(self.params.f), 
+            "-T", str(self.params.T), 
+            "-m", str(self.params.m),
+            "-n", str(self.params.n),
+            "-w", str(self.params.w),
+            "-s", str(self.params.s),
+            "-p", str(self.params.p),
+        ]
+        if 'N' in self.params:
+            cmd += ["-N", str(self.params.N)]
+        if "x" in self.params:
+            cmd += ["-x", str(self.params.x)]
+
+        # ultrafast boostrap and mapping with -f d
+        # If no bootstraps then run -f D not -f a, and drop -x and -N 
+        #        if "-f D":
+
         ## add ougroups
-        if self.params.o:
+        if 'o' in self.params:
             cmd += ["-o"]
             cmd += [",".join(self.params.o)]
         return cmd
@@ -174,9 +187,12 @@ class Raxml(object):
             is running on a remote ipyclient.
         """
 
-        ## stop before trying in raxml
+        # force removes old files, a bit risky here if names are subsets
         if force:
-            for key, oldfile in self.trees:
+            opath = os.path.join(
+                self.params.w, "RAxML_*.{}".format(self.params.n))
+            oldfiles = glob.glob(opath)
+            for oldfile in oldfiles:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
         if os.path.exists(self.trees.info):
