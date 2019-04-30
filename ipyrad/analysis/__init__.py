@@ -15,6 +15,7 @@ from ipyrad import __version__
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
 from .twiist import Twisst as twisst
+from .clade_weights import CladeWeights as clade_weights
 from .treeslider import TreeSlider as treeslider
 
 # conda install structure clumpp -c ipyrad

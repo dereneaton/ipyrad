@@ -7,7 +7,7 @@ from .core.startup import Bins as _Bins
 from .core.load import load_json
 
 # Dunders
-__version__ = "0.9.0-dev"
+__version__ = "0.9.1-dev"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
