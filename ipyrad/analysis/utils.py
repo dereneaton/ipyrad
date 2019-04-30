@@ -209,12 +209,6 @@ def get_client(data):
 
 
 
-
-
-
-
-
-# parallel and prange give a xncores speedup?
 njit(parallel=True)
 def get_spans(maparr, spans):
     """ 
@@ -250,6 +244,7 @@ def progressbar(finished, total, start, message):
     sys.stdout.flush()    
 
 
+
 # New params class is iterable returning keys
 class Params(object):
     "A dict-like object for storing params values with a custom repr"
@@ -274,6 +269,11 @@ class Params(object):
             self._i += 1
             return keys[self._i - 1]
         
+
+    def update(self, dict):
+        self.__dict__.update(dict)
+
+
     def __repr__(self):
         "return simple representation of dict with ~ shortened for paths"
         _repr = ""
