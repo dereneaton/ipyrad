@@ -139,6 +139,7 @@ class CladeWeights(object):
         rasyncs = {}
 
         # distribute jobs on client in chunks
+        # TODO: test adaptive chunk sizes.
         chunksize = 20
         for idx in self.tree_table.index[::chunksize]:
             chunk = self.tree_table.tree[idx:idx + chunksize].tolist()
@@ -156,6 +157,7 @@ class CladeWeights(object):
                 if rasyncs[idx].successful():
                     # fill with results
                     res = rasyncs[idx].get()
+                    # print(res)
                     self.clade_weights.iloc[idx: idx + chunksize] = res.values
                     del rasyncs[idx]
                     done += 1                    
@@ -181,6 +183,7 @@ def clade_weights(treelist, clades, idx=0):
     subsampling quartet trees from these clades.
     """
     # make empty clade weights table
+    # TODO: should non filled rows be NANs?
     clade_weights = pd.DataFrame(
         {i: [0.] * len(treelist) for i in clades.keys()}
     )
@@ -192,12 +195,12 @@ def clade_weights(treelist, clades, idx=0):
         tree = toytree.tree(tree)
         tips = set(tree.get_tip_labels())        
 
-        # stat counters
-        idx = 0
-        tsum = 0
-
         # iterate over clades to test
         for name, clade in clades.items():
+
+            # stat counters
+            idx = 0
+            tsum = 0          
 
             # union test support for grouping of two clades
             if isinstance(clade, tuple):
