@@ -63,8 +63,9 @@ class TreeSlider():
         slide_size=None,
         scaffold_idxs=None,
         minsnps=1,
-        bootstraps=0,
-        inference_method="raxml"
+        inference_method="raxml",
+        inference_args={},
+        # no_missing_taxa=True,
         # imap=None,
         # minmap=None,
         ):
@@ -79,7 +80,10 @@ class TreeSlider():
         self.window_size = window_size
         self.slide_size = slide_size
         self.minsnps = minsnps
-        self.boots = bootstraps
+
+        # inference 
+        self.inference_method = inference_method
+        self.inference_args = inference_args
 
         # parallelization
         self.ipcluster = {
@@ -110,6 +114,16 @@ class TreeSlider():
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
+        # get outfile name
+        if self.name:
+            tree_table_path = os.path.join(
+                self.workdir,
+                "{}.tree_table.csv".format(self.name))
+            if os.path.exists(tree_table_path):
+                self.tree_table = pd.read_csv(tree_table_path, sep="\t")
+                print("existing results loaded from {}".format(
+                    tree_table_path))
+
         # # fill mindict
         # if not minmap:
         #     if imap:
@@ -131,6 +145,35 @@ class TreeSlider():
 
         # build the tree table from the scaffolds, windows, and slides.
         self._parse_tree_table()
+
+
+    def show_inference_command(self, show_full=False):
+        # debug inference args
+        initkwargs = {
+            "T": max(1, self.ipcluster["threads"]),
+        }
+        initkwargs.update(self.inference_args)
+        rax = raxml(
+            data=self.data, 
+            name=self.name,
+            workdir=tempfile.gettempdir(),
+            **initkwargs
+        )
+
+        # return it
+        if show_full:
+            print(rax.command)
+
+        # pretty print it
+        else:
+            printkwargs = {
+                "s": "...", 
+                "w": "...", 
+                "n": "...",        
+            }
+            rax.params.update(printkwargs)
+            print(rax.command)
+
 
 
     def _parameter_check(self):
@@ -252,7 +295,8 @@ class TreeSlider():
                 return
 
         # load balance parallel jobs 2-threaded
-        lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::2])
+        threads = int(min(2, self.ipcluster["threads"]))
+        lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::threads])
 
         # distribute jobs on client
         time0 = time.time()
@@ -270,7 +314,7 @@ class TreeSlider():
         io5 = h5py.File(self.data, 'r')
         scaffs = io5["phymap"][:, 0]
 
-        # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, boots)
+        # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, )
         jidx = 0
         for scaff in self.tree_table.scaffold.unique():
 
@@ -295,7 +339,11 @@ class TreeSlider():
                     wmax = cmap[:, 2].max()
 
                     # store async result
-                    args = (self.data, wmin, wmax, self.minsnps, self.boots)
+                    args = (
+                        self.data, wmin, wmax, self.minsnps, 
+                        threads, 4, 
+                        self.inference_method, self.inference_args,
+                    )
                     rasyncs[jidx] = lbview.apply(remote_tree_inference, *args)
 
                 # advance fill counter, leaves NaN in rows with no data.
@@ -319,6 +367,7 @@ class TreeSlider():
             for idx in finished:
                 if rasyncs[idx].successful():
                     self.tree_table.iloc[idx, 3:] = rasyncs[idx].get()
+                    # self.tree_table.to_csv(tree_table_path)
                     del rasyncs[idx]
                     done += 1
                 else:
@@ -338,10 +387,10 @@ def remote_tree_inference(
     wmin, 
     wmax, 
     minsnps, 
-    boots, 
     threads=2, 
     mincov=4,
     inference_method="raxml",
+    inference_args={},
     ):
     "remote job to run phylogenetic inference."
 
@@ -366,13 +415,18 @@ def remote_tree_inference(
                 fname = write_phydict_to_phy(phydict)
 
                 # init raxml object and run with blocking
+                initkwargs = {
+                    "T": max(1, threads),
+                }
+                initkwargs.update(inference_args)
                 rax = raxml(
                     data=fname,
                     name="temp_" + str(os.getpid()),
                     workdir=tempfile.gettempdir(),
-                    T=max(1, threads),
-                    N=max(1, boots),
+                    **initkwargs,
                 )
+
+                # run command
                 rax.run(force=True, quiet=True, block=True)
 
                 # get tree file result
