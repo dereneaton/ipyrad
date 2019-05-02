@@ -380,7 +380,7 @@ class PCA(object):
             if not len(labels) == len(self.samples_vcforder):
                 raise IPyradError(LABELS_LENGTH_ERROR.format(len(labels), len(self.samples_vcforder)))
 
-        allel.plot.pairwise_distance(dist, labels=labels, ax=ax, colorbar=False)
+        allel.plot_pairwise_distance(dist, labels=labels, ax=ax, colorbar=False)
 
 
     def copy(self):
