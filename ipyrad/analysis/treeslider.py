@@ -81,6 +81,15 @@ class TreeSlider():
         self.slide_size = slide_size
         self.minsnps = minsnps
 
+        # use user name else create one
+        if not self.name:
+            self.name = "all-scaffolds"
+
+        # get outfile name
+        self.tree_table_path = os.path.join(
+            self.workdir,
+            "{}.tree_table.csv".format(self.name))
+
         # inference 
         self.inference_method = inference_method
         self.inference_args = inference_args
@@ -277,25 +286,20 @@ class TreeSlider():
         Hidden func to run parallel job.
         """
 
-        # use user name else create one
-        if not self.name:
-            self.name = "all-scaffolds"
-
-        # get outfile name
-        tree_table_path = os.path.join(
-            self.workdir,
-            "{}.tree_table.csv".format(self.name))
-
         # do not overwrite tree table
-        if os.path.exists(tree_table_path):
+        if os.path.exists(self.tree_table_path):
             if not force:
                 print((
         "Existing tree table loaded from {}; Use force to instead overwrite."
-        .format(tree_table_path)))
+        .format(self.tree_table_path)))
                 return
 
+        # THREADING
+        if "T" in self.inference_args:
+            self.ipcluster["threads"] = int(self.inference_args["T"])
+
         # load balance parallel jobs 2-threaded
-        threads = int(min(2, self.ipcluster["threads"]))
+        threads = int(max(2, self.ipcluster["threads"]))
         lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::threads])
 
         # distribute jobs on client
@@ -355,7 +359,7 @@ class TreeSlider():
         # track progress and save result table
         message = "inferring raxml trees"
         self._track_progress_and_store_results(rasyncs, time0, message)
-        self.tree_table.to_csv(tree_table_path)
+        self.tree_table.to_csv(self.tree_table_path)
 
 
     def _track_progress_and_store_results(self, rasyncs, time0, message):
@@ -367,7 +371,7 @@ class TreeSlider():
             for idx in finished:
                 if rasyncs[idx].successful():
                     self.tree_table.iloc[idx, 3:] = rasyncs[idx].get()
-                    # self.tree_table.to_csv(tree_table_path)
+                    self.tree_table.to_csv(self.tree_table_path)
                     del rasyncs[idx]
                     done += 1
                 else:
