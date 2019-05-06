@@ -4,14 +4,19 @@
 
 from __future__ import print_function, division  
 
-from ipyrad.core.parallel import register_ipcluster
-from ipyrad.assemble.utils import IPyradWarningExit, detect_cpus
+# from ipyrad.core.parallel import register_ipcluster
+from ipyrad.assemble.utils import IPyradError, detect_cpus
 from pkg_resources import get_distribution
+from distutils.version import LooseVersion
+
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
+import requests
 import sys
 import os
+
+from .core.Parallel import Parallel
 
 
 class CLI:
@@ -29,7 +34,7 @@ class CLI:
             epilog=EPILOG)
 
         # check for a new version of ipyrad and warn user of upgrade
-        self.check_version()
+        #self.check_for_new_version()
 
         # parse the command line to get CLI args
         self._parse_command_line()
@@ -39,34 +44,44 @@ class CLI:
         self.check_args()
 
         # if args.debug turn on the debugger
-        # self._hardlog_cli()
+        if self.args.debug:
+            ip.__interactive__ = 1
+            # self._hardlog_cli()
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
-        self._flagnew()
+        if self.args.new:
+            self._flagnew()
+            sys.exit(0)
+
+        # check for download argument
+        if self.args.download:
+            self._flagdownload()
+            sys.exit(0)
+
+        # check that -p is accompanied by an action (-s, -r, -m)
         self._flagparams()
-        self._flagdownload()
 
         # check for merge of branches
         if self.args.merge:
             self.merge_assemblies()
-    
-        # fill parsedict from paramsfile
+            sys.exit(0)
+        
+        # fill parsedict with params from paramsfile
         self.parse_params()
 
         # functions below here involve an Assembly object.
         self.get_assembly()
         if self.args.branch:
             self.branch_assembly()
+            sys.exit(0)
+
         self.run()
-        sys.exit(1)
 
 
 
-    def check_version(self):
+    def check_for_new_version(self):
         "Test if there's a newer version and nag the user to upgrade."
-        import requests
-        from distutils.version import LooseVersion
 
         try:
             # get response and parse it
@@ -104,9 +119,9 @@ class CLI:
 
         # check that params.txt file is correctly formatted.
         if not self.args.params:
-            raise IPyradWarningExit("\n  No params file found\n")
+            raise IPyradError("\n  No params file found\n")
         elif not os.path.exists(self.args.params):
-            raise IPyradWarningExit("\n  No params file found\n")
+            raise IPyradError("\n  No params file found\n")
         else:
             with open(self.args.params) as paramsin:
                 lines = paramsin.readlines()
@@ -127,7 +142,7 @@ class CLI:
         # if no args then return help message
         if len(sys.argv) == 1:
             self.parser.print_help()
-            sys.exit(1)
+            # sys.exit(1)
 
         ## add arguments 
         self.parser.add_argument(
@@ -148,8 +163,8 @@ class CLI:
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
-        # self.parser.add_argument('-d', "--debug", action='store_true',
-            # help="print lots more info to ipyrad_log.txt.")
+        self.parser.add_argument('-d', "--debug", action='store_true',
+            help="print lots more info to ipyrad_log.txt.")
 
         self.parser.add_argument('-n', metavar='new', dest="new", type=str, 
             default=None, 
@@ -231,17 +246,24 @@ class CLI:
 
     def _flagnew(self):
         # Create a tmp assembly, call write_params to make default params.txt
-        if self.args.new:
-            try:
-                tmpassembly = ip.Assembly(self.args.new, quiet=True, cli=True)
-                tmpassembly.write_params(
-                    "params-{}.txt".format(self.args.new), 
-                    force=self.args.force)
-                print("\n  New file 'params-{}.txt' created in {}\n"
-                      .format(self.args.new, os.path.realpath(os.path.curdir)))
-            except Exception as inst:
-                print(inst)
-            sys.exit(1)
+        tmpassembly = ip.Assembly(
+            self.args.new, 
+            quiet=True, 
+            cli=True, 
+            force=self.args.force,
+        )
+
+        # write the new params file
+        tmpassembly.write_params(
+            "params-{}.txt".format(self.args.new), 
+            force=self.args.force,
+        )
+
+        # print log to screen
+        print("\n  New file 'params-{}.txt' created in {}\n".format(
+            self.args.new, 
+            os.path.realpath(os.path.curdir))
+        )
 
 
     def _flagparams(self):
@@ -262,16 +284,34 @@ class CLI:
 
     def _flagdownload(self):
         ## if download data do it and then exit. Runs single core in CLI. 
-        if self.args.download:
-            if len(self.args.download) == 1:
-                downloaddir = "sra-fastqs"
-            else:
-                downloaddir = self.args.download[1]
-            sratools_download(
-                self.args.download[0], 
-                workdir=downloaddir, 
-                force=self.args.force)
-            sys.exit(1)
+        if len(self.args.download) == 1:
+            downloaddir = "sra-fastqs"
+        else:
+            downloaddir = self.args.download[1]
+
+        # call the analysis tool
+        import ipyrad.analysis as ipa
+        sra = ipa.sratools(
+            accession=self.args.download[0],
+            workdir=downloaddir,
+            force=self.args.force,
+        )
+
+        ## get run info and print spacer after
+        df = sra.fetch_runinfo((1, 4, 6, 29, 30))
+        print("")
+
+        ## rename spots for prettier printing and send to screen
+        df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
+        print(df)
+
+        ## run download with default name_fields and separator
+        sra.run(
+            name_fields=(30, 1), 
+            name_separator="_", 
+            force=self.args.force)
+        print("")
+
 
 
     def merge_assemblies(self):
@@ -351,7 +391,7 @@ class CLI:
                     data = ip.Assembly(assembly_name, cli=True)
                 else:
                     if os.path.exists(json_file):
-                        raise IPyradWarningExit(
+                        raise IPyradError(
                         "Assembly already exists, use force to overwrite")
                     else:
                         data = ip.Assembly(assembly_name, cli=True)
@@ -380,7 +420,7 @@ class CLI:
             json_file += ".json"
 
         if not os.path.exists(json_file):
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "Cannot find assembly {}".format(json_file))
 
         # load the assembly 
@@ -415,40 +455,53 @@ class CLI:
         to a new assembly, and also write out the appropriate params.txt
         """
 
-        ## get arguments to branch command
+        # get arguments to branch command
         bargs = self.args.branch
 
-        ## get new name, trim off .txt if it was accidentally added
+        # get new name
         newname = bargs[0]
+
+        # trim .txt if it was accidentally added
         if newname.endswith(".txt"):
             newname = newname[:-4]
 
-        ## look for subsamples
+        # look for subsample arguments
         if len(bargs) > 1:
 
-            # are we removing or keeping listed samples?
-            subsamples = bargs[1:]
+            # parse str or file of names to include/drop
+            subargs = bargs[1:]
 
-            # drop the matching samples
-            if bargs[1] == "-":
-                
-                # check drop names
-                fails = [i for i in subsamples[1:] if i not in 
-                         self.data.samples.keys()]
-                if any(fails):
-                    raise IPyradWarningExit(
-                        "\nFailed: unrecognized names, check spelling:\n  {}"
+            # is there a '-' indicating to drop
+            remove = 0
+            if subargs[0] == "-":
+                remove = 1
+                subargs = subargs[1:]
+
+            # is sample list a file?
+            if os.path.exists(subargs[1]):
+                with open(subargs[1], 'r') as infile:
+                    subsamples = [
+                        i.split()[0] for i in infile.readlines() if i.strip()
+                    ]
+            else:
+                subsamples = subargs
+
+            # check subsample drop names
+            fails = [i for i in subsamples if i not in self.data.samples.keys()]
+            if any(fails):
+                raise IPyradError(
+                    "\n  Failed: unrecognized names, check spelling:\n  {}"
                         .format("\n  ".join([i for i in fails])))
-                print("  dropping {} samples".format(len(subsamples) - 1))
+            
+            # if drop then get subtract list
+            if remove:
+                print("  dropping {} samples".format(len(subsamples)))
                 subsamples = list(set(self.data.samples.keys()) - set(subsamples))
 
-            ## If the arg after the new param name is a file that exists
-            if os.path.exists(bargs[1]):
-                new_data = self.data.branch(newname, infile=bargs[1])
-            else:
-                new_data = self.data.branch(newname, subsamples)
+            # If the arg after the new param name is a file that exists
+            new_data = self.data.branch(newname, subsamples)
 
-        ## keeping all samples
+        # keeping all samples
         else:
             new_data = self.data.branch(newname, None)
 
@@ -461,7 +514,6 @@ class CLI:
         new_data.write_params(
             "params-" + new_data.name + ".txt",
             force=self.args.force)
-        sys.exit(1)
 
 
     def run(self):
@@ -470,6 +522,9 @@ class CLI:
         if self.args.steps:
             # print header
             print(HEADER)
+
+            # set to print headers
+            self.data._headers = 1
 
             # set CLI ipcluster terms
             self.data.ipcluster["threads"] = self.args.threads
@@ -489,21 +544,26 @@ class CLI:
                 if self.args.MPI:
                     self.data.ipcluster["engines"] = "MPI"
                     if not self.args.cores:
-                        raise IPyradWarningExit("must provide -c argument with --MPI")
-                # register to have a cluster-id with "ip- name"
-                self.data = register_ipcluster(self.data)
+                        raise IPyradError("must provide -c argument with --MPI")
 
-            # set to print headers
-            self.data._headers = 1
-
-            # run assembly steps
-            steps = list(self.args.steps)
-            self.data.run(
-                steps=steps, 
-                force=self.args.force, 
-                show_cluster=1, 
+            # get pool object
+            pool = Parallel(
+                tool=self.data, 
+                rkwargs={"steps": self.args.steps, "force": self.args.force},
                 ipyclient=ipyclient,
+                show_cluster=True,
+                auto=True,
                 )
+            pool.wrap_run()
+
+            # # run assembly steps
+            # steps = list(self.args.steps)
+            # self.data.run(
+            #     steps=steps, 
+            #     force=self.args.force, 
+            #     show_cluster=1, 
+            #     ipyclient=ipyclient,
+            #     )
         
         # show results summary                 
         if self.args.results:
@@ -599,5 +659,10 @@ _DOES_NOT_EXIST_MERGE = """
 """
 
 
-if __name__ == "__main__": 
+
+def main():
     CLI()
+
+
+if __name__ == "__main__": 
+    main()
