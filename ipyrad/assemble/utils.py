@@ -29,6 +29,7 @@ class IPyradAPIError(Exception):
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, **kwargs)
 
+
 # class IPyradWarningExit(SystemExit):
 class IPyradError(SystemExit):
     """
@@ -37,8 +38,10 @@ class IPyradError(SystemExit):
     """
     def __init__(self, *args, **kwargs):
         if ipyrad.__interactive__:
+            # raise a traceback for the API
             raise IPyradAPIError(*args, **kwargs)
         else:
+            # clean exit for CLI that still exits as an Error (e.g. for HPC)
             SystemExit.__init__(self, *args, **kwargs)
 
 
