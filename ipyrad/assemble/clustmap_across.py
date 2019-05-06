@@ -63,8 +63,8 @@ class Step6:
             self.data.dirs.across,
             "{}-tmpalign".format(self.data.name))
         self.data.clust_database = os.path.join(
-            self.data.dirs.across,
-            "{}.clust.hdf5".format(self.data.name))
+            self.data.dirs.across, 
+            self.data.name + "_clust_database.fa")
 
         # clear out
         if force:
@@ -256,7 +256,7 @@ class Step6:
             self.concat_alignments()
 
         # clean up step here...
-        # ...
+        self.data.stats_files.s6 = self.data.clust_database
 
         # set sample states
         for sample in self.samples:
