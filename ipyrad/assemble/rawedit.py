@@ -12,7 +12,7 @@ import os
 import time
 import numpy as np
 import subprocess as sps
-from .utils import IPyradWarningExit, IPyradError, fullcomp
+from .utils import IPyradError, fullcomp
 
 
 class Step2(object):
@@ -473,7 +473,7 @@ def cutadaptit_single(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error in {}\n {}".format(" ".join(cmdf1), res1))
+        raise IPyradError(" error in {}\n {}".format(" ".join(cmdf1), res1))
 
     ## return result string to be parsed outside of engine
     return res1
@@ -560,7 +560,7 @@ def cutadaptit_pairs(data, sample):
     be referenced in the barcode file as WatDo_PipPrep_100. The name in your
     barcode file for this sample must match: {}
     """.format(sample.name)
-            raise IPyradWarningExit(msg)
+            raise IPyradError(msg)
 
     else:
         if data.params.datatype != "pair3rad":
@@ -665,7 +665,7 @@ def cutadaptit_pairs(data, sample):
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res1 = proc1.communicate()[0]
     if proc1.returncode:
-        raise IPyradWarningExit("error in cutadapt: {}".format(res1.decode()))
+        raise IPyradError("error in cutadapt: {}".format(res1.decode()))
     return res1
 
 
@@ -694,7 +694,7 @@ def concat_multiple_inputs(data, sample):
                 cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
-            raise IPyradWarningExit("error in: {}, {}".format(cmd1, res1))
+            raise IPyradError("error in: {}, {}".format(cmd1, res1))
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0
@@ -707,7 +707,7 @@ def concat_multiple_inputs(data, sample):
                     cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 proc2.communicate()[0]
             if proc2.returncode:
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "Error concatenating fastq files. Make sure all "\
                   + "these files exist: {}\nError message: {}"
                     .format(cmd2, proc2.returncode))

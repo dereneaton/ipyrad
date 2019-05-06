@@ -16,7 +16,7 @@ import pandas as pd
 import ipyrad as ip
 
 from collections import OrderedDict
-from ipyrad.assemble.utils import IPyradParamsError, IPyradError
+from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.utils import ObjDict, BADCHARS
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
@@ -459,7 +459,7 @@ class Assembly(object):
         """
         # check param in keys
         if "_" + param not in self.params._keys:
-            raise IPyradParamsError(
+            raise IPyradError(
                 "Parameter key not recognized: {}".format(param))
         
         # set parameter newvalue
@@ -587,7 +587,7 @@ class Assembly(object):
         val1 = self.params.mindepth_statistical
         val2 = self.params.mindepth_majrule
         if val1 < val2:
-            raise IPyradParamsError(
+            raise IPyradError(
                 "mindepth_statistical cannot be < mindepth_majrule")
         # other params to check ...
 
@@ -867,7 +867,7 @@ def check_name(name):
     invalid_chars = (
         string.punctuation.replace("_", "").replace("-", "") + " ")
     if any(char in invalid_chars for char in name):
-        raise IPyradParamsError(BAD_ASSEMBLY_NAME.format(name))
+        raise IPyradError(BAD_ASSEMBLY_NAME.format(name))
 
 
 def read_sample_names(fname):

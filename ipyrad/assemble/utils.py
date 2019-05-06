@@ -23,26 +23,21 @@ import string
 BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
 
 
-
-### custom Exception classes
-class IPyradParamsError(Exception):
-    """ Exception handler indicating error in parameter entry """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
-
-class IPyradError(Exception):
+# class IPyradError(Exception):
+class IPyradAPIError(Exception):
     """ Exception handler indicating error in during assembly """
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, **kwargs)
 
-class IPyradWarningExit(SystemExit):
+# class IPyradWarningExit(SystemExit):
+class IPyradError(SystemExit):
     """
     Exception handler that does clean exit for CLI, but also prints
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
         if ipyrad.__interactive__:
-            raise IPyradError(*args, **kwargs)
+            raise IPyradAPIError(*args, **kwargs)
         else:
             SystemExit.__init__(self, *args, **kwargs)
 

@@ -25,7 +25,7 @@ import subprocess as sps
 import numpy as np
 from pysam import AlignmentFile, FastaFile
 import ipyrad
-from .utils import IPyradWarningExit, IPyradError, fullcomp, chroms2ints
+from .utils import IPyradError, fullcomp, chroms2ints
 
 
 class Step6:
@@ -401,7 +401,7 @@ class Step6:
         # check for errors
         for job in [async1, async2, async3]:
             if not job.successful():
-                raise IPyradWarningExit(job.result())
+                raise IPyradError(job.result())
 
 
     def remote_align_denovo_clusters(self):
@@ -432,7 +432,7 @@ class Step6:
         keys = list(jobs.keys())
         for idx in keys:
             if not jobs[idx].successful():
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "error in step 6 {}".format(jobs[idx].exception()))
             del jobs[idx]
         print("")
@@ -517,7 +517,7 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd1), err))
 
         # sort the bam file
@@ -543,7 +543,7 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd2), err))
         os.remove(catbam)
 
@@ -566,7 +566,7 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd3), err))
         self.data._progressbar(3, 3, start, printstr)
         self.data._print("")
@@ -623,7 +623,7 @@ class Step6:
         # check success
         for idx in jobs:
             if not jobs[idx].successful():
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "error in step 6 {}".format(jobs[idx].get()))
         self.data._print("")
 
@@ -704,7 +704,7 @@ def build_ref_regions(data):
         stdout=sps.PIPE)
     result = proc2.communicate()[0].decode()
     if proc2.returncode:
-        raise IPyradWarningExit(
+        raise IPyradError(
             "error in {}: {}".format(" ".join(cmd2), result))
     regs = [i.split("\t") for i in result.strip().split("\n")]
     return [(i, int(j), int(k)) for i, j, k in regs]

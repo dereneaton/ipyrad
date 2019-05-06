@@ -23,7 +23,7 @@ import subprocess as sps
 import numpy as np
 import pysam
 import ipyrad as ip
-from .utils import IPyradError, IPyradWarningExit, bcomp, comp
+from .utils import IPyradError, bcomp, comp
 
 
 class Step3:
@@ -683,7 +683,6 @@ def dereplicate(data, sample, nthreads):
     errmsg = proc.communicate()[0]
     if proc.returncode:
         raise IPyradError(errmsg.decode())
-        # raise IPyradWarningExit(errmsg.decode())
 
 
 def concat_multiple_edits(data, sample):
@@ -706,7 +705,7 @@ def concat_multiple_edits(data, sample):
                 cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
             if proc1.returncode:
-                raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
+                raise IPyradError("error in: %s, %s", cmd1, res1)
 
         ## Only set conc2 if R2 actually exists
         if os.path.exists(str(sample.files.edits[0][1])):
@@ -716,7 +715,7 @@ def concat_multiple_edits(data, sample):
                     cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
                 if proc2.returncode:
-                    raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
+                    raise IPyradError("error in: %s, %s", cmd2, res2)
 
 
 def merge_pairs_with_vsearch(data, sample, revcomp):
@@ -777,7 +776,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
     if proc.returncode:
-        raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
+        raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
 def merge_end_to_end(data, sample, revcomp, append):
@@ -969,7 +968,7 @@ def cluster(data, sample, nthreads, force):
 
     # check for errors
     if proc.returncode:
-        raise IPyradWarningExit("cmd {}: {}".format(cmd, res))
+        raise IPyradError("cmd {}: {}".format(cmd, res))
 
 
 def build_clusters(data, sample, maxindels):
@@ -1622,14 +1621,14 @@ def mapping_reads(data, sample, nthreads):
         cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
     if proc3.returncode:
-        raise IPyradWarningExit(error3)
+        raise IPyradError(error3)
     proc2.stdout.close()
 
     # cmd4 indexes the bam file
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
-        raise IPyradWarningExit(error4)
+        raise IPyradError(error4)
 
     # Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
@@ -1637,7 +1636,7 @@ def mapping_reads(data, sample, nthreads):
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
     error5 = proc5.communicate()[0]
     if proc5.returncode:
-        raise IPyradWarningExit(error5)
+        raise IPyradError(error5)
 
 
 def check_insert_size(data, sample):
@@ -1741,7 +1740,7 @@ def bedtools_merge(data, sample):
 
     # check for errors and do cleanup
     if proc2.returncode:
-        raise IPyradWarningExit("error in %s: %s", cmd2, result)
+        raise IPyradError("error in %s: %s", cmd2, result)
 
     # Write the bedfile out, because it's useful sometimes.
     if os.path.exists(ip.__debugflag__):

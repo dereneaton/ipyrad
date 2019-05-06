@@ -11,7 +11,7 @@ import pandas as pd
 from ..core.sample import Sample
 from ..core.assembly import Assembly
 from ..assemble.utils import ObjDict
-from ..assemble.utils import IPyradWarningExit, IPyradError
+from ..assemble.utils import IPyradError
 
 
 
@@ -90,7 +90,7 @@ def load_json(json_path, quiet=False, cli=False):
     # Now, load in the Sample objects json dicts
     sample_names = list(fullj["samples"].keys())
     if not sample_names:
-        raise IPyradWarningExit("""
+        raise IPyradError("""
     No samples found in saved assembly. If you are just starting a new
     assembly the file probably got saved erroneously, so it's safe to try 
     removing the assembly file (e.g., rm {}.json) and restarting.
