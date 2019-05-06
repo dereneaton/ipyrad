@@ -39,8 +39,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'ipyrad = ipyrad.__main__:CLI',
-            # 'tetrad = ipyrad.analysis.__tetrad_cli__:main',
+            'ipyrad = ipyrad.__main__:main',
         ],
     },
     data_files=[('bin', glob.glob("./bin/*"))],
