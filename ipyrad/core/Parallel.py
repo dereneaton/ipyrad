@@ -45,6 +45,13 @@ class Parallel(object):
         if not hasattr(self.tool, "quiet"):
             self.tool.quiet = False
 
+        # get spacer for printing if present
+        try:
+            self.spacer = self.tool._spacer
+        except AttributeError:
+            self.spacer = ""
+
+
         # ipywidget based progress bar
         # self.message = HTML(
         #     layout={"height": "25px", "margin": "0px"})
@@ -217,7 +224,8 @@ class Parallel(object):
             (key, val) in hostdict.items()
         ]
         self.update_message(
-            "Parallelization: {}".format(", ".join(hpairs)))
+            "{}Parallel connection | {}".format(
+                self.spacer, " | ".join(hpairs)))
 
 
 
@@ -279,10 +287,19 @@ class Parallel(object):
 
         # print the error and cleanup
         except KeyboardInterrupt:
-            print("\nKeyboard Interrupt by user\n")
+            print("\n{}Keyboard Interrupt by user\n".format(self.spacer))
+
+        except IPyradError as inst:
+            msg = "\n{}Encountered an Error.".format(self.spacer) + \
+                  "\n{}Message: {}".format(self.spacer, inst) + \
+                  "\n{}Use debug flag (-d) for full code traceback.".format(self.spacer)
+            print(msg)
+            raise
 
         except Exception as inst:
-            print("\nEncountered an error:\n{}\n".format(inst))
+            msg = "\n{}Encountered an Error.".format(self.spacer) + \
+                  "\n{}Message: {}".format(self.spacer, inst)
+            print(msg)
             raise
 
         # cancel/kill any unfinished jobs and shutdown hub if 'auto=True'
@@ -320,7 +337,9 @@ class Parallel(object):
                     self.ipyclient.shutdown(hub=True, block=False)
                     self.ipyclient.close()
                     if self.show_cluster:
-                        self.update_message("Parallel connection closed.")
+                        self.update_message(
+                            "\n{}Parallel connection closed."
+                            .format(self.spacer))
                         time.sleep(0.5)
         
             # close the cluster info
@@ -328,3 +347,43 @@ class Parallel(object):
 
         except Exception as inst2:
             print("warning: error during shutdown:\n{}".format(inst2))
+
+
+
+def cluster_info(ipyclient):
+    """ reports host and engine info for an ipyclient """    
+    # get engine data, skips busy engines.
+    hosts = []
+    for eid in ipyclient.ids:
+        engine = ipyclient[eid]
+        if not engine.outstanding:
+            hosts.append(engine.apply(socket.gethostname))
+
+    ## report it
+    hosts = [i.get() for i in hosts]
+    hostdict = {}
+    for hostname in set(hosts):
+        hostdict[hostname] = hosts.count(hostname)
+    hpairs = [
+        # "<i>{}</i>: {} cores".format(key, val) for 
+        "{}: {} cores".format(key, val) for 
+        (key, val) in hostdict.items()
+    ]
+    print("Parallel connection | {}".format(" | ".join(hpairs)))
+
+
+## GLOBALS AND EXCEPTIONS
+NO_IPCLUSTER_CLI = """\
+    No ipcluster instance found. This may be a problem with your installation
+    setup, or it could be that the cluster instance isn't firing up fast enough.
+    This most often happens on cluster nodes. One solution is to launch
+    ipcluster by hand and then pass the `--ipcluster` flag to ipyrad. See
+    the docs for more info: http://ipyrad.rtfd.io/HPC_script.html
+    """
+NO_IPCLUSTER_API = """
+    No ipcluster instance found. See documentation for the proper way to set 
+    up an ipcluster instance when running the ipyrad Python API. In short, 
+    you must run 'ipcluster start' to initiate a local or remote cluster. 
+    Also, if you changed the 'profile' or 'cluster_id' setting from their 
+    default values you must enter these into the Assembly.ipcluster dictionary.
+    """
