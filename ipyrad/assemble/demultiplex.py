@@ -1270,7 +1270,10 @@ def estimate_nreads(data, testfile):
         
     ## We'll take the average of the size of a file based on the
     ## first 10000 reads to approximate number of reads in the main file
-    dat = b"".join(islice(infile, 40000))
+    try:
+        dat = b"".join(islice(infile, 40000))
+    except TypeError:
+        dat = "".join(islice(infile, 40000))
     outfile.write(dat)
     outfile.close()
     infile.close()
