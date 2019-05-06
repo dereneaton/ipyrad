@@ -4,7 +4,7 @@
 
 import os
 import glob
-from ..assemble.utils import IPyradError, IPyradParamsError
+from ..assemble.utils import IPyradError
 
 
 # GLOBALS
@@ -431,7 +431,7 @@ class Params(object):
         try:
             value = int(value)
         except TypeError:
-            raise IPyradParamsError("max_low_qual_bases must be an integer.")
+            raise IPyradError("max_low_qual_bases must be an integer.")
         self._max_low_qual_bases = value
 
 
@@ -443,7 +443,7 @@ class Params(object):
         try:
             value = int(value)
         except TypeError:
-            raise IPyradParamsError("phred_Qscore_offset must be an integer.")
+            raise IPyradError("phred_Qscore_offset must be an integer.")
         self._phred_Qscore_offset = int(value)
 
 
@@ -455,7 +455,7 @@ class Params(object):
         try:
             value = int(value)
         except TypeError:
-            raise IPyradParamsError("mindepth_statistical must be an integer.")
+            raise IPyradError("mindepth_statistical must be an integer.")
         # do not allow values below 5
         assert int(value) >= 5, (
             "mindepth_statistical cannot be <5. Set mindepth_majrule instead.")
@@ -470,7 +470,7 @@ class Params(object):
         try:
             value = int(value)
         except TypeError:
-            raise IPyradParamsError("mindepth_majrule must be an integer.")
+            raise IPyradError("mindepth_majrule must be an integer.")
         self._mindepth_majrule = int(value)
 
 
@@ -575,7 +575,7 @@ class Params(object):
                 try:
                     value = float(value)
                 except Exception as inst:
-                    raise IPyradParamsError("""
+                    raise IPyradError("""
     max_shared_Hs_locus must be int or float, you put: {}""".format(value))
         self._max_shared_Hs_locus = value
 
@@ -595,7 +595,7 @@ class Params(object):
                 try:
                     value = float(value)
                 except Exception as inst:
-                    raise IPyradParamsError("""
+                    raise IPyradError("""
     max_SNPs_locus must be int or float, you put: {}""".format(value))
         self._max_SNPs_locus = value
 
