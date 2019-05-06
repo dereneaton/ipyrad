@@ -493,6 +493,7 @@ class Assembly(object):
             ## param value, the ordered dict index number. Also,
             ## get the short description from paramsinfo. Make it look pretty,
             ## pad nicely if at all possible.
+            params_string = []
             for key in self.params._keys:
                 val = getattr(self.params, key)
 
@@ -507,11 +508,20 @@ class Assembly(object):
                 paramindex = " ## [{}] ".format(paramkey)
                 name = "[{}]: ".format(paramname(paramkey))
                 description = paraminfo(paramkey, short=True)
-                paramsfile.write(
-                    "\n" + paramvalue + padding + paramindex + name + description)
+                params_string.append(
+                    "".join([
+                        paramvalue,
+                        padding,
+                        paramindex,
+                        name,
+                        description])
+                    )
+            # write the params string
+            paramsfile.write("\n".join(params_string) + "\n")
 
 
-    def branch(self, newname, subsamples=None, infile=None, force=False):
+
+    def branch(self, newname, subsamples=None, force=False):
         """
         Returns a copy of the Assembly object. Does not allow Assembly
         object names to be replicated in namespace or path.
@@ -539,22 +549,6 @@ class Assembly(object):
         newobj = copy.deepcopy(self)
         newobj.name = newname
         newobj.params._assembly_name = newname
-
-        # warn user to only use one of these at a time
-        if subsamples and infile:
-            print(BRANCH_NAMES_AND_INPUT)
-
-        # CLI: parse infile 
-        if infile:
-            if infile[0] == "-":
-                remove = 1
-                infile = infile[1:]
-            if os.path.exists(infile):
-                subsamples = read_sample_names(infile)
-
-            # if remove then swap the samples
-            if remove:
-                subsamples = list(set(self.samples.keys()) - set(subsamples))
 
         # create copies of each subsampled Sample obj
         if subsamples:
@@ -870,20 +864,6 @@ def check_name(name):
         raise IPyradError(BAD_ASSEMBLY_NAME.format(name))
 
 
-def read_sample_names(fname):
-    """ 
-    Read in sample names from a text file, a convenience function for branching
-    """
-    try:
-        with open(fname, 'r') as infile:
-            subsamples = [x.split()[0] for x in infile.readlines() if x.strip()]
-
-    except Exception as inst:
-        print("Failed to read input file with sample names.\n{}".format(inst))
-        raise inst
-
-    return subsamples
-
 
 ### ERROR MESSAGES ###################################
 UNKNOWN_EXCEPTION = """\
@@ -1038,11 +1018,6 @@ FIRST_RUN_6 = """\
     Database file {} not found. First run step 6.
 """
 
-BRANCH_NAMES_AND_INPUT = \
-"""
-    Attempting to branch passing in subsample names
-    and an input file, ignoring 'subsamples' argument
-"""
 
 ########################################################
 
