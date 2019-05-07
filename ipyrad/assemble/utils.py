@@ -13,36 +13,35 @@ except ImportError:
     izip = zip
 
 import os
-import gzip
 import socket
 import pandas as pd
 import numpy as np
 import ipyrad
-
-import logging
-LOGGER = logging.getLogger(__name__)
+import string
 
 
-### custom Exception classes
-class IPyradParamsError(Exception):
-    """ Exception handler indicating error in parameter entry """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
+BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
 
-class IPyradError(Exception):
+
+# class IPyradError(Exception):
+class IPyradAPIError(Exception):
     """ Exception handler indicating error in during assembly """
     def __init__(self, *args, **kwargs):
         Exception.__init__(self, *args, **kwargs)
 
-class IPyradWarningExit(SystemExit):
+
+# class IPyradWarningExit(SystemExit):
+class IPyradError(SystemExit):
     """
     Exception handler that does clean exit for CLI, but also prints
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if not ipyrad.__interactive__:
-            raise IPyradError(*args, **kwargs)
+        if ipyrad.__interactive__:
+            # raise a traceback for the API
+            raise IPyradAPIError(*args, **kwargs)
         else:
+            # clean exit for CLI that still exits as an Error (e.g. for HPC)
             SystemExit.__init__(self, *args, **kwargs)
 
 
@@ -198,7 +197,7 @@ def chroms2ints(data, intkeys):
     Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
     """
     fai = pd.read_csv(
-        data.paramsdict["reference_sequence"] + ".fai",
+        data.params.reference_sequence + ".fai",
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )
@@ -317,61 +316,6 @@ def fullcomp(seq):
     return seq
 
 
-
-def fastq_touchup_for_vsearch_merge(read, outfile, reverse=False):
-    """ option to change orientation of reads and sets Qscore to B """
-    
-    counts = 0
-    with open(outfile, 'w') as out:
-        ## read in paired end read files 4 lines at a time
-        if read.endswith(".gz"):
-            fr1 = gzip.open(read, 'rb')
-        else:
-            fr1 = open(read, 'rb')
-        quarts = izip(*[iter(fr1)] * 4)
-
-        ## a list to store until writing
-        writing = []
-
-        while 1:
-            try:
-                lines = next(quarts)
-            except StopIteration:
-                break
-            if reverse:
-                seq = lines[1].strip()[::-1]
-            else:
-                seq = lines[1].strip()
-            writing.append("".join([
-                lines[0],
-                seq + "\n",
-                lines[2],
-                "B" * len(seq)
-            ]))
-
-            ## write to disk
-            counts += 1
-            if not counts % 1000:
-                out.write("\n".join(writing) + "\n")
-                writing = []
-        if writing:
-            out.write("\n".join(writing))
-            
-    out.close()
-    fr1.close()
-                               
-
-
-def revcomp(sequence):
-    "returns reverse complement of a string"
-    sequence = sequence[::-1].strip()\
-                             .replace("A", "t")\
-                             .replace("T", "a")\
-                             .replace("C", "g")\
-                             .replace("G", "c").upper()
-    return sequence
-
-
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict
 ## except it returns just one base, w/ the order/priority being (C>A>T>G)
 ## This dict is used to impute lower case into consens to retain allele
@@ -465,7 +409,6 @@ def clustdealer(pairdealer, optim):
             taker = takewhile(lambda x: x[0] != b"//\n", pairdealer)
             oneclust = [b"".join(next(taker))]
         except StopIteration:
-            #LOGGER.debug('last chunk %s', chunk)
             return 1, chunk
 
         ## load one cluster
@@ -493,7 +436,7 @@ def get_threaded_view(ipyclient, split=True):
 
     ## group ids into a dict by their hostnames
     ## e.g., {a: [0, 1, 4], b: [2, 3], c: [5, 6, 7, 8]}
-    hostdict = {i:[] for i in hosts}  # defaultdict(list)
+    hostdict = {i: [] for i in hosts}  # defaultdict(list)
     for host, eid in zip(hosts, eids):
         hostdict[host].append(eid)
 
@@ -525,7 +468,6 @@ def get_threaded_view(ipyclient, split=True):
     ## make sure split numbering is correct
     #threaded = hostdict.values()
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
-    LOGGER.info("threaded_view: %s", dict(hostdict))
     return hostdict
 
 

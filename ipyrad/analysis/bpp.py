@@ -150,6 +150,12 @@ class Bpp(object):
         *args, 
         **kwargs):
 
+        ## results files
+        self.files = Params()
+        self.files.mcmcfiles = []
+        self.files.outfiles = []
+        self.files.treefiles = []
+
         # store args
         self.name = name
         self.data = os.path.realpath(os.path.expanduser(data))
@@ -220,16 +226,6 @@ class Bpp(object):
         # parsing imap dictionary, or create simple 1-1 mapping
         if not self.imap:
             self.imap = {i: [i] for i in self.tree.get_tip_labels()}
-        # else:
-        #     # self.imap = {}
-        #     for key, val in self.imap.items():
-        #         if isinstance(val, (int, str)):
-        #             self.imap[key] = [str(val)]
-        #         elif isinstance(val, list):
-        #             self.imap[key] = val
-        #         else:
-        #             raise IPyradError(
-        #                 "imap dictionary is not properly formatted")
 
         # update stats if alleles instead of loci 
         if not self._kwargs["minmap"]:
@@ -267,12 +263,6 @@ class Bpp(object):
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
-        ## results files
-        self.files = Params()
-        self.files.data = self.data
-        self.files.mcmcfiles = []
-        self.files.outfiles = []
-        self.files.treefiles = []
         
         ## load existing results files for this named bpp object if they exist
         if self.load_existing_results:
@@ -438,7 +428,7 @@ class Bpp(object):
         self.seqfile = os.path.realpath(
             os.path.join(self.workdir, self._name+".seqfile.txt"))
         seqfile = open(self.seqfile, 'w')
-        with open(self.files.data) as infile:
+        with open(self.data) as infile:
             loci = infile.read().strip().split("|\n")
             nloci = len(loci)
             if randomize_order:
@@ -662,7 +652,8 @@ class Bpp(object):
 
         ## others
         else:
-            return "summary function not yet ready for this type of result"
+            print("summary function not yet ready for this type of result")
+            return 0
 
 
 

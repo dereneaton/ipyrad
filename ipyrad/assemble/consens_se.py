@@ -23,7 +23,7 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import scipy.stats
-import scipy.misc
+# import scipy.misc
 
 import ipyrad as ip
 from .jointestimate import recal_hidepth
@@ -164,8 +164,8 @@ class Step5:
 
         # set up parallel client: allow user to throttle cpus
         self.lbview = self.ipyclient.load_balanced_view()
-        if self.data._ipcluster["cores"]:
-            self.ncpus = self.data._ipcluster["cores"]
+        if self.data.ipcluster["cores"]:
+            self.ncpus = self.data.ipcluster["cores"]
         else:
             self.ncpus = len(self.ipyclient.ids)
 
@@ -257,8 +257,9 @@ class Step5:
         start = time.time()
         jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
+        self.data._progressbar(1, 0, start, printstr)
 
-        # submit jobs
+        # submit jobs (10 per sample === can be hundreds of jobs...)
         for sample in self.samples:
             chunks = glob.glob(os.path.join(
                 self.data.tmpdir,
@@ -271,13 +272,14 @@ class Step5:
                     self.lbview.apply(
                         process_chunks,
                         *(self.data, sample, chunk, self.isref)))
-                
+                self.data._progressbar(1, 0, start, printstr)
+               
         # track progress - just wait for all to finish before concat'ing
         allsyncs = list(chain(*[jobs[i] for i in jobs]))
         while 1:
             ready = [i.ready() for i in allsyncs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
+            time.sleep(0.5)
             if len(ready) == sum(ready):
                 self.data._print("")
                 break
@@ -300,6 +302,7 @@ class Step5:
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
+        self.data._progressbar(1, 0, start, printstr)
 
         # concat catgs for each sample
         asyncs1 = {}
@@ -427,17 +430,14 @@ class Processor:
 
     def set_params(self):
         # set max limits
+        self.nalleles = 1
         self.tmpnum = int(self.chunkfile.split(".")[-1])
         self.optim = int(self.chunkfile.split(".")[-2])
         self.este = self.data.stats.error_est.mean()
         self.esth = self.data.stats.hetero_est.mean()
         self.maxlen = self.data.hackersonly.max_fragment_length
-        if 'pair' in self.data.params.datatype:
-            self.maxhet = sum(self.data.params.max_Hs_consens)
-            self.maxn = sum(self.data.params.max_Ns_consens)
-        else:
-            self.maxhet = self.data.params.max_Hs_consens[0]
-            self.maxn = self.data.params.max_Ns_consens[0]
+        self.maxhet = self.data.params.max_Hs_consens
+        self.maxn = self.data.params.max_Ns_consens
         # not enforced for ref
         if self.isref:
             self.maxn = int(1e6)
@@ -480,23 +480,50 @@ class Processor:
     # ---------------------------------------------
     def process_chunk(self):
         # stream through the clusters
-        with open(self.chunkfile, 'rb') as inclust:
-            pairdealer = izip(*[iter(inclust)] * 2)
-            done = 0
-            while not done:
-                done, chunk = clustdealer(pairdealer, 1)
-                if chunk:  
-                    self.parse_cluster(chunk)
-                    if self.filter_mindepth():
-                        self.build_consens_and_array()
+        inclust = open(self.chunkfile, 'rb')
+        pairdealer = izip(*[iter(inclust)] * 2)
+        done = 0
+        while not done:
+            done, chunk = clustdealer(pairdealer, 1)
+            if chunk:  
+
+                # fills .name and .seqs attributes
+                self.parse_cluster(chunk)
+
+                # return 1 if enough reads at this locus position
+                if self.filter_mindepth():
+
+                    # return 1 if enough overlapping bases for calls
+                    # and fills .consens and .arrayed attributes
+                    if self.build_consens_and_array():
+
+                        # denovo only: mask repeats
+                        if not self.isref:
+                            # drops false columns from consens and arrayed
+                            self.mask_repeats()
+
+                        # fills .hidx and .nheteros
                         self.get_heteros()
+
+                        # return 1 if not too many heterozygote calls
                         if self.filter_maxhetero():
+
+                            # return 1 if not too many N or too short 
                             if self.filter_maxN_minLen():
-                                self.get_alleles()
+                                
+                                # filter for max haplotypes...
+                                # self.get_alleles()
+                                # ...
+
+                                # store result
                                 self.store_data()
+
+        # cleanup close handle
+        inclust.close()
 
 
     def parse_cluster(self, chunk):
+        "read in cluster chunk to get .names & .seqs and ref position"
         # get names and seqs
         piece = chunk[0].decode().strip().split("\n")
         self.names = piece[0::2]
@@ -516,12 +543,20 @@ class Processor:
             chromint = self.faidict[chrom] + 1
             self.ref_position = (int(chromint), int(pos0), int(pos1))
 
+
     def filter_mindepth(self):
-        # exit if nreps is less than mindepth setting
-        if not nfilter1(self.data, self.reps):
-            self.filters['depth'] += 1
-            return 0
-        return 1
+        "return 1 if READ depth > minimum param"
+        bool1 = sum(self.reps) >= self.data.params.mindepth_majrule
+        bool2 = sum(self.reps) <= self.data.params.maxdepth
+        # return that this cluster passed filtering
+        if bool1 & bool2:       
+            return 1
+
+        # return that this cluster was filtered out
+        self.filters['depth'] += 1
+        return 0
+
+
 
     def build_consens_and_array(self):
         """
@@ -552,16 +587,43 @@ class Processor:
         mask = self.consens.copy()
         mask[mask == b"-"] = b"N"
         trim = np.where(mask != b"N")[0]
-        ltrim, rtrim = trim.min(), trim.max()
-        self.consens = self.consens[ltrim:rtrim + 1]
-        self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
 
-        # update position for trimming
-        self.ref_position = (
-            self.ref_position[0], 
-            self.ref_position[1] + ltrim,
-            self.ref_position[1] + ltrim + rtrim + 1,
+        # bail out b/c no bases were called 
+        if not trim.size:
+            self.filters['depth'] += 1
+            return 0
+
+        else:
+            ltrim, rtrim = trim.min(), trim.max()
+            self.consens = self.consens[ltrim:rtrim + 1]
+            self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
+
+            # update position for trimming
+            self.ref_position = (
+                self.ref_position[0], 
+                self.ref_position[1] + ltrim,
+                self.ref_position[1] + ltrim + rtrim + 1,
             )
+            return 1
+
+
+    def mask_repeats(self):
+        """
+        Removes mask columns with low depth repeats from denovo clusters.
+        """
+        # get column counts of -s        
+        idepths = np.sum(self.arrayed == b"-", axis=0).astype(float)
+
+        # get proportion of bases that are - at each site
+        props = idepths / self.arrayed.shape[0] 
+
+        # is proportion of - sites more than 0.8?
+        keep = np.invert(props >= 0.8)
+
+        # apply filter
+        self.consens = self.consens[keep]
+        self.arrayed = self.arrayed[:, keep]            
+
 
     def get_heteros(self):
         self.hidx = [
@@ -569,17 +631,25 @@ class Processor:
             j.decode() in list("RKSYWM")]
         self.nheteros = len(self.hidx)
 
+
     def filter_maxhetero(self):
-        if not nfilter2(self.nheteros, self.maxhet):
+        "Return 1 if it PASSED the filter, else 0"
+        if self.nheteros > (len(self.consens) * self.maxhet):
             self.filters['maxh'] += 1
             return 0
         return 1
 
+
     def filter_maxN_minLen(self):
-        if not nfilter3(self.consens, self.maxn):
-            self.filters['maxn'] += 1
-            return 0
-        return 1
+        "Return 1 if it PASSED the filter, else 0"        
+        if self.consens.size >= 32:
+            nns = self.consens[self.consens == b"N"].size
+            if nns > (len(self.consens) * self.maxn):
+                self.filters['maxn'] += 1
+                return 0
+            return 1
+        return 0
+
 
     def get_alleles(self):
         # if less than two Hs then there is only one allele
@@ -593,6 +663,7 @@ class Processor:
             harray = harray[~np.any(harray == b"N", axis=1)]
             # get counts of each allele (e.g., AT:2, CG:2)
             ccx = Counter([tuple(i) for i in harray])
+
             # remove low freq alleles if more than 2, since they may reflect
             # seq errors at hetero sites, making a third allele, or a new
             # allelic combination that is not real.
@@ -616,9 +687,11 @@ class Processor:
         cidx = self.counters["nconsens"]
         self.nallel[cidx] = self.nalleles
         self.refarr[cidx] = self.ref_position
+
         # store a reduced array with only CATG
         catg = np.array(
-            [np.sum(self.arrayed == i, axis=0) for i in [b'C', b'A', b'T', b'G']],
+            [np.sum(self.arrayed == i, axis=0) for i in
+             [b'C', b'A', b'T', b'G']],
             dtype='uint16').T
         # do not allow ints larger than 65535 (uint16)
         self.catarr[cidx, :catg.shape[0], :] = catg
@@ -707,7 +780,7 @@ class Processor:
         self.counters['nsites'] = sum(
             sum(1 if j != 78 else 0 for j in i) 
             for i in self.storeseq.values()
-            )
+        )
         del self.storeseq
 
 
@@ -896,7 +969,6 @@ def store_sample_stats(data, sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
-
 def make_cigar(arr):
     "writes a cigar string with locations of indels and lower case ambigs"
 
@@ -1023,7 +1095,7 @@ def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
         # the site of focus
         carr = arr[:, col]
 
-        # if site is all dash then fill it
+        # if site is all dash then fill it dash (45)
         if np.all(carr == 45):
             cons[col] = 45
             
@@ -1033,11 +1105,11 @@ def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
             mask += carr == 78
             marr = carr[~mask]
             
-            # skip if only empties
-            if not marr.shape[0]:
+            # call N if no real bases, or below majrule.
+            if marr.shape[0] < mindepth_majrule:
                 cons[col] = 78
                 
-            # skip if not variable
+            # if not variable
             elif np.all(marr == marr[0]):
                 cons[col] = marr[0]
 
@@ -1112,7 +1184,8 @@ def get_binom(base1, base2, estE, estH):
 
     ## calculate probs
     bsum = base1 + base2
-    hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
+    hetprob = scipy.special.comb(bsum, base1) / (2. ** (bsum))
+    # hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
     homoa = scipy.stats.binom.pmf(base2, bsum, estE)
     homob = scipy.stats.binom.pmf(base1, bsum, estE)
 
@@ -1131,8 +1204,12 @@ def get_binom(base1, base2, estE, estH):
     return False, bestprob
 
 
-# not currently used...
-def removerepeats(consens, arrayed):
+
+
+
+
+# not currently used in reference assemblies
+def mask_repeats(consens, arrayed):
     """
     Checks for interior Ns in consensus seqs and removes those that are at
     low depth, here defined as less than 1/3 of the average depth. The prop 1/3
@@ -1217,35 +1294,6 @@ def removerepeats(consens, arrayed):
     arrayed = arrayed[:, ~ridx]
 
     return consens, arrayed
-
-
-
-def nfilter1(data, reps):
-    "applies read depths filter"
-    bool1 = sum(reps) >= data.params.mindepth_majrule
-    bool2 = sum(reps) <= data.params.maxdepth
-    if bool1 & bool2:       
-        return 1
-    return 0
-
-
-
-def nfilter2(nheteros, maxhet):
-    "applies max heteros in a seq filter"
-    if nheteros <= maxhet:
-        return 1
-    return 0
-
-
-
-def nfilter3(consens, maxn):
-    "applies filter for maxN and hard minlen (32)"
-    # minimum length for clustering in vsearch
-    if consens.size >= 32:
-        if consens[consens == b"N"].size <= maxn:
-            return 1
-        return 0
-    return 0
 
 
 

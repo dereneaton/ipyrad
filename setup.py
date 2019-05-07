@@ -23,25 +23,21 @@ setup(
     long_description=open('README.rst').read(),
     packages=find_packages(),
     install_requires=[
-        "notebook",
-        "ipyparallel>=6.0.2",
-        "scipy>0.10",
-        "numpy>=1.9",
-        "numba>=0.37",
-        "pandas>=0.16",
-        "pysam>=0.10.0",  # ipyrad::
+        "future",
+        "ipyparallel",
+        "scipy",
+        "numpy",
+        "numba",
+        "pandas",
+        "pysam",
         "h5py",
         "mpi4py",
-        "cutadapt",    # ipyrad::
-        "toytree",     # eaton-lab::
+        "cutadapt",
         "requests",
+        # "notebook",
+        # "toytree",     # eaton-lab::
     ],
-    entry_points={
-        'console_scripts': [
-            'ipyrad = ipyrad.__main__:CLI',
-            'tetrad = ipyrad.analysis.__tetrad_cli__:main',
-        ],
-    },
+    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
     data_files=[('bin', glob.glob("./bin/*"))],
     license='GPL',
     classifiers=[

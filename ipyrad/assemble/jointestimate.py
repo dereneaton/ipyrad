@@ -283,7 +283,7 @@ def recal_hidepth(data, sample):
     statdepth = data.params.mindepth_statistical
 
     # if nothing changes return existing maxlen value
-    maxlen = data._hackersonly["max_fragment_length"]
+    maxlen = data.hackersonly.max_fragment_length
 
     # get arrays of data
     maxlens, depths = get_quick_depths(data, sample)
@@ -304,7 +304,10 @@ def recal_hidepth(data, sample):
         # then stathidepths will be empty and all hell breaks loose, so
         # we'll raise here and than catch the exception in optim()
         raise IPyradError(
-            "No clusts with depth sufficient for statistical basecalling.")
+            "No clusts with depth sufficient for statistical basecalling. "
+          + "I recommend you branch to drop this sample: {}"
+            .format(sample.name)
+            )
 
     maxlens = maxlens[hidepths]
     maxlen = int(maxlens.mean() + (2. * maxlens.std()))

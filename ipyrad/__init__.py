@@ -2,12 +2,12 @@
 
 # bring nested functions to top for API access
 from .core.assembly import Assembly, merge
-from .core.parallel import get_client as _get_client, cluster_info
 from .core.startup import Bins as _Bins
 from .core.load import load_json
+from .core.Parallel import cluster_info
 
 # Dunders
-__version__ = "0.8.0-dev"
+__version__ = "0.9.1-dev"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0

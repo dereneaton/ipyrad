@@ -17,14 +17,13 @@ import gzip
 import glob
 import time
 import shutil
-# import tempfile
 import warnings
 import subprocess as sps
 
 import numpy as np
 import pysam
 import ipyrad as ip
-from .utils import IPyradError, IPyradWarningExit, bcomp, comp
+from .utils import IPyradError, bcomp, comp
 
 
 class Step3:
@@ -301,7 +300,7 @@ class Step3:
 
         # tell user which samples are not ready for step 3
         if state1.any():
-            print("skipping samples not yet in state==2:\n{}"
+            self.data._print("skipping samples not yet in state==2:\n{}"
                   .format(state1.tolist()))
 
         if self.force:
@@ -312,7 +311,7 @@ class Step3:
         else:
             # tell user which samples have already cmopleted step 3
             if state3.any():
-                print("skipping samples already finished step 3:\n{}"
+                self.data._print("skipping samples already finished step 3:\n{}"
                       .format(state3.tolist()))
 
             # run all samples in state 2
@@ -324,7 +323,7 @@ class Step3:
             if sample.stats.reads_passed_filter:
                 checked_samples.append(sample)
             else:
-                print("skipping {}; no reads found.")
+                self.data._print("skipping {}; no reads found.")
         if not any(checked_samples):
             raise IPyradError("No samples ready for step 3.")
 
@@ -371,12 +370,12 @@ class Step3:
     def tune_threads(self):
         "setup threading to efficiently run clust/ref across HPC"
         # set nthreads based on _ipcluster dict (default is 2)
-        if "threads" in self.data._ipcluster.keys():
-            self.nthreads = int(self.data._ipcluster["threads"])
+        if "threads" in self.data.ipcluster.keys():
+            self.nthreads = int(self.data.ipcluster["threads"])
 
         # create standard load-balancers
         self.lbview = self.ipyclient.load_balanced_view()
-        self.thview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()  # to be threaded
 
         # if nthreads then scale thview to use threads
         eids = self.ipyclient.ids
@@ -439,7 +438,7 @@ class Step3:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in [rasync1, rasync2]:
             if not job.successful():
                 raise IPyradError(job.exception())
@@ -481,7 +480,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in casyncs:
             if not casyncs[job].successful():
                 raise IPyradError(casyncs[job].exception())
@@ -495,7 +494,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
                 raise IPyradError(basyncs[job].exception())
@@ -509,7 +508,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in hasyncs:
             if not hasyncs[job].successful():
                 raise IPyradError(hasyncs[job].exception())
@@ -551,7 +550,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in allasyncs:
             if not job.successful():
                 raise IPyradError(job.exception())
@@ -565,7 +564,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
-        print("")
+        self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
                 raise IPyradError(basyncs[job].exception())
@@ -582,24 +581,31 @@ class Step3:
             rasyncs[sample.name] = self.lbview.apply(get_quick_depths, *args)
 
         # enter result stats as the jobs finish
-        finished = 0
+        finished = 0       
         while 1:
-            # get maxlen and depths array from clusters
-            for sample in self.samples:
-                if sample.name in rasyncs:
-                    if rasyncs[sample.name].ready():
-                        maxlens, depths = rasyncs[sample.name].get()
-                        store_sample_stats(self.data, sample, maxlens, depths)
-                        finished += 1
-                        if not rasyncs[sample.name].successful():
-                            raise IPyradError(rasyncs[sample.name].exception())
-                        del rasyncs[sample.name]
+            samplelist = list(rasyncs.keys())
+            for sname in samplelist:
+                if rasyncs[sname].ready():
 
+                    # enter results to sample object
+                    maxlens, depths = rasyncs[sname].get()
+                    store_sample_stats(
+                        self.data, self.data.samples[sname], maxlens, depths)
+                    finished += 1
+                    
+                    # check for errors
+                    if not rasyncs[sname].successful():
+                        raise IPyradError(rasyncs[sample.name].get())
+
+                    # remove sample from todo list, and del from rasyncs mem
+                    rasyncs.pop(sname)
+
+            # progress bar
             self.data._progressbar(njobs, finished, start, printstr)
             time.sleep(0.1)
             if finished == njobs:
                 break
-        print("")
+        self.data._print("")
 
 
     def remote_run(self, printstr, function, args, threaded=False):
@@ -622,7 +628,7 @@ class Step3:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
                 raise IPyradError(rasyncs[job].exception())
@@ -672,11 +678,11 @@ def dereplicate(data, sample, nthreads):
         "--relabel_md5",
     ]
 
-    ## build PIPEd job
+    ## build PIPEd job   
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
-        raise IPyradWarningExit(errmsg)
+        raise IPyradError(errmsg.decode())
 
 
 def concat_multiple_edits(data, sample):
@@ -699,7 +705,7 @@ def concat_multiple_edits(data, sample):
                 cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
             if proc1.returncode:
-                raise IPyradWarningExit("error in: %s, %s", cmd1, res1)
+                raise IPyradError("error in: %s, %s", cmd1, res1)
 
         ## Only set conc2 if R2 actually exists
         if os.path.exists(str(sample.files.edits[0][1])):
@@ -709,7 +715,7 @@ def concat_multiple_edits(data, sample):
                     cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
                 if proc2.returncode:
-                    raise IPyradWarningExit("error in: %s, %s", cmd2, res2)
+                    raise IPyradError("error in: %s, %s", cmd2, res2)
 
 
 def merge_pairs_with_vsearch(data, sample, revcomp):
@@ -770,7 +776,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
     if proc.returncode:
-        raise IPyradWarningExit("Error merge pairs:\n {}\n{}".format(cmd, res))
+        raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
 def merge_end_to_end(data, sample, revcomp, append):
@@ -922,7 +928,7 @@ def cluster(data, sample, nthreads, force):
     ##    small minsl and high query cov allows trimmed reads to match to untrim
     ##    seed for rad/ddrad/pairddrad.
     strand = "plus"
-    cov = 0.75
+    cov = 0.5
     minsl = 0.5
     if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
@@ -962,7 +968,7 @@ def cluster(data, sample, nthreads, force):
 
     # check for errors
     if proc.returncode:
-        raise IPyradWarningExit("cmd {}: {}".format(cmd, res))
+        raise IPyradError("cmd {}: {}".format(cmd, res))
 
 
 def build_clusters(data, sample, maxindels):
@@ -1432,7 +1438,7 @@ def gbs_trim(align1):
 def index_ref_with_bwa(data):
     "Index the reference sequence, unless it already exists"
     # get ref file from params
-    refseq_file = data.param.reference_sequence
+    refseq_file = data.params.reference_sequence
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
     if not os.path.exists(refseq_file):
         raise IPyradError(
@@ -1523,8 +1529,8 @@ def mapping_reads(data, sample, nthreads):
     #  -q = Only keep reads with mapq score >= 30 (seems to be pretty standard)
     #  -F = Select all reads that DON'T have these flags.
     #        0x4 (segment unmapped)
-    #        0x100 (Secondary alignment)
-    #        0x800 (supplementary alignment)
+    #        0x100 (Secondary alignment) 
+    #        0x800 (supplementary alignment) (chimeric-like, not likely)
     #        0x71
     #        0xb1 
     #  -U = Write out all reads that don't pass the -F filter
@@ -1615,14 +1621,14 @@ def mapping_reads(data, sample, nthreads):
         cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[0]
     if proc3.returncode:
-        raise IPyradWarningExit(error3)
+        raise IPyradError(error3)
     proc2.stdout.close()
 
     # cmd4 indexes the bam file
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
-        raise IPyradWarningExit(error4)
+        raise IPyradError(error4)
 
     # Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
     # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
@@ -1630,7 +1636,7 @@ def mapping_reads(data, sample, nthreads):
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
     error5 = proc5.communicate()[0]
     if proc5.returncode:
-        raise IPyradWarningExit(error5)
+        raise IPyradError(error5)
 
 
 def check_insert_size(data, sample):
@@ -1734,7 +1740,7 @@ def bedtools_merge(data, sample):
 
     # check for errors and do cleanup
     if proc2.returncode:
-        raise IPyradWarningExit("error in %s: %s", cmd2, result)
+        raise IPyradError("error in %s: %s", cmd2, result)
 
     # Write the bedfile out, because it's useful sometimes.
     if os.path.exists(ip.__debugflag__):
@@ -1742,7 +1748,7 @@ def bedtools_merge(data, sample):
             outfile.write(result)
 
     # Report the number of regions we're returning
-    nregions = len(result.strip().split("\n"))
+    # nregions = len(result.strip().split("\n"))
     return result
 
 
@@ -1750,7 +1756,7 @@ def build_clusters_from_cigars(data, sample):
     """
     Directly building clusters relative to reference. Uses the function 
     cigared() to impute indels relative to reference. This means add - for 
-    insertion and skip* deletions. Skipping is temporary solution...
+    insertion and skip* deletions. Skipping is not a good final solution.
     """
     # get all regions with reads. Generator to yield (str, int, int)
     fullregions = bedtools_merge(data, sample).strip().split("\n")
@@ -2226,10 +2232,9 @@ def declone_3rad(data, sample):
 
 # globals
 NO_ZIP_BINS = """
-  Reference sequence must be uncompressed fasta or bgzip compressed,
+  Reference sequence must be de-compressed fasta or bgzip compressed,
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
-
  
  \     gunzip {}
 
@@ -2240,4 +2245,4 @@ NO_ZIP_BINS = """
   """
 REQUIRE_REFERENCE_PATH = """\
   Assembly method {} requires that you enter a 'reference_sequence_path'.
-  """
+"""

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+
 """ Sample object """
 
+from collections import OrderedDict
 import pandas as pd
 import numpy as np
-from collections import OrderedDict
 from ipyrad.assemble.utils import ObjDict
+
 
 
 class Sample(object):
@@ -14,11 +16,10 @@ class Sample(object):
     """
 
     def __init__(self, name=""):
-        ## a sample name
-        self.name = name
+        self.name = name 
         self.barcode = ""
 
-        ## link to files
+        # link to files
         self.files = ObjDict({
             "fastqs": [],
             "edits": [],
@@ -27,7 +28,7 @@ class Sample(object):
             "clusters": [],
             "consens": [],
             "database": []
-            })
+        })
 
         ## summary stats dictionary
         self.stats = pd.Series(

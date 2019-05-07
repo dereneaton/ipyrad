@@ -1,58 +1,63 @@
+
+{% set name = "ipyrad" %}
+{% set version = "0.9.1" %}
+
+
 package:
-  name: ipyrad
-  version: {{ environ.get('GIT_DESCRIBE_TAG', '') }}
+  name: {{name}}
+  version: {{version}}
+  # {{ GIT_DESCRIBE_TAG }}
+  # version: {{ environ.get('GIT_DESCRIBE_TAG', '') }}
 
 source:
-  git_url: https://github.com/dereneaton/ipyrad.git
+  git_url: https://github.com/dereneaton/{{name}}.git
+  git_tag: hotfix
+  #fn: ipyrad-0.7.30.tar.gz
+  #url: https://github.com/dereneaton/ipyrad/archive/0.7.30.tar.gz
+  #sha256: d4f40c723ac4cbd1a39ad217456bc1e66a8f836523c52ec5d3bb7e8cd2c7f205
+  # git_url: https://github.com/dereneaton/ipyrad.git
 
 build:
-  number: {{ environ.get('GIT_DESCRIBE_NUMBER', 0) }}
-  binary_relocation: true
+  number: 0
+  # noarch: python
+  # binary_relocation: true
+  script: python setup.py install
 
 requirements:
-  build:
-    - python {{PY_VER}}*,>=2.7
-    - setuptools >=28.0.0
-    - jupyter
-    - ipython >=5.0.0
+  host:
+    - python
+    - setuptools
+    - pandas
+    - scipy
+    - numba >=0.37
+    - future
+    - h5py
     - ipyparallel >=6.0.2
-    - cython
-    - scipy >=0.16
-    - h5py
-    - numba >=0.33
-    - sphinx
-    - pandas >=0.16
-    - mpi4py
-    - numpy >=1.7
-    - networkx
-    - dask
-    - cutadapt >=1.12
-    - pysam >=0.10.0     
-
+    - pysam
+    - mpi4py    
+    - requests
+    - cutadapt
   run:
-    - python {{PY_VER}}*,>=2.7
-    - setuptools >=28.0.0
-    - jupyter
-    - ipython >=5.0.0
-    - ipyparallel
-    - cython
-    - scipy >=0.16
+    - python
+    - pandas
+    - scipy
+    - numba >=0.37
+    - future
     - h5py
-    - numba >=0.33
-    - sphinx
-    - pandas >=0.16
+    - ipyparallel >=6.0.2
+    - cutadapt
+    - pysam
     - mpi4py
-    - numpy >=1.7
-    - networkx
-    - dask
-    - cutadapt >=1.12
-    - pysam >=0.10.0
-    - scikit-allel >=1.1.10
+    - requests
 
+test:
+  imports:
+    - ipyrad
   commands:
     - ipyrad -h
 
 about:
   home: http://github.com/dereneaton/ipyrad
-  license: GPLv3
+  license: GPL3
+  license_file: LICENSE.txt
   summary: Interactive assembly and analysis of RAD-seq data sets.

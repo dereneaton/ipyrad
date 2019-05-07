@@ -13,7 +13,7 @@ import io
 import time
 import numpy as np
 import subprocess as sps
-from .utils import IPyradWarningExit, IPyradError, fullcomp
+from .utils import IPyradError, fullcomp
 
 
 class Step2(object):
@@ -117,6 +117,7 @@ class Step2(object):
         self.remote_concat_multiple_raws()
         self.remote_run_cutadapt()
         self.assembly_cleanup()
+        self.data.save()
 
 
     def remote_concat_multiple_raws(self):
@@ -380,11 +381,8 @@ def cutadaptit_single(data, sample):
     
     else:
         # if GBS then the barcode can also be on the other side. 
-        if data.param.datatype == "gbs":
-           
-
+        if data.params.datatype == "gbs":
             if data.barcodes:
-
                 # make full adapter (-revcompcut-revcompbarcode-adapter)                
                 adapter = "".join([
                     fullcomp(data.params.restriction_overhang[1])[::-1], 
@@ -399,10 +397,7 @@ def cutadaptit_single(data, sample):
                 ])                
 
                 # append incomplete adapter to extras (-recompcut-adapter)
-                data.hackersonly.p3_adapters_extra = [
-                    data.hackersonly.p3_adapters_extra, 
-                    incomplete_adapter,
-                ]
+                data.hackersonly.p3_adapters_extra.append(incomplete_adapter)
 
             else:
                 # else no search for barcodes on 3'
@@ -458,8 +453,11 @@ def cutadaptit_single(data, sample):
     ## if filter_adapters==3 then p3_adapters_extra will already have extra
     ## poly adapters added to its list. 
     if int(data.params.filter_adapters) > 1:
-        ## first enter extra cuts (order of input is reversed)
+
+        ## TODO: ------------
+        ## first enter extra cuts (order of input is reversed) -----------------------
         for extracut in list(set(data.hackersonly.p3_adapters_extra))[::-1]:
+
             cmdf1.insert(1, extracut)
             cmdf1.insert(1, "-a")
         ## then put the main cut so it appears first in command
@@ -476,7 +474,7 @@ def cutadaptit_single(data, sample):
 
     ## raise errors if found
     if proc1.returncode:
-        raise IPyradWarningExit(" error in {}\n {}".format(" ".join(cmdf1), res1))
+        raise IPyradError(" error in {}\n {}".format(" ".join(cmdf1), res1))
 
     ## return result string to be parsed outside of engine
     return res1
@@ -563,7 +561,7 @@ def cutadaptit_pairs(data, sample):
     be referenced in the barcode file as WatDo_PipPrep_100. The name in your
     barcode file for this sample must match: {}
     """.format(sample.name)
-            raise IPyradWarningExit(msg)
+            raise IPyradError(msg)
 
     else:
         if data.params.datatype != "pair3rad":
@@ -668,7 +666,7 @@ def cutadaptit_pairs(data, sample):
     proc1 = sps.Popen(cmdf1, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res1 = proc1.communicate()[0]
     if proc1.returncode:
-        raise IPyradWarningExit("error in cutadapt: {}".format(res1.decode()))
+        raise IPyradError("error in cutadapt: {}".format(res1.decode()))
     return res1
 
 
@@ -697,7 +695,7 @@ def concat_multiple_inputs(data, sample):
                 cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
         if proc1.returncode:
-            raise IPyradWarningExit("error in: {}, {}".format(cmd1, res1))
+            raise IPyradError("error in: {}, {}".format(cmd1, res1))
 
         ## Only set conc2 if R2 actually exists
         conc2 = 0
@@ -710,7 +708,7 @@ def concat_multiple_inputs(data, sample):
                     cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 proc2.communicate()[0]
             if proc2.returncode:
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "Error concatenating fastq files. Make sure all "\
                   + "these files exist: {}\nError message: {}"
                     .format(cmd2, proc2.returncode))

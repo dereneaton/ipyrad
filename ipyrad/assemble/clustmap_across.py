@@ -25,7 +25,7 @@ import subprocess as sps
 import numpy as np
 from pysam import AlignmentFile, FastaFile
 import ipyrad
-from .utils import IPyradWarningExit, IPyradError, fullcomp, chroms2ints
+from .utils import IPyradError, fullcomp, chroms2ints
 
 
 class Step6:
@@ -63,8 +63,8 @@ class Step6:
             self.data.dirs.across,
             "{}-tmpalign".format(self.data.name))
         self.data.clust_database = os.path.join(
-            self.data.dirs.across,
-            "{}.clust.hdf5".format(self.data.name))
+            self.data.dirs.across, 
+            self.data.name + "_clust_database.fa")
 
         # clear out
         if force:
@@ -196,9 +196,9 @@ class Step6:
                 thr = min(thr, nids)
                 eids.extend(self.hostd[node][::thr])
 
-        # set nthreads based on _ipcluster dict (default is 2)        
-        #if "threads" in self.data._ipcluster.keys():
-        #    self.nthreads = int(self.data._ipcluster["threads"])
+        # set nthreads based on ipcluster dict (default is 2)        
+        #if "threads" in self.data.ipcluster.keys():
+        #    self.nthreads = int(self.data.ipcluster["threads"])
         self.nthreads = 2
         if self.data.ncpus > 4:
             self.nthreads = 4
@@ -240,22 +240,23 @@ class Step6:
             # concat aligned files
             self.concat_alignments()
 
+
         elif self.data.params.assembly_method == "reference":
 
             # prepare bamfiles (merge and sort)
             self.remote_concat_bams()
 
-            # build clusters from bedtools merge
+            # get extents of regions using bedtools merge
             self.remote_build_ref_regions()
             
-            # build ...
+            # build clusters from regions
             self.remote_build_ref_clusters()
 
-            # concat aligned files
+            # concat aligned files (This is not necessary, chunk again in s7)
             self.concat_alignments()
 
         # clean up step here...
-        # ...
+        self.data.stats_files.s6 = self.data.clust_database
 
         # set sample states
         for sample in self.samples:
@@ -350,7 +351,8 @@ class Step6:
         # check for errors
         self.ipyclient.wait()
         if not rasync.successful():
-            raise IPyradError(rasync.exception())          
+            raise IPyradError(rasync.exception())
+
 
     ## DENOVO FUNCS ----------------------------------------------
     def remote_build_denovo_clusters(self):
@@ -399,7 +401,7 @@ class Step6:
         # check for errors
         for job in [async1, async2, async3]:
             if not job.successful():
-                raise IPyradWarningExit(job.result())
+                raise IPyradError(job.result())
 
 
     def remote_align_denovo_clusters(self):
@@ -430,13 +432,20 @@ class Step6:
         keys = list(jobs.keys())
         for idx in keys:
             if not jobs[idx].successful():
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "error in step 6 {}".format(jobs[idx].exception()))
             del jobs[idx]
         print("")
 
 
     def concat_alignments(self):
+        """
+        This step is not necessary... we just chunk it up again in step 7...
+        it's nice having a file as a product, but why bother...
+
+        It creates a header with names of all samples that were present when
+        step 6 was completed. 
+        """
         # get files
         globlist = glob.glob(os.path.join(self.data.tmpdir, "aligned_*.fa"))
         clustbits = sorted(
@@ -449,6 +458,15 @@ class Step6:
             self.data.dirs.across, 
             self.data.name + "_clust_database.fa")
 
+        # TODO: count nsnps and save it to the JSON for step 7
+
+
+        # TODO: use cat to concatenate chunks
+
+
+        # TODO: with cat be sure empty chunks don't cause problems.
+
+
         # write clusters to file with a header that has all samples in db        
         snames = sorted([i.name for i in self.samples])
         with open(self.data.clust_database, 'wt') as out:
@@ -458,6 +476,11 @@ class Step6:
                     dat = indata.read()
                     if dat:
                         out.write(dat)  # + "//\n//\n")
+
+        # final cleanup
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
+
 
     ## REFERENCE BASED FUNCTIONS ---------------------------------
     def remote_concat_bams(self):
@@ -494,7 +517,7 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd1), err))
 
         # sort the bam file
@@ -520,7 +543,7 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd2), err))
         os.remove(catbam)
 
@@ -543,10 +566,10 @@ class Step6:
         # parse result
         err = proc.communicate()[0].decode()
         if proc.returncode:
-            raise IPyradWarningExit(
+            raise IPyradError(
                 "error in: {}: {}".format(" ".join(cmd3), err))
         self.data._progressbar(3, 3, start, printstr)
-        print("")
+        self.data._print("")
 
 
     def remote_build_ref_regions(self):
@@ -560,7 +583,7 @@ class Step6:
             time.sleep(0.1)
             if done:
                 break
-        print("")
+        self.data._print("")
         if rasync.successful():
             self.regions = rasync.result()
         else:
@@ -568,7 +591,6 @@ class Step6:
                 "error in build ref regions: {}".format(rasync.exception()))
 
 
-    # can parallelize
     def remote_build_ref_clusters(self):
         "build clusters and find variants/indels to store"
         
@@ -601,9 +623,10 @@ class Step6:
         # check success
         for idx in jobs:
             if not jobs[idx].successful():
-                raise IPyradWarningExit(
+                raise IPyradError(
                     "error in step 6 {}".format(jobs[idx].get()))
-        print("")
+        self.data._print("")
+
 
 
 def resolve_duplicates(keys, arr):
@@ -681,13 +704,20 @@ def build_ref_regions(data):
         stdout=sps.PIPE)
     result = proc2.communicate()[0].decode()
     if proc2.returncode:
-        raise IPyradWarningExit(
+        raise IPyradError(
             "error in {}: {}".format(" ".join(cmd2), result))
     regs = [i.split("\t") for i in result.strip().split("\n")]
     return [(i, int(j), int(k)) for i, j, k in regs]
 
 
 def build_ref_clusters(data, idx, iregion):
+    """
+    Given a chunk of regions this will pull in the reference for each region
+    and then pull in all consens reads matching to that region. It uses cigar
+    info to align the consens reads with the ref. This also merges consens
+    from the same sample that were not merged earlier, which is why we expect
+    no duplicate samples in the output of reference assemblies.
+    """
 
     # prepare i/o for bamfile with mapped reads
     bamfile = AlignmentFile(
@@ -710,7 +740,7 @@ def build_ref_clusters(data, idx, iregion):
     clusts = []
 
     while 1:
-        # pull in all reads mapping to a bed region
+        # pull in all consens reads mapping to a bed region
         try:
             region = next(iregions)
             reads = bamfile.fetch(*region)
@@ -932,7 +962,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
     ## parameters that vary by datatype
     ## (too low of cov values yield too many poor alignments)
     strand = "plus"
-    cov = 0.75         # 0.90
+    cov = 0.5         # 0.90
     if data.params.datatype in ["gbs", "2brad"]:
         strand = "both"
         cov = 0.60
@@ -1154,69 +1184,73 @@ def build_hierarchical_denovo_clusters(data, usort, nseeds, jobids):
     optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
 
     # iterate through usort grabbing seeds and matches
-    with open(usort, 'rt') as insort:
-        # iterator, seed null, and seqlist null
-        isort = iter(insort)
-        loci = 0
-        lastseed = 0
-        fseqs = []
-        seqlist = []
-        seqsize = 0
+    insort = open(usort, 'rt')
+    isort = iter(insort)
 
-        while 1:
-            try:
-                hit, seed, ori = next(isort).strip().split()
-            except StopIteration:
-                break
-        
-            # if same seed append match
-            if seed != lastseed:
-                # store the last fseq, count it, and clear it
-                if fseqs:
-                    seqlist.append("\n".join(fseqs))
-                    seqsize += 1
-                    fseqs = []
+    # seed null, and seqlist null
+    loci = 0
+    lastseed = 0
+    fseqs = []
+    seqlist = []
+    seqsize = 0
 
-                # occasionally write to file
-                if seqsize >= optim:
-                    if seqlist:
-                        loci += seqsize
-                        pathname = os.path.join(
-                            data.tmpdir, 
-                            "{}.chunk_{}".format(data.name, loci))
-                        with open(pathname, 'wt') as clustout:
-                            clustout.write(
-                                "\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                        # reset counter and list
-                        seqlist = []
-                        seqsize = 0
+    while 1:
+        try:
+            hit, seed, ori = next(isort).strip().split()
+        except StopIteration:
+            break
+    
+        # if same seed append match
+        if seed != lastseed:
+            # store the last fseq, count it, and clear it
+            if fseqs:
+                seqlist.append("\n".join(fseqs))
+                seqsize += 1
+                fseqs = []
 
-                # store the new seed on top of fseqs
-                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
-                lastseed = seed
+            # occasionally write to file
+            if seqsize >= optim:
+                if seqlist:
+                    loci += seqsize
+                    pathname = os.path.join(
+                        data.tmpdir, 
+                        "{}.chunk_{}".format(data.name, loci))
+                    with open(pathname, 'wt') as clustout:
+                        clustout.write(
+                            "\n//\n//\n".join(seqlist) + "\n//\n//\n")
+                    # reset counter and list
+                    seqlist = []
+                    seqsize = 0
 
-                # expand subhits to seed
-                uhits = subdict.get(seed)
-                if uhits:
-                    for ahit, ori in uhits:
-                        if ori == "-":
-                            seq = fullcomp(allcons[ahit])[::-1]
-                        else:
-                            seq = allcons[ahit]
-                        fseqs.append(">{}\n{}".format(ahit, seq))
+            # store the new seed on top of fseqs
+            fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+            lastseed = seed
 
-            # expand matches with subdict
-            hitseqs = [(hit, allcons[hit], ori)]
-            uhits = subdict.get(hit)
+            # expand subhits to seed
+            uhits = subdict.get(seed)
             if uhits:
-                for hit in uhits:
-                    hitseqs.append((hit[0], allcons[hit[0]], hit[1]))
+                for ahit, ori in uhits:
+                    if ori == "-":
+                        seq = fullcomp(allcons[ahit])[::-1]
+                    else:
+                        seq = allcons[ahit]
+                    fseqs.append(">{}\n{}".format(ahit, seq))
 
-            # revcomp if orientation is reversed
-            for sname, seq, ori in hitseqs:
-                if ori == "-":
-                    seq = fullcomp(seq)[::-1]
-                fseqs.append(">{}\n{}".format(sname, seq))
+        # expand matches with subdict
+        hitseqs = [(hit, allcons[hit], ori)]
+        uhits = subdict.get(hit)
+        if uhits:
+            for hit in uhits:
+                hitseqs.append((hit[0], allcons[hit[0]], hit[1]))
+
+        # revcomp if orientation is reversed
+        for sname, seq, ori in hitseqs:
+            if ori == "-":
+                seq = fullcomp(seq)[::-1]
+            fseqs.append(">{}\n{}".format(sname, seq))
+
+    # close handle
+    insort.close()
 
     ## write whatever is left over to the clusts file
     if fseqs:

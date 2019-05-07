@@ -343,7 +343,7 @@ class Bucky(object):
 
         ## create matrix as a string
         max_name_len = max([len(i) for i in mdict])
-        namestring = "{:<" + str(max_name_len+1) + "} {}\n"
+        namestring = "{:<" + str(max_name_len + 1) + "} {}\n"
         matrix = ""
         for i in mdict.items():
             matrix += namestring.format(i[0], i[1])

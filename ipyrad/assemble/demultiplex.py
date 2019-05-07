@@ -25,8 +25,9 @@ from collections import Counter
 
 # ipyrad imports
 from ipyrad.core.sample import Sample
-from ipyrad.assemble.utils import IPyradError, ambigcutters
-
+from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
+      
+        
 
 class Step1:
     def __init__(self, data, force, ipyclient):
@@ -34,6 +35,7 @@ class Step1:
         self.data = data
         self.force = force
         self.ipyclient = ipyclient
+        self.skip = False
 
         # check input data files
         self.sfiles = self.data.params.sorted_fastq_path
@@ -44,10 +46,12 @@ class Step1:
 
 
     def run(self):
-        if self.method == "link_fastqs":
-            FileLinker(self).run()
-        else:
-            Demultiplexer(self).run()
+        if not self.skip:
+            if self.method == "link_fastqs":
+                FileLinker(self).run()
+            else:
+                Demultiplexer(self).run()
+            self.data.save()
 
 
     def setup_dirs(self):
@@ -58,16 +62,18 @@ class Step1:
             self.data.name + "_fastqs")       
         self.data.dirs.fastqs = os.path.realpath(self.data.dirs.fastqs)
 
-        # remove existing if force flag
+        # remove existing if force flag.
         if self.force:
             if os.path.exists(self.data.dirs.fastqs):
                 shutil.rmtree(self.data.dirs.fastqs)
-        # bail out if overwrite necessary but no force flag
+
+        # bail out if overwrite necessary but no force flag.
         else:
             if os.path.exists(self.data.dirs.fastqs):
                 raise IPyradError(
-                    "Fastq dir {} already exists: use force flag to overwrite".
-                    format(self.data.dirs.fastqs))
+                    "Fastq dir {} already exists: use force to overwrite"
+                    .format(self.data.dirs.fastqs))
+                self.skip = True
 
         # ensure project dir exists
         if not os.path.exists(self.data.params.project_dir):
@@ -83,12 +89,10 @@ class Step1:
         if self.data._cli:
             if self.sfiles:
                 self.data._print(
-                    "\n{}Step 1: Loading sorted fastq data to Samples"
-                    .format(self.data._spacer))
+                    "\n  Step 1: Loading sorted fastq data to Samples")
             else:
                 self.data._print(
-                    "\n{}Step 1: Demultiplexing fastq data to Samples"
-                    .format(self.data._spacer))
+                    "\n  Step 1: Demultiplexing fastq data to Samples")
 
 
     def select_method(self):
@@ -122,6 +126,9 @@ class Step1:
 
 
 class FileLinker:
+    """
+    Loads Samples from file names and check sample names for bad chars.
+    """
     def __init__(self, step):
         self.data = step.data
         self.input = step.sfiles
@@ -155,39 +162,31 @@ class FileLinker:
         # link pairs into tuples
         if 'pair' in self.data.params.datatype:
             # check that names fit the paired naming convention
-            # trying to support flexible types (_R2_, _2.fastq)
-            r1_try1 = [i for i in self.fastqs if "_R1_" in i]
-            r1_try2 = [i for i in self.fastqs if i.endswith("_1.fastq.gz")]
-            r1_try3 = [i for i in self.fastqs if i.endswith("_R1.fastq.gz")]
+            r1s = [i for i in self.fastqs if "_R1_" in i]
+            r2s = [i for i in self.fastqs if "_R2_" in i]
 
-            r2_try1 = [i for i in self.fastqs if "_R2_" in i]
-            r2_try2 = [i for i in self.fastqs if i.endswith("_2.fastq.gz")]
-            r2_try3 = [i for i in self.fastqs if i.endswith("_R2.fastq.gz")]
-
-            r1s = [r1_try1, r1_try2, r1_try3]
-            r2s = [r2_try1, r2_try2, r2_try3]
-
-            # check that something was found
-            if not r1_try1 + r1_try2 + r1_try3:
+            # file checks
+            if not r1s:
                 raise IPyradError(
-                    "Paired filenames are improperly formatted. See Docs.")
+                    "No fastqs files found. Names may be improperly formatted. See Docs.")
+            if len(r1s) != len(r2s):
+                raise IPyradError(
+                    R1_R2_name_error.format(len(r1s), len(r2s)))
 
-            # find the one with the right number of R1s
-            for idx, tri in enumerate(r1s):
-                if len(tri) == len(self.fastqs) / 2:
-                    break
-            r1_files = r1s[idx]
-            r2_files = r2s[idx]
-
-            if len(r1_files) != len(r2_files):
-                raise IPyradError(R1_R2_name_error.format(
-                    len(r1_files), len(r2_files)))
-            self.ftuples = [(i, j) for i, j in zip(r1_files, r2_files)]
+            # store tuples                    
+            self.ftuples = []
+            for r1file in r1s:
+                r2file = r1file.replace("_R1_", "_R2_")
+                if not os.path.exists(r2file):
+                    raise IPyradError(
+                        "Expected R2 file {} to match R1 file {}"
+                        .format(r1file, r2file)
+                        )
+                self.ftuples.append((r1file, r2file))
 
         # data are not paired, create empty tuple pair
         else:
             # print warning if _R2_ is in names when not paired
-            idx = 0
             if any(["_R2_" in i for i in self.fastqs]):
                 print(NAMES_LOOK_PAIRED_WARNING)
             self.ftuples = [(i, "") for i in self.fastqs]
@@ -252,8 +251,13 @@ class FileLinker:
             if 'pair' in self.data.params.datatype:
                 createdinc = createdinc * 2
             if self.data._cli:
-                self.data._print("{}{} fastq files loaded to {} Samples."
-                    .format(self.data._spacer, createdinc, len(self.samples)))
+                self.data._print(
+                    "{} fastq files loaded to {} Samples."
+                    .format(
+                        createdinc, 
+                        len(self.data.samples),
+                    )
+                )
 
         # save step-1 stats. We don't want to write this to the fastq dir, b/c
         # it is not necessarily inside our project dir. Instead, we'll write 
@@ -361,10 +365,14 @@ class Demultiplexer:
 
 
     def get_barcode_dict(self):
-        # returns a list of both resolutions of cut site 1
+        """
+        Checks sample names and replaces bad chars in dict with _
+        And returns a list of both resolutions of cut site 1 for ambigs.
         # (TGCAG, ) ==> [TGCAG, ]
         # (TWGC, ) ==> [TAGC, TTGC]
         # (TWGC, AATT) ==> [TAGC, TTGC]
+        """
+        # expand ambigs
         self.cutters = [
             ambigcutters(i) for i in self.data.params.restriction_overhang
         ]
@@ -374,7 +382,11 @@ class Demultiplexer:
         self.matchdict = inverse_barcodes(self.data)
 
 
-    def setup_for_splitting(self):
+    def setup_for_splitting(self, omin=int(8e6)):
+        """
+        Decide to split or not based on whether 1/16th of file size is 
+        bigger than omin, which is default to 8M reads.
+        """
         # create a tmpdir for chunked_files and a chunk optimizer 
         self.tmpdir = os.path.realpath(
             os.path.join(self.data.dirs.fastqs, "tmpdir")
@@ -389,7 +401,6 @@ class Demultiplexer:
 
         # if more files than cpus or optim<8M: no chunking
         self.do_file_split = 0
-        omin = int(8e6)
         if (len(self.ftuples) > len(self.ipyclient)) or (self.optim > omin):
             self.do_file_split = 1
 
@@ -421,14 +432,17 @@ class Demultiplexer:
                 rasyncs[handle] = self.iview.apply(zcat_make_temps, *args)
 
         # track progress until finished
+        # for each file submitted we expect it to create 16 or 32 files.
         if rasyncs:
             while 1:
-                done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
-                self.data._progressbar(
-                    njobs, min(njobs, done - 1), start, printstr)
-                time.sleep(0.5)
+                # break when all jobs are finished
                 if all([i.ready() for i in rasyncs.values()]):
                     break
+                
+                # ntemp files written or being written
+                done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
+                self.data._progressbar(njobs, done, start, printstr)
+                time.sleep(0.5)
 
             # store results
             for key, val in rasyncs.items():
@@ -436,7 +450,7 @@ class Demultiplexer:
 
             # clean up                    
             self.ipyclient.purge_everything()                    
-            self.data._progressbar(njobs, njobs, start, printstr)
+            self.data._progressbar(10, 10, start, printstr)
             self.data._print("")
 
         # return value
@@ -457,11 +471,11 @@ class Demultiplexer:
         for handle, ftuplist in self.chunksdict.items():
             for fidx, ftuple in enumerate(ftuplist):
                 args = (
-                    self.data, 
-                    ftuple, 
-                    self.longbar, 
-                    self.cutters, 
-                    self.matchdict, 
+                    self.data,
+                    ftuple,
+                    self.longbar,
+                    self.cutters,
+                    self.matchdict,
                     fidx,
                     )
                 rasync = self.lbview.apply(barmatch, args)
@@ -654,7 +668,7 @@ class Demultiplexer:
             # allow multiple barcodes if its a replicate. 
             barcodes = []
             for n in range(500):
-                fname = sname + "-technical-replicate-{}".format(n)
+                fname = "{}-technical-replicate-{}".format(sname, n)
                 fbar = self.data.barcodes.get(fname)
                 if fbar:
                     barcodes.append(fbar)
@@ -767,12 +781,15 @@ class BarMatch:
 
 
     def open_read_generators(self):
+        """
+        Gzips are always bytes so let's use rb to make unzipped also bytes.
+        """
 
         # get file type
         if self.ftuple[0].endswith(".gz"):
-            self.ofile1 = gzip.open(self.ftuple[0], 'r')
+            self.ofile1 = gzip.open(self.ftuple[0], 'rb')
         else:
-            self.ofile1 = open(self.ftuple[0], 'r')
+            self.ofile1 = open(self.ftuple[0], 'rb')
 
         # create iterators 
         fr1 = iter(self.ofile1) 
@@ -781,9 +798,9 @@ class BarMatch:
         # create second read iterator for paired data
         if self.ftuple[1]:
             if self.ftuple[0].endswith(".gz"):
-                self.ofile2 = gzip.open(self.ftuple[1], 'r')
+                self.ofile2 = gzip.open(self.ftuple[1], 'rb')
             else:
-                self.ofile2 = open(self.ftuple[1], 'r')
+                self.ofile2 = open(self.ftuple[1], 'rb')
 
             # create iterators
             fr2 = iter(self.ofile2)  
@@ -862,8 +879,8 @@ class BarMatch:
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
                     overlen = len(self.cutters[0][0]) + lenbar1 + 1
-                    read1[1] = read1[1][:-overlen] + "\n"
-                    read1[3] = read1[3][:-overlen] + "\n"
+                    read1[1] = read1[1][:-overlen] + b"\n"
+                    read1[3] = read1[3][:-overlen] + b"\n"
                 else:
                     read1[1] = read1[1][lenbar1:]
                     read1[3] = read1[3][lenbar1:]
@@ -878,7 +895,7 @@ class BarMatch:
                 # append to sorted reads list
                 self.read1s[sname_match].append(b"".join(read1).decode())
                 if 'pair' in self.data.params.datatype:
-                    self.read2s[sname_match].append(b"".join(read2).decode()) 
+                    self.read2s[sname_match].append(b"".join(read2).decode())
 
             else:
                 self.misses["_"] += 1
@@ -889,9 +906,9 @@ class BarMatch:
             if not self.filestat[0] % int(1e6):
                 
                 # write reads to file
-                writetofile(self.data, self.read1s, 1, self.epid)
+                write_to_file(self.data, self.read1s, 1, self.epid)
                 if 'pair' in self.data.params.datatype:
-                    writetofile(self.data, self.read2s, 2, self.epid)
+                    write_to_file(self.data, self.read2s, 2, self.epid)
                 
                 # clear out lits of sorted reads
                 for sname in self.data.barcodes:
@@ -901,9 +918,9 @@ class BarMatch:
                     self.read2s[sname] = []             
 
         ## write the remaining reads to file
-        writetofile(self.data, self.read1s, 1, self.epid)
+        write_to_file(self.data, self.read1s, 1, self.epid)
         if 'pair' in self.data.params.datatype:
-            writetofile(self.data, self.read2s, 2, self.epid)
+            write_to_file(self.data, self.read2s, 2, self.epid)
 
         ## return stats in saved pickle b/c return_queue is too small
         ## and the size of the match dictionary can become quite large
@@ -991,6 +1008,11 @@ def get_name_from_file(fname, splitnames, fields):
                 pass
         base = splitnames.join(base)
 
+    # replace any bad characters from name with _
+    base = "".join([
+        i.replace(i, "_") if i in BADCHARS else i for i in base
+    ])        
+
     # don't allow empty names
     if not base:
         raise IPyradError("""
@@ -1041,6 +1063,7 @@ def getbarcode2(_, read1, longbar):
     "finds barcode for invariable length barcode data"
     return read1[1][:longbar[0]]
 
+
 def getbarcode3(cutters, read1, longbar):
     "find barcode sequence in the beginning of read"
     ## default barcode string
@@ -1048,8 +1071,25 @@ def getbarcode3(cutters, read1, longbar):
         ## If the cutter is unambiguous there will only be one.
         if not cutter:
             continue
+
+        # bytes-strings!
         search = read1[1][:int(longbar[0] + len(cutter) + 1)]
-        barcode = search.rsplit(cutter, 1)
+
+        try:
+            search = search.decode()
+        except (AttributeError, TypeError):
+            pass
+
+        try:
+            cutter = cutter.decode()
+        except (AttributeError, TypeError):
+            pass
+
+        try:
+            barcode = search.rsplit(cutter, 1)
+        except (AttributeError, TypeError):
+            barcode = search.decode().rsplit(cutter, 1)
+
         if len(barcode) > 1:
             return barcode[0]
     ## No cutter found
@@ -1057,7 +1097,7 @@ def getbarcode3(cutters, read1, longbar):
 
 
 
-def writetofile(data, dsort, read, pid):
+def write_to_file(data, dsort, read, pid):
     "Writes sorted data to tmp files"
     if read == 1:
         rrr = "R1"
@@ -1067,13 +1107,16 @@ def writetofile(data, dsort, read, pid):
     # appends to file for each sample, avoids parallel fighting by using 
     # pid assigned file handle.
     for sname in dsort:
+
+        # file out handle
         handle = os.path.join(
             data.dirs.fastqs, 
             "tmpdir",
             "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
+
+        # append to this sample name
         with open(handle, 'a') as out:
             out.write("".join(dsort[sname]))
-            # b"".join(dsort[sname]).decode())
 
 
 
@@ -1224,7 +1267,10 @@ def estimate_nreads(data, testfile):
         
     ## We'll take the average of the size of a file based on the
     ## first 10000 reads to approximate number of reads in the main file
-    dat = b"".join(islice(infile, 40000))
+    try:
+        dat = b"".join(islice(infile, 40000))
+    except TypeError:
+        dat = "".join(islice(infile, 40000))
     outfile.write(dat)
     outfile.close()
     infile.close()
@@ -1263,8 +1309,17 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
     cmd4 = ["split", "-a", "4", "-l", str(int(optim) * 4), "-", chunk2]
 
     # start 'split ... | gunzip -c rawfile'
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc3 = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
+    proc1 = sps.Popen(
+        cmd1, 
+        stderr=sps.STDOUT, 
+        stdout=sps.PIPE, 
+        universal_newlines=True)
+    proc3 = sps.Popen(
+        cmd3, 
+        stderr=sps.STDOUT, 
+        stdout=sps.PIPE, 
+        stdin=proc1.stdout, 
+        universal_newlines=True)
     res = proc3.communicate()[0]
     if proc3.returncode:
         raise IPyradError("error in zcat_make_temps:\n{}".format(res))
@@ -1274,8 +1329,17 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
 
     # repeat for paired reads
     if "pair" in data.params.datatype:
-        proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
-        proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+        proc2 = sps.Popen(
+            cmd2, 
+            stderr=sps.STDOUT, 
+            stdout=sps.PIPE, 
+            universal_newlines=True)
+        proc4 = sps.Popen(
+            cmd4, 
+            stderr=sps.STDOUT, 
+            stdout=sps.PIPE, 
+            stdin=proc2.stdout, 
+            universal_newlines=True)
         res = proc4.communicate()[0]
         if proc4.returncode:
             raise IPyradError("error in zcat_make_temps:\n{}".format(res))            

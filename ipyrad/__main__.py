@@ -1,16 +1,22 @@
 #!/usr/bin/env python
+
 """ the main CLI for calling ipyrad """
 
 from __future__ import print_function, division  
 
-from ipyrad.core.parallel import register_ipcluster
-from ipyrad.assemble.utils import IPyradError, IPyradWarningExit, detect_cpus
+# from ipyrad.core.parallel import register_ipcluster
+from ipyrad.assemble.utils import IPyradError, detect_cpus
 from pkg_resources import get_distribution
+from distutils.version import LooseVersion
+
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
+import requests
 import sys
 import os
+
+from .core.Parallel import Parallel
 
 
 class CLI:
@@ -28,44 +34,54 @@ class CLI:
             epilog=EPILOG)
 
         # check for a new version of ipyrad and warn user of upgrade
-        self._check_version()
+        #self.check_for_new_version()
 
         # parse the command line to get CLI args
         self._parse_command_line()
         self.args = self.parser.parse_args()
 
         # bail if no args for 'params' or 'new'
-        self._check_args()
+        self.check_args()
 
         # if args.debug turn on the debugger
-        # self._hardlog_cli()
+        if self.args.debug:
+            ip.__interactive__ = 1
+            # self._hardlog_cli()
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
-        self._flagnew()
+        if self.args.new:
+            self._flagnew()
+            sys.exit(0)
+
+        # check for download argument
+        if self.args.download:
+            self._flagdownload()
+            sys.exit(0)
+
+        # check that -p is accompanied by an action (-s, -r, -m)
         self._flagparams()
-        self._flagdownload()
 
         # check for merge of branches
         if self.args.merge:
-            self._merge_assemblies()
-    
-        # fill parsedict from paramsfile
-        self._parse_params()
+            self.merge_assemblies()
+            sys.exit(0)
+        
+        # fill parsedict with params from paramsfile
+        self.parse_params()
 
         # functions below here involve an Assembly object.
-        self._getassembly()
+        self.get_assembly()
         if self.args.branch:
-            self._branch_assembly()
-        self._run()
-        sys.exit(1)
+            self.branch_assembly()
+            sys.exit(0)
+
+        self.run()
 
 
 
-    def _check_version(self):
-        """ Test if there's a newer version and nag the user to upgrade."""
-        import requests
-        from distutils.version import LooseVersion
+    def check_for_new_version(self):
+        "Test if there's a newer version and nag the user to upgrade."
 
         try:
             # get response and parse it
@@ -84,11 +100,11 @@ class CLI:
                 print(VERSION_UPDATE.format(curversion))
         
         # Let this fail silently
-        except Exception as inst:
+        except Exception:
             pass
 
 
-    def _check_args(self):
+    def check_args(self):
         if not any(i in ["params", "new"] for i in vars(self.args).keys()):
             print("""
         Bad arguments: ipyrad command must include at least one of the 
@@ -98,24 +114,26 @@ class CLI:
             sys.exit(1)
 
 
-    def _parse_params(self):
+    def parse_params(self):
         "Parse the params file args, create and return Assembly object."
 
         # check that params.txt file is correctly formatted.
-        try:
+        if not self.args.params:
+            raise IPyradError("\n  No params file found\n")
+        elif not os.path.exists(self.args.params):
+            raise IPyradError("\n  No params file found\n")
+        else:
             with open(self.args.params) as paramsin:
                 lines = paramsin.readlines()
-        except IOError as _:
-            sys.exit("  No params file found")
 
-        # make into a dict. Ignore blank lines at the end of file
-        # Really this will ignore all blank lines
-        items = [
-            i.split("##")[0].strip() for i in lines[1:] if not i.strip() == ""]
+        # get values from the params file lines
+        vals = [i.split("##")[0].strip() for i in lines[1:] if i.strip()]
 
-        # create a null assembly and return params dict
+        # get keys in order from a tmp assembly
         keys = [i[1:] for i in ip.Assembly('null', quiet=True).params._keys]
-        self.parsedict = {str(i): j for (i, j) in zip(keys, items)}
+        
+        # store as a dict
+        self.parsedict = {str(i): j for (i, j) in zip(keys, vals)}
 
 
     def _parse_command_line(self):
@@ -124,12 +142,13 @@ class CLI:
         # if no args then return help message
         if len(sys.argv) == 1:
             self.parser.print_help()
-            sys.exit(1)
 
         ## add arguments 
-        self.parser.add_argument('-v', '--version', action='version', 
-            version=str(get_distribution('ipyrad')))
-
+        self.parser.add_argument(
+            '-v', '--version', 
+            action='version', 
+            version=str(get_distribution('ipyrad'))
+        )
         self.parser.add_argument('-r', "--results", action='store_true',
             help="show results summary for Assembly in params.txt and exit")
 
@@ -142,25 +161,23 @@ class CLI:
         self.parser.add_argument('-d', "--debug", action='store_true',
             help="print lots more info to ipyrad_log.txt.")
 
-        self.parser.add_argument('-n', metavar='new', dest="new", type=str, 
-            default=None, 
+        self.parser.add_argument('-n', dest="new", type=str, default=None, 
             help="create new file 'params-{new}.txt' in current directory")
 
-        self.parser.add_argument('-p', metavar='params', dest="params",
-            type=str, default=None,
+        self.parser.add_argument('-p', dest="params", type=str, default=None,
             help="path to params file for Assembly: params-{assembly_name}.txt")
 
-        self.parser.add_argument('-b', metavar='branch', dest="branch",
-            type=str, default=None, nargs="*",
-            help="create a new branch of the Assembly as params-{branch}.txt")
+        self.parser.add_argument('-s', dest="steps", type=str, default=None,
+            help="Set of assembly steps to run, e.g., -s 123")
 
-        self.parser.add_argument('-m', metavar='merge', dest="merge",
-            default=None, nargs="*",
-            help="merge all assemblies provided into a new assembly")
+        self.parser.add_argument('-b', dest="branch", type=str, default=None, 
+            nargs="*",
+            help="create new branch of Assembly as params-{branch}.txt, and " + \
+            "can be used to drop samples from Assembly.")
 
-        self.parser.add_argument('-s', metavar="steps", dest="steps",
-            type=str, default=None,
-            help="Set of assembly steps to perform, e.g., -s 123 (Default=None)")
+        self.parser.add_argument('-m', dest="merge", default=None, nargs="*",
+            help="merge multiple Assemblies into one joint Assembly, and " + \
+            "can be used to merge Samples into one Sample.")
 
         self.parser.add_argument("-c", metavar="cores", dest="cores",
             type=int, default=0,
@@ -168,18 +185,17 @@ class CLI:
 
         self.parser.add_argument("-t", metavar="threading", dest="threads",
             type=int, default=2,
-            help="tune threading of binaries (Default=2)")
+            help="tune threading of multi-threaded binaries (Default=2)")
 
         self.parser.add_argument("--MPI", action='store_true',
             help="connect to parallel CPUs across multiple nodes")
 
-        self.parser.add_argument("--ipcluster", metavar="ipcluster", 
-            dest="ipcluster",
+        self.parser.add_argument("--ipcluster", dest="ipcluster",
             type=str, nargs="?", const="default",
-            help="connect to ipcluster profile (default: 'default')")
+            help="connect to running ipcluster, enter profile name or profile='default'")
 
-        self.parser.add_argument("--download", metavar="download", dest="download",
-            type=str, nargs="*", default=None,  # const="default",
+        self.parser.add_argument("--download", dest="download", type=str, 
+        nargs="*", default=None,  # const="default",
             help="download fastq files by accession (e.g., SRP or SRR)")
 
 
@@ -222,17 +238,24 @@ class CLI:
 
     def _flagnew(self):
         # Create a tmp assembly, call write_params to make default params.txt
-        if self.args.new:
-            try:
-                tmpassembly = ip.Assembly(self.args.new, quiet=True, cli=True)
-                tmpassembly.write_params(
-                    "params-{}.txt".format(self.args.new), 
-                    force=self.args.force)
-                print("\n  New file 'params-{}.txt' created in {}\n"
-                      .format(self.args.new, os.path.realpath(os.path.curdir)))
-            except Exception as inst:
-                print(inst)
-            sys.exit(1)
+        tmpassembly = ip.Assembly(
+            self.args.new, 
+            quiet=True, 
+            cli=True, 
+            force=self.args.force,
+        )
+
+        # write the new params file
+        tmpassembly.write_params(
+            "params-{}.txt".format(self.args.new), 
+            force=self.args.force,
+        )
+
+        # print log to screen
+        print("\n  New file 'params-{}.txt' created in {}\n".format(
+            self.args.new, 
+            os.path.realpath(os.path.curdir))
+        )
 
 
     def _flagparams(self):
@@ -241,9 +264,9 @@ class CLI:
             if not any([self.args.branch, self.args.results, self.args.steps]):
                 print("""
         Must provide action argument along with -p argument for params file. 
-        e.g., ipyrad -p params-test.txt -r              ## shows results
-        e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
-        e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
+        e.g., ipyrad -p params-test.txt -r              # shows results
+        e.g., ipyrad -p params-test.txt -s 12           # runs steps 1 & 2
+        e.g., ipyrad -p params-test.txt -b newbranch    # branch this assembly
         """)
                 sys.exit(1)
 
@@ -253,19 +276,37 @@ class CLI:
 
     def _flagdownload(self):
         ## if download data do it and then exit. Runs single core in CLI. 
-        if self.args.download:
-            if len(self.args.download) == 1:
-                downloaddir = "sra-fastqs"
-            else:
-                downloaddir = self.args.download[1]
-            sratools_download(
-                self.args.download[0], 
-                workdir=downloaddir, 
-                force=self.args.force)
-            sys.exit(1)
+        if len(self.args.download) == 1:
+            downloaddir = "sra-fastqs"
+        else:
+            downloaddir = self.args.download[1]
+
+        # call the analysis tool
+        import ipyrad.analysis as ipa
+        sra = ipa.sratools(
+            accession=self.args.download[0],
+            workdir=downloaddir,
+            force=self.args.force,
+        )
+
+        ## get run info and print spacer after
+        df = sra.fetch_runinfo((1, 4, 6, 29, 30))
+        print("")
+
+        ## rename spots for prettier printing and send to screen
+        df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
+        print(df)
+
+        ## run download with default name_fields and separator
+        sra.run(
+            name_fields=(30, 1), 
+            name_separator="_", 
+            force=self.args.force)
+        print("")
 
 
-    def _merge_assemblies(self):
+
+    def merge_assemblies(self):
         """ 
         merge all given assemblies into a new assembly. Copies the params
         from the first passed in extant assembly. this function is called 
@@ -284,14 +325,14 @@ class CLI:
 
         # Make sure the first arg isn't a params file, someone could do it...
         newname = self.args.merge[0]
-        if os.path.exists(newname) and "params-" in newname:
+        if os.path.exists(newname) and ("params-" in newname):
             sys.exit(_WRONG_ORDER_CLI_MERGE) 
 
         # Make sure first arg will create a param file that doesn't exist
-        if os.path.exists("params-" + newname + ".txt") and not self.args.force:
+        if os.path.exists("params-" + newname + ".txt") and (not self.args.force):
             sys.exit(_NAME_EXISTS_MERGE.format("params-" + newname + ".txt"))
 
-        ## Make sure the rest of the args are params files that already exist
+        # Make sure the rest of the args are params files that already exist
         assemblies_to_merge = self.args.merge[1:]
         for assembly in assemblies_to_merge:
             if not os.path.exists(assembly):
@@ -302,10 +343,11 @@ class CLI:
         assemblies = []
         for params_file in self.args.merge[1:]:
             self.args.params = params_file
-            self.parse_params()  # self.args)
-            assemblies.append(self.getassembly().data)  # self.args, parsedict)
+            self.parse_params()
+            self.get_assembly()
+            assemblies.append(self.data)
 
-        ## Do the merge
+        # Do the merge
         merged_assembly = ip.merge(newname, assemblies)
 
         ## Write out the merged assembly params file and report success
@@ -317,103 +359,72 @@ class CLI:
         sys.exit(1)
 
 
-    def _getassembly(self):
+    def get_assembly(self):
         """ 
         loads assembly or creates a new one and set its params from 
         parsedict. Does not launch ipcluster. 
-        """
-
-        ## Creating an assembly with a full path in the name will "work"
-        ## but it is potentially dangerous, so here we have assembly_name
-        ## and assembly_file, name is used for creating new in cwd, file is
-        ## used for loading existing.
-        ##
-        ## Be nice if the user includes the extension.
+        """      
+        # Be nice if the user includes the extension.
         project_dir = self.parsedict['project_dir']
         assembly_name = self.parsedict['assembly_name']
-        assembly_file = os.path.join(project_dir, assembly_name)
+        json_file = os.path.join(project_dir, assembly_name)
+        if not json_file.endswith(".json"):
+            json_file += ".json"
 
-        ## Assembly creation will handle error checking  on
-        ## the format of the assembly_name
-
-        ## make sure the working directory exists.
+        # make sure the working directory exists.
         if not os.path.exists(project_dir):
             os.mkdir(project_dir)
 
-        try:
-            ## If 1 and force then go ahead and create a new assembly
-            if ('1' in self.args.steps) and self.args.force:
-                data = ip.Assembly(assembly_name, cli=True)
+        # Create new Assembly instead of loading if NEW 
+        if self.args.steps:
+            # starting a new assembly
+            if '1' in self.args.steps:
+                if self.args.force:
+                    data = ip.Assembly(assembly_name, cli=True)
+                else:
+                    if os.path.exists(json_file):
+                        raise IPyradError(
+                        "Assembly already exists, use force to overwrite")
+                    else:
+                        data = ip.Assembly(assembly_name, cli=True)
             else:
-                data = ip.load_json(assembly_file, cli=True)
-                data._cli = True
+                data = ip.load_json(json_file, cli=True)
+        else:
+            data = ip.load_json(json_file, cli=True)
 
-        except IPyradWarningExit as _:
-            ## if no assembly is found then go ahead and make one
-            if '1' not in self.args.steps:
-                raise IPyradWarningExit(
-                    "  Error: You must first run step 1 on the assembly: {}"
-                    .format(assembly_file))
-            else:
-                ## create a new assembly object
-                data = ip.Assembly(assembly_name, cli=True)
+        # Update json assembly with params in paramsfile in case they changed
+        for key, param in self.parsedict.items():
+            if key not in ["assembly_name"]:
+                data.set_params(key, param)
 
-        ## for entering some params...
-        for param in self.parsedict:
-
-            ## trap assignment of assembly_name since it is immutable.
-            if param == "assembly_name":
-                ## Raise error if user tried to change assembly name
-                if self.parsedict[param] != data.name:
-                    data.set_params(param, self.parsedict[param])
-            else:
-                ## all other params should be handled by set_params
-                try:
-                    data.set_params(param, self.parsedict[param])
-                except IndexError as _:
-                    print("Malformed params file: {}".format(self.args.params))
-                    print("Bad parameter {} - {}".format(
-                        param, self.parsedict[param]))
-                    sys.exit(-1)
+        # store it.
         self.data = data
 
 
-    def _showstats(self):
-        """ loads assembly or dies, and print stats to screen """
+    def show_stats(self):
+        "loads assembly or dies, and print stats to screen"
 
-        project_dir = self.parsedict["project_dir"]
-        if not project_dir:
-            project_dir = "./"
+        # Be nice if the user includes the extension.
+        project_dir = self.parsedict['project_dir']
+        assembly_name = self.parsedict['assembly_name']
+        json_file = os.path.join(project_dir, assembly_name)
+        if not json_file.endswith(".json"):
+            json_file += ".json"
 
-        # Be nice if somebody also puts in the file extension
-        assembly_name = self.parsedict["assembly_name"]
-        my_assembly = os.path.join(project_dir, assembly_name)
-
-        ## If the project_dir doesn't exist don't even bother trying harder.
-        if not os.path.isdir(project_dir):
-            msg = """
-        Trying to print stats for Assembly ({}) that doesn't exist. You must 
-        first run steps before you can show results.
-        """.format(project_dir)
-            sys.exit(msg)
-
-        if not assembly_name:
-            msg = """
-        Assembly name is not set in params.txt, meaning it was either changed or
-        erased since the Assembly was started. Please restore the original name. 
-        You can find the name of your Assembly in the "project dir": {}.
-        """.format(project_dir)
-            raise IPyradError(msg)
+        if not os.path.exists(json_file):
+            raise IPyradError(
+                "Cannot find assembly {}".format(json_file))
 
         # load the assembly 
-        data = ip.load_json(my_assembly, quiet=True, cli=True)
-        print("\nSummary stats of Assembly {}".format(data.name) \
-             +"\n------------------------------------------------")
+        data = ip.load_json(json_file, quiet=True, cli=True)
+        print(
+            "\nSummary stats of Assembly {}".format(data.name) +
+            "\n------------------------------------------------")
         
         if not data.stats.empty:
             print(data.stats)
-            print("\n\nFull stats files"\
-             +"\n------------------------------------------------")
+            print("\n\nFull stats files" + 
+                "\n------------------------------------------------")
 
             fullcurdir = os.path.realpath(os.path.curdir)
             for i in range(1, 8):
@@ -430,46 +441,59 @@ class CLI:
             print("No stats to display")
 
 
-    def _branch_assembly(self):
+    def branch_assembly(self):
         """ 
         Load the passed in assembly and create a branch. Copy it
         to a new assembly, and also write out the appropriate params.txt
         """
 
-        ## get arguments to branch command
+        # get arguments to branch command
         bargs = self.args.branch
 
-        ## get new name, trim off .txt if it was accidentally added
+        # get new name
         newname = bargs[0]
+
+        # trim .txt if it was accidentally added
         if newname.endswith(".txt"):
             newname = newname[:-4]
 
-        ## look for subsamples
+        # look for subsample arguments
         if len(bargs) > 1:
 
-            # are we removing or keeping listed samples?
-            subsamples = bargs[1:]
+            # parse str or file of names to include/drop
+            subargs = bargs[1:]
 
-            # drop the matching samples
-            if bargs[1] == "-":
-                
-                # check drop names
-                fails = [i for i in subsamples[1:] if i not in 
-                         self.data.samples.keys()]
-                if any(fails):
-                    raise IPyradWarningExit(
-                        "\nFailed: unrecognized names, check spelling:\n  {}"
+            # is there a '-' indicating to drop
+            remove = 0
+            if subargs[0] == "-":
+                remove = 1
+                subargs = subargs[1:]
+
+            # is sample list a file?
+            if os.path.exists(subargs[1]):
+                with open(subargs[1], 'r') as infile:
+                    subsamples = [
+                        i.split()[0] for i in infile.readlines() if i.strip()
+                    ]
+            else:
+                subsamples = subargs
+
+            # check subsample drop names
+            fails = [i for i in subsamples if i not in self.data.samples.keys()]
+            if any(fails):
+                raise IPyradError(
+                    "\n  Failed: unrecognized names, check spelling:\n  {}"
                         .format("\n  ".join([i for i in fails])))
-                print("  dropping {} samples".format(len(subsamples) - 1))
+            
+            # if drop then get subtract list
+            if remove:
+                print("  dropping {} samples".format(len(subsamples)))
                 subsamples = list(set(self.data.samples.keys()) - set(subsamples))
 
-            ## If the arg after the new param name is a file that exists
-            if os.path.exists(bargs[1]):
-                new_data = self.data.branch(newname, infile=bargs[1])
-            else:
-                new_data = self.data.branch(newname, subsamples)
+            # If the arg after the new param name is a file that exists
+            new_data = self.data.branch(newname, subsamples)
 
-        ## keeping all samples
+        # keeping all samples
         else:
             new_data = self.data.branch(newname, None)
 
@@ -482,53 +506,60 @@ class CLI:
         new_data.write_params(
             "params-" + new_data.name + ".txt",
             force=self.args.force)
-        sys.exit(1)
 
 
-    def _run(self):
+    def run(self):
         """ main function """
 
         if self.args.steps:
             # print header
             print(HEADER)
 
+            # set to print headers
+            self.data._headers = 1
+
             # set CLI ipcluster terms
-            self.data._ipcluster["threads"] = self.args.threads
+            self.data.ipcluster["threads"] = self.args.threads
 
             # if ipyclient is running (and matched profile) then use that one
             if self.args.ipcluster:
                 ipyclient = ipp.Client(profile=self.args.ipcluster)
-                self.data._ipcluster["cores"] = len(ipyclient)
+                self.data.ipcluster["cores"] = len(ipyclient)
 
             # if not then we need to register and launch an ipcluster instance
             else:
                 # set CLI ipcluster terms
                 ipyclient = None
-                self.data._ipcluster["cores"] = (
+                self.data.ipcluster["cores"] = (
                     self.args.cores if self.args.cores else detect_cpus())
-                self.data._ipcluster["engines"] = "Local"
+                self.data.ipcluster["engines"] = "Local"
                 if self.args.MPI:
-                    self.data._ipcluster["engines"] = "MPI"
+                    self.data.ipcluster["engines"] = "MPI"
                     if not self.args.cores:
-                        raise IPyradWarningExit("must provide -c argument with --MPI")
-                # register to have a cluster-id with "ip- name"
-                self.data = register_ipcluster(self.data)
+                        raise IPyradError("must provide -c argument with --MPI")
 
-            # set to print headers
-            self.data._headers = 1
-
-            # run assembly steps
-            steps = list(self.args.steps)
-            self.data.run(
-                steps=steps, 
-                force=self.args.force, 
-                show_cluster=1, 
+            # get pool object
+            pool = Parallel(
+                tool=self.data, 
+                rkwargs={"steps": self.args.steps, "force": self.args.force},
                 ipyclient=ipyclient,
+                show_cluster=True,
+                auto=True,
                 )
+            pool.wrap_run()
+
+            # # run assembly steps
+            # steps = list(self.args.steps)
+            # self.data.run(
+            #     steps=steps, 
+            #     force=self.args.force, 
+            #     show_cluster=1, 
+            #     ipyclient=ipyclient,
+            #     )
         
         # show results summary                 
         if self.args.results:
-            self._showstats()
+            self.show_stats()
           
 
 
@@ -619,5 +650,10 @@ _DOES_NOT_EXIST_MERGE = """
 """
 
 
-if __name__ == "__main__": 
+
+def main():
     CLI()
+
+
+if __name__ == "__main__": 
+    main()

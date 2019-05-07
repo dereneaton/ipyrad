@@ -1,33 +1,28 @@
-#!/usr/bin/env ipython2
+#!/usr/bin/env python
 
 """ D-statistic calculations """
-# pylint: disable=E1101
-# pylint: disable=F0401
-# pylint: disable=W0142
-# pylint: disable=R0915
-# pylint: disable=R0914
-# pylint: disable=R0912
 
 from __future__ import print_function, division
 
-## ipyrad tools
-from ipyrad.assemble.util import IPyradWarningExit, IPyradError, progressbar
-from ipyrad import Assembly
-from collections import OrderedDict
 
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import pandas as pd
-import numpy as np
-import itertools
+from collections import OrderedDict
 import copy
 import os
+import itertools
+
+# import matplotlib.pyplot as plt
+# import matplotlib.cm as cm
+import pandas as pd
+import numpy as np
+
+from ipyrad import Assembly
+from ipyrad.assemble.util import IPyradError, progressbar
 
 try:
     ## when you have time go back and set attrubutes on toytrees
     import allel
 except ImportError:
-    raise IPyradWarningExit("""
+    raise IPyradError("""
     Error: pca requires the dependency 'scikit-allel', which we haven't yet
     included in the ipyrad installation. For now, you can install scikit-allel
     using conda with the following command: 
@@ -98,6 +93,7 @@ class PCA(object):
                 ## in like 5 lines, but it gets the passed in pops into the
                 ## same format as an assembly.populations dict, just easier to
                 ## treat everything the same way.
+<<<<<<< HEAD
                 self.pops = {x:(0, y) for x, y in pops.items()}
             else:
                 if not os.path.isfile(pops):
@@ -106,11 +102,29 @@ class PCA(object):
                 ## If the file you pass in doesn't have the stupid ipyrad minsamp
                 mindat = [i.lstrip("#").lstrip().rstrip() for i in \
                           open(pops, 'r').readlines() if i.startswith("#")]
+=======
+                self.pops = {x: (0, y) for x, y in pops.items()}
+            else:
+                if not os.path.isfile(pops):
+                    raise IPyradError(
+                        "popfile does not exist - {}".format(pops))
+
+                ## If the file you pass in doesn't have the ipyrad minsamp
+                mindat = [
+                    i.lstrip("#").lstrip().rstrip() for i in
+                    open(pops, 'r').readlines() if i.startswith("#")
+                ]
+>>>>>>> hotfix
                 if not mindat:
                     lines = open(pops, 'r').readlines()
                     p = set([x.split()[1].strip() for x in lines])
                     with open(pops, 'a') as outfile:
+<<<<<<< HEAD
                         outfile.write("# " + " ".join(["{}:1".format(x) for x in p]))
+=======
+                        outfile.write(
+                            "# " + " ".join(["{}:1".format(x) for x in p]))
+>>>>>>> hotfix
 
                 self.assembly.paramsdict["pop_assign_file"] = os.path.realpath(pops)
                 self.assembly._link_populations()
@@ -132,16 +146,24 @@ class PCA(object):
         ## If no pops linked yet (either none in the assembly or none passed in)
         ## then everybody goes into one giant default population.
         if not self.pops:
+<<<<<<< HEAD
             self.pops = {"All_samples":self.samples_vcforder}
+=======
+            self.pops = {"All_samples": self.samples_vcforder}
+>>>>>>> hotfix
 
         if not self.quiet:
             print("  Using populations:\n{}".format(self.pops))
         if not self.pops:
             print("  No populations assigned, so PCA will be monochrome.")
 
+<<<<<<< HEAD
 
     ## Load in the vcf and automatically remove multi-allelic snps
     ## and biallelic singletons.
+=======
+    ## Load in the vcf and automatically remove multi-allelic snps and biallelic singletons.
+>>>>>>> hotfix
     def _load_calldata(self):
         callset = allel.read_vcf(self.data, fields=["samples", "GT"])
         self.samples_vcforder = callset["samples"]
@@ -174,7 +196,16 @@ class PCA(object):
             misses = misscounts > n
             nmiss = self.genotypes[:][misses]
             missdict[n] = tot_snp - nmiss.shape[0]
+<<<<<<< HEAD
         return pd.Series(missdict.values(), index=missdict.keys(), name=name)
+=======
+        ret = pd.Series(
+            missdict.values(), 
+            index=list(missdict.keys()), 
+            name=name,
+        )
+        return ret
+>>>>>>> hotfix
 
 
     ## This returns a dataframe that shows the number of snps you'll retain

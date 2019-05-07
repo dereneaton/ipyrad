@@ -664,6 +664,12 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     if not reps:
         return "no result files found"
 
+    # return if kpop is 1
+    if kpop == 1:
+        if not quiet:
+            print("Nothing to permute or plot for kpop=1, but these results can be used for Evanno.")
+            return
+
     clumphandle = os.path.join(self.workdir, "tmp.clumppparams.txt")
     self.clumppparams.kpop = kpop
     self.clumppparams.c = ninds
@@ -673,15 +679,22 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     
     ## create CLUMPP args string
     outfile = os.path.join(self.workdir, 
-                "{}-K-{}.outfile".format(self.name, kpop))
+        "{}-K-{}.outfile".format(self.name, kpop))
     indfile = os.path.join(self.workdir, 
-                "{}-K-{}.indfile".format(self.name, kpop))
+        "{}-K-{}.indfile".format(self.name, kpop))
     miscfile = os.path.join(self.workdir, 
-                "{}-K-{}.miscfile".format(self.name, kpop))
+        "{}-K-{}.miscfile".format(self.name, kpop))
 
     # shorten filenames because clumpp can't handle names > 50 chars.
-    for filename in [clumphandle, indfile, outfile]:
-        filename = filename.replace(os.path.expanduser('~'), '~', 1)
+    clumphandle = clumphandle.replace(os.path.realpath('.'), '.', 1)
+    clumphandle = clumphandle.replace(os.path.expanduser('~'), '~', 1)
+    indfile = indfile.replace(os.path.realpath('.'), '.', 1)
+    indfile = indfile.replace(os.path.expanduser('~'), '~', 1)
+    outfile = outfile.replace(os.path.realpath("."), '.', 1)    
+    outfile = outfile.replace(os.path.expanduser('~'), '~', 1)    
+    miscfile = miscfile.replace(os.path.realpath("."), '.', 1)  
+    miscfile = miscfile.replace(os.path.expanduser('~'), '~', 1)    
+
     cmd = [
         "CLUMPP", clumphandle, 
         "-i", indfile,
@@ -726,7 +739,8 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
             print("""
     This error may be caused by the length of your output filename. For some 
     reason Clumpp cannot handle filenames longer than 50 characters...
-    """, file=sys.stderr)
+    {}
+    """.format(" ".join(cmd)), file=sys.stderr)
 
 
 

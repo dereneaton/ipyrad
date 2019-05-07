@@ -12,29 +12,34 @@ import sys
 import time
 import datetime
 import itertools
-import subprocess as sps
+# import subprocess as sps
 
 # third party
 import pandas as pd
 import numpy as np
 import toytree
 import toyplot
+from ..core.Parallel import Parallel
+
+# these plots are big so we'll set PNG format as default format
+toyplot.config.autoformat = "png"
 
 
-class Twisst:
+class Twisst(object):
     """
     Perform tree weighting on a tree_table.
     """
     def __init__(
-        self, 
-        data, 
-        imap, 
-        minmap,
-        name=None, 
-        workdir="analysis-twisst",
-        minsnps=1,
-        ipyclient=None,
-        ):
+            self, 
+            data, 
+            imap, 
+            minmap,
+            name=None, 
+            workdir="analysis-twisst",
+            minsnps=1,
+            minsupport=0,
+            ipyclient=None,
+            ):
 
         # store attrs
         self.imap = imap
@@ -42,6 +47,7 @@ class Twisst:
         self.name = (name if name else "-".join(sorted(imap.keys())))
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.minsnps = minsnps
+        self.minsupport = minsupport
 
         # max clades currently is 4
         assert len(imap) <= 4, "support limited to 4 imap clades currently."
@@ -50,20 +56,20 @@ class Twisst:
         self.tree_table = pd.read_csv(data, index_col=0)
 
         # attrs to fill
-        self.rmap = {}
         self.tree_weights = pd.DataFrame({
             "minmap": np.repeat(False, self.tree_table.shape[0]),
-            "subtree": np.nan,
+            "subtree": "",
             "nnnodes": np.nan,
             "abcd": np.nan,
             "acbd": np.nan,
             "adbc": np.nan,
             "unk": np.nan
-        }, 
-        columns=["minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
+        }, columns=[
+            "minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
         )
 
         # reverse of imap
+        self.rmap = {}        
         for k, v in self.imap.items():
             for i in v:
                 self.rmap[i] = k
@@ -73,12 +79,27 @@ class Twisst:
         self.wmap = {
             "abcd": ",".join(abcd[:2]) + "|" + ",".join(abcd[2:]), 
             "acbd": ",".join([abcd[0], abcd[2]]) + "|" + ",".join([abcd[1], abcd[3]]),
-            "adbd": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
+            "adbc": ",".join([abcd[0], abcd[3]]) + "|" + ",".join([abcd[1], abcd[2]]),
             "unknown": "unknown",
         }
 
 
-    def run(self, ipyclient, force=False):
+
+    def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
+        """
+        Run command for twisst sampling.
+        """
+        pool = Parallel(
+            tool=self, 
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={"force": force},
+        )
+        pool.wrap_run()
+
+
+    def _run(self, ipyclient, force=False):
         "distribute jobs in parallel client"
 
         # do not overwrite tree table
@@ -106,8 +127,8 @@ class Twisst:
         for idx in self.tree_table.index:
             newick = self.tree_table.tree[idx]
             if not pd.isna(newick):
-                args = (newick, self.imap, self.rmap, self.minmap)
-                rasyncs[idx] = lbview.apply(engine_process, *args)
+                args = (newick, self.imap, self.rmap, self.minmap, self.minsupport)
+                rasyncs[idx] = lbview.apply(remote_tree_weights, *args)
             else:
                 done += 1
 
@@ -143,88 +164,146 @@ class Twisst:
                 break
 
         # frequencies excluding unresolved
-        self.tree_weights["fabcd"] = (self.tree_weights["abcd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
-        self.tree_weights["facbd"] = (self.tree_weights["acbd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
-        self.tree_weights["fadbc"] = (self.tree_weights["adbc"] / 
-            self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1))
+        sums = self.tree_weights[["abcd", "acbd", "adbc"]].sum(axis=1)       
+        self.tree_weights["fabcd"] = np.nan
+        self.tree_weights["facbd"] = np.nan
+        self.tree_weights["fadbc"] = np.nan
+        self.tree_weights.loc[sums > 0, "fabcd"] = (
+            self.tree_weights.loc[sums > 0, "abcd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "facbd"] = (
+            self.tree_weights.loc[sums > 0, "acbd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "fadbc"] = (
+            self.tree_weights.loc[sums > 0, "adbc"] / sums[sums > 0])
 
         # frequencies with unresolved
-        self.tree_weights["uabcd"] = (self.tree_weights["abcd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uacbd"] = (self.tree_weights["acbd"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uadbc"] = (self.tree_weights["adbc"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
-        self.tree_weights["uunk"] = (self.tree_weights["unk"] / 
-            self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1))
+        sums = self.tree_weights[["abcd", "acbd", "adbc", "unk"]].sum(axis=1)       
+        self.tree_weights["uabcd"] = np.nan
+        self.tree_weights["uacbd"] = np.nan
+        self.tree_weights["uadbc"] = np.nan
+        self.tree_weights["uunk"] = np.nan        
+        self.tree_weights.loc[sums > 0, "uabcd"] = (
+            self.tree_weights.loc[sums > 0, "abcd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uacbd"] = (
+            self.tree_weights.loc[sums > 0, "acbd"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uadbc"] = (
+            self.tree_weights.loc[sums > 0, "adbc"] / sums[sums > 0])
+        self.tree_weights.loc[sums > 0, "uunk"] = (
+            self.tree_weights.loc[sums > 0, "unk"] / sums[sums > 0])
 
 
-    def draw_tree_weights(self):
 
-        # grab tree weights with and without unknowns
-        df1 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc", "uunk"]]
-        df2 = self.tree_weights.loc[:, ["uabcd", "uacbd", "uadbc"]]
+    def draw_tree_weights(
+        self, 
+        minsnps=4, 
+        window=25, 
+        min_periods=2, 
+        label=None, 
+        signif=3,
+        include_unresolved=False,
+        ):
+        """
+        Draw a sliding window barplot of subtree weights. 
+        Parameters:
+        -----------
+        minsnps: exclude windows with less than minsnps.
+        window: N rows to group when computing rolling means of tree weights.
+        min_periods: minimum number of rows with data in a window. 
+        label: plot label.
+        signif: bars highlight regions with greater propotion of one subtree.
+        """
+
+        # include unresolved or not
+        if include_unresolved:
+            tests = ["uabcd", "uacbd", "uadbc", "uunk"]
+            tlabels = ["abcd", "acbd", "adbc", "unknown"]
+            nlines = 3
+        else:
+            tests = ["fabcd", "facbd", "fadbc"]
+            tlabels = ["abcd", "acbd", "adbc"]
+            nlines = 2
+
+        # make dataframe copy and censor low snps windows
+        df = self.tree_weights.loc[:, tests].copy()
+        df[self.tree_table.nsnps < minsnps] = np.nan
 
         # get rolling window means 
-        fills = df1.rolling(
-            window=30, min_periods=1, win_type="boxcar", center=True).mean()
-        lines = df2.rolling(
-            window=30, min_periods=1, win_type="boxcar", center=True).mean()        
+        fills = df.rolling(
+            window=window, 
+            min_periods=min_periods, 
+            win_type="boxcar", 
+            center=True).mean()
 
         # toyplot drawing
         canvas = toyplot.Canvas(width=900, height=250)
         axes = canvas.cartesian(
-            label="Chromosome 2",
+            label=label,
             xlabel="Position (Mb)",
             ylabel="Subtree weighting",
         )
-        m = axes.fill(fills, 
+        m = axes.fill(
+            fills, 
             baseline="stacked", 
             opacity=0.4, 
-            title=[self.wmap[i] for i in sorted(self.wmap.keys())],
+            title=[self.wmap[i] for i in tlabels],
         )
-        m = axes.plot(lines, stroke_width=1.5)
 
+        # add line boundaries between fill regions
+        for line in range(nlines):
+            axes.plot(
+                np.sum([fills[i] for i in tests[:line + 1]], axis=0),
+                stroke_width=1.25,
+            )
+
+        # mark significantly deviating regions
+        for col in tests:
+            deviant = fills[col].mean() + (signif * fills[col].std())
+            tops = np.where(fills[col] > deviant)[0]
+            m = axes.scatterplot(
+                tops, 
+                np.repeat(1.05, tops.size), 
+                marker="r1x0.25", size=5)
+
+        # style axes
+        indexer = np.arange(0, self.tree_table.index.max(), 250)
+        axes.x.ticks.show = True
         axes.x.ticks.locator = toyplot.locator.Explicit(
-            locations=np.arange(0, 3000, 500),
+            locations=np.arange(0, self.tree_table.index.max(), 250),
             labels=(
-                self.tree_table.start
-                .loc[np.arange(0, 3000, 500)] / int(1e6)
+                self.tree_table.start[indexer] / int(1e6)
                 ).astype(int),
         )
+        return canvas, axes
 
 
 def calculate_weights(imap, subtree):
     "calculate tree weights by subsampling quartet trees for imap clades"
 
-    # get a generator of unique nkey samples: e.g., quartets 
+    # get a generator of unique nkey samples: e.g., quartets
     tips = sorted(subtree.get_tip_labels(), key=lambda x: x.rsplit("-", 1)[0])
     groups = itertools.groupby(tips, lambda x: x.rsplit("-", 1)[0])
     quarts = itertools.product(*(set(j) for (i, j) in groups))
-    
+
     # record results
     arr = np.zeros(4, dtype=int)
-    
+
     # prune tree and measure topo dists
     for idx, quart in enumerate(quarts):
-        
+
         # get pruned tree
         droptips = set(subtree.get_tip_labels()) - set(quart)
         dtree = subtree.drop_tips(droptips)
-                
+
         # get treenodes of pruned tips always in alphanumeric order of imaps
         tips = sorted(dtree.get_tip_labels())
 
         # get splits in the tree that are length (2, 2)
         cache = dtree.treenode.get_cached_content("name")
         edges = [i for i in dtree.treenode.get_edges(cache) if len(i[0]) == 2]
-        
+
         # unresolved subtree
         if not edges:
             arr[3] += 1
-            
+
         # store resolved tree
         else:
             split = [i for i in edges[0] if tips[0] in i][0]
@@ -232,11 +311,10 @@ def calculate_weights(imap, subtree):
             nidx = tips.index(split.pop())
             arr[nidx - 1] += 1
     return arr
-    
 
 
 
-def engine_process(newick, imap, rmap, minmap):
+def remote_tree_weights(newick, imap, rmap, minmap, minsupport):
     """
     Load toytree for an interval, rename tips to clades with imap, prune
     samples from tree that are not in the test, test for minmap sampling, 
@@ -245,9 +323,12 @@ def engine_process(newick, imap, rmap, minmap):
     """
     # load toytree
     ttree = toytree.tree(newick)
+
+    # collapse nodes with bootstrap support below minboots
+    ttree = ttree.collapse_nodes(min_support=minsupport)
     
     # incremental counter for subtree names from imap
-    intmap = {i:0 for i in minmap}
+    intmap = {i: 0 for i in minmap}
 
     # keep track of names to drop from tree (not in imap)
     drops = []
@@ -267,7 +348,6 @@ def engine_process(newick, imap, rmap, minmap):
 
     # default values
     minmap = False
-    weight = np.nan
     nnodes = np.nan
     subtree = np.nan
     abcd = acbd = adbc = unknown = np.nan
@@ -283,7 +363,7 @@ def engine_process(newick, imap, rmap, minmap):
         adbc = (abcd[0], abcd[3], abcd[1], abcd[2])
 
         # calculate weights
-        subtree = ttree.drop_tips(drops).collapse_polytomies().unroot()
+        subtree = ttree.drop_tips(drops).collapse_nodes(min_dist=1e-6).unroot()
         abcd, acbd, adbc, null = calculate_weights(imap, subtree)
 
         # return values

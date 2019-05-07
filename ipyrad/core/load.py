@@ -11,138 +11,100 @@ import pandas as pd
 from ..core.sample import Sample
 from ..core.assembly import Assembly
 from ..assemble.utils import ObjDict
-from ..assemble.utils import IPyradWarningExit, IPyradError, IPyradParamsError
+from ..assemble.utils import IPyradError
 
 
 
-def load_json(path, quiet=False, cli=False):
+def load_json(json_path, quiet=False, cli=False):
     """ 
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-    # load the JSON string and try with name+.json
-    checkfor = [path + ".json", path]
-    for inpath in checkfor:
-        inpath = inpath.replace("~", os.path.expanduser("~"))
-        try:
-            with open(inpath, 'rb') as infile:
-                fullj = json.loads(infile.read(), object_hook=tup_and_byte)
-        except IOError:
-            pass
 
-    # create a new empty Assembly
-    try:
-        oldname = fullj["assembly"].pop("name")
-        olddir = fullj["assembly"]["dirs"]["project"]
-        oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
-        null = Assembly(oldname, quiet=True, cli=cli)
+    # expand HOME in JSON path name
+    json_path = json_path.replace("~", os.path.expanduser("~"))
 
-    except (UnboundLocalError, AttributeError) as inst:
+    # raise error if JSON not found
+    if not os.path.exists(json_path):
         raise IPyradError("""
-    Could not find saved Assembly file (.json) in expected location.
-    Checks in: [project_dir]/[assembly_name].json
-    Checked: {}
-    """.format(inpath))
+            Could not find saved Assembly file (.json) in expected location.
+            Checks in: [project_dir]/[assembly_name].json
+            Checked: {}
+            """.format(json_path))
 
-    # print msg with shortpath
+    # load JSON file
+    with open(json_path, 'rb') as infile:
+        fullj = json.loads(infile.read(), object_hook=tup_and_byte)
+
+    # get name and project_dir from loaded JSON
+    oldname = fullj["assembly"].pop("name")
+    olddir = fullj["assembly"]["dirs"]["project"]
+    oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
+
+    # create a fresh new Assembly
+    null = Assembly(oldname, quiet=True, cli=cli)       
+
+    # print Loading message with shortened path
     if not quiet:
         oldpath = oldpath.replace(os.path.expanduser("~"), "~")
         print("{}loading Assembly: {}".format(null._spacer, oldname))
         print("{}from saved path: {}".format(null._spacer, oldpath))
 
-    # First get the samples. Create empty sample dict of correct length 
+    # get the samples. Create empty sample dict of correct length 
     samplekeys = fullj["assembly"].pop("samples")
     null.samples = {name: "" for name in samplekeys}
 
-    # Next get paramsdict and use set_params to convert values back to 
-    # the correct dtypes. Allow set_params to fail because the object will 
-    # be subsequently updated by the params from the params file, which may
-    # correct any errors/incompatibilities in the old params file
+    # set params from JSON
     oldparams = fullj["assembly"].pop("paramsdict")
-    for param, val in oldparams.items():
-        # backwards compatiblity with <0.8.0
-        param = param.lstrip("_")
-        if param not in ["assembly_name", "keys"]:
-            try:
-                null.set_params(param, val)
-            except (IPyradWarningExit, IPyradParamsError) as inst:
-                pass
+    for _param in null.params._keys:
 
-    # Import the hackersonly dict. In this case we don't have the nice
-    # set_params so we're shooting from the hip to reset the values
+        # support legacy JSON files
+        param = _param.lstrip("_")
+        try:
+            value = oldparams[param]
+        except KeyError:
+            value = oldparams[_param]
+        if param not in ["assembly_name", "_assembly_name", "_keys", "keys"]:
+            null.set_params(param, value)
 
-    # legacy support for private hackers
+
+    # Update hackers dict.
     try:
         oldhackersonly = fullj["assembly"].pop("hackersonly")
     except KeyError:
         oldhackersonly = fullj["assembly"].pop("_hackersonly")
-
-    # update new hackers with old values
     null.hackersonly._data.update(oldhackersonly)
-
-
-    # for param, val in oldhackersonly.items():
-    #     if val is None:
-    #         null.hackersonly.param = None
-    #     else:
-    #         null.hackersonly.param = val
-    # except Exception as inst:
-    # pass
-    #     LOGGER.warning("""
-    # Load assembly error resetting hackersonly dict element. We will just use
-    # the default value in the current assembly.""")
 
     # Check remaining attributes of Assembly and Raise warning if attributes
     # do not match up between old and new objects
     newkeys = list(null.__dict__.keys())
     oldkeys = list(fullj["assembly"].keys())
 
-    ## find shared keys and deprecated keys
+    # find shared keys and deprecated keys
     sharedkeys = set(oldkeys).intersection(set(newkeys))
-    # lostkeys = set(oldkeys).difference(set(newkeys))
-    # # raise warning if there are lost/deprecated keys
-    # if lostkeys:
-    #     LOGGER.warning("""
-    # load_json found {a} keys that are unique to the older Assembly.
-    #     - assembly [{b}] v.[{c}] has: {d}
-    #     - current assembly is v.[{e}]
-    #     """.format(a=len(lostkeys), 
-    #                b=oldname,
-    #                c=fullj["assembly"]["_version"],
-    #                d=lostkeys,
-    #                e=null._version))
 
     # load in remaining shared Assembly attributes to null
     for key in sharedkeys:
-        setattr(null, key, fullj["assembly"][key])
-        null.__setattr__(key, fullj["assembly"][key])
-
-    # ## load in svd results if they exist
-    # try:
-    #     if fullj["assembly"]["svd"]:
-    #         null.__setattr__("svd", fullj["assembly"]["svd"])
-    #         null.svd = ObjDict(null.svd)
-    # except Exception:
-    #     LOGGER.debug("skipping: no svd results present in old assembly")
+        setattr(null, key, fullj["assembly"][key])        
 
     # Now, load in the Sample objects json dicts
     sample_names = list(fullj["samples"].keys())
     if not sample_names:
-        raise IPyradWarningExit("""
+        raise IPyradError("""
     No samples found in saved assembly. If you are just starting a new
     assembly the file probably got saved erroneously, so it's safe to try 
     removing the assembly file (e.g., rm {}.json) and restarting.
 
     If you fully completed step 1 and you see this message you should probably
     contact the developers.
-    """.format(inpath))
+    """.format(json_path))
         
     sample_keys = list(fullj["samples"][sample_names[0]].keys())
     stats_keys = list(fullj["samples"][sample_names[0]]["stats"].keys())
     stats_dfs_keys = list(fullj["samples"][sample_names[0]]["stats_dfs"].keys())
     ind_statkeys = (
         [fullj["samples"][sample_names[0]]["stats_dfs"][i].keys() 
-        for i in stats_dfs_keys])
+         for i in stats_dfs_keys])
     ind_statkeys = list(itertools.chain(*ind_statkeys))
 
     # check against a null sample
@@ -191,8 +153,8 @@ def load_json(path, quiet=False, cli=False):
                 pd.Series(fullj["samples"][sample]["stats_dfs"][statskey])
                 .reindex(
                     list(nsamp.__dict__["stats_dfs"][statskey].keys())
-                    )
                 )
+            )
 
         # save Sample files
         for filehandle in fullj["samples"][sample]["files"].keys():
