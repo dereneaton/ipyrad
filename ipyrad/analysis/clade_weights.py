@@ -14,11 +14,21 @@ import itertools
 
 # third party
 import pandas as pd
-import numpy as np
-import toytree
-import toyplot
+# import toyplot
+# import numpy as np
 from .utils import progressbar
 from ..core.Parallel import Parallel
+
+try:
+    import toytree
+except ImportError:
+    MISSING_IMPORTS = """
+To use the ipa.structure module you must install two additional 
+libraries which can be done with the following conda command. 
+
+conda install toytree -c eaton-lab
+"""
+
 
 
 class CladeWeights(object):
