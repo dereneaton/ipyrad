@@ -24,15 +24,15 @@ setup(
     packages=find_packages(),
     install_requires=[
         "future",
-        "ipyparallel>=6.0.2",
-        "scipy>0.10",
-        "numpy>=1.9",
-        "numba>=0.37",
-        "pandas>=0.16",
-        "pysam>=0.10.0",  # ipyrad::
+        "ipyparallel",
+        "scipy",
+        "numpy",
+        "numba",
+        "pandas",
+        "pysam",
         "h5py",
         "mpi4py",
-        "cutadapt",    # ipyrad::
+        "cutadapt",
         "requests",
         # "notebook",
         # "toytree",     # eaton-lab::
