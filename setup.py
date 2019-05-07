@@ -34,7 +34,7 @@ setup(
         "h5py",
         "mpi4py",
         "cutadapt",    # ipyrad::
-        "toytree",     # eaton-lab::
+        # "toytree",     # eaton-lab::
         "requests",
     ],
     entry_points={
