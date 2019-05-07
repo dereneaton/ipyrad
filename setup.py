@@ -24,7 +24,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         "future",
-        "notebook",
         "ipyparallel>=6.0.2",
         "scipy>0.10",
         "numpy>=1.9",
@@ -35,6 +34,7 @@ setup(
         "mpi4py",
         "cutadapt",    # ipyrad::
         "requests",
+        # "notebook",
         # "toytree",     # eaton-lab::
     ],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
