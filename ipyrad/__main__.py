@@ -100,7 +100,7 @@ class CLI:
                 print(VERSION_UPDATE.format(curversion))
         
         # Let this fail silently
-        except Exception as inst:
+        except Exception:
             pass
 
 
@@ -142,7 +142,6 @@ class CLI:
         # if no args then return help message
         if len(sys.argv) == 1:
             self.parser.print_help()
-            # sys.exit(1)
 
         ## add arguments 
         self.parser.add_argument(
@@ -150,41 +149,35 @@ class CLI:
             action='version', 
             version=str(get_distribution('ipyrad'))
         )
-        self.parser.add_argument(
-            '-r', "--results", 
-            action='store_true',
-            help="show results summary for Assembly in params.txt and exit",
-        )
-        self.parser.add_argument(
-            '-f', "--force", 
-            action='store_true',
-            help="force overwrite of existing data",
-        )
+        self.parser.add_argument('-r', "--results", action='store_true',
+            help="show results summary for Assembly in params.txt and exit")
+
+        self.parser.add_argument('-f', "--force", action='store_true',
+            help="force overwrite of existing data")
+
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
         self.parser.add_argument('-d', "--debug", action='store_true',
             help="print lots more info to ipyrad_log.txt.")
 
-        self.parser.add_argument('-n', metavar='new', dest="new", type=str, 
-            default=None, 
+        self.parser.add_argument('-n', dest="new", type=str, default=None, 
             help="create new file 'params-{new}.txt' in current directory")
 
-        self.parser.add_argument('-p', metavar='params', dest="params",
-            type=str, default=None,
+        self.parser.add_argument('-p', dest="params", type=str, default=None,
             help="path to params file for Assembly: params-{assembly_name}.txt")
 
-        self.parser.add_argument('-b', metavar='branch', dest="branch",
-            type=str, default=None, nargs="*",
-            help="create a new branch of the Assembly as params-{branch}.txt")
+        self.parser.add_argument('-s', dest="steps", type=str, default=None,
+            help="Set of assembly steps to run, e.g., -s 123")
 
-        self.parser.add_argument('-m', metavar='merge', dest="merge",
-            default=None, nargs="*",
-            help="merge all assemblies provided into a new assembly")
+        self.parser.add_argument('-b', dest="branch", type=str, default=None, 
+            nargs="*",
+            help="create new branch of Assembly as params-{branch}.txt, and " + \
+            "can be used to drop samples from Assembly.")
 
-        self.parser.add_argument('-s', metavar="steps", dest="steps",
-            type=str, default=None,
-            help="Set of assembly steps to perform, e.g., -s 123 (Default=None)")
+        self.parser.add_argument('-m', dest="merge", default=None, nargs="*",
+            help="merge multiple Assemblies into one joint Assembly, and " + \
+            "can be used to merge Samples into one Sample.")
 
         self.parser.add_argument("-c", metavar="cores", dest="cores",
             type=int, default=0,
@@ -192,18 +185,17 @@ class CLI:
 
         self.parser.add_argument("-t", metavar="threading", dest="threads",
             type=int, default=2,
-            help="tune threading of binaries (Default=2)")
+            help="tune threading of multi-threaded binaries (Default=2)")
 
         self.parser.add_argument("--MPI", action='store_true',
             help="connect to parallel CPUs across multiple nodes")
 
-        self.parser.add_argument("--ipcluster", metavar="ipcluster", 
-            dest="ipcluster",
+        self.parser.add_argument("--ipcluster", dest="ipcluster",
             type=str, nargs="?", const="default",
-            help="connect to ipcluster profile (default: 'default')")
+            help="connect to running ipcluster, enter profile name or profile='default'")
 
-        self.parser.add_argument("--download", metavar="download", dest="download",
-            type=str, nargs="*", default=None,  # const="default",
+        self.parser.add_argument("--download", dest="download", type=str, 
+        nargs="*", default=None,  # const="default",
             help="download fastq files by accession (e.g., SRP or SRR)")
 
 
@@ -272,9 +264,9 @@ class CLI:
             if not any([self.args.branch, self.args.results, self.args.steps]):
                 print("""
         Must provide action argument along with -p argument for params file. 
-        e.g., ipyrad -p params-test.txt -r              ## shows results
-        e.g., ipyrad -p params-test.txt -s 12           ## runs steps 1 & 2
-        e.g., ipyrad -p params-test.txt -b newbranch    ## branch this assembly
+        e.g., ipyrad -p params-test.txt -r              # shows results
+        e.g., ipyrad -p params-test.txt -s 12           # runs steps 1 & 2
+        e.g., ipyrad -p params-test.txt -b newbranch    # branch this assembly
         """)
                 sys.exit(1)
 
