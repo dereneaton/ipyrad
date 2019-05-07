@@ -21,27 +21,23 @@ setup(
     author_email="de2356@columbia.edu",
     description="Interactive assembly and analysis of RAD-seq data sets",
     long_description=open('README.rst').read(),
-    packages=find_packages(),
-    install_requires=[
-        "future",
-        "notebook",
-        "ipyparallel>=6.0.2",
-        "scipy>0.10",
-        "numpy>=1.9",
-        "numba>=0.37",
-        "pandas>=0.16",
-        "pysam>=0.10.0",  # ipyrad::
-        "h5py",
-        "mpi4py",
-        "cutadapt",    # ipyrad::
-        # "toytree",     # eaton-lab::
-        "requests",
-    ],
-    entry_points={
-        'console_scripts': [
-            'ipyrad = ipyrad.__main__:main',
-        ],
-    },
+    packages=['ipyrad'],  # find_packages(),
+    # install_requires=[
+    #     "future",
+    #     "notebook",
+    #     "ipyparallel>=6.0.2",
+    #     "scipy>0.10",
+    #     "numpy>=1.9",
+    #     "numba>=0.37",
+    #     "pandas>=0.16",
+    #     "pysam>=0.10.0",  # ipyrad::
+    #     "h5py",
+    #     "mpi4py",
+    #     "cutadapt",    # ipyrad::
+    #     # "toytree",     # eaton-lab::
+    #     "requests",
+    # ],
+    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
     data_files=[('bin', glob.glob("./bin/*"))],
     license='GPL',
     classifiers=[
