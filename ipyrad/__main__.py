@@ -470,8 +470,8 @@ class CLI:
                 subargs = subargs[1:]
 
             # is sample list a file?
-            if os.path.exists(subargs[1]):
-                with open(subargs[1], 'r') as infile:
+            if os.path.exists(subargs[0]):
+                with open(subargs[0], 'r') as infile:
                     subsamples = [
                         i.split()[0] for i in infile.readlines() if i.strip()
                     ]
