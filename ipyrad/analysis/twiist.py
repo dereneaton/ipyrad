@@ -68,6 +68,18 @@ class Twisst(object):
             "minmap", "nnodes", "abcd", "acbd", "adbc", "unk", "subtree"],
         )
 
+        # parallelization
+        self.ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads": 2,
+            "pids": {},
+            }        
+
         # reverse of imap
         self.rmap = {}        
         for k, v in self.imap.items():

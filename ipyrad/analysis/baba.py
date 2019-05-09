@@ -20,8 +20,7 @@ import numba
 
 ## ipyrad tools
 import toytree
-from ipyrad.analysis.utils import Params, progressbar, parallelize_run
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.utils import Params, progressbar, IPyradError
 from ipyrad.assemble.write_outputs import reftrick
 
 # todo: wrap for warning
@@ -148,12 +147,7 @@ class Baba:
         """
 
         # distribute jobs in a wrapped cleaner function
-        parallelize_run(
-            self, 
-            run_kwargs={"ipyclient": ipyclient, 'force': force}, 
-            show_cluster=show_cluster, 
-            auto=auto)
-
+        pool = Parallel()
 
         batch(self, ipyclient)
 

@@ -19,7 +19,7 @@ import subprocess as sps
 import pandas as pd
 
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.analysis.utils import progressbar, parallelize_run
+from ipyrad.analysis.utils import progressbar
 
 
 ## raise warning if missing imports
@@ -146,20 +146,21 @@ class SRA(object):
             os.makedirs(self.workdir)
 
         # distribute job wrapped in ipcluster cleanup
-        parallelize_run(
-            self,
-            run_kwargs={
-                "ipyclient": ipyclient,
-                "force": force,
-                "name_fields": name_fields,
-                "name_separator": name_separator,
-                "dry_run": dry_run,
-                "split_pairs": split_pairs,
-                "gzip": gzip,
-            },
-            show_cluster=show_cluster, 
-            auto=auto,
-        )
+        pool = Parallel()
+        # parallelize_run(
+        #     self,
+        #     run_kwargs={
+        #         "ipyclient": ipyclient,
+        #         "force": force,
+        #         "name_fields": name_fields,
+        #         "name_separator": name_separator,
+        #         "dry_run": dry_run,
+        #         "split_pairs": split_pairs,
+        #         "gzip": gzip,
+        #     },
+        #     show_cluster=show_cluster, 
+        #     auto=auto,
+        # )
 
 
     def _run(

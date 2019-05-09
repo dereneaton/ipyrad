@@ -32,10 +32,10 @@ from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
 
 # conda install sratools -c bioconda
-from .sratools import SRA as sratools
+# from .sratools import SRA as sratools
 
 # no requirements
-from .baba import Baba as baba
+# from .baba import Baba as baba
 from .digest_genome import DigestGenome as digest_genome
 #from .popgen import Popgen as popgen
 #from .treemix import Treemix as treemix
