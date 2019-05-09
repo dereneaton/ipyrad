@@ -487,7 +487,7 @@ class Assembly(object):
             ## Write the header. Format to 80 columns
             header = "------- ipyrad params file (v.{})".format(ip.__version__)
             header += ("-" * (80 - len(header)))
-            paramsfile.write(header)
+            paramsfile.write(header + "\n")
 
             ## Whip through the current params and write out the current
             ## param value, the ordered dict index number. Also,
