@@ -1150,7 +1150,8 @@ def muscle_chunker(data, sample):
 def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     """ much faster implementation for aligning chunks """
 
-    ## data are already chunked, read in the whole thing. bail if no data.
+    # CHECK: data are already chunked, read in the whole thing. bail if no data.
+    clusts = []
     try:
         with open(handle, 'rb') as infile:
             clusts = infile.read().decode().split("//\n//\n")
@@ -1160,7 +1161,12 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
             if not clusts:
                 raise IPyradError("no clusters in file: {}".format(handle))
 
-    except (IOError, IPyradError):
+    # return 0 if file not read for some reason...
+    except IOError:
+        return 0
+
+    # return 0 if no clusters in file
+    if not clusts:
         return 0
 
     ## count discarded clusters for printing to stats later
