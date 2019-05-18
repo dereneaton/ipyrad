@@ -8,11 +8,13 @@ numpy>=1.9
 numba>=0.31
 pandas>=0.16
 h5py
-networkx
+## networkx version pegged to 1.7 to prevent rtfd build from crashing.
+networkx<=1.7
 dask
 dask[array]
 pysam>=0.10.0
 setuptools
+## Cutadapt version pegged to 1.9 to prevent rtfd build from crashing.
 cutadapt<=1.9
 
 #nbconvert
