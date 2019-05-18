@@ -13,7 +13,7 @@ dask
 dask[array]
 pysam>=0.10.0
 setuptools
-cutadapt=1.9
+cutadapt<=1.9
 
 #nbconvert
 #ipykernel
