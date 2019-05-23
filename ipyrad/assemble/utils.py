@@ -42,7 +42,7 @@ class IPyradError(SystemExit):
             raise IPyradAPIError(*args, **kwargs)
         else:
             # clean exit for CLI that still exits as an Error (e.g. for HPC)
-            SystemExit.__init__(self, *args, **kwargs)
+            SystemExit(1)  # __init__()#self, *args, **kwargs)
 
 
 ## utility functions/classes
