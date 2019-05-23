@@ -266,13 +266,21 @@ class Assembly(object):
         # make sure bars are upper case
         bdf[1] = bdf[1].str.upper()
 
-        # if replicates are present then print a warning
+        # if replicates are present
         if bdf[0].value_counts().max() > 1:
-            self._print("Warning: technical replicates (same name) present.")
+
+            # print a warning about dups if the data are not demultiplexed
+            if not self.samples:
+                self._print(
+                    "Warning: technical replicates (same name) present.")
 
             # adds -technical-replicate-N to replicate names (NON_DEFAULT)
             # if not self.hackersonly.merge_technical_replicates:                   
+            
+            # get duplicated names
             repeated = (bdf[0].value_counts() > 1).index
+
+            # labels technical reps in barcode dict
             for rep in repeated:
                 farr = bdf[bdf[0] == rep]
                 for idx, index in enumerate(farr.index):
