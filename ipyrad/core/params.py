@@ -298,6 +298,8 @@ class Params(object):
         return self._raw_fastq_path
     @raw_fastq_path.setter
     def raw_fastq_path(self, value):
+
+        # check path
         if value and ("Merged:" not in value):
             fullpath = os.path.realpath(os.path.expanduser(value))
             if os.path.isdir(fullpath):
@@ -306,9 +308,10 @@ class Params(object):
                 self._raw_fastq_path = fullpath
             else:
                 raise IPyradError(NO_RAW_FILE.format(fullpath))
-        # if 'Merged:' in value then set to ""
+
+        # if 'Merged:' in value then set to value
         else:
-            self._raw_fastq_path = ""
+            self._raw_fastq_path = value
 
 
     @property
@@ -331,9 +334,10 @@ class Params(object):
             else:
                 self._barcodes_path = fullbar
                 self._data._link_barcodes()
+
         # if 'Merged:' in value then set to ""
         else:
-            self._barcodes_path = ""
+            self._barcodes_path = value
 
 
     @property
@@ -351,7 +355,7 @@ class Params(object):
                 raise IPyradError(SORTED_NOT_FOUND.format(fullpath))
         # if 'Merged:' in value then set to ""
         else:
-            self._sorted_fastq_path = ""
+            self._sorted_fastq_path = value
 
 
     @property
