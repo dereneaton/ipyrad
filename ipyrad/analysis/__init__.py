@@ -14,12 +14,13 @@ from ipyrad import __version__
 # conda install raxml mrbayes -c bioconda
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
-from .twiist import Twisst as twisst
-from .clade_weights import CladeWeights as clade_weights
 from .treeslider import TreeSlider as treeslider
+from .clade_weights import CladeWeights as clade_weights
+# from .twisst import Twisst as twisst
 
 # conda install structure clumpp -c ipyrad
 from .structure import Structure as structure
+#from .pca import pca
 
 # conda install tetrad -c eaton-lab
 #from .tetrad import Tetrad as tetrad
