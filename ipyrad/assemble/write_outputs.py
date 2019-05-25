@@ -59,7 +59,7 @@ class Step7:
 
 
     def run(self):
-        # split clusters into bits.
+        # split clusters into bits. 
         self.split_clusters()
 
         # get filter and snp info on edge trimmed data.
@@ -407,6 +407,10 @@ class Step7:
             statcopy.to_string(buf=outstats)
             print("\n\n\n## Alignment matrix statistics:", file=outstats)
 
+        # bail out here if no loci were found
+        if not self.nloci:
+            raise IPyradError("No loci passed filters.")
+
 
     def split_clusters(self):
         with open(self.data.clust_database, 'rb') as clusters:
@@ -443,7 +447,9 @@ class Step7:
 
 
     def remote_process_chunks(self):
-        "Calls process chunks in parallel."
+        """
+        Calls process_chunk() function in parallel.
+        """
         start = time.time()
         printstr = ("applying filters    ", "s7")
         rasyncs = {}
@@ -452,7 +458,7 @@ class Step7:
         jobs = sorted(jobs, key=lambda x: int(x.rsplit("-")[-1]))        
         for jobfile in jobs:
             args = (self.data, self.chunksize, jobfile)
-            rasyncs[jobfile] = self.lbview.apply(process_chunks, *args)
+            rasyncs[jobfile] = self.lbview.apply(process_chunk, *args)
         
         # iterate until all chunks are processed
         while 1:
@@ -471,6 +477,9 @@ class Step7:
 
 
     def remote_build_arrays_and_write_loci(self):
+        """
+        Calls write_loci_and_alleles(), fill_seq_array() and fill_snp_array().
+        """
         # start loci concatenating job on a remote
         start = time.time()
         printstr = ("building arrays     ", "s7")
@@ -500,7 +509,9 @@ class Step7:
 
 
     def remote_write_outfiles(self):
-        "Calls Converter object funcs in parallel."
+        """
+        Calls convert_outputs() in parallel.
+        """
         start = time.time()
         printstr = ("writing conversions ", "s7")        
         rasyncs = {}
@@ -525,7 +536,9 @@ class Step7:
       
 
     def remote_fill_depths(self):
-        "send each sample to build depth arrays"
+        """
+        Call fill_vcf_depths() in parallel.
+        """
         start = time.time()
         printstr = ("indexing vcf depths ", "s7")        
         rasyncs = {}
@@ -551,7 +564,9 @@ class Step7:
 
 
     def remote_build_vcf(self):
-        "write VCF file"
+        """
+        Calls build_vcf() in parallel. 
+        """
         start = time.time()
         printstr = ("writing vcf output  ", "s7")        
         rasync = self.lbview.apply(build_vcf, self.data)          
@@ -573,18 +588,24 @@ class Step7:
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
 # ------------------------------------------------------------
-def process_chunks(data, chunksize, chunkfile):
+def process_chunk(data, chunksize, chunkfile):
     # process chunk writes to files and returns proc with features.
     proc = Processor(data, chunksize, chunkfile)
     proc.run()
 
-    # TODO: if no loci passed filters then it crashes here...
+    # check for variants or set max to 0
+    try:
+        mvar = max([i for i in proc.var if proc.var[i]])
+    except ValueError:
+        mvar = 0
+    try:
+        mpis = max([i for i in proc.pis if proc.pis[i]])
+    except ValueError:
+        mpis = 0
 
-    # shorten dictionaries
-    iii = max([i for i in proc.var if proc.var[i]])
-    proc.var = {i: j for (i, j) in proc.var.items() if i <= iii}
-    iii = max([i for i in proc.pis if proc.pis[i]])
-    proc.pis = {i: j for (i, j) in proc.pis.items() if i <= iii}
+    # shorten dictionaries   
+    proc.var = {i: j for (i, j) in proc.var.items() if i <= mvar}
+    proc.pis = {i: j for (i, j) in proc.pis.items() if i <= mpis}
 
     # write process stats to a pickle file for collating later.
     out = {
@@ -602,7 +623,7 @@ def process_chunks(data, chunksize, chunkfile):
 
 ##############################################################
 
-class Processor:
+class Processor(object):
     def __init__(self, data, chunksize, chunkfile):
         """
         Takes a chunk of aligned loci and (1) applies filters to it; 
@@ -615,6 +636,12 @@ class Processor:
         self.chunkfile = chunkfile
         self.isref = self.data.isref
         self.ispair = self.data.ispair
+        self.minsamp = self.data.params.min_samples_locus
+
+        # if ref build and excluding ref that -1 to minsamp
+        if self.isref:
+            if self.data.hackersonly.exclude_reference:
+                self.minsamp -= 1
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
@@ -699,6 +726,7 @@ class Processor:
 
     def run(self):
 
+        # iterate through loci in the chunk
         while 1:
             try:
                 self.next_locus()
@@ -760,7 +788,10 @@ class Processor:
             self.filter_maxindels(ublock)
 
             # get snpstring on trimmed reads
-            snparr = self.get_snpsarrs(ublock)
+            if self.isref and self.data.hackersonly.exclude_reference:
+                snparr = self.get_snpsarrs(ublock, True)
+            else:
+                snparr = self.get_snpsarrs(ublock)
             self.filter_maxvars(ublock, snparr)
 
             # apply filters on edge trimmed reads
@@ -771,7 +802,12 @@ class Processor:
                 # do sample and locus counters
                 for name in self.names:
                     self.scov[name] += 1
-                self.lcov[self.useqs.shape[0]] += 1
+
+                # advance locus counter
+                if self.isref and self.data.hackersonly.exclude_reference:
+                    self.lcov[self.useqs.shape[0] - 1] += 1
+                else:
+                    self.lcov[self.useqs.shape[0] - 1] += 1
 
                 # do SNP distribution counter
                 if self.masked is None:
@@ -863,12 +899,17 @@ class Processor:
 
 
     def filter_minsamp_pops(self):
+        "filter by minsamp or by minsamp x populations"
+        
+        # default: no population information
         if not self.data.populations:
-            if len(self.names) < self.data.params.min_samples_locus:
+            if len(self.names) < self.minsamp:  # data.params.min_samples_locus:
+                # store locus filter
                 self.filters[self.iloc, 4] = 1
                 return True
             return False
 
+        # use populations 
         else:
             minfilters = []
             for pop in self.data.populations:
@@ -915,9 +956,10 @@ class Processor:
         return False
 
 
-    def get_snpsarrs(self, block):
+    def get_snpsarrs(self, block, exclude_ref=False):
+        "count nsnps with option to exclude reference sample from count"
         snpsarr = np.zeros((block.shape[1], 2), dtype=np.bool_)
-        return snpcount_numba(block, snpsarr)
+        return snpcount_numba(block, snpsarr, int(bool(exclude_ref)))
 
 
 ##############################################################
@@ -927,17 +969,32 @@ class Edges:
     def __init__(self, data, seqs):
         self.data = data
         self.seqs = seqs
-        self.trimseq = None
+
+        # params
         self.bad = False
+        self.exclude_ref = self.data.hackersonly.exclude_reference
         self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
         self.trims = np.array([0, 0, 0, 0])  # self.seqs.shape[1]])
         self.minlen = self.data.params.filter_min_trim_len
 
+        # to be filled
+        self.trimseq = None
+
+        # -1 to site coverage if ref is excluded from the count
+        minsites_left = self.data.hackersonly.trim_loci_min_sites
+        minsites_right = self.data.hackersonly.trim_loci_min_sites
+        if "reference" in self.data.params.assembly_method:
+            if self.exclude_ref:
+                minsites_left -= 1
+                minsites_right -= 1
+
         # get edges of good locus
         self.trim_for_coverage(
-            minsite_left=self.data.hackersonly.trim_loci_min_sites,
-            minsite_right=self.data.hackersonly.trim_loci_min_sites,
+            minsite_left=minsites_left,
+            minsite_right=minsites_right,
         )
+
+        # fill trimseq with the trimmed sequence array
         self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
 
         # apply edge filtering to locus
@@ -972,7 +1029,6 @@ class Edges:
         # find insert region for paired data to mask it...
         self.edges[1] = 0
         self.edges[2] = 0
-
 
 
     def trim_overhangs(self):
@@ -1031,14 +1087,14 @@ class Edges:
             self.bad = True
 
 
-# jit
+@njit
 def locus_left_trim(seqs, minsamp, mincovs):
     leftmost = np.where(mincovs >= minsamp)[0]
     if leftmost.size:
         return leftmost.min()
     return 0
 
-# jit
+@njit
 def locus_right_trim(seqs, minsamp, mincovs):
     rightmost = np.where(mincovs >= minsamp)[0]
     if rightmost.size:
@@ -1060,6 +1116,8 @@ class Converter:
         self.output_formats = self.data.params.output_formats
         self.seqs_database = self.data.seqs_database
         self.snps_database = self.data.snps_database        
+        self.exclude_ref = (
+            self.data.hackersonly.exclude_reference and self.data.isref)
 
     def run(self, oformat):
 
@@ -1084,8 +1142,8 @@ class Converter:
             self.write_snps_map()
 
         # recommended to use analysis tools for unlinked sampling.
-        #if oformat == "u":
-        #    pass
+        if oformat == "u":
+            self.write_usnps()
 
         if oformat == "k":
             self.write_str()
@@ -1103,13 +1161,18 @@ class Converter:
                 arrsize = io5['phymap'][-1, 2]
 
                 # if reference then inserts are not trimmed from phy
-                # ...
+                #
 
-                # write dims
-                out.write("{} {}\n".format(len(self.data.snames), arrsize))
+                # write dims 
+                if self.exclude_ref:
+                    out.write("{} {}\n".format(len(self.data.snames) - 1, arrsize))
+                    rowstart = 1
+                else:
+                    out.write("{} {}\n".format(len(self.data.snames), arrsize))
+                    rowstart = 0
 
                 # write to disk
-                for idx in range(io5['phy'].shape[0]):
+                for idx in range(rowstart, io5['phy'].shape[0]):
                     seq = seqarr[idx, :arrsize].view("S1")
                     out.write(
                         "{}{}".format(
@@ -1127,40 +1190,66 @@ class Converter:
                 seqarr = io5['phy'][:]
                 arrsize = io5['phymap'][-1, 2]
 
-                ## write nexus seq header
-                out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
+                # option: exclude reference sequence
+                if self.exclude_ref:
+                    # write nexus seq header
+                    out.write(NEXHEADER.format(seqarr.shape[0] - 1, arrsize))
+                    rstart = 1
 
-                ## grab a big block of data
+                else:
+                    # write nexus seq header
+                    out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
+                    rstart = 0
+
+                # get the name order for every block
+                xnames = [
+                    self.data.pnames[self.data.snames[i]] 
+                    for i in range(rstart, len(self.data.snames))
+                ]
+
+                # grab a big block of data
                 chunksize = 100000  # this should be a multiple of 100
                 for bidx in range(0, arrsize, chunksize):
-                    bigblock = seqarr[:, bidx:bidx + chunksize]
+                    bigblock = seqarr[rstart:, bidx:bidx + chunksize]
                     lend = int(arrsize - bidx)
 
-                    ## write interleaved seqs 100 chars with longname+2 before
+                    # store interleaved seqs 100 chars with longname+2 before
                     tmpout = []            
                     for block in range(0, min(chunksize, lend), 100):
                         stop = min(block + 100, arrsize)
 
-                        for idx, name in enumerate(self.data.pnames):
+                        # , name in enumerate(self.data.pnames):
+                        # get line for each sample
+                        # range(rstart, io5["phy"].shape[0]):
+                        for idx, name in enumerate(xnames):  
                             seqdat = bigblock[idx, block:stop]
                             tmpout.append("  {}{}\n".format(
-                                self.data.pnames[name], 
+                                #self.data.pnames[self.data.snames[idx]], 
+                                name,  # xnames[idx],
                                 b"".join(seqdat).decode().upper()))
                         tmpout.append("\n")
 
                     ## print intermediate result and clear
                     if any(tmpout):
                         out.write("".join(tmpout))
-                ## closer
+                
+                # closer
                 out.write(NEXCLOSER)
                 
-                ## add partition information from maparr
+                # add partition information from maparr
                 maparr = io5["phymap"][:, 2]
                 charsetblock = []
                 charsetblock.append("BEGIN SETS;")
+                
+                # the first block
+                charsetblock.append("charset {} = {}-{};".format(
+                    0, 0, maparr[0],
+                ))
+
+                # all other blocks
                 for idx in range(0, maparr.shape[0] - 1):
                     charsetblock.append("charset {} = {}-{};".format(
-                        idx, maparr[idx], maparr[idx + 1]
+                        idx + 1, maparr[idx], maparr[idx + 1]
                         )
                     )
                 charsetblock.append("END;")
@@ -1174,13 +1263,20 @@ class Converter:
                 # load seqarray
                 seqarr = io5['snps']
 
+                # option to skip ref
+                if self.exclude_ref:
+                    nsamples = len(self.data.snames) - 1
+                    rstart = 1
+                else:
+                    nsamples = len(self.data.snames)
+                    rstart = 0
+
                 # write dims
-                out.write("{} {}\n".format(
-                    len(self.data.snames), seqarr.shape[1]))
+                out.write("{} {}\n".format(nsamples, seqarr.shape[1]))
 
                 # write to disk one row at a time
                 # (todo: chunk optimize for this.)
-                for idx in range(io5['snps'].shape[0]):
+                for idx in range(rstart, io5['snps'].shape[0]):
                     seq = seqarr[idx, :].view("S1")
                     out.write(
                         "{}{}".format(
@@ -1189,6 +1285,52 @@ class Converter:
                         )
                     )
 
+
+    def write_usnps(self):
+        with open(self.data.outfiles.usnps, 'w') as out:
+            with h5py.File(self.snps_database, 'r') as io5:
+                # load seqarray
+                snparr = io5['snps']
+                # access array of data
+                maparr = io5["snpsmap"][:]
+
+                # get n unlinked snps
+                varloci = np.unique(maparr[:, 0])
+                nsnps = varloci.size
+
+                # option to skip ref
+                if self.exclude_ref:
+                    nsamples = len(self.data.snames) - 1
+                    rstart = 1
+                else:
+                    nsamples = len(self.data.snames)
+                    rstart = 0
+
+                # write dims
+                out.write("{} {}\n".format(nsamples, nsnps))
+
+                # get sampled columns
+                cols = []
+                cidx = 0
+                for lidx in varloci:
+                    sidxs = maparr[maparr[:, 0] == lidx][:, 1]
+                    rint = np.random.choice(sidxs) + cidx
+                    cols.append(rint)
+                    cidx += sidxs.size
+
+                # write to disk one row at a time
+                for idx in range(rstart, snparr.shape[0]):
+
+                    # get all SNPS from this sample
+                    seq = snparr[idx, cols].view("S1")
+
+                    out.write(
+                        "{}{}".format(
+                            self.data.pnames[self.data.snames[idx]],
+                            b"".join(seq).decode().upper() + "\n",
+                        )
+                    )
+        
 
     def write_snps_map(self):
         "write a map file with linkage information for SNPs file"
@@ -1247,8 +1389,16 @@ class Converter:
             with h5py.File(self.data.snps_database, 'r') as io5:
                 snparr = io5["snps"]
 
+                # option to skip ref
+                if self.exclude_ref:
+                    rstart = 1
+                else:
+                    rstart = 0                
+
                 if self.data.params.max_alleles_consens > 1:
-                    for idx, name in enumerate(self.data.pnames):
+                    for idx in range(rstart, len(self.data.snames)):
+                        # get sample name
+                        name = self.data.pnames[self.data.snames[idx]]
                         # get row of data
                         snps = snparr[idx, :].view("S1")
                         # expand for ambiguous bases
@@ -1257,23 +1407,26 @@ class Converter:
                         sequence = "\t".join([STRDICT[i[0]] for i in snps])
                         out.write(
                             "{}\t\t\t\t\t{}\n"
-                            .format(self.data.pnames[name], sequence))
+                            .format(name, sequence))
                         sequence = "\t".join([STRDICT[i[1]] for i in snps])                            
                         out.write(
                             "{}\t\t\t\t\t{}\n"
-                            .format(self.data.pnames[name], sequence))
+                            .format(name, sequence))
 
                 else:
-                    for idx, name in enumerate(self.data.pnames):
+                    for idx in range(rstart, len(self.data.snames)):
+                        # get sample name
+                        name = self.data.pnames[self.data.snames[idx]]
                         # get row of array data
                         snps = snparr[idx, :].view("S1")
                         # expand for ambiguous bases
                         snps = [BTS[i.upper()] for i in snps]
                         # convert to numbers and write row for each resolution
                         sequence = "\t".join([STRDICT[i[0]] for i in snps])
+                        # write to file
                         out.write(
                             "{}\t\t\t\t\t{}\n"
-                            .format(self.data.pnames[name], sequence))
+                            .format(name, sequence))
 
 
     def write_gphocs(self):
@@ -1324,7 +1477,14 @@ class Converter:
     def write_geno(self):
         with open(self.data.outfiles.geno, 'w') as out:
             with h5py.File(self.data.snps_database, 'r') as io5:
-                genos = io5["genos"][:]
+
+                # option to skip ref
+                if self.exclude_ref:
+                    rstart = 1
+                else:
+                    rstart = 0
+
+                genos = io5["genos"][:, rstart:]
                 snpgenos = np.zeros(genos.shape[:2], dtype=np.uint8)
                 snpgenos.fill(9)
                 
@@ -1339,6 +1499,21 @@ class Converter:
                 
                 # write to file
                 np.savetxt(out, snpgenos, delimiter="", fmt="%d")
+
+
+    def write_treemix(self):
+        pass
+
+
+    def write_migrate(self):
+        mig = ipyrad.analysis.migrate_n(
+            data=self.data.outfiles.loci,
+            name=self.data.name,
+            workdir=self.data.dirs.outfiles,
+            imap={i: j[1] for (i, j) in self.data.populations.items()},
+            minmap={i: j[0] for (i, j) in self.data.populations.items()},
+            )
+        mig.write_seqfile()
 
 
 # ------------------------------------------------------------
@@ -1378,6 +1553,11 @@ def write_loci_and_alleles(data):
             indata = open(bit, 'r')
             for line in iter(indata):
 
+                # skip reference lines if excluding
+                if data.hackersonly.exclude_reference:
+                    if "reference     " in line:
+                        continue
+
                 # write name, seq pairs
                 if "|\n" not in line:
                     lchunk.append(line[:pad] + line[pad:].upper())
@@ -1404,6 +1584,12 @@ def write_loci_and_alleles(data):
         else:
             indata = open(bit, 'r')
             for line in iter(indata):
+
+                # skip reference lines if excluding
+                if data.hackersonly.exclude_reference:
+                    if "reference     " in line:
+                        continue
+
                 if "|\n" not in line:
                     name = line[:pad]
                     seq = line[pad:]
@@ -1688,6 +1874,10 @@ def fill_snp_array(data, ntaxa, nsnps):
             shape=(nsnps, ntaxa, 2),
             dtype=np.uint8,
         )
+
+        io5["snpsmap"].attrs["columns"] = [
+            b"locus", b"locidx", b"locpos", b"scaf", b"scafpos",  # b"arrpos",
+        ]
 
         # gather all loci bits
         locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
@@ -2161,7 +2351,7 @@ def maxind_numba(block):
 
 
 @njit
-def snpcount_numba(block, snpsarr):
+def snpcount_numba(block, snpsarr, rowstart):
     "Used to count the number of unique bases in a site for snpstring."  
 
     # iterate over all loci
@@ -2171,7 +2361,7 @@ def snpcount_numba(block, snpsarr):
         catg = np.zeros(4, dtype=np.int16)
 
         # a list for only catgs
-        ncol = block[:, site]
+        ncol = block[rowstart:, site]
         for idx in range(ncol.shape[0]):
             if ncol[idx] == 67:    # C
                 catg[0] += 1
@@ -2319,6 +2509,7 @@ The distribution of SNPs (var and pis) per locus.
 ## var = Number of loci with n variable sites (pis + autapomorphies)
 ## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)
 ## ipyrad API location: [assembly].stats_dfs.s7_snps
+## The "reference" sample is included if present unless 'exclude_reference=True'
 """
 MISSING_SAMPLE_IN_DB = """
 There are samples in this assembly that were not present in step 6. This is 
