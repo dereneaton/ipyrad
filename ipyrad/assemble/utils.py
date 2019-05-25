@@ -13,6 +13,7 @@ except ImportError:
     izip = zip
 
 import os
+import sys
 import socket
 import pandas as pd
 import numpy as np
@@ -23,15 +24,7 @@ import string
 BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
 
 
-# class IPyradError(Exception):
-class IPyradAPIError(Exception):
-    """ Exception handler indicating error in during assembly """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
-
-
-# class IPyradWarningExit(SystemExit):
-class IPyradError(SystemExit):
+class IPyradError(Exception):
     """
     Exception handler that does clean exit for CLI, but also prints
     the traceback and cleaner message for API.
@@ -39,10 +32,10 @@ class IPyradError(SystemExit):
     def __init__(self, *args, **kwargs):
         if ipyrad.__interactive__:
             # raise a traceback for the API
-            raise IPyradAPIError(*args, **kwargs)
+            Exception.__init__(self, *args, **kwargs)
         else:
             # clean exit for CLI that still exits as an Error (e.g. for HPC)
-            SystemExit(1)  # __init__()#self, *args, **kwargs)
+            SystemExit(1)
 
 
 ## utility functions/classes
