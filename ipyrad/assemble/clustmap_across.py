@@ -283,10 +283,10 @@ class Step6:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
+                rasyncs[job].get()
 
 
     def remote_cluster1(self):
@@ -306,10 +306,10 @@ class Step6:
                 break
 
         # check for errors
-        print("")
+        self.data._print("")
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
+                rasyncs[job].get()
 
 
     def remote_build_concats_tier2(self):
@@ -326,10 +326,10 @@ class Step6:
                 break
 
         # check for errors
-        print("")
         rasync.wait()
+        self.data._print("")
         if not rasync.successful():
-            raise IPyradError(rasync.exception())        
+            rasync.get()
 
 
     def remote_cluster_tiers(self, jobid):
@@ -351,10 +351,9 @@ class Step6:
         # check for errors
         self.ipyclient.wait()
         if not rasync.successful():
-            raise IPyradError(rasync.exception())
+            rasync.get()
 
 
-    ## DENOVO FUNCS ----------------------------------------------
     def remote_build_denovo_clusters(self):
         "build denovo clusters from vsearch clustered seeds"
         # filehandles; if not multiple tiers then 'x' is jobid 0
@@ -385,7 +384,7 @@ class Step6:
             time.sleep(0.1)
             if all(ready):
                 break
-        nseeds = async2.result()
+        nseeds = async2.get()
 
         # send the clust bit building job to work and track progress
         async3 = self.lbview.apply(
@@ -396,12 +395,12 @@ class Step6:
             time.sleep(0.1)
             if all(ready):
                 break
-        print("")
+        self.data._print("")
 
         # check for errors
         for job in [async1, async2, async3]:
             if not job.successful():
-                raise IPyradError(job.result())
+                job.get()
 
 
     def remote_align_denovo_clusters(self):
@@ -432,10 +431,9 @@ class Step6:
         keys = list(jobs.keys())
         for idx in keys:
             if not jobs[idx].successful():
-                raise IPyradError(
-                    "error in step 6 {}".format(jobs[idx].exception()))
+                jobs[idx].get()
             del jobs[idx]
-        print("")
+        self.data._print("")
 
 
     def concat_alignments(self):
@@ -584,11 +582,7 @@ class Step6:
             if done:
                 break
         self.data._print("")
-        if rasync.successful():
-            self.regions = rasync.result()
-        else:
-            raise IPyradError(
-                "error in build ref regions: {}".format(rasync.exception()))
+        self.regions = rasync.get()
 
 
     def remote_build_ref_clusters(self):
@@ -602,7 +596,7 @@ class Step6:
 
         # send jobs to func
         start = time.time()
-        printstr = ("building loci       ", "s6")
+        printstr = ("building database   ", "s6")        
         jobs = {}
         for idx, chunk in enumerate(range(0, nloci, optim)):
             region = self.regions[chunk: chunk + optim]
@@ -623,8 +617,7 @@ class Step6:
         # check success
         for idx in jobs:
             if not jobs[idx].successful():
-                raise IPyradError(
-                    "error in step 6 {}".format(jobs[idx].get()))
+                jobs[idx].get()
         self.data._print("")
 
 
