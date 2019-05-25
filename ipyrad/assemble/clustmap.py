@@ -442,7 +442,6 @@ class Step3:
         for job in [rasync1, rasync2]:
             if not job.successful():
                 job.get()
-                # raise IPyradError(job.exception())
 
 
     def remote_run_cluster_build(self):
