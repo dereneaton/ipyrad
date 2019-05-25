@@ -441,7 +441,8 @@ class Step3:
         self.data._print("")
         for job in [rasync1, rasync2]:
             if not job.successful():
-                raise IPyradError(job.exception())
+                job.get()
+                # raise IPyradError(job.exception())
 
 
     def remote_run_cluster_build(self):
@@ -481,9 +482,9 @@ class Step3:
             if len(ready) == sum(ready):
                 break
         self.data._print("")
-        for job in casyncs:
+        for job in casyncs:            
             if not casyncs[job].successful():
-                raise IPyradError(casyncs[job].exception())
+                casyncs[job].get()
 
         # track job progress
         start = time.time()
@@ -497,7 +498,7 @@ class Step3:
         self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
-                raise IPyradError(basyncs[job].exception())
+                basyncs[job].get()
 
         # track job progress
         start = time.time()
@@ -511,7 +512,7 @@ class Step3:
         self.data._print("")
         for job in hasyncs:
             if not hasyncs[job].successful():
-                raise IPyradError(hasyncs[job].exception())
+                hasyncs[job].get()
 
 
     def remote_run_align_cleanup(self):
@@ -530,6 +531,7 @@ class Step3:
                     *(handle, self.maxindels, self.gbs)
                 )
                 aasyncs[sample.name].append(rasync)
+
         # a list with all aasyncs concatenated
         allasyncs = list(chain(*[aasyncs[i] for i in aasyncs]))
 
@@ -553,7 +555,7 @@ class Step3:
         self.data._print("")
         for job in allasyncs:
             if not job.successful():
-                raise IPyradError(job.exception())
+                job.get()
 
         # track job 2 progress
         start = time.time()
@@ -567,7 +569,7 @@ class Step3:
         self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
-                raise IPyradError(basyncs[job].exception())
+                basyncs[job].get()
 
 
     def remote_run_sample_cleanup(self):
@@ -587,15 +589,11 @@ class Step3:
             for sname in samplelist:
                 if rasyncs[sname].ready():
 
-                    # enter results to sample object
+                    # enter results to sample object and checks for errors
                     maxlens, depths = rasyncs[sname].get()
                     store_sample_stats(
                         self.data, self.data.samples[sname], maxlens, depths)
                     finished += 1
-                    
-                    # check for errors
-                    if not rasyncs[sname].successful():
-                        raise IPyradError(rasyncs[sample.name].get())
 
                     # remove sample from todo list, and del from rasyncs mem
                     rasyncs.pop(sname)
@@ -627,11 +625,10 @@ class Step3:
             if len(ready) == sum(ready):
                 break
 
-        # check for errors
+        # check for errors, will raise ipp.RemoteError
         self.data._print("")
         for job in rasyncs:
-            if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
+            rasyncs[job].get()
 
         # clean up to free any RAM
         self.ipyclient.purge_everything()
