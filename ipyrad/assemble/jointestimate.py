@@ -129,15 +129,12 @@ class Step4:
                 break
 
         # cleanup
-        print("")
+        self.data._print("")        
         for job in jobs:
-            if jobs[job].successful():
-                # collect results
-                hest, eest, success = jobs[job].result()
-                # store results to sample objects
-                sample_cleanup(self.data.samples[job], hest, eest, success)
-            else:
-                raise IPyradError(jobs[job].result())
+            # collect results
+            hest, eest, success = jobs[job].get()
+            # store results to sample objects
+            sample_cleanup(self.data.samples[job], hest, eest, success)
 
 
     def cleanup(self):
