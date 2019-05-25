@@ -23,7 +23,6 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import scipy.stats
-# import scipy.misc
 
 import ipyrad as ip
 from .jointestimate import recal_hidepth
@@ -207,15 +206,12 @@ class Step5:
 
         # check for failures and collect results
         for sample in self.samples:
-            if not jobs[sample.name].successful():
-                raise IPyradError(jobs[sample.name].get())
-            else:
-                hidepth, maxlen, _, _ = jobs[sample.name].result()
-                # recal_hidepth(self.data, sample)
-                # (not saved) stat values are for majrule min
-                sample.stats["clusters_hidepth"] = hidepth
-                sample.stats_dfs.s3["clusters_hidepth"] = hidepth
-                maxlens.append(maxlen)
+            hidepth, maxlen, _, _ = jobs[sample.name].get()
+            # recal_hidepth(self.data, sample)
+            # (not saved) stat values are for majrule min
+            sample.stats["clusters_hidepth"] = hidepth
+            sample.stats_dfs.s3["clusters_hidepth"] = hidepth
+            maxlens.append(maxlen)
         
         # update hackersdict with max fragement length
         self.data.hackersonly.max_fragment_length = max(maxlens)
@@ -235,7 +231,7 @@ class Step5:
                 make_chunks,
                 *(self.data, sample, len(self.ipyclient)))
 
-        ## block until finished
+        # block until finished
         while 1:
             ready = [i.ready() for i in jobs.values()]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
@@ -244,10 +240,10 @@ class Step5:
                 self.data._print("")
                 break
 
-        ## check for failures
+        # check for failures
         for sample in self.samples:
             if not jobs[sample.name].successful():
-                raise IPyradError(jobs[sample.name].get())
+                jobs[sample.name].get()
 
 
     def remote_process_chunks(self):
@@ -287,13 +283,12 @@ class Step5:
         # check for failures
         for job in allsyncs:
             if not job.successful():
-                raise IPyradError(
-                    "error in process_chunks():\n{}".format(job.get()))
+                job.get()
 
         # collect all results for a sample and store stats 
         statsdicts = {}
         for sample in self.samples:
-            statsdicts[sample.name] = [i.result() for i in jobs[sample.name]]
+            statsdicts[sample.name] = [i.get() for i in jobs[sample.name]]
         return statsdicts
 
 
@@ -335,7 +330,7 @@ class Step5:
         # check for failures:
         for job in alljobs:
             if not job.successful():
-                raise IPyradError(job.get())
+                job.get()
 
 
     def data_store(self, statsdicts):
@@ -1185,7 +1180,6 @@ def get_binom(base1, base2, estE, estH):
     ## calculate probs
     bsum = base1 + base2
     hetprob = scipy.special.comb(bsum, base1) / (2. ** (bsum))
-    # hetprob = scipy.misc.comb(bsum, base1) / (2. ** (bsum))
     homoa = scipy.stats.binom.pmf(base2, bsum, estE)
     homob = scipy.stats.binom.pmf(base1, bsum, estE)
 
