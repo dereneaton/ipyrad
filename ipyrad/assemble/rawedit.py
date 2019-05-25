@@ -12,6 +12,7 @@ import os
 import time
 import numpy as np
 import subprocess as sps
+import ipyparallel as ipp
 from .utils import IPyradError, fullcomp
 
 
@@ -152,14 +153,7 @@ class Step2(object):
             # collect results, which are concat file handles.
             self.data._print("")
             for rasync in catjobs:
-                if catjobs[rasync].successful():
-                    self.data.samples[rasync].files.concat = (
-                        catjobs[rasync].result())
-                else:
-                    error = catjobs[rasync].result()  # exception()
-                    # ip.logger.error("error in step2 concat %s", error)
-                    raise IPyradError(
-                        "error in step2 concat: {}".format(error))
+                self.data.samples[rasync].files.concat = catjobs[rasync].get()
 
 
     def remote_run_cutadapt(self):
@@ -179,7 +173,7 @@ class Step2(object):
                     cutadaptit_single, *(self.data, sample))
             rawedits[sample.name] = rasync
 
-        ## wait for all to finish
+        # wait for all to finish
         while 1:
             finished = sum([i.ready() for i in rawedits.values()])
             self.data._progressbar(len(rawedits), finished, start, printstr)
@@ -188,23 +182,15 @@ class Step2(object):
                 print("")
                 break
 
-        ## collect results, report failures, store stats. async = sample.name
+        # collect results, report failures, store stats. async = sample.name
         for rasync in rawedits:
-            if rawedits[rasync].successful():
-                res = rawedits[rasync].result()
-
-                ## if single cleanup is easy
-                if "pair" not in self.data.params.datatype:
-                    parse_single_results(
-                        self.data, self.data.samples[rasync], res)
-                else:
-                    parse_pair_results(
-                        self.data, self.data.samples[rasync], res)
+            res = rawedits[rasync].get()
+            if "pair" not in self.data.params.datatype:
+                parse_single_results(
+                    self.data, self.data.samples[rasync], res)
             else:
-                raise IPyradError(
-                    "error in {}: {}"
-                    .format(rasync, rawedits[rasync].get())
-                )
+                parse_pair_results(
+                    self.data, self.data.samples[rasync], res)
 
 
     def assembly_cleanup(self):
@@ -519,10 +505,10 @@ def cutadaptit_pairs(data, sample):
     ## .barcode attribute as a list. 
 
     # try linking barcodes again in case user just added a barcodes path
-    if not data.barcodes:
+    if (not data.barcodes) and ("Merged: " not in data.params.barcodes_path):
         try:
             data._link_barcodes()
-        except IPyradError as inst:
+        except IPyradError:
             pass
 
     # only effects this engine copy of barcodes (not lost from real data)
