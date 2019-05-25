@@ -473,7 +473,7 @@ class Step7:
         # write stats       
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].get())
+                rasyncs[job].get()
 
 
     def remote_build_arrays_and_write_loci(self):
@@ -505,7 +505,7 @@ class Step7:
         # check for errors
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].get())
+                rasyncs[job].get()
 
 
     def remote_write_outfiles(self):
@@ -532,7 +532,7 @@ class Step7:
         # write stats
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].get())
+                rasyncs[job].get()
       
 
     def remote_fill_depths(self):
@@ -560,7 +560,7 @@ class Step7:
         # write stats
         for job in rasyncs:
             if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].get())
+                rasyncs[job].get()
 
 
     def remote_build_vcf(self):
@@ -582,7 +582,7 @@ class Step7:
 
         # write stats
         if not rasync.successful():
-            raise IPyradError(rasync.get())
+            rasync.get()
 
 
 # ------------------------------------------------------------
