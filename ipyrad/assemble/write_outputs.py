@@ -1875,8 +1875,11 @@ def fill_snp_array(data, ntaxa, nsnps):
             dtype=np.uint8,
         )
 
+        # store sample names and snpmap columns names as attributes
+        io5["snps"].attrs["names"] = [i.encode() for i in data.snames]
         io5["snpsmap"].attrs["columns"] = [
-            b"locus", b"locidx", b"locpos", b"scaf", b"scafpos",  # b"arrpos",
+            b"locus", b"locidx", b"locpos", b"scaf", b"scafpos",
+            # b"arrpos",
         ]
 
         # gather all loci bits
