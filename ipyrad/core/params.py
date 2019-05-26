@@ -400,7 +400,11 @@ class Params(object):
         # update barcode dist for expected second bcode
         if "3rad" in value:
             if self.barcodes_path:
-                self._data._link_barcodes()
+                # can skip bcodes if past step 1
+                try:
+                    self._data._link_barcodes()
+                except IPyradError:
+                    pass
 
             
     @property 
@@ -419,7 +423,11 @@ class Params(object):
         elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
             if self.barcodes_path:
-                self._data._link_barcodes()
+                # can skip bcodes if past step 1
+                try:
+                    self._data._link_barcodes()
+                except IPyradError:
+                    pass
 
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
