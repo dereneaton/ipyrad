@@ -67,8 +67,8 @@ class PCA(object):
     mincov: (float; default=0.5)
         Proportion of total samples that are not N at any site to include
         in data set. 
-    impute_method: (str; default=None)
-        None, "simple", "kmeans"
+    impute_method: (str; default='sample')
+        None, "sample", "simple", "kmeans"
 
     Functions:
     ----------
@@ -308,6 +308,9 @@ class PCA(object):
         if self.impute_method == "simple":
             self.snps = self._impute_simple()
 
+        elif self.impute_method == "sample":
+            self.snps = self._impute_sample()
+
         elif self.impute_method == "kmeans":
             self.snps = self._impute_kmeans()
 
@@ -319,74 +322,78 @@ class PCA(object):
             )
 
 
-    def _impute_simple(self, quiet=False):
+    def _impute_sample(self, imap=None):
         """
-        ...
+        Sample derived alleles by their frequency for each population and 
+        assign to fill 9 in each column for each pop.
         """
-        # bail out if no imap dictionary
-        if not self.imap:
-            raise IPyradError(
-                "Simple imputation method requires imap dictionary.")
-        
+        # override imap
+        if not imap:
+            imap = self.imap
+
         # impute data by mean value in each population
         newdata = self.snps.copy()
-        model = SimpleImputer(missing_values=9, strategy="most_frequent")
-        for pop, samps in self.imap.items():
+        for pop, samps in imap.items():
+            
+            # sample pop data
             sidxs = sorted(self.names.index(i) for i in samps)
-            data = self.snps[sidxs, :]
-            model.fit(data)
-            newdata[sidxs] = model.transform(data).astype(int)
+            data = newdata[sidxs, :].copy()
 
-        # report
-        if not quiet:
-            # get all imputed values
-            imputed = newdata[np.where(self.snps == 9)]
-            self._print(
-                "Imputation (simple; most-frequent within pops): {:.1f}, {:.1f}, {:.1f}"
-                .format(
-                    100 * np.sum(imputed == 0) / imputed.size,
-                    100 * np.sum(imputed == 1) / imputed.size,
-                    100 * np.sum(imputed == 2) / imputed.size,
-                )
+            # number of alleles at each site that are not 9
+            nallels = np.sum(data != 9, axis=0) * 2
+
+            # get prob derived at each site using tmp array w/ missing to zero 
+            tmp = data.copy()
+            tmp[tmp == 9] = 0
+            fderived = tmp.sum(axis=0) / nallels
+
+            # sampler
+            sampled = np.random.binomial(n=2, p=fderived, size=data.shape)
+            data[data == 9] = sampled[data == 9]
+            newdata[sidxs, :] = data
+
+        # get all imputed values
+        imputed = newdata[np.where(self.snps == 9)]
+        self._print(
+            "Imputation (sampled by freq. within pops): {:.1f}%, {:.1f}%, {:.1f}%"
+            .format(
+                100 * np.sum(imputed == 0) / imputed.size,
+                100 * np.sum(imputed == 1) / imputed.size,
+                100 * np.sum(imputed == 2) / imputed.size,
             )
+        )
         return newdata
 
 
-    def _impute_simple2(self, imap=None, quiet=False):
+    def _impute_simple(self, quiet=False, imap=None):
         """
-        Probabilistically sample 0, 1, or 2 based on their frequency in 
-        each population.
+        Assign most frequent value to fill 9 in each column for each pop.
         """
-
-        # np.sum(pca.snps == 0, axis=0)
-
-        # additional imap to override self.imap
+        # override imap
         if not imap:
             imap = self.imap
-        
-        # bail out if no imap dictionary
-        if not imap:
-            raise IPyradError(
-                "Simple imputation method requires imap dictionary.")
-        
+
         # impute data by mean value in each population
         newdata = self.snps.copy()
-        imputed_snps = 0
         model = SimpleImputer(missing_values=9, strategy="most_frequent")
         for pop, samps in imap.items():
             sidxs = sorted(self.names.index(i) for i in samps)
             data = self.snps[sidxs, :]
             model.fit(data)
             newdata[sidxs] = model.transform(data).astype(int)
-            imputed_snps += model.missing_values
 
-        # report
-        if not quiet:
-            self._print(
-                "Imputation by most-frequent within pops: {}/{}"
-                .format(imputed_snps, self.snps.shape[1])
+        # get all imputed values
+        imputed = newdata[np.where(self.snps == 9)]
+        self._print(
+            "Imputation (simple; most freq. within pops): {:.1f}%, {:.1f}%, {:.1f}%"
+            .format(
+                100 * np.sum(imputed == 0) / imputed.size,
+                100 * np.sum(imputed == 1) / imputed.size,
+                100 * np.sum(imputed == 2) / imputed.size,
             )
+        )
         return newdata
+
 
 
     def _impute_kmeans(self, quiet=False):
@@ -447,7 +454,7 @@ class PCA(object):
             # get all imputed values
             imputed = newdata[np.where(self.snps == 9)]
             self._print(
-                "Imputation (kmeans; most freq in clusters): {:.1f}, {:.1f}, {:.1f}"
+                "Imputation (kmeans; most freq in clusters): {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(
                     100 * np.sum(imputed == 0) / imputed.size,
                     100 * np.sum(imputed == 1) / imputed.size,
@@ -551,7 +558,7 @@ class PCA(object):
         )
 
         # add a legend
-        if self.imap:
+        if len(self.imap) > 1:
             marks = [(pop, marker) for pop, marker in legend.items()]
             canvas.legend(marks, corner=("right", 35, 100, 75))
 
