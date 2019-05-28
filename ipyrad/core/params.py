@@ -543,9 +543,11 @@ class Params(object):
     def max_Ns_consens(self):
         return self._max_Ns_consens
     @max_Ns_consens.setter
-    def max_Ns_consens(self, value):       
+    def max_Ns_consens(self, value):
         # warning if old style params
-        if isinstance(value, (tuple, int)):
+        try:
+            value = float(value)
+        except TypeError:            
             print(
     "Warning: The format of max_Ns_consens should now be a float " + 
     "and was set on load to 0.05")
@@ -559,7 +561,9 @@ class Params(object):
     @max_Hs_consens.setter
     def max_Hs_consens(self, value):
         # complain if old params format
-        if isinstance(value, tuple):
+        try:
+            value = float(value)
+        except TypeError:            
             print(
     "Warning: The format of max_Hs_consens should now be a float " + 
     "and was set on load to 0.05")
@@ -598,6 +602,7 @@ class Params(object):
     @max_SNPs_locus.setter
     def max_SNPs_locus(self, value):
         #backwards compatible allow tuple and take first value
+        value = tuplecheck(value)
         if isinstance(value, tuple):
             value = value[0]
         if isinstance(value, str):
@@ -617,6 +622,8 @@ class Params(object):
         return self._max_Indels_locus
     @max_Indels_locus.setter
     def max_Indels_locus(self, value):
+
+        value = tuplecheck(value)
         if isinstance(value, tuple):
             value = value[0]
         try:
