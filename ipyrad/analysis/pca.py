@@ -102,7 +102,7 @@ class PCA(object):
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
 
-        # parse imap to subselect samples, else use all samples
+        # get names from imap else we'll fill this later with all
         self.names = []
         for key, val in self.imap.items():
             if isinstance(val, (list, tuple)):
@@ -120,6 +120,11 @@ class PCA(object):
             raise NotImplementedError("Sorry, not yet supported. Use hdf5.")
         if self.data.endswith(".snps.hdf5"):
             self._parse_genos_from_hdf5()
+
+        # update imap now that file is parsed
+        if not self.imap:
+            self.imap = {'1': self.names}
+            self.minmap = {'1': 2}
 
         # impute missing data
         if (self.impute_method is not False) and self._mvals:
@@ -261,7 +266,9 @@ class PCA(object):
         # .snpsmap is ready to subsample .snps to 1-per-locus 
 
 
-    def _parse_vcf_to_arr(self):
+    # to match hdf5 function this needs to parse a genotype matrix (.snps)
+    # and build a .snpsmap from CHROM, POS.
+    def _parse_genos_from_vcf(self):
         """
         Parse genotype calls from input VCF data file. This will be 
         0/1/2 or 9 for missing. In other words, it's the geno file 
@@ -312,23 +319,19 @@ class PCA(object):
             )
 
 
-    def _impute_simple(self, imap=None, quiet=False):
+    def _impute_simple(self, quiet=False):
         """
         ...
         """
-        # additional imap to override self.imap
-        if not imap:
-            imap = self.imap
-        
         # bail out if no imap dictionary
-        if not imap:
+        if not self.imap:
             raise IPyradError(
                 "Simple imputation method requires imap dictionary.")
         
         # impute data by mean value in each population
         newdata = self.snps.copy()
         model = SimpleImputer(missing_values=9, strategy="most_frequent")
-        for pop, samps in imap.items():
+        for pop, samps in self.imap.items():
             sidxs = sorted(self.names.index(i) for i in samps)
             data = self.snps[sidxs, :]
             model.fit(data)
