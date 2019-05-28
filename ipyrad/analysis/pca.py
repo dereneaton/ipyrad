@@ -6,6 +6,7 @@ from __future__ import print_function, division
 
 import os
 import h5py
+import itertools
 import numpy as np
 import pandas as pd
 from numba import njit
@@ -13,35 +14,9 @@ from numba import njit
 # ipyrad tools
 from ipyrad.assemble.utils import IPyradError
 
-# import matplotlib.pyplot as plt
-# import matplotlib.cm as cm
-
-# toyplot/matplotlib import is only checked when plotting is attempted?
-try:
-    import toyplot
-except ImportError:
-    raise ImportError("""
-    PCA tool requires the plotting library toyplot. 
-    You can install it with the following command in a terminal.
-
-    conda install toyplot -c eaton-lab 
-""")
-
-
-try:
-    from sklearn import decomposition 
-    from sklearn.impute import SimpleImputer
-    from sklearn.cluster import KMeans
-except ImportError:
-    raise ImportError("""
-    The ipyrad PCA tool requires the library scikit-learn.
-    You can install it with the following command in a terminal.
-
-    conda install scikit-learn -c conda-forge 
-""")
-
 
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
+# TODO: remove biallel singletons... (option, not sure it's a great idea...)
 
 class PCA(object):
     """
@@ -87,6 +62,9 @@ class PCA(object):
         kmeans=None,
         quiet=False,
         ):
+
+        # only check import at init
+        self._check_imports()
 
         # init attributes
         self.quiet = quiet
@@ -515,31 +493,46 @@ class PCA(object):
         ax1=1, 
         seed=None, 
         subsample=True, 
-        # impute_method=None,
-        # kmeans=3,
         ):
         """
         A convenience function for plotting 2D scatterplot of PCA results.
-        To see the code in this function so you can modify it type 
-        ??pca.run_and_plot_2D in a jupyter cell.
         """
         # get transformed coordinates and variances
         data, vexp = self.run(seed, subsample)  # , impute_method, kmeans)
 
-        # get population colors
-        legend = {}
-        colors = ['#262626'] * data.shape[0]
-        for cidx, pop in enumerate(self.imap):
-            idxs = [self.names.index(i) for i in self.imap[pop]]
-            for idx in idxs:
-                colors[idx] = toyplot.color.Palette()[cidx]
+        # Iterator returns combinations of (color, stroke, shape); up to 32 
+        mtypes = itertools.product(
+            ("o", "s"),
+            ("none", "#262626"),            
+            toyplot.color.Palette(),            
+        )
 
-            # store for legend 
-            csscol = toyplot.color.to_css(toyplot.color.Palette()[cidx])
-            legend[pop] = toyplot.marker.create(
-                shape="o", size=10, 
-                mstyle={"fill": csscol, "stroke": "none"},
-                )
+        # make reverse imap dictionary
+        irev = {}
+        for pop, vals in self.imap.items():
+            for val in vals:
+                irev[val] = pop
+
+        # assign styles to populations
+        pstyles = {}
+        for pop in self.imap:
+            shape, stroke, color = next(mtypes)
+            pstyles[pop] = toyplot.marker.create(
+                size=10, 
+                shape=shape,
+                mstyle={
+                    "fill": toyplot.color.to_css(color),
+                    "stroke": stroke,
+                },
+            )
+
+        # assign styled markers to data points
+        marks = []
+        for name in self.names:
+            pop = irev[name]
+            mark = pstyles[pop]
+            mark.title = name
+            marks.append(mark)
 
         # plot points with colors x population
         canvas = toyplot.Canvas(400, 300)
@@ -551,18 +544,46 @@ class PCA(object):
         mark = axes.scatterplot(
             data[:, ax0],
             data[:, ax1],
-            size=12,
-            color=colors,
+            marker=marks,
             opacity=0.6,
-            title=self.names,
         )
 
         # add a legend
         if len(self.imap) > 1:
-            marks = [(pop, marker) for pop, marker in legend.items()]
-            canvas.legend(marks, corner=("right", 35, 100, 75))
+            marks = [(pop, marker) for pop, marker in pstyles.items()]
+            canvas.legend(
+                marks, 
+                corner=("right", 35, 100, min(250, len(pstyles) * 25))
+            )
 
         return canvas, axes, mark
+
+
+
+    def check_imports(self):
+        """
+        External imports for this tool are checked when class is init
+        """
+        try:
+            import toyplot
+        except ImportError:
+            raise ImportError("""
+    PCA tool requires the plotting library toyplot. 
+    You can install it with the following command in a terminal.
+
+    conda install toyplot -c eaton-lab 
+    """)
+        try:
+            from sklearn import decomposition 
+            from sklearn.impute import SimpleImputer
+            from sklearn.cluster import KMeans
+        except ImportError:
+            raise ImportError("""
+    The ipyrad PCA tool requires the library scikit-learn.
+    You can install it with the following command in a terminal.
+
+    conda install scikit-learn -c conda-forge 
+    """)        
 
 
 
