@@ -46,7 +46,6 @@ class CLI:
         # if args.debug turn on the debugger
         if self.args.debug:
             ip.__interactive__ = 1
-            # self._hardlog_cli()
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
