@@ -791,7 +791,7 @@ class Processor(object):
             if self.isref and self.data.hackersonly.exclude_reference:
                 snparr = self.get_snpsarrs(ublock, True)
             else:
-                snparr = self.get_snpsarrs(ublock)
+                snparr = self.get_snpsarrs(ublock)                
             self.filter_maxvars(ublock, snparr)
 
             # apply filters on edge trimmed reads
@@ -807,7 +807,7 @@ class Processor(object):
                 if self.isref and self.data.hackersonly.exclude_reference:
                     self.lcov[self.useqs.shape[0] - 1] += 1
                 else:
-                    self.lcov[self.useqs.shape[0] - 1] += 1
+                    self.lcov[self.useqs.shape[0]] += 1
 
                 # do SNP distribution counter
                 if self.masked is None:
@@ -1290,13 +1290,14 @@ class Converter:
         with open(self.data.outfiles.usnps, 'w') as out:
             with h5py.File(self.snps_database, 'r') as io5:
                 # load seqarray
-                snparr = io5['snps']
-                # access array of data
-                maparr = io5["snpsmap"][:]
+                snparr = io5['snps'][:]
+                # snp positions 
+                maparr = io5["snpsmap"][:, :2]
+                maparr[:, 1] = range(maparr.shape[0])
 
                 # get n unlinked snps
-                varloci = np.unique(maparr[:, 0])
-                nsnps = varloci.size
+                subs = subsample(maparr)
+                nsnps = subs.size
 
                 # option to skip ref
                 if self.exclude_ref:
@@ -1309,20 +1310,11 @@ class Converter:
                 # write dims
                 out.write("{} {}\n".format(nsamples, nsnps))
 
-                # get sampled columns
-                cols = []
-                cidx = 0
-                for lidx in varloci:
-                    sidxs = maparr[maparr[:, 0] == lidx][:, 1]
-                    rint = np.random.choice(sidxs) + cidx
-                    cols.append(rint)
-                    cidx += sidxs.size
-
                 # write to disk one row at a time
                 for idx in range(rstart, snparr.shape[0]):
 
                     # get all SNPS from this sample
-                    seq = snparr[idx, cols].view("S1")
+                    seq = snparr[idx, subs].view("S1")
 
                     out.write(
                         "{}{}".format(
@@ -2491,6 +2483,21 @@ def get_fai_values(data, value):
         sep="\t",
     )
     return fai[value].values  
+
+
+
+@njit
+def subsample(snpsmap):
+    "Subsample snps, one per locus, using snpsmap"
+    sidxs = np.unique(snpsmap[:, 0])
+    subs = np.zeros(sidxs.size, dtype=np.int64)
+    idx = 0
+    for sidx in sidxs:
+        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
+        site = np.random.choice(sites)
+        subs[idx] = site
+        idx += 1
+    return subs
 
 
 
