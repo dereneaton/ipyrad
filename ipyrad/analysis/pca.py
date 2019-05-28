@@ -34,13 +34,14 @@ try:
     from sklearn.cluster import KMeans
 except ImportError:
     raise ImportError("""
-    The ipyrad PCA tool requires the plotting library scikit-learn.
+    The ipyrad PCA tool requires the library scikit-learn.
     You can install it with the following command in a terminal.
 
     conda install scikit-learn -c conda-forge 
 """)
 
 
+# TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
 
 class PCA(object):
     """
@@ -66,6 +67,8 @@ class PCA(object):
     mincov: (float; default=0.5)
         Proportion of total samples that are not N at any site to include
         in data set. 
+    impute_method: (str; default=None)
+        None, "simple", "kmeans"
 
     Functions:
     ----------
