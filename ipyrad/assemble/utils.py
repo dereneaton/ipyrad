@@ -13,7 +13,6 @@ except ImportError:
     izip = zip
 
 import os
-import sys
 import socket
 import pandas as pd
 import numpy as np
@@ -21,7 +20,12 @@ import ipyrad
 import string
 
 
-BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
+BADCHARS = (
+    string.punctuation
+    .replace("_", "")
+    .replace("-", "")
+    .replace(".", "") + " "
+)
 
 
 class IPyradError(Exception):
