@@ -20,7 +20,7 @@ from .clade_weights import CladeWeights as clade_weights
 
 # conda install structure clumpp -c ipyrad
 from .structure import Structure as structure
-#from .pca import pca
+from .pca import PCA
 
 # conda install tetrad -c eaton-lab
 #from .tetrad import Tetrad as tetrad
