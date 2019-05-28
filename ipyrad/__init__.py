@@ -7,7 +7,7 @@ from .core.load import load_json
 from .core.Parallel import cluster_info
 
 # Dunders
-__version__ = "0.9.3-dev"
+__version__ = "0.9.4-dev"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
