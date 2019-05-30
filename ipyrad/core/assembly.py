@@ -16,8 +16,7 @@ import pandas as pd
 import ipyrad as ip
 
 from collections import OrderedDict
-from ipyrad.assemble.utils import IPyradError
-from ipyrad.assemble.utils import ObjDict, BADCHARS
+from ipyrad.assemble.utils import IPyradError, ObjDict, BADCHARS
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
 from ipyrad.core.params import Params, Hackers
