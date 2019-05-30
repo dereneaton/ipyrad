@@ -91,9 +91,9 @@ class PCA(object):
         ):
 
         # only check import at init
-        if not sys.get("sklearn"):
+        if not sys.modules.get("sklearn"):
             raise IPyradError(_MISSING_SKLEARN)
-        if not sys.get("toyplot"):
+        if not sys.modules.get("toyplot"):
             raise IPyradError(_MISSING_TOYPLOT)
 
         # init attributes
