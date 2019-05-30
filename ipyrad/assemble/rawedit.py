@@ -12,7 +12,6 @@ import os
 import time
 import numpy as np
 import subprocess as sps
-import ipyparallel as ipp
 from .utils import IPyradError, fullcomp
 
 
