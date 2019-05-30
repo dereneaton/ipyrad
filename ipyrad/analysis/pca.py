@@ -5,6 +5,7 @@
 from __future__ import print_function, division
 
 import os
+import sys
 import h5py
 import itertools
 import numpy as np
@@ -13,6 +14,34 @@ from numba import njit
 
 # ipyrad tools
 from ipyrad.assemble.utils import IPyradError
+
+# missing imports to be raised on class init
+try:
+    import toyplot
+except ImportError:
+    pass
+
+_MISSING_TOYPLOT = ImportError("""
+This ipyrad tool requires the plotting library toyplot. 
+You can install it with the following command in a terminal.
+
+conda install toyplot -c eaton-lab 
+""")
+
+try:
+    from sklearn import decomposition 
+    from sklearn.impute import SimpleImputer
+    from sklearn.cluster import KMeans
+except ImportError:
+    pass
+
+_MISSING_SKLEARN = """
+This ipyrad tool requires the library scikit-learn.
+You can install it with the following command in a terminal.
+
+conda install scikit-learn -c conda-forge 
+"""
+
 
 
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
@@ -52,8 +81,6 @@ class PCA(object):
     def __init__(
         self, 
         data, 
-        name="test",
-        workdir="./analysis-pca",
         impute_method=None,
         imap=None,
         minmap=None,
@@ -64,13 +91,14 @@ class PCA(object):
         ):
 
         # only check import at init
-        self._check_imports()
+        if not sys.get("sklearn"):
+            raise IPyradError(_MISSING_SKLEARN)
+        if not sys.get("toyplot"):
+            raise IPyradError(_MISSING_TOYPLOT)
 
         # init attributes
         self.quiet = quiet
-        self.name = name
         self.data = os.path.realpath(os.path.expanduser(data))
-        self.workdir = os.path.realpath(os.path.expanduser(workdir))
 
         # data attributes
         self.ncomponents = ncomponents
@@ -557,33 +585,6 @@ class PCA(object):
             )
 
         return canvas, axes, mark
-
-
-
-    def check_imports(self):
-        """
-        External imports for this tool are checked when class is init
-        """
-        try:
-            import toyplot
-        except ImportError:
-            raise ImportError("""
-    PCA tool requires the plotting library toyplot. 
-    You can install it with the following command in a terminal.
-
-    conda install toyplot -c eaton-lab 
-    """)
-        try:
-            from sklearn import decomposition 
-            from sklearn.impute import SimpleImputer
-            from sklearn.cluster import KMeans
-        except ImportError:
-            raise ImportError("""
-    The ipyrad PCA tool requires the library scikit-learn.
-    You can install it with the following command in a terminal.
-
-    conda install scikit-learn -c conda-forge 
-    """)        
 
 
 
