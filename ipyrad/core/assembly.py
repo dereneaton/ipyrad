@@ -808,6 +808,9 @@ def merge(name, assemblies, rename_dict=None):
     except TypeError:
         assemblies = [assemblies]
 
+    # inherit workdir
+    setattr(merged.params, "_project_dir", assemblies[0].params.project_dir)
+
     # inherit params setting from first assembly
     for key in assemblies[0].params._keys[5:]:
         value = getattr(assemblies[0].params, key)
