@@ -13,6 +13,7 @@ except ImportError:
     izip = zip
 
 import os
+import sys
 import socket
 import pandas as pd
 import numpy as np
@@ -39,6 +40,7 @@ class IPyradError(Exception):
             Exception.__init__(self, *args, **kwargs)
         else:
             # clean exit for CLI that still exits as an Error (e.g. for HPC)
+            sys.tracebacklimit = 0
             SystemExit(1)
 
 
