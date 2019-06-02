@@ -20,7 +20,6 @@ def load_json(json_path, quiet=False, cli=False):
     Load a json serialized object and ensure it matches to the current 
     Assembly object format 
     """
-
     # expand HOME in JSON path name
     json_path = json_path.replace("~", os.path.expanduser("~"))
 
@@ -42,7 +41,7 @@ def load_json(json_path, quiet=False, cli=False):
     oldpath = os.path.join(olddir, os.path.splitext(oldname)[0] + ".json")
 
     # create a fresh new Assembly
-    null = Assembly(oldname, quiet=True, cli=cli)       
+    null = Assembly(oldname, quiet=True, cli=cli)
 
     # print Loading message with shortened path
     if not quiet:
@@ -54,19 +53,19 @@ def load_json(json_path, quiet=False, cli=False):
     samplekeys = fullj["assembly"].pop("samples")
     null.samples = {name: "" for name in samplekeys}
 
-    # set params from JSON
+    # get params from older JSON, unless key doesn't exist, then use default.
     oldparams = fullj["assembly"].pop("paramsdict")
-    for _param in null.params._keys:
+    for _param in null.params._keys[1:]:
 
-        # support legacy JSON files
+        # support legacy JSONs: if a new param now exists is is set to default.
         param = _param.lstrip("_")
         try:
             value = oldparams[param]
         except KeyError:
-            value = oldparams[_param]
-        if param not in ["assembly_name", "_assembly_name", "_keys", "keys"]:
-            null.set_params(param, value)
+            value = getattr(null.params, _param)
 
+        # set param in new null assembly with value from old assembly.
+        null.set_params(param, value)           
 
     # Update hackers dict.
     try:
