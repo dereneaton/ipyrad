@@ -219,6 +219,7 @@ class Params(object):
         self._trim_loci = (0, 0, 0, 0)
         self._output_formats = list("psl")
         self._pop_assign_file = ""
+        self._reference_as_filter = ""
         
         self._keys = [
             "_assembly_name",
@@ -249,7 +250,8 @@ class Params(object):
             "_trim_reads", 
             "_trim_loci", 
             "_output_formats", 
-            "_pop_assign_file",            
+            "_pop_assign_file",
+            "_reference_as_filter",            
         ]
                 
         
@@ -715,6 +717,22 @@ class Params(object):
             # Don't forget to possibly blank the populations dictionary
             self._pop_assign_file = ""
             self._data.populations = {}
+
+
+    @property
+    def reference_as_filter(self):
+        return self._reference_as_filter
+    @reference_as_filter.setter
+    def reference_as_filter(self, value):
+        if value:
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if not os.path.exists(fullpath):
+                raise IPyradError("reference sequence file not found")
+            if fullpath.endswith(".gz"):
+                raise IPyradError("reference sequence file must be decompressed.")
+            self._reference_as_filter = fullpath
+        else:
+            self._reference_as_filter = ""
 
 
 
