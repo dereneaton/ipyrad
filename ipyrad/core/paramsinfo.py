@@ -397,7 +397,7 @@ pinfo = OrderedDict([
 ),
 
 ("29", ("""
-    (29) reference_as_filter----------------------------------------------
+    (29) reference_as_filter ---------------------------------------------
     Examples:
     ----------------------------------------------------------------------
     data.set_params("reference_as_filter") = ./data/reference.fa   ## verbose
