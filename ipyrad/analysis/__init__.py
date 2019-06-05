@@ -12,6 +12,7 @@ from ipyrad import __version__
 # conda install raxml -c bioconda
 # conda install scikit-learn -c bioconda
 # conda install sratools -c bioconda
+# conda install treemix -c bioconda
 # conda install toytree -c eaton-lab
 # conda install tetrad -c eaton-lab
 # conda install structure -c ipyrad
@@ -19,13 +20,20 @@ from ipyrad import __version__
 # conda install bucky -c ipyrad
 # conda install bpp -c ipyrad
 
+
+# tested in 0.9.5
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
+from .window_extracter import WindowExtracter as window_extracter
+from .treemix import Treemix as treemix
+from .pca import PCA as pca
+
+# testing
+from .structure import Structure as structure
 from .treeslider import TreeSlider as treeslider
 from .clade_weights import CladeWeights as clade_weights
+
 # from .twisst import Twisst as twisst
-from .structure import Structure as structure
-from .pca import PCA as pca
 from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
 
@@ -34,4 +42,4 @@ from .bpp import Bpp as bpp
 # from .baba import Baba as baba
 from .digest_genome import DigestGenome as digest_genome
 #from .popgen import Popgen as popgen
-#from .treemix import Treemix as treemix
+
