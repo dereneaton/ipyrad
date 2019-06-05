@@ -19,7 +19,7 @@ import pandas as pd
 import numpy as np
 import string
 
-from ipyrad import __interactive__
+import ipyrad
 
 
 BADCHARS = (
@@ -36,7 +36,7 @@ class IPyradError(Exception):
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if __interactive__:
+        if ipyrad.__interactive__:
             # raise a traceback for the API
             Exception.__init__(self, *args, **kwargs)
         else:
