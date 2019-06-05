@@ -15,7 +15,6 @@ import tempfile
 # third party
 import pandas as pd
 import numpy as np
-import toytree
 
 # internal librries
 from .raxml import Raxml as raxml
@@ -29,6 +28,17 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
 
+try:
+    import toytree
+except ImportError:
+    pass
+
+_MISSING_TOYTREE = """
+This ipyrad.analysis tool requires the dependency 'toytree'. 
+You can install it with the following command from a terminal:
+
+conda install toytree -c eaton-lab
+"""
 
 """
 Infer whole scaffold if windowsize = 0, None
@@ -68,6 +78,10 @@ class TreeSlider():
         # imap=None,
         # minmap=None,
         ):
+
+        # check installations
+        if not sys.modules.get("toytree"):
+            raise ImportError(_MISSING_TOYTREE)
 
         # store attributes
         self.name = name
