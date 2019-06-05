@@ -14,7 +14,12 @@ OPJ = os.path.join
 
 class Raxml(object):
     """
-    RAxML analysis utility function for running simple commands. 
+    RAxML analysis utility function. This tool makes it easy to build a 
+    raxml command line string and submit it as a job. It also makes it easy
+    to access the resulting tree files. Set params on the raxml object and 
+    print(<object>.command) to see raxml command string. Call .run() to 
+    submit the job running in background, or .run(block=True) to wait until
+    it finishes.
 
     Parameters:
     -----------
@@ -53,14 +58,13 @@ class Raxml(object):
     -----------
     params: dict
         parameters for this raxml run
-    cmd: 
+    command: 
         returns the command string to run raxml
 
     Functions:
     ----------
     run()
         submits a raxml job to locally or on an ipyparallel client cluster. 
-
     """    
 
     ## init object for params
@@ -87,7 +91,7 @@ class Raxml(object):
         self._kwargs.update(kwargs)
         self._kwargs = {i: j for (i, j) in self._kwargs.items() if j is not None}
 
-        ## check workdir
+        # check workdir
         if workdir:
             workdir = os.path.abspath(os.path.expanduser(workdir))
         else:
