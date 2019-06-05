@@ -1494,7 +1494,14 @@ class Converter:
 
 
     def write_treemix(self):
-        pass
+        tmx = ipyrad.analysis.treemix(
+            data=self.data.snps_database,
+            name=self.data.name,
+            workdir=self.data.outfiles,
+            imap={i: j[1] for (i, j) in self.data.populations.items()},
+            minmap={i: j[0] for (i, j) in self.data.populations.items()},
+            )
+        tmx.write_treemix_file()
 
 
     def write_migrate(self):
