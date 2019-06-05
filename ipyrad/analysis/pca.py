@@ -7,12 +7,12 @@ from __future__ import print_function, division
 import os
 import sys
 import h5py
-import itertools
 import numpy as np
 import pandas as pd
 from numba import njit
 
 # ipyrad tools
+from .snps_extracter import SNPsExtracter
 from ipyrad.assemble.utils import IPyradError
 
 # missing imports to be raised on class init
@@ -41,7 +41,6 @@ You can install it with the following command in a terminal.
 
 conda install scikit-learn -c conda-forge 
 """
-
 
 
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
@@ -86,7 +85,6 @@ class PCA(object):
         minmap=None,
         mincov=0.1,
         ncomponents=None,
-        kmeans=None,
         quiet=False,
         ):
 
@@ -103,7 +101,6 @@ class PCA(object):
         # data attributes
         self.ncomponents = ncomponents
         self.impute_method = impute_method
-        self.kmeans = kmeans
         self.mincov = mincov        
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
@@ -121,13 +118,21 @@ class PCA(object):
         self.snpsmap = np.array([])
         self.nmissing = 0
 
-        # load .snps and .snpsmap
-        if self.data.endswith(".vcf"):
-            raise NotImplementedError("Sorry, not yet supported. Use hdf5.")
-        if self.data.endswith(".snps.hdf5"):
-            self._parse_genos_from_hdf5()
+        # load .snps and .snpsmap from HDF5
+        ext = SNPsExtracter(
+            self.data, self.imap, self.minmap, self.mincov, quiet=quiet,
+        )
+        ext.parse_genos_from_hdf5()
+        self.snps = ext.snps
+        self.snpsmap = ext.snpsmap
+        self.names = ext.names
+        self._mvals = ext._mvals
 
-        # update imap now that file is parsed
+        if self.data.endswith(".vcf"):
+            raise NotImplementedError(
+                "Sorry, not yet supported. Use .snps.hdf5.")
+
+        # make imap for imputing if not used in filtering.
         if not self.imap:
             self.imap = {'1': self.names}
             self.minmap = {'1': 2}
@@ -317,14 +322,14 @@ class PCA(object):
         elif self.impute_method == "sample":
             self.snps = self._impute_sample()
 
-        elif self.impute_method == "kmeans":
+        elif isinstance(self.impute_method, int):
             self.snps = self._impute_kmeans()
 
         else:
             self.snps[self.snps == 9] = 0
             self._print(
-                "Imputation (null; sets to 0): 0:{}, 1:{}, 2:{}"
-                .format(self._mvals, 0, 0)
+                "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
+                .format(self._mvals, 0, 0)            
             )
 
 
@@ -401,7 +406,6 @@ class PCA(object):
         return newdata
 
 
-
     def _impute_kmeans(self, quiet=False):
         """
         kmeans imputer method takes the following steps:
@@ -417,13 +421,13 @@ class PCA(object):
            imputed value is the most frequent across all samples. 
         """
         # bail out if no imap dictionary
-        if not self.kmeans:
+        if not self.impute_method:
             raise IPyradError(
                 "Kmeans imputation method requires 'kmeans' value.")
 
         # ML models
         fill_model = SimpleImputer(missing_values=9, strategy="most_frequent")
-        kmeans_model = KMeans(n_clusters=self.kmeans)
+        kmeans_model = KMeans(n_clusters=self.impute_method)
         pca_model = decomposition.PCA(n_components=self.ncomponents)
 
         # first impute into a copy with most-frequent value across all 
@@ -512,11 +516,8 @@ class PCA(object):
         return newdata, model.explained_variance_ratio_                
 
 
-    def _plot_2D(self, ax0, ax1):
-        pass
-
-
-    def run_and_plot_2D(self, 
+    def run_and_plot_2D(
+        self, 
         ax0=0, 
         ax1=1, 
         seed=None, 
@@ -528,11 +529,9 @@ class PCA(object):
         # get transformed coordinates and variances
         data, vexp = self.run(seed, subsample)  # , impute_method, kmeans)
 
-        # Iterator returns combinations of (color, stroke, shape); up to 32 
-        mtypes = itertools.product(
-            ("o", "s"),
-            ("none", "#262626"),            
-            toyplot.color.Palette(),            
+        # color map
+        colors = toyplot.color.broadcast(
+            toyplot.color.brewer.map("Spectral"), shape=len(self.imap),
         )
 
         # make reverse imap dictionary
@@ -543,14 +542,14 @@ class PCA(object):
 
         # assign styles to populations
         pstyles = {}
-        for pop in self.imap:
-            shape, stroke, color = next(mtypes)
+        for idx, pop in enumerate(self.imap):
             pstyles[pop] = toyplot.marker.create(
                 size=10, 
-                shape=shape,
+                shape="o",
                 mstyle={
-                    "fill": toyplot.color.to_css(color),
-                    "stroke": stroke,
+                    "fill": toyplot.color.to_css(colors[idx]),
+                    "stroke": "#262626",
+                    "fill-opacity": 0.6,
                 },
             )
 
@@ -559,7 +558,6 @@ class PCA(object):
         for name in self.names:
             pop = irev[name]
             mark = pstyles[pop]
-            mark.title = name
             marks.append(mark)
 
         # plot points with colors x population
@@ -573,7 +571,7 @@ class PCA(object):
             data[:, ax0],
             data[:, ax1],
             marker=marks,
-            opacity=0.6,
+            title=self.names,
         )
 
         # add a legend
