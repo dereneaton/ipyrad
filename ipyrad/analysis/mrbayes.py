@@ -23,7 +23,7 @@ lset nst=6 rates=gamma;
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25; 
 mcmcp samplefreq={samplefreq} printfreq=10000;
-mcmcp filename={outname}
+mcmcp filename={outname};
 mcmc;
 
 sump filename={outname};
@@ -108,21 +108,6 @@ class MrBayes(object):
         name="test",
         workdir="analysis-mb", 
         clock=False,        
-        params={
-            "clockratepr": "lognorm(-7,0.6)",
-            "clockvarpr": "tk02",
-            "tk02varpr": "exp(1.0)",
-            "brlenspr": "clock:birthdeath",
-            "samplestrat": "diversity",
-            "sampleprob": "0.1",
-            "speciationpr": "exp(10)",
-            "extinctionpr": "beta(2, 200)",
-            "treeagepr": "offsetexp(1, 5)",
-            "ngen": "1000000",
-            "nruns": "2",
-            "nchains": 4,
-            "samplefreq": 1000,
-        },                   
         **kwargs):
 
         # path attributes
@@ -138,51 +123,76 @@ class MrBayes(object):
             os.makedirs(workdir)
 
         # entered args
-        self.params = Params()
-        self.params.name = name
-        self.params.workdir = workdir
-        self.params.data = os.path.abspath(os.path.expanduser(data))
-        self.params.nexus = os.path.join(
-            self.params.workdir, self.params.name + ".nex")
-        self.params.binary = ""
-
-        # sets self.params.binary
+        self.name = name
+        self.workdir = workdir
+        self.data = os.path.abspath(os.path.expanduser(data))
+        self.nexus = os.path.join(self.workdir, self.name + ".nex")
+        self.binary = ""
         self._get_binary(self._kwargs.get("binary"))
 
-        # set params
-        notparams = set(["workdir", "name", "data", "binary"])
-        for key in set(self._kwargs.keys()) - notparams:
-            self.params[key] = self._kwargs[key]
+        self.params = Params()
+        defaults = {
+            "clockratepr": "lognorm(-7,0.6)",
+            "clockvarpr": "tk02",
+            "tk02varpr": "exp(1.0)",
+            "brlenspr": "clock:birthdeath",
+            "samplestrat": "diversity",
+            "sampleprob": "0.1",
+            "speciationpr": "exp(10)",
+            "extinctionpr": "beta(2, 200)",
+            "treeagepr": "offsetexp(1, 5)",
+            "ngen": 100000,
+            "nruns": "2",
+            "nchains": 4,
+            "samplefreq": 1000,
+        }
+        for i, j in defaults.items():
+            setattr(self.params, i, j)
 
-        ## attributesx
+        # set params
+        for key in self._kwargs:
+            setattr(self.params, key, self._kwargs[key])
+
+        # attributes
         self.rasync = None
         self.stdout = None
         self.stderr = None
 
-        ## results files        
+        # results files        
         self.trees = Params()
-        self.trees.constre = self.params.data + ".con.tre"
-        self.trees.info = self.params.data + ".lstat"
+        self.trees.constre = os.path.join(
+            self.workdir, "{}.con.tre".format(self.name))
+        self.trees.info = os.path.join(
+            self.workdir, "{}.lstat".format(self.name))
 
         # write a mrbayes block to a copy of the NEXUS file.
-        cwargs = params
-        cwargs.update({"nexus": self.params.data, "outname": self.params.nexus})
+        cwargs = self.params.__dict__.copy()
+        cwargs["nexus"] = self.data
+        cwargs["outname"] = self.nexus
         if clock:
             self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
         else:
             self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
-        with open(self.params.nexus, 'w') as out:
+        with open(self.nexus, 'w') as out:
             out.write(self._nexstring)
 
 
 
     def print_command(self):
-        print("mb {}".format(self.params.nexus))
-    
+        print("mb {}".format(self.nexus))
+
 
     def print_nexus_string(self):
         print(self._nexstring)
 
+
+    @property 
+    def command(self):
+        return "mb {}".format(self.nexus)
+    
+    @property
+    def nexus_string(self):
+        return self._nexstring
 
 
     def run(self, 
@@ -224,34 +234,28 @@ class MrBayes(object):
         ## the info file that is being written. 
         ## submit it
         if not ipyclient:
-            proc = _call_mb([self.params.binary, self.params.nexus])
-            self.stdout = proc[0]
-            self.stderr = proc[1]
+            self.stdout = _call_mb([self.binary, self.nexus])
         else:
             ## find all hosts and submit job to the host with most available engines
             lbview = ipyclient.load_balanced_view()
             self.rasync = lbview.apply(
-                _call_mb, [self.params.binary, self.params.nexus])
+                _call_mb, [self.binary, self.nexus])
 
         ## initiate random seed
         if not quiet:
             if not ipyclient:
-                ## look for errors
-                if "Overall execution time" not in self.stdout.decode():
-                    print("Error in mb run\n" + self.stdout.decode())
-                else:
-                    print("job {} finished successfully".format(self.params.n))
+                print("job {} finished successfully".format(self.name))
             else:               
                 if block:
-                    print("job {} running".format(self.params.n))
+                    print("job {} running".format(self.name))
                     ipyclient.wait()
                     if self.rasync.successful():
                         print("job {} finished successfully"
-                            .format(self.params.n))
+                            .format(self.name))
                     else:
-                        raise IPyradError(self.rasync.get())
+                        self.rasync.get()
                 else:
-                    print("job {} submitted to cluster".format(self.params.n))
+                    print("job {} submitted to cluster".format(self.name))
 
 
 
@@ -272,11 +276,12 @@ class MrBayes(object):
                     stderr=subprocess.STDOUT).communicate()
             # update the binary
             if proc[0]:
-                self.params.binary = binary
+                self.binary = binary
 
         ## if none then raise error
         if not proc[0]:
-            raise Exception("cannot find mb; run 'conda install mrbayes -c bioconda'")
+            raise Exception(
+                "cannot find mb; run 'conda install mrbayes -c bioconda'")
 
 
 
@@ -288,4 +293,6 @@ def _call_mb(command_list):
         stdout=subprocess.PIPE
         )
     comm = proc.communicate()
-    return comm
+    if proc.returncode:
+        raise IPyradError(comm[0].decode())
+    return comm[0].decode()
