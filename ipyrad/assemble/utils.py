@@ -36,10 +36,11 @@ class IPyradError(Exception):
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if ipyrad.__interactive__:
-            # raise a traceback for the API
-            Exception.__init__(self, *args, **kwargs)
-        else:
+        # raise the exception with this string message and a traceback
+        Exception.__init__(self, *args, **kwargs)
+
+        # but suppress traceback and exit on CLI
+        if not ipyrad.__interactive__:
             # clean exit for CLI that still exits as an Error (e.g. for HPC)
             sys.tracebacklimit = 0
             SystemExit(1)
