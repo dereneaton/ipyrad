@@ -25,7 +25,6 @@ from numba import njit
 from .utils import IPyradError, clustdealer, splitalleles, chroms2ints
 from .utils import BTS, GETCONS, DCONS  # , bcomp
 
-
 # suppress the terrible h5 warning
 import warnings
 with warnings.catch_warnings(): 
@@ -487,6 +486,7 @@ class Step7:
         args1 = (self.data, self.ntaxa, self.nbases, self.nloci)
         args2 = (self.data, self.ntaxa, self.nsnps)
 
+        print(self.nbases)
         # fill with filtered loci chunks from Processor
         rasyncs[0] = self.lbview.apply(write_loci_and_alleles, self.data)
         rasyncs[1] = self.lbview.apply(fill_seq_array, *args1)
@@ -1045,7 +1045,7 @@ class Edges:
             mask = np.where(
                 (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
             matchset = matching[mask]
-            if matchset.sum() / matchset.size >= 0.75:
+            if float(matchset.sum()) / matchset.size >= 0.75:
                 self.trims[0] = len(cutter)
 
             # trim right side for overhang
@@ -1058,7 +1058,7 @@ class Edges:
                 mask = np.where(
                     (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
                 matchset = matching[mask]
-                if matchset.sum() / matchset.size >= 0.75:
+                if float(matchset.sum()) / matchset.size >= 0.75:
                     self.trims[3] = len(cutter)
 
 
@@ -1750,6 +1750,7 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     # loc = (np.array([list(i) for i in tmploc.values()])
                     # .astype(bytes).view(np.uint8))
                     
+                    # TODO: check code here for reference excluded...
                     # drop the site that are all N or - (e.g., pair inserts)
                     if (data.isref and data.ispair):
                         mask = np.all(loc[1:, :] == 78, axis=0)
