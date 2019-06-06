@@ -42,6 +42,7 @@ def load_json(json_path, quiet=False, cli=False):
 
     # create a fresh new Assembly
     null = Assembly(oldname, quiet=True, cli=cli)
+    null.params.project_dir = olddir
 
     # print Loading message with shortened path
     if not quiet:
