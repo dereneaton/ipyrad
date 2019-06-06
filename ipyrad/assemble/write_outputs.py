@@ -1748,7 +1748,8 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
 
                     # seq into an array as int8 (py2/3 checked)
                     loc = np.array(
-                        [list(bytes(i.encode())) for i in tmploc.values()]
+                        [list(bytes(tmploc[i].encode())) for i in snames
+                         if i in tmploc]
                         ).astype(np.int8)
                     # loc = (np.array([list(i) for i in tmploc.values()])
                     # .astype(bytes).view(np.uint8))
@@ -1927,7 +1928,8 @@ def fill_snp_array(data, ntaxa, nsnps):
                 else:
                     # convert seqs to an np.int8 array, checked py2/3
                     loc = np.array(
-                        [list(bytes(i.encode())) for i in tmploc.values()]
+                        [list(bytes(tmploc[i].encode())) for i in data.snames 
+                         if i in tmploc]
                         ).astype(np.int8)
                     # loc = np.array(
                     # [list(i) for i in tmploc.values()]
