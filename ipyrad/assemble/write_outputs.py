@@ -3,7 +3,7 @@
 # py2/3 compatibility
 from __future__ import print_function
 try:
-    from builtins import range
+    from builtins import range, bytes
     from itertools import izip, chain
 except ImportError:
     from itertools import chain
@@ -2508,7 +2508,8 @@ def subsample(snpsmap):
 
 
 
-AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
+AMBIGARR = np.array(list(bytes(b"RSKYWM"))).astype(np.uint8)
+
 STATS_HEADER_1 = """
 ## The number of loci caught by each filter.
 ## ipyrad API location: [assembly].stats_dfs.s7_filters
