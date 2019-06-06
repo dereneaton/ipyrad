@@ -63,7 +63,10 @@ def load_json(json_path, quiet=False, cli=False):
         try:
             value = oldparams[param]
         except KeyError:
-            value = getattr(null.params, _param)
+            try:
+                value = oldparams[_param]
+            except KeyError:
+                value = getattr(null.params, _param)
 
         # set param in new null assembly with value from old assembly.
         null.set_params(param, value)           
