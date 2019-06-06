@@ -486,7 +486,7 @@ class Step7:
         args1 = (self.data, self.ntaxa, self.nbases, self.nloci)
         args2 = (self.data, self.ntaxa, self.nsnps)
 
-        print(self.nbases)
+        # print(self.nbases)
         # fill with filtered loci chunks from Processor
         rasyncs[0] = self.lbview.apply(write_loci_and_alleles, self.data)
         rasyncs[1] = self.lbview.apply(fill_seq_array, *args1)
@@ -734,6 +734,7 @@ class Processor(object):
 
             # apply filters 
             edges = Edges(self.data, self.useqs)
+            edges.get_edges()
             self.edges[self.iloc] = edges.edges
 
             # fill filter 0
@@ -979,6 +980,8 @@ class Edges:
         # to be filled
         self.trimseq = None
 
+
+    def get_edges(self):
         # -1 to site coverage if ref is excluded from the count
         minsites_left = self.data.hackersonly.trim_loci_min_sites
         minsites_right = self.data.hackersonly.trim_loci_min_sites
