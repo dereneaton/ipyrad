@@ -50,8 +50,18 @@ class Step3:
     def run(self):
         "Run the assembly functions for this step"
 
-        ## paired-end data methods ------------------------------
+        # paired-end data methods ------------------------------
         if "pair" in self.data.params.datatype:
+
+            # Filter out by mapping to alt reference
+            if self.params.reference_as_filter:
+                self.remote_index_refs("alt")
+                self.remote_run(
+                    function=map_alt_reference,
+                    printstr=("filter map to alt ref", "s3"),
+                    args=(),
+                    threaded=True,
+                )
 
             # DENOVO ----
             if self.data.params.assembly_method == "denovo":
@@ -78,6 +88,7 @@ class Step3:
                 )
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
+
 
             # REFERENCE ----
             elif self.data.params.assembly_method == "reference":
@@ -122,102 +133,6 @@ class Step3:
                     printstr=("building clusters   ", "s3"),
                     args=(),
                 )
-
-            # DENOVO MINUS
-            elif self.data.params.assembly_method == "denovo-reference":
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-
-                # the same as 'reference' above except after mapping the reads
-                # we then take the unmapped reads, rejoin them end-to-end,
-                # and cluster them.
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"),
-                    args=(False, False,),
-                )
-                #if "3rad" not in data.paramsdict["datatype"]:
-                #    self.remote_run(
-                #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"), 
-                #        args=(self.nthreads, self.force),
-                #        )
-                self.remote_run(
-                    function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=split_endtoend_reads,
-                    printstr=("splitting dereps    ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=mapping_reads, 
-                    printstr=("mapping reads       ", "s3"),
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )                
-                # tell cluster to use the unmapped merged end-to-ends
-                self.remote_run_cluster_build()
-                self.remote_run_align_cleanup()
-
-            # DENOVO PLUS
-            else:
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )
-                #if "3rad" not in data.paramsdict["datatype"]:
-                #    self.remote_run(
-                #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"), 
-                #        args=(self.nthreads, self.force),
-                #        )
-                self.remote_run(
-                    function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=split_endtoend_reads,
-                    printstr=("splitting dereps    ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=mapping_reads, 
-                    printstr=("mapping reads       ", "s3"),
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )                
-                # tell cluster to use the unmapped merged end-to-ends
-                self.remote_run_cluster_build()
-                self.remote_run_align_cleanup()                
 
 
         ## single-end methods ------------------------------------
@@ -1832,7 +1747,9 @@ def build_clusters_from_cigars(data, sample):
                     if r1.is_reverse:
                         ori = "-"
                     derep = r1.qname.split("=")[-1]
-                    rname = "{}:{}-{};size={};{}".format(*reg, derep, ori)
+                    rname = "{}:{}-{};size={};{}".format(
+                        reg[0], reg[1], reg[2], derep, ori)
+                    # *reg, derep, ori)
                     clust.append("{}\n{}".format(rname, pairseq))
 
         # single-end data cluster building
