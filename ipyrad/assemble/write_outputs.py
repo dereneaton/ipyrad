@@ -710,8 +710,8 @@ class Processor(object):
                 self.names.append(name)
                 self.nidxs.append(nidx)
             else:
-                self.aseqs.append(list(line))
-                self.useqs.append(list(line.upper()))
+                self.aseqs.append(list(bytes(line.encode())))
+                self.useqs.append(list(bytes(line.upper().encode())))
 
         # filter to include only samples in this assembly
         mask = [i in self.data.snames for i in self.names]
@@ -719,9 +719,8 @@ class Processor(object):
 
         # [ref] store consens read start position as mapped to ref
         self.nidxs = np.array(self.nidxs)[mask].tolist()
-        self.useqs = np.array(self.useqs)[mask, :].astype(bytes).view(np.uint8)
-        self.aseqs = np.array(self.aseqs)[mask, :].astype(bytes).view(np.uint8)
-
+        self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
+        self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
 
 
     def run(self):
@@ -895,7 +894,7 @@ class Processor(object):
     def filter_dups(self):
         if len(set(self.names)) < len(self.names):
             self.filters[self.iloc, 0] = 1
-        return False
+        # return False
 
 
     def filter_minsamp_pops(self):
@@ -906,8 +905,8 @@ class Processor(object):
             if len(self.names) < self.minsamp:  # data.params.min_samples_locus:
                 # store locus filter
                 self.filters[self.iloc, 4] = 1
-                return True
-            return False
+                # return True
+            # return False
 
         # use populations 
         else:
@@ -919,8 +918,8 @@ class Processor(object):
                     minfilters.append(pop)
             if any(minfilters):
                 self.filters[self.iloc, 4] = 1
-                return True
-            return False
+                # return True
+            # return False
 
 
     def filter_maxindels(self, ublock):
@@ -929,8 +928,8 @@ class Processor(object):
         inds = maxind_numba(ublock)        
         if inds > self.maxinds:
             self.filters[self.iloc, 1] = 1
-            return True
-        return False
+            # return True
+        # return False
 
 
     def filter_maxvars(self, ublock, snpstring):
@@ -938,22 +937,22 @@ class Processor(object):
         if self.masked is not None:
             if snpstring.sum() > (self.masked.shape[1] * self.fmaxsnps):
                 self.filters[self.iloc, 2] = 1
-                return True
+                # return True
 
         # use full locus
         else:
             if snpstring.sum() > (ublock.shape[1] * self.fmaxsnps):
                 self.filters[self.iloc, 2] = 1
-                return True
-        return False
+                # return True
+        # return False
 
 
     def filter_maxshared(self, ublock):
         nhs = count_maxhet_numba(ublock)
         if nhs > (self.fmaxhet * ublock.shape[0]):
             self.filters[self.iloc, 3] = 1
-            return True
-        return False
+            # return True
+        # return False
 
 
     def get_snpsarrs(self, block, exclude_ref=False):
@@ -1036,7 +1035,11 @@ class Edges:
 
         # trim left side for overhang
         for cutter in self.data.params.restriction_overhang:
-            cutter = np.array(list(cutter.encode()))
+
+            # will be ints for py2/3
+            cutter = np.array(list(bytes(cutter.encode())))
+
+            # 
             slx = slice(0, cutter.shape[0])
             matching = self.trimseq[:, slx] == cutter
             mask = np.where(
