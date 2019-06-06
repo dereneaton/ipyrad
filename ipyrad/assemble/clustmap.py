@@ -54,14 +54,14 @@ class Step3:
         if "pair" in self.data.params.datatype:
 
             # Filter out by mapping to alt reference
-            if self.params.reference_as_filter:
-                self.remote_index_refs("alt")
-                self.remote_run(
-                    function=map_alt_reference,
-                    printstr=("filter map to alt ref", "s3"),
-                    args=(),
-                    threaded=True,
-                )
+            # if self.data.params.reference_as_filter:
+            #     self.remote_index_refs("alt")
+            #     self.remote_run(
+            #         function=map_alt_reference,
+            #         printstr=("filter map to alt ref", "s3"),
+            #         args=(),
+            #         threaded=True,
+            #     )
 
             # DENOVO ----
             if self.data.params.assembly_method == "denovo":
