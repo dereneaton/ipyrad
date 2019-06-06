@@ -1743,9 +1743,12 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                             .split("-")
                         )
 
-                    # seq into an array
-                    loc = (np.array([list(i) for i in tmploc.values()])
-                        .astype(bytes).view(np.uint8))
+                    # seq into an array as int8 (py2/3 checked)
+                    loc = np.array(
+                        [list(bytes(i.encode())) for i in tmploc.values()]
+                        ).astype(np.int8)
+                    # loc = (np.array([list(i) for i in tmploc.values()])
+                    # .astype(bytes).view(np.uint8))
                     
                     # drop the site that are all N or - (e.g., pair inserts)
                     if (data.isref and data.ispair):
