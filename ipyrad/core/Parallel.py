@@ -291,10 +291,7 @@ class Parallel(object):
 
             # run the job
             if not dry_run:
-                self.tool._run(
-                    ipyclient=self.ipyclient, 
-                    **self.rkwargs, 
-                    )
+                self.tool._run(ipyclient=self.ipyclient, **self.rkwargs) 
 
         # print the error and cleanup
         except KeyboardInterrupt:
