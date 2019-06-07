@@ -1228,15 +1228,13 @@ class Converter:
                     for block in range(0, min(chunksize, lend), 100):
                         stop = min(block + 100, arrsize)
 
-                        # , name in enumerate(self.data.pnames):
-                        # get line for each sample
-                        # range(rstart, io5["phy"].shape[0]):
                         for idx, name in enumerate(xnames):  
-                            seqdat = bigblock[idx, block:stop]
+
+                            # py2/3 compat --> b"TGCGGG..."
+                            seqdat = bytes(bigblock[idx, block:stop])
                             tmpout.append("  {}{}\n".format(
-                                #self.data.pnames[self.data.snames[idx]], 
-                                name,  # xnames[idx],
-                                b"".join(seqdat).decode().upper()))
+                                name,
+                                seqdat.decode().upper()))
                         tmpout.append("\n")
 
                     ## print intermediate result and clear
