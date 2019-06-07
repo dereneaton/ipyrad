@@ -17,7 +17,6 @@ import subprocess as sps
 
 # third party
 import pandas as pd
-
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import progressbar
 

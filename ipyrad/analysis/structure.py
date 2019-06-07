@@ -14,8 +14,12 @@ import glob
 import subprocess as sps
 
 # third party
+import h5py
 import numpy as np
 import pandas as pd
+
+# ipyrad utils
+from ipyrad.core.Parallel import Parallel
 from ipyrad.analysis.utils import get_spans, Params
 from ipyrad.assemble.utils import IPyradError
 
@@ -40,15 +44,15 @@ class Structure(object):
     -----------
     name (str):
         A prefix name for all output files. 
-    strfile (str):
-        The path to a .str or .ustr file formatted to run in STRUCTURE. The 
-        first is expected to include all SNPs for a data set, and is meant to
-        be combined with a mapfile (see next), whereas the ustr file contains
-        a random sample of unlinked SNPs. 
-    mapfile (str):
-        The path to a .snps.map file from ipyrad. This has information about 
-        which SNPs are linked (from the same RAD locus) which allow for sampling
-        unlinked SNPs. 
+
+    data (str):
+        A .snps.hdf5 file from ipyrad (this is a database file that contains
+        the same data as the .snps and .snpsmap files to know the linkage
+        among snps). This file is used to subsample unlinked SNPs.
+
+    workdir (str):
+        Directory for output files; will be created if not present.
+
 
     Attributes:
     ----------
@@ -77,13 +81,20 @@ class Structure(object):
         Returns a table of results for K=kpop permuted across all replicates.
     
     """    
-    def __init__(self, name, data, workdir=None, mapfile=None):
+    def __init__(
+        self, 
+        name, 
+        data, 
+        workdir="./analysis-structure",
+        imap=None,
+        minmap=None,
+        mincov=0.0,
+        ):
 
         # store args
         self.name = name
-        self.data = data
-        self.workdir = workdir
-        self.mapfile = mapfile
+        self.data = os.path.abspath(os.path.expanduser(data))
+        self.workdir = os.path.abspath(os.path.expanduser(workdir))
 
         # run checks
         self.check_binaries()
@@ -108,22 +119,27 @@ class Structure(object):
 
 
     def setup_dirs(self):
-        ## make workdir if it does not exist
-        if self.workdir:
-            self.workdir = os.path.abspath(os.path.expanduser(self.workdir))
-        else:
-            self.workdir = os.path.join(
-                os.path.abspath('.'), 
-                "analysis-structure")
+        # make workdir if it does not exist
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
+
+
+    def check_files(self):
+        "check file format and get quick stats."
+        with h5py.File(self.data) as io5:
+
+            # handles
+            snps = io5["snps"]
+            snpsmap = io5["snpsmap"]
+
+            # stats
+            self.nsamples = self.data.shape[0]
 
 
     def check_files(self):
         "check that strfile exists, print and parse some info from it"
 
         # expand path
-        self.data = os.path.abspath(os.path.expanduser(self.data))
         with open(self.data) as ifile:
             lines = ifile.readlines()
             self.ntaxa = len(lines) // 2
@@ -181,6 +197,7 @@ class Structure(object):
         kpop, 
         nreps, 
         ipyclient=None,
+        auto=False,
         seed=12345, 
         force=False,
         quiet=False,
@@ -207,8 +224,14 @@ class Structure(object):
 
         ipyclient: (ipyparallel.Client Object)
             An ipyparallel client connected to an ipcluster instance. This is 
-            used to manage parallel jobs. If not present a single job will
-            run and block until finished (i.e., code is not parallel).
+            used to distribute parallel jobs. If you don't know what this is
+            then you should use the option 'auto=True' instead.
+
+        auto: (bool):
+            Automatically start an ipcluster instance on this node connected
+            to all available cores to use for multiprocessing, and shutdown 
+            the ipcluster when jobs are finished. This will enforce blocking
+            until all submitted jobs are finished.
 
         seed: (int):
             Random number seed used for subsampling unlinked SNPs if a mapfile

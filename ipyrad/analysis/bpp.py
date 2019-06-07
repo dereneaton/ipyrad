@@ -16,10 +16,18 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-import toytree
-from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.utils import IPyradError
 
+try:
+    import toytree
+except ImportError:
+    pass
+_MISSING_TOYTREE = """
+You are missing required packages to use ipa.bpp().
+First run the following conda install command:
+
+conda install toytree -c eaton-lab
+"""
 
 # DUCT from where?
 # TODO: REPLACE DUCT
@@ -27,10 +35,10 @@ from ipyrad.assemble.utils import IPyradError
 # 
 
 MISSING_IMPORTS = """
-You are missing required packages to use ipa.bpp.
+You are missing required packages to use ipa.bpp().
 First run the following conda install command:
 
-  conda install -c ipyrad bpp
+conda install bpp -c ipyrad
 """
 
 
@@ -193,7 +201,11 @@ class Bpp(object):
 
 
     def check_binary(self):
-        ## check that bpp is installed and in path
+        # check that toytree is installed
+        if not sys.modules.get("toytree"):
+            raise ImportError(_MISSING_TOYTREE)
+        
+        # check that bpp is installed and in path            
         for binary in [self._kwargs["binary"]]:
             cmd = ['which', binary]
             proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
@@ -276,9 +288,9 @@ class Bpp(object):
         """
         ## get mcmcs
         path = os.path.realpath(os.path.join(self.workdir, self.name))
-        mcmcs = glob.glob(path+"_r*.mcmc.txt")
-        outs = glob.glob(path+"_r*.out.txt")
-        trees = glob.glob(path+"_r*.tre")
+        mcmcs = glob.glob("{}_r*.mcmc.txt".format(path))
+        outs = glob.glob("{}_r*.out.txt".format(path))
+        trees = glob.glob("{}_r*.tre".format(path))
 
         for mcmcfile in mcmcs:
             if mcmcfile not in self.files.mcmcfiles:
@@ -376,7 +388,6 @@ class Bpp(object):
                              .format(nreps, self.name, self._nloci))
 
 
-
     def write_bpp_files(self, randomize_order=False, quiet=False):
         """ 
         Writes bpp files (.ctl, .seq, .imap) to the working directory. 
@@ -410,8 +421,7 @@ class Bpp(object):
                              .format(self._name, self._nloci))
 
 
-
-    def _write_mapfile(self):#, name=False):
+    def _write_mapfile(self):
         ## write the imap file:
         self.mapfile = os.path.realpath(
             os.path.join(self.workdir, self._name+".imapfile.txt"))
@@ -509,7 +519,7 @@ class Bpp(object):
 
 
 
-    def _write_ctlfile(self):#, rep=None):
+    def _write_ctlfile(self):
         """ write outfile with any args in argdict """
 
         ## A string to store ctl info
@@ -599,12 +609,13 @@ class Bpp(object):
         """
 
         ## make deepcopy of self.__dict__ but do not copy async objects
-        subdict = {i:j for i,j in self.__dict__.items() if i != "asyncs"}
+        subdict = {i: j for i, j in self.__dict__.items() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
         ## make back into a bpp object
         if name == self.name:
-            raise Exception("new object must have a different 'name' than its parent")
+            raise Exception(
+                "new object must have a different 'name' than its parent")
         newobj = Bpp(
             name=name,
             data=newdict["files"].data,
@@ -643,8 +654,9 @@ class Bpp(object):
             else:
                 ## concatenate each CSV and then get stats w/ describe
                 return pd.concat(
-                    [pd.read_csv(i, sep='\t', index_col=0) \
-                    for i in self.files.mcmcfiles]).describe().T
+                    [pd.read_csv(i, sep='\t', index_col=0) 
+                    for i in self.files.mcmcfiles]
+                    ).describe().T
 
         ## algorithm 01
         if self.params.infer_delimit & (not self.params.infer_sptree):
