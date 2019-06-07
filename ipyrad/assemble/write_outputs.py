@@ -2288,10 +2288,14 @@ def build_vcf(data, chunksize=1000):
 
                 # build geno strings
                 genostrs = [
-                    b"/".join(i).replace(b"9", b".").decode()
-                    for i in genos[:, snames.index(sname)]
-                    .astype(bytes)
+                    "{}/{}".format(*k) for k in [i for i in 
+                    [list(j) for j in genos[:, snames.index(sname)]]]
                 ]
+                # genostrs = [
+                # b"/".join(i).replace(b"9", b".").decode()
+                # for i in genos[:, snames.index(sname)]
+                # .astype(bytes)
+                # ]
 
                 # build depth and depthsum strings
                 dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
