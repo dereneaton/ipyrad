@@ -990,7 +990,7 @@ class Edges:
                 minsites_left -= 1
                 minsites_right -= 1
 
-        # get edges of good locus
+        # get .edges of good locus or .bad
         self.trim_for_coverage(
             minsite_left=minsites_left,
             minsite_right=minsites_right,
@@ -1039,10 +1039,14 @@ class Edges:
         # trim left side for overhang
         for cutter in self.data.params.restriction_overhang:
 
+            # skip if None
+            if not cutter:
+                continue
+
             # will be ints for py2/3
             cutter = np.array(list(bytes(cutter.encode())))
 
-            # 
+            # compare match over cut size skipping Ns and allow .25 diffs
             slx = slice(0, cutter.shape[0])
             matching = self.trimseq[:, slx] == cutter
             mask = np.where(
@@ -1606,7 +1610,7 @@ def write_loci_and_alleles(data):
                     achunk.append(aname + "_1 " + spacer + all2)
                 else:
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
-                    asnpstring = "//  " + snpstring[2:]
+                    asnpstring = "//    " + snpstring[2:]
                     if data.params.assembly_method == 'reference':
                         refpos = nidxs.split(",")[0]
 
