@@ -440,7 +440,7 @@ def remote_tree_inference(
                     data=fname,
                     name="temp_" + str(os.getpid()),
                     workdir=tempfile.gettempdir(),
-                    **initkwargs,
+                    **initkwargs
                 )
 
                 # run command
