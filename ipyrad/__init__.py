@@ -9,7 +9,7 @@ import sys as _sys
 import subprocess as _sps
 
 # Dunders
-__version__ = "0.9.5-dev"
+__version__ = "0.9.6-dev"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
@@ -37,7 +37,7 @@ for binary, path in bins.__dict__.items():
             raise ImportError("Missing requirement: {}".format(binary))
 
 # if user installed with pip then the following may be missing:
-# _other_deps = ["pysam"]
+# _other_deps = ["pysam", "mpi4py", ""]
 try:
     import pysam
 except ImportError:
