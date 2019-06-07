@@ -685,7 +685,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--fastq_minovlen", "20",
         "--fastq_maxdiffs", "4",
         "--label_suffix", "_m1",
-        "--fastq_qmax", "100",
+        #"--fastq_qmax", "100",
         "--threads", "2",
         "--fastq_allowmergestagger",
     ]
