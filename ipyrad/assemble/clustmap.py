@@ -1086,7 +1086,10 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     if refined:
         outhandle = handle.rsplit(".", 1)[0] + ".aligned"
         with open(outhandle, 'wb') as outfile:
-            outfile.write(str.encode("\n//\n//\n".join(refined) + "\n"))
+            try:
+                outfile.write("\n//\n//\n".join(refined) + "\n")
+            except TypeError:
+                outfile.write(("\n//\n//\n".join(refined) + "\n").encode())
     return highindels
 
 
