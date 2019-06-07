@@ -1109,7 +1109,11 @@ def reconcat(data, sample):
         for fname in chunks:
             with open(fname) as infile:
                 dat = infile.read().strip()
-                out.write(str.encode(dat + "\n//\n//\n"))
+                dat += "\n//\n//\n"
+                try:
+                    out.write(dat)
+                except TypeError:
+                    out.write(dat.encode())
             os.remove(fname)
 
 
