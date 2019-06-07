@@ -571,12 +571,12 @@ def dereplicate(data, sample, nthreads):
     infiles = [i for i in infiles if os.path.exists(i)]
     infile = infiles[-1]
 
-    ## datatypes options
+    # datatypes options
     strand = "plus"
     if data.params.datatype is ('gbs' or '2brad'):
         strand = "both"
 
-    ## do dereplication with vsearch
+    # do dereplication with vsearch
     cmd = [
         ip.bins.vsearch,
         "--derep_fulllength", infile,
@@ -584,12 +584,17 @@ def dereplicate(data, sample, nthreads):
         "--output", os.path.join(data.tmpdir, sample.name + "_derep.fastq"),
         "--threads", str(nthreads),
         "--fasta_width", str(0),
-        "--fastq_qmax", "1000",
         "--sizeout", 
         "--relabel_md5",
+        "--quiet",
+        #"--fastq_qmax", "1000",        
     ]
 
-    ## build PIPEd job   
+    # decompress argument
+    if infile.endswith(".gz"):
+        cmd.append("--gzip_decompress")
+
+    # build PIPEd job   
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
@@ -801,28 +806,8 @@ def cluster(data, sample, nthreads, force):
     based on experience, but could be edited by users
     """
     # get dereplicated reads for denovo+reference or denovo-reference
-    if "reference" in data.params.assembly_method:
-        derephandle = os.path.join(
-            data.tmpdir, 
-            "{}_derep.fastq".format(sample.name))
-
-    # get dereplicated reads for denovo
-    else:
-        derephandle = os.path.join(
-            data.tmpdir, 
-            "{}_derep.fastq".format(sample.name))
-        
-        # # In the event all reads for all samples map successfully then 
-        # # clustering the unmapped reads makes no sense, so just bail out.
-        # if not os.stat(derephandle).st_size:
-        #     # In this case you do have to create empty, dummy vsearch output
-        #     # files so building_clusters will not fail.
-        #     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
-        #     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
-        #     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-        #     for f in [uhandle, usort, hhandle]:
-        #         open(f, 'a').close()
-        #     return
+    derephandle = os.path.join(
+        data.tmpdir, "{}_derep.fastq".format(sample.name))
     assert os.path.exists(derephandle), "bad derep handle"
 
     # create handles for the outfiles
@@ -869,7 +854,7 @@ def cluster(data, sample, nthreads, force):
            "-threads", str(nthreads),
            "-notmatched", temphandle,
            "-fasta_width", "0",
-           "-fastq_qmax", "100",
+           # "-fastq_qmax", "100",
            "-fulldp",
            "-usersort"]
 
@@ -1659,11 +1644,6 @@ def bedtools_merge(data, sample):
     if proc2.returncode:
         raise IPyradError("error in %s: %s", cmd2, result)
 
-    # Write the bedfile out, because it's useful sometimes.
-    if os.path.exists(ip.__debugflag__):
-        with open(os.path.join(data.dirs.refmapping, sample.name + ".bed"), 'w') as outfile:
-            outfile.write(result)
-
     # Report the number of regions we're returning
     # nregions = len(result.strip().split("\n"))
     return result
@@ -2155,7 +2135,7 @@ NO_ZIP_BINS = """
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
  
- \     gunzip {}
+      gunzip {}
 
   Then edit your params file to remove the `.gz` from the end of the
   path to your reference sequence file and rerun step 3 with the `-f` flag.
