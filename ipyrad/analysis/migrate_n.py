@@ -7,8 +7,6 @@ from builtins import range
 
 import os
 import numpy as np
-from collections import Counter
-from ipyrad.analysis.utils import progressbar, Params
 from ipyrad.assemble.utils import IPyradError
 
 
@@ -63,14 +61,20 @@ class Migrate(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
+        # check imap pop names
+        # if len(i) > 10 for i in         
+
+
+
         
     def write_seqfile(self):
         """
         Write a migrate-n formatted sequence file with samples from imap
         filtered by minmap and limited to maxloci and minsnps. The maxloci
         param randomly samples loci using the argument 'seed' from init.
-        """
-        """
+
+        Names MUST be 10 characters and MUST NOT start with an int.
+
         Creates migrate-n format from the .loci file which has already been
         filtered by the .populations minsample args
 
@@ -84,7 +88,6 @@ class Migrate(object):
         ...
         ninds ninds ninds ninds C
         """
-
         # iterate over loci lines
         indat = iter(open(self.data, 'r'))
 
@@ -177,7 +180,7 @@ class Migrate(object):
                 for loc in locs:
                     for sidx, seq in enumerate(loc):
                         seq = b"".join(seq.view("S1")).decode()
-                        line = "ind_{}     {}".format(sidx, seq)
+                        line = "ind_{:<6}{}".format(sidx, seq)
                         lines.append(line)
 
                 out.write("\n".join(lines) + "\n")
