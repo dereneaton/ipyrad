@@ -93,25 +93,11 @@ pinfo = OrderedDict([
                       ence assembly will throw out all unmapped reads, 
                       which could be a significant proportion depending
                       on the distance between your reference and study
-                      species. Most times you'll want to use 'denovo+reference'.
- denovo+reference -   Hybrid assembly will attempt to map and align reads
-                      to the provided reference sequence which must be set
-                      in parameter 28. It will also denovo assemble all
-                      unmapped reads, and then merge assembled mapped and 
-                      unmapped for downstream analysis. This is what you'll
-                      want most of the time if you're passing in a refer-
-                      ence sequence.
- denovo-reference -   In this mode reads are mapped to the reference but
-                      only unmapped reads are retained for further
-                      analysis. Since lots of downstream applications assume 
-                      neutralality of markers and reads that map to 
-                      reference are demonstrably more highly conserved, 
-                      it is probable that unmapped reads are neutral or 
-                      unlinked to non-neutral.
-    ----------------------------------------------------------------------
-    data.set_params("assembly_method", "denovo+reference")   ## verbose
+                      species.'.
+     ----------------------------------------------------------------------
+    data.set_params("assembly_method", "denovo")   ## verbose
     ---------------------------------------------------------------------- 
-    """, "Assembly method (denovo, reference, denovo+reference, denovo-reference)")
+    """, "Assembly method (denovo, reference)")
 ),
 
 ("6", ("""
@@ -142,14 +128,13 @@ pinfo = OrderedDict([
 
 ("7", ("""
     (7) datatype ---------------------------------------------------------
-    Options: rad, gbs, 2brad, ddrad, pairddrad, pairgbs, pair3rad,  merged.
+    Options: rad, gbs, 2brad, ddrad, pairddrad, pairgbs, pair3rad,
     This parameter affects all steps of assembly (1-7).         
     Examples:
     ----------------------------------------------------------------------
     data.set_params(7) = 'rad'                     ## rad data type
     data.set_params(7) = 'gbs'                     ## gbs data type
     data.set_params(7) = 'pairddrad'               ## gbs data type        
-    data.set_params(7) = 'merged'                  ## merged data type
     data.set_params("datatype") = 'ddrad'          ## verbose
     ----------------------------------------------------------------------
     """, "Datatype (see docs): rad, gbs, ddrad, etc.")
@@ -408,6 +393,15 @@ pinfo = OrderedDict([
     /home/users/Documents/popfile.txt           ## [28] pop_assign_file 
     ----------------------------------------------------------------------
     """, "Path to population assignment file")
+),
+
+("29", ("""
+    (29) reference_as_filter ---------------------------------------------
+    Examples:
+    ----------------------------------------------------------------------
+    data.set_params("reference_as_filter") = ./data/reference.fa   ## verbose
+    ----------------------------------------------------------------------
+    """, "Reads mapped to this reference are removed in step 3")
 ),
 
 ])

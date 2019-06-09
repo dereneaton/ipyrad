@@ -12,9 +12,11 @@ import os
 import sys
 import time
 import socket
+import traceback
 import subprocess
 from random import getrandbits
 
+import ipyrad as ip
 import ipyparallel as ipp
 from ..assemble.utils import IPyradError, detect_cpus
 # from ipywidgets import HTML, Box
@@ -50,7 +52,6 @@ class Parallel(object):
             self.spacer = self.tool._spacer
         except AttributeError:
             self.spacer = ""
-
 
         # ipywidget based progress bar
         # self.message = HTML(
@@ -165,25 +166,30 @@ class Parallel(object):
                     .format(ncores))
                 time.sleep(0.01)
 
-                # are all cores found yet? if so, break.
+                # If we know ncores, then wait for all 
+                print(self.tool.ipcluster["cores"])
                 if self.tool.ipcluster["cores"]:
                     time.sleep(0.1)
                     if ncores == self.tool.ipcluster["cores"]:
                         break
 
-                # If MPI and not all found, break if no more found in 3 secs
-                if self.tool.ipcluster["engines"] == "MPI":
-                    # are any cores found yet? do long wait.
-                    if ncores:
-                        time.sleep(1)
-                        if len(ipyclient) == ncores:
-                            break
-
-                # if Local then if at least one core we're happy to move on.
+                # Looking for all available cores, auto stop 
                 else:
-                    if ncores:
-                        time.sleep(0.5)
-                        break
+                    
+                    # If MPI and not all found break if no more in 3 secs
+                    if self.tool.ipcluster["engines"] == "MPI":
+                        # are any cores found yet? do long wait.
+                        if ncores:
+                            time.sleep(3)
+                            if len(ipyclient) == ncores:
+                                break
+
+                    # if Local then wait 1 second between checks
+                    else:
+                        if ncores:
+                            time.sleep(1.)
+                            if len(ipyclient) == ncores:                            
+                                break
 
         except KeyboardInterrupt as inst:
             raise inst
@@ -246,6 +252,11 @@ class Parallel(object):
         dictionary and either launches an ipcluster instance or connects to a 
         running one. The ipyclient arg overrides the auto arg.
         """
+
+        # save a traceback of the stack on the remote engine that dies
+        iptrace = None
+
+        # wrap so we can shutdown ipp and format error and traceback
         try:
             # check that ipyclient is running by connecting (3 seconds tries)
             if self.ipyclient:
@@ -280,31 +291,51 @@ class Parallel(object):
 
             # run the job
             if not dry_run:
-                self.tool._run(
-                    **self.rkwargs, 
-                    ipyclient=self.ipyclient, 
-                    )
+                self.tool._run(ipyclient=self.ipyclient, **self.rkwargs) 
 
         # print the error and cleanup
         except KeyboardInterrupt:
             print("\n{}Keyboard Interrupt by user\n".format(self.spacer))
 
-        except IPyradError as inst:
-            msg = "\n{}Encountered an Error.".format(self.spacer) + \
-                  "\n{}Message: {}".format(self.spacer, inst) + \
-                  "\n{}Use debug flag (-d) for full code traceback.".format(self.spacer)
-            print(msg)
-            raise
+        # error on remote engine.
+        # print error and optionally print trace.
+        except ipp.RemoteError as inst:
+            msg = [
+                "{}Encountered an Error.".format(self.spacer),
+                "{}Message: {}: {}".format(
+                    self.spacer, inst.args[0], inst.args[1])
+            ]
+            if not ip.__interactive__:
+                msg.append(
+                    "{}Use debug flag (-d) for full code traceback."
+                    .format(self.spacer)
+                )
+            print("\n" + "\n".join(msg))
+            iptrace = inst.traceback
 
+        # other errors not raised on remote engines
+        # print error and always print trace
         except Exception as inst:
-            msg = "\n{}Encountered an Error.".format(self.spacer) + \
-                  "\n{}Message: {}".format(self.spacer, inst)
-            print(msg)
-            raise
+            msg = [
+                "{}Encountered an Error.".format(self.spacer),
+                "{}Message: {}".format(self.spacer, inst),
+            ]
+            print("\n" + "\n".join(msg))
+            # get formatted traceback string
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            iptrace = "".join(traceback.format_exception(
+                exc_type, exc_value, exc_traceback))
 
         # cancel/kill any unfinished jobs and shutdown hub if 'auto=True'
         finally:           
             self.cleanup()
+            
+            # print traceback and exit if CLI, just print if API
+            if ip.__interactive__:
+                if iptrace:
+                    print(iptrace)
+            else:
+                SystemExit(1)
 
 
     def cleanup(self):

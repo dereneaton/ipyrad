@@ -16,8 +16,7 @@ import pandas as pd
 import ipyrad as ip
 
 from collections import OrderedDict
-from ipyrad.assemble.utils import IPyradError
-from ipyrad.assemble.utils import ObjDict, BADCHARS
+from ipyrad.assemble.utils import IPyradError, ObjDict, BADCHARS
 from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
 from ipyrad.core.params import Params, Hackers
@@ -266,13 +265,21 @@ class Assembly(object):
         # make sure bars are upper case
         bdf[1] = bdf[1].str.upper()
 
-        # if replicates are present then print a warning
+        # if replicates are present
         if bdf[0].value_counts().max() > 1:
-            self._print("Warning: technical replicates (same name) present.")
+
+            # print a warning about dups if the data are not demultiplexed
+            if not self.samples:
+                self._print(
+                    "Warning: technical replicates (same name) present.")
 
             # adds -technical-replicate-N to replicate names (NON_DEFAULT)
             # if not self.hackersonly.merge_technical_replicates:                   
+            
+            # get duplicated names
             repeated = (bdf[0].value_counts() > 1).index
+
+            # labels technical reps in barcode dict
             for rep in repeated:
                 farr = bdf[bdf[0] == rep]
                 for idx, index in enumerate(farr.index):
@@ -490,7 +497,7 @@ class Assembly(object):
             ## Write the header. Format to 80 columns
             header = "------- ipyrad params file (v.{})".format(ip.__version__)
             header += ("-" * (80 - len(header)))
-            paramsfile.write(header)
+            paramsfile.write(header + "\n")
 
             ## Whip through the current params and write out the current
             ## param value, the ordered dict index number. Also,
@@ -802,6 +809,9 @@ def merge(name, assemblies, rename_dict=None):
         _ = len(assemblies)
     except TypeError:
         assemblies = [assemblies]
+
+    # inherit workdir
+    setattr(merged.params, "_project_dir", assemblies[0].params.project_dir)
 
     # inherit params setting from first assembly
     for key in assemblies[0].params._keys[5:]:

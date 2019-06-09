@@ -13,36 +13,37 @@ except ImportError:
     izip = zip
 
 import os
+import sys
 import socket
 import pandas as pd
 import numpy as np
-import ipyrad
 import string
 
-
-BADCHARS = string.punctuation.replace("_", "").replace("-", "") + " "
-
-
-# class IPyradError(Exception):
-class IPyradAPIError(Exception):
-    """ Exception handler indicating error in during assembly """
-    def __init__(self, *args, **kwargs):
-        Exception.__init__(self, *args, **kwargs)
+import ipyrad
 
 
-# class IPyradWarningExit(SystemExit):
-class IPyradError(SystemExit):
+BADCHARS = (
+    string.punctuation
+    .replace("_", "")
+    .replace("-", "")
+    .replace(".", "") + " "
+)
+
+
+class IPyradError(Exception):
     """
     Exception handler that does clean exit for CLI, but also prints
     the traceback and cleaner message for API.
     """
     def __init__(self, *args, **kwargs):
-        if ipyrad.__interactive__:
-            # raise a traceback for the API
-            raise IPyradAPIError(*args, **kwargs)
-        else:
+        # raise the exception with this string message and a traceback
+        Exception.__init__(self, *args, **kwargs)
+
+        # but suppress traceback and exit on CLI
+        if not ipyrad.__interactive__:
             # clean exit for CLI that still exits as an Error (e.g. for HPC)
-            SystemExit.__init__(self, *args, **kwargs)
+            sys.tracebacklimit = 0
+            SystemExit(1)
 
 
 ## utility functions/classes
@@ -115,70 +116,70 @@ class ObjDict(dict):
 CDICT = {i: j for i, j in zip("CATG", "0123")}
 
 
-## used for geno output
-VIEW = {
-    "R": ("G", "A"),
-    "K": ("G", "T"),
-    "S": ("G", "C"),
-    "Y": ("T", "C"),
-    "W": ("T", "A"),
-    "M": ("C", "A"),
-    "A": ("X", "X"),
-    "T": ("X", "X"),
-    "G": ("X", "X"),
-    "C": ("X", "X"),
-    "N": ("X", "X"),
-    "-": ("X", "X"),
-    }
+# ## used for geno output
+# VIEW = {
+#     "R": ("G", "A"),
+#     "K": ("G", "T"),
+#     "S": ("G", "C"),
+#     "Y": ("T", "C"),
+#     "W": ("T", "A"),
+#     "M": ("C", "A"),
+#     "A": ("X", "X"),
+#     "T": ("X", "X"),
+#     "G": ("X", "X"),
+#     "C": ("X", "X"),
+#     "N": ("X", "X"),
+#     "-": ("X", "X"),
+#     }
 
-## used in hetero() func of consens_se.py
-TRANS = {
-    ('G', 'A'): "R",
-    ('G', 'T'): "K",
-    ('G', 'C'): "S",
-    ('T', 'C'): "Y",
-    ('T', 'A'): "W",
-    ('C', 'A'): "M",
-    }
+# ## used in hetero() func of consens_se.py
+# TRANS = {
+#     ('G', 'A'): "R",
+#     ('G', 'T'): "K",
+#     ('G', 'C'): "S",
+#     ('T', 'C'): "Y",
+#     ('T', 'A'): "W",
+#     ('C', 'A'): "M",
+#     }
 
-# used in write_outfiles.write_geno
-TRANSFULL = {
-    (b'G', b'A'): "R",
-    (b'G', b'T'): "K",
-    (b'G', b'C'): "S",
-    (b'T', b'C'): "Y",
-    (b'T', b'A'): "W",
-    (b'C', b'A'): "M",
-    (b'A', b'C'): "M",
-    (b'A', b'T'): "W",
-    (b'C', b'T'): "Y",
-    (b'C', b'G'): "S",
-    (b'T', b'G'): "K",
-    (b'A', b'G'): "R",
-    }
+# # used in write_outfiles.write_geno
+# TRANSFULL = {
+#     (b'G', b'A'): "R",
+#     (b'G', b'T'): "K",
+#     (b'G', b'C'): "S",
+#     (b'T', b'C'): "Y",
+#     (b'T', b'A'): "W",
+#     (b'C', b'A'): "M",
+#     (b'A', b'C'): "M",
+#     (b'A', b'T'): "W",
+#     (b'C', b'T'): "Y",
+#     (b'C', b'G'): "S",
+#     (b'T', b'G'): "K",
+#     (b'A', b'G'): "R",
+#     }
 
-TRANSINT = {
-    (71, 65): 82,
-    (71, 84): 75,
-    (71, 67): 83,
-    (84, 67): 89,
-    (84, 65): 87,
-    (67, 65): 77,
-    (65, 67): 77,
-    (65, 84): 87,
-    (67, 84): 89,
-    (67, 71): 83,
-    (84, 71): 75,
-    (65, 71): 82,
-    }
+# TRANSINT = {
+#     (71, 65): 82,
+#     (71, 84): 75,
+#     (71, 67): 83,
+#     (84, 67): 89,
+#     (84, 65): 87,
+#     (67, 65): 77,
+#     (65, 67): 77,
+#     (65, 84): 87,
+#     (67, 84): 89,
+#     (67, 71): 83,
+#     (84, 71): 75,
+#     (65, 71): 82,
+#     }
 
 
-GENOOPTS = {
-    b"C": (b"S", b"Y", b"M"),
-    b"A": (b"R", b"W", b"M"),
-    b"T": (b"K", b"Y", b"W"), 
-    b"G": (b"R", b"K", b"S"),
-}
+# GENOOPTS = {
+#     b"C": (b"S", b"Y", b"M"),
+#     b"A": (b"R", b"W", b"M"),
+#     b"T": (b"K", b"Y", b"W"), 
+#     b"G": (b"R", b"K", b"S"),
+# }
 
 
 ## used for resolving ambiguities
@@ -256,7 +257,7 @@ def splitalleles(consensus):
     return allele1, allele2
 
 
-
+# used by clustmap
 def comp(seq):
     """ returns a seq with complement. Preserves little n's for splitters."""
     ## makes base to its small complement then makes upper
@@ -268,7 +269,7 @@ def comp(seq):
               .upper()\
               .replace("Z", "n")
 
-
+# used by clustmap
 def bcomp(seq):
     """ returns a seq with complement. Preserves little n's for splitters."""
     ## makes base to its small complement then makes upper
@@ -281,7 +282,7 @@ def bcomp(seq):
               .replace(b"Z", b"n")
 
 
-
+# used by rawedit
 def fullcomp(seq):
     """ returns complement of sequence including ambiguity characters,
     and saves lower case info for multiple hetero sequences"""
@@ -316,6 +317,7 @@ def fullcomp(seq):
     return seq
 
 
+# used by consens
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict
 ## except it returns just one base, w/ the order/priority being (C>A>T>G)
 ## This dict is used to impute lower case into consens to retain allele
@@ -329,7 +331,7 @@ PRIORITY = {
     b"K": b"T",
 }
 
-## The inverse of priority
+# The inverse of priority
 MINOR = {
     b"M": b"A",
     b"Y": b"T",
@@ -339,7 +341,7 @@ MINOR = {
     b"K": b"G",
 }
 
-
+# used by write_outputs
 # convert byte to list of alleles as ASCII strings
 BTS = {
     b"R": ["G", "A"],
@@ -356,18 +358,18 @@ BTS = {
     b"-": ["-", "-"]
     }
 
-GETGENO = np.array([
-    list(b"RGA"),
-    list(b"KGT"),
-    list(b"SGC"),
-    list(b"YTC"),
-    list(b"WTA"),
-    list(b"MCA"),
-    list(b"AAA"),
-    list(b"TTT"),
-    list(b"CCC"),
-    list(b"GGG"),
-], dtype=np.uint8)
+# GETGENO = np.array([
+#     list(b"RGA"),
+#     list(b"KGT"),
+#     list(b"SGC"),
+#     list(b"YTC"),
+#     list(b"WTA"),
+#     list(b"MCA"),
+#     list(b"AAA"),
+#     list(b"TTT"),
+#     list(b"CCC"),
+#     list(b"GGG"),
+# ], dtype=np.uint8)
 
 # used in baba.py / write_outfiles..py
 ## with N and - masked to 9
@@ -469,8 +471,6 @@ def get_threaded_view(ipyclient, split=True):
     #threaded = hostdict.values()
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
     return hostdict
-
-
 
 
 ##############################################################

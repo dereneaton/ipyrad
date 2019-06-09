@@ -50,8 +50,18 @@ class Step3:
     def run(self):
         "Run the assembly functions for this step"
 
-        ## paired-end data methods ------------------------------
+        # paired-end data methods ------------------------------
         if "pair" in self.data.params.datatype:
+
+            # Filter out by mapping to alt reference
+            # if self.data.params.reference_as_filter:
+            #     self.remote_index_refs("alt")
+            #     self.remote_run(
+            #         function=map_alt_reference,
+            #         printstr=("filter map to alt ref", "s3"),
+            #         args=(),
+            #         threaded=True,
+            #     )
 
             # DENOVO ----
             if self.data.params.assembly_method == "denovo":
@@ -78,6 +88,7 @@ class Step3:
                 )
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
+
 
             # REFERENCE ----
             elif self.data.params.assembly_method == "reference":
@@ -122,102 +133,6 @@ class Step3:
                     printstr=("building clusters   ", "s3"),
                     args=(),
                 )
-
-            # DENOVO MINUS
-            elif self.data.params.assembly_method == "denovo-reference":
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-
-                # the same as 'reference' above except after mapping the reads
-                # we then take the unmapped reads, rejoin them end-to-end,
-                # and cluster them.
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"),
-                    args=(False, False,),
-                )
-                #if "3rad" not in data.paramsdict["datatype"]:
-                #    self.remote_run(
-                #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"), 
-                #        args=(self.nthreads, self.force),
-                #        )
-                self.remote_run(
-                    function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=split_endtoend_reads,
-                    printstr=("splitting dereps    ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=mapping_reads, 
-                    printstr=("mapping reads       ", "s3"),
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )                
-                # tell cluster to use the unmapped merged end-to-ends
-                self.remote_run_cluster_build()
-                self.remote_run_align_cleanup()
-
-            # DENOVO PLUS
-            else:
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )
-                #if "3rad" not in data.paramsdict["datatype"]:
-                #    self.remote_run(
-                #        function=dereplicate,
-                #        printstr=("declone 3RAD        ", "s3"), 
-                #        args=(self.nthreads, self.force),
-                #        )
-                self.remote_run(
-                    function=dereplicate,
-                    printstr=("dereplicating       ", "s3"), 
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=split_endtoend_reads,
-                    printstr=("splitting dereps    ", "s3"), 
-                    args=(),
-                )
-                self.remote_run(
-                    function=mapping_reads, 
-                    printstr=("mapping reads       ", "s3"),
-                    args=(self.nthreads,),
-                    threaded=True,
-                )
-                self.remote_run(
-                    function=merge_end_to_end,
-                    printstr=("join unmerged pairs ", "s3"), 
-                    args=(False, False,),
-                )                
-                # tell cluster to use the unmapped merged end-to-ends
-                self.remote_run_cluster_build()
-                self.remote_run_align_cleanup()                
 
 
         ## single-end methods ------------------------------------
@@ -441,7 +356,7 @@ class Step3:
         self.data._print("")
         for job in [rasync1, rasync2]:
             if not job.successful():
-                raise IPyradError(job.exception())
+                job.get()
 
 
     def remote_run_cluster_build(self):
@@ -481,9 +396,9 @@ class Step3:
             if len(ready) == sum(ready):
                 break
         self.data._print("")
-        for job in casyncs:
+        for job in casyncs:            
             if not casyncs[job].successful():
-                raise IPyradError(casyncs[job].exception())
+                casyncs[job].get()
 
         # track job progress
         start = time.time()
@@ -497,7 +412,7 @@ class Step3:
         self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
-                raise IPyradError(basyncs[job].exception())
+                basyncs[job].get()
 
         # track job progress
         start = time.time()
@@ -511,7 +426,7 @@ class Step3:
         self.data._print("")
         for job in hasyncs:
             if not hasyncs[job].successful():
-                raise IPyradError(hasyncs[job].exception())
+                hasyncs[job].get()
 
 
     def remote_run_align_cleanup(self):
@@ -530,6 +445,7 @@ class Step3:
                     *(handle, self.maxindels, self.gbs)
                 )
                 aasyncs[sample.name].append(rasync)
+
         # a list with all aasyncs concatenated
         allasyncs = list(chain(*[aasyncs[i] for i in aasyncs]))
 
@@ -553,7 +469,7 @@ class Step3:
         self.data._print("")
         for job in allasyncs:
             if not job.successful():
-                raise IPyradError(job.exception())
+                job.get()
 
         # track job 2 progress
         start = time.time()
@@ -567,7 +483,7 @@ class Step3:
         self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
-                raise IPyradError(basyncs[job].exception())
+                basyncs[job].get()
 
 
     def remote_run_sample_cleanup(self):
@@ -587,15 +503,11 @@ class Step3:
             for sname in samplelist:
                 if rasyncs[sname].ready():
 
-                    # enter results to sample object
+                    # enter results to sample object and checks for errors
                     maxlens, depths = rasyncs[sname].get()
                     store_sample_stats(
                         self.data, self.data.samples[sname], maxlens, depths)
                     finished += 1
-                    
-                    # check for errors
-                    if not rasyncs[sname].successful():
-                        raise IPyradError(rasyncs[sample.name].get())
 
                     # remove sample from todo list, and del from rasyncs mem
                     rasyncs.pop(sname)
@@ -627,11 +539,10 @@ class Step3:
             if len(ready) == sum(ready):
                 break
 
-        # check for errors
+        # check for errors, will raise ipp.RemoteError
         self.data._print("")
         for job in rasyncs:
-            if not rasyncs[job].successful():
-                raise IPyradError(rasyncs[job].exception())
+            rasyncs[job].get()
 
         # clean up to free any RAM
         self.ipyclient.purge_everything()
@@ -660,12 +571,12 @@ def dereplicate(data, sample, nthreads):
     infiles = [i for i in infiles if os.path.exists(i)]
     infile = infiles[-1]
 
-    ## datatypes options
+    # datatypes options
     strand = "plus"
     if data.params.datatype is ('gbs' or '2brad'):
         strand = "both"
 
-    ## do dereplication with vsearch
+    # do dereplication with vsearch
     cmd = [
         ip.bins.vsearch,
         "--derep_fulllength", infile,
@@ -673,12 +584,17 @@ def dereplicate(data, sample, nthreads):
         "--output", os.path.join(data.tmpdir, sample.name + "_derep.fastq"),
         "--threads", str(nthreads),
         "--fasta_width", str(0),
-        "--fastq_qmax", "1000",
         "--sizeout", 
         "--relabel_md5",
+        "--quiet",
+        #"--fastq_qmax", "1000",        
     ]
 
-    ## build PIPEd job   
+    # decompress argument
+    if infile.endswith(".gz"):
+        cmd.append("--gzip_decompress")
+
+    # build PIPEd job   
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     errmsg = proc.communicate()[0]
     if proc.returncode:
@@ -769,7 +685,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--fastq_minovlen", "20",
         "--fastq_maxdiffs", "4",
         "--label_suffix", "_m1",
-        "--fastq_qmax", "1000",
+        #"--fastq_qmax", "100",
         "--threads", "2",
         "--fastq_allowmergestagger",
     ]
@@ -890,28 +806,8 @@ def cluster(data, sample, nthreads, force):
     based on experience, but could be edited by users
     """
     # get dereplicated reads for denovo+reference or denovo-reference
-    if "reference" in data.params.assembly_method:
-        derephandle = os.path.join(
-            data.tmpdir, 
-            "{}_derep.fastq".format(sample.name))
-
-    # get dereplicated reads for denovo
-    else:
-        derephandle = os.path.join(
-            data.tmpdir, 
-            "{}_derep.fastq".format(sample.name))
-        
-        # # In the event all reads for all samples map successfully then 
-        # # clustering the unmapped reads makes no sense, so just bail out.
-        # if not os.stat(derephandle).st_size:
-        #     # In this case you do have to create empty, dummy vsearch output
-        #     # files so building_clusters will not fail.
-        #     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
-        #     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
-        #     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-        #     for f in [uhandle, usort, hhandle]:
-        #         open(f, 'a').close()
-        #     return
+    derephandle = os.path.join(
+        data.tmpdir, "{}_derep.fastq".format(sample.name))
     assert os.path.exists(derephandle), "bad derep handle"
 
     # create handles for the outfiles
@@ -958,7 +854,7 @@ def cluster(data, sample, nthreads, force):
            "-threads", str(nthreads),
            "-notmatched", temphandle,
            "-fasta_width", "0",
-           "-fastq_qmax", "100",
+           # "-fastq_qmax", "100",
            "-fulldp",
            "-usersort"]
 
@@ -1150,7 +1046,8 @@ def muscle_chunker(data, sample):
 def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     """ much faster implementation for aligning chunks """
 
-    ## data are already chunked, read in the whole thing. bail if no data.
+    # CHECK: data are already chunked, read in the whole thing. bail if no data.
+    clusts = []
     try:
         with open(handle, 'rb') as infile:
             clusts = infile.read().decode().split("//\n//\n")
@@ -1160,7 +1057,12 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
             if not clusts:
                 raise IPyradError("no clusters in file: {}".format(handle))
 
-    except (IOError, IPyradError):
+    # return 0 if file not read for some reason...
+    except IOError:
+        return 0
+
+    # return 0 if no clusters in file
+    if not clusts:
         return 0
 
     ## count discarded clusters for printing to stats later
@@ -1184,7 +1086,10 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     if refined:
         outhandle = handle.rsplit(".", 1)[0] + ".aligned"
         with open(outhandle, 'wb') as outfile:
-            outfile.write(str.encode("\n//\n//\n".join(refined) + "\n"))
+            try:
+                outfile.write("\n//\n//\n".join(refined) + "\n")
+            except TypeError:
+                outfile.write(("\n//\n//\n".join(refined) + "\n").encode())
     return highindels
 
 
@@ -1207,7 +1112,11 @@ def reconcat(data, sample):
         for fname in chunks:
             with open(fname) as infile:
                 dat = infile.read().strip()
-                out.write(str.encode(dat + "\n//\n//\n"))
+                dat += "\n//\n//\n"
+                try:
+                    out.write(dat)
+                except TypeError:
+                    out.write(dat.encode())
             os.remove(fname)
 
 
@@ -1742,11 +1651,6 @@ def bedtools_merge(data, sample):
     if proc2.returncode:
         raise IPyradError("error in %s: %s", cmd2, result)
 
-    # Write the bedfile out, because it's useful sometimes.
-    if os.path.exists(ip.__debugflag__):
-        with open(os.path.join(data.dirs.refmapping, sample.name + ".bed"), 'w') as outfile:
-            outfile.write(result)
-
     # Report the number of regions we're returning
     # nregions = len(result.strip().split("\n"))
     return result
@@ -1830,7 +1734,9 @@ def build_clusters_from_cigars(data, sample):
                     if r1.is_reverse:
                         ori = "-"
                     derep = r1.qname.split("=")[-1]
-                    rname = "{}:{}-{};size={};{}".format(*reg, derep, ori)
+                    rname = "{}:{}-{};size={};{}".format(
+                        reg[0], reg[1], reg[2], derep, ori)
+                    # *reg, derep, ori)
                     clust.append("{}\n{}".format(rname, pairseq))
 
         # single-end data cluster building
@@ -2236,7 +2142,7 @@ NO_ZIP_BINS = """
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
  
- \     gunzip {}
+      gunzip {}
 
   Then edit your params file to remove the `.gz` from the end of the
   path to your reference sequence file and rerun step 3 with the `-f` flag.

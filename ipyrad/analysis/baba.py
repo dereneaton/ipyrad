@@ -7,6 +7,7 @@ from __future__ import print_function, division
 from builtins import range
 
 import os
+import sys
 import time
 import copy
 import types
@@ -17,15 +18,23 @@ from collections import OrderedDict
 import pandas as pd
 import numpy as np
 import numba
+import h5py
 
 ## ipyrad tools
-import toytree
-from ipyrad.analysis.utils import Params, progressbar, parallelize_run
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.utils import Params, progressbar, IPyradError
 from ipyrad.assemble.write_outputs import reftrick
 
-# todo: wrap for warning
-import h5py
+# import tested at init
+try:
+    import toytree
+except ImportError:
+    pass
+_TOYTREE_IMPORT = """
+This ipyrad analysis tool requires 
+You can install it with the following command:
+
+   conda install toytree -c eaton-lab
+"""
 
 # from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 # set floating point precision in data frames to 3 for prettier printing
@@ -72,6 +81,10 @@ class Baba:
         newick=None,
         nboots=1000,
         ):
+
+        # check imports
+        if not sys.modules.get("toytree"):
+            raise ImportError(_TOYTREE_IMPORT)
 
         # parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
@@ -148,12 +161,7 @@ class Baba:
         """
 
         # distribute jobs in a wrapped cleaner function
-        parallelize_run(
-            self, 
-            run_kwargs={"ipyclient": ipyclient, 'force': force}, 
-            show_cluster=show_cluster, 
-            auto=auto)
-
+        pool = Parallel()
 
         batch(self, ipyclient)
 

@@ -219,6 +219,7 @@ class Params(object):
         self._trim_loci = (0, 0, 0, 0)
         self._output_formats = list("psl")
         self._pop_assign_file = ""
+        self._reference_as_filter = ""
         
         self._keys = [
             "_assembly_name",
@@ -249,7 +250,8 @@ class Params(object):
             "_trim_reads", 
             "_trim_loci", 
             "_output_formats", 
-            "_pop_assign_file",            
+            "_pop_assign_file",
+            "_reference_as_filter",            
         ]
                 
         
@@ -298,6 +300,8 @@ class Params(object):
         return self._raw_fastq_path
     @raw_fastq_path.setter
     def raw_fastq_path(self, value):
+
+        # check path
         if value and ("Merged:" not in value):
             fullpath = os.path.realpath(os.path.expanduser(value))
             if os.path.isdir(fullpath):
@@ -306,9 +310,10 @@ class Params(object):
                 self._raw_fastq_path = fullpath
             else:
                 raise IPyradError(NO_RAW_FILE.format(fullpath))
-        # if 'Merged:' in value then set to ""
+
+        # if 'Merged:' in value then set to value
         else:
-            self._raw_fastq_path = ""
+            self._raw_fastq_path = value
 
 
     @property
@@ -331,9 +336,10 @@ class Params(object):
             else:
                 self._barcodes_path = fullbar
                 self._data._link_barcodes()
+
         # if 'Merged:' in value then set to ""
         else:
-            self._barcodes_path = ""
+            self._barcodes_path = value
 
 
     @property
@@ -351,7 +357,7 @@ class Params(object):
                 raise IPyradError(SORTED_NOT_FOUND.format(fullpath))
         # if 'Merged:' in value then set to ""
         else:
-            self._sorted_fastq_path = ""
+            self._sorted_fastq_path = value
 
 
     @property
@@ -396,7 +402,11 @@ class Params(object):
         # update barcode dist for expected second bcode
         if "3rad" in value:
             if self.barcodes_path:
-                self._data._link_barcodes()
+                # can skip bcodes if past step 1
+                try:
+                    self._data._link_barcodes()
+                except IPyradError:
+                    pass
 
             
     @property 
@@ -415,7 +425,11 @@ class Params(object):
         elif len(value) == 3:
             value = (value[0], value[1], value[2], "")
             if self.barcodes_path:
-                self._data._link_barcodes()
+                # can skip bcodes if past step 1
+                try:
+                    self._data._link_barcodes()
+                except IPyradError:
+                    pass
 
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
@@ -531,9 +545,11 @@ class Params(object):
     def max_Ns_consens(self):
         return self._max_Ns_consens
     @max_Ns_consens.setter
-    def max_Ns_consens(self, value):       
+    def max_Ns_consens(self, value):
         # warning if old style params
-        if isinstance(value, (tuple, int)):
+        try:
+            value = float(value)
+        except TypeError:            
             print(
     "Warning: The format of max_Ns_consens should now be a float " + 
     "and was set on load to 0.05")
@@ -547,7 +563,9 @@ class Params(object):
     @max_Hs_consens.setter
     def max_Hs_consens(self, value):
         # complain if old params format
-        if isinstance(value, tuple):
+        try:
+            value = float(value)
+        except TypeError:            
             print(
     "Warning: The format of max_Hs_consens should now be a float " + 
     "and was set on load to 0.05")
@@ -586,6 +604,7 @@ class Params(object):
     @max_SNPs_locus.setter
     def max_SNPs_locus(self, value):
         #backwards compatible allow tuple and take first value
+        value = tuplecheck(value)
         if isinstance(value, tuple):
             value = value[0]
         if isinstance(value, str):
@@ -605,6 +624,8 @@ class Params(object):
         return self._max_Indels_locus
     @max_Indels_locus.setter
     def max_Indels_locus(self, value):
+
+        value = tuplecheck(value)
         if isinstance(value, tuple):
             value = value[0]
         try:
@@ -696,6 +717,22 @@ class Params(object):
             # Don't forget to possibly blank the populations dictionary
             self._pop_assign_file = ""
             self._data.populations = {}
+
+
+    @property
+    def reference_as_filter(self):
+        return self._reference_as_filter
+    @reference_as_filter.setter
+    def reference_as_filter(self, value):
+        if value:
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if not os.path.exists(fullpath):
+                raise IPyradError("reference sequence file not found")
+            if fullpath.endswith(".gz"):
+                raise IPyradError("reference sequence file must be decompressed.")
+            self._reference_as_filter = fullpath
+        else:
+            self._reference_as_filter = ""
 
 
 

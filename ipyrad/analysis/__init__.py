@@ -8,32 +8,35 @@ from ipyrad import __version__
 # same name as the module (file), such that when we import the function
 # it clobbers the file name as the import. 
 
-# installed alonside ipyrad: conda install ipyrad -c eaton-lab
-#from tetrad import Tetrad
+# conda install mrbayes -c bioconda
+# conda install raxml -c bioconda
+# conda install scikit-learn -c bioconda
+# conda install sratools -c bioconda
+# conda install treemix -c bioconda
+# conda install toytree -c eaton-lab
+# conda install tetrad -c eaton-lab
+# conda install structure -c ipyrad
+# conda install clumpp -c ipyrad
+# conda install bucky -c ipyrad
+# conda install bpp -c ipyrad
 
-# conda install raxml mrbayes -c bioconda
+
+# tested in 0.9.5
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
-from .twiist import Twisst as twisst
-from .clade_weights import CladeWeights as clade_weights
-from .treeslider import TreeSlider as treeslider
+from .window_extracter import WindowExtracter as window_extracter
+from .treemix import Treemix as treemix
+from .pca import PCA as pca
 
-# conda install structure clumpp -c ipyrad
+# testing
 from .structure import Structure as structure
-# from .pca import PCA as pca
-from .baba import Baba as baba
-#from .popgen import Popgen as popgen
-#from .treemix import Treemix as treemix
-
-# conda install tetrad -c eaton-lab
-#from .tetrad import Tetrad as tetrad
-
-# conda install bucky -c ipyrad
-# conda install mrbayes -c bioconda
+from .treeslider import TreeSlider as treeslider
+from .clade_weights import CladeWeights as clade_weights
 from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
-
-
-# conda install sratools -c bioconda
 from .sratools import SRA as sratools
 from .digest_genome import DigestGenome as digest_genome
+#from .tetrad import Tetrad as tetrad
+# from .sratools import SRA as sratools
+# from .baba import Baba as baba
+#from .popgen import Popgen as popgen

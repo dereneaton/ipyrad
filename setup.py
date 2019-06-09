@@ -31,18 +31,18 @@ setup(
         "pandas",
         "pysam",
         "h5py",
-        "mpi4py",
         "cutadapt",
         "requests",
-        # "notebook",
-        # "toytree",     # eaton-lab::
+        # "mpi4py",
     ],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
-    data_files=[('bin', glob.glob("./bin/*"))],
+    # data_files=[('bin', glob.glob("./bin/*"))],
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        # 'Programming Language :: Python :: 3.7',
     ],
 )

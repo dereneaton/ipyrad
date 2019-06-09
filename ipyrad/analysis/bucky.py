@@ -20,7 +20,7 @@ To use the ipa.structure module you must install two additional
 libraries which can be done with the following conda command. 
 
 conda install -c ipyrad bucky
-conda install -c BioBuilds mrbayes
+conda install -c bioconda mrbayes
 """
 
 

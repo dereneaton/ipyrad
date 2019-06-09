@@ -4,7 +4,6 @@
 
 # py2/3 compat
 from __future__ import print_function
-from builtins import range
 
 # standard
 import os
@@ -16,12 +15,11 @@ import tempfile
 # third party
 import pandas as pd
 import numpy as np
-import toytree
-from numba import njit
 
 # internal librries
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
+from .utils import count_snps
 from ..core.Parallel import Parallel
 
 # suppress the terrible h5 warning
@@ -30,6 +28,17 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
 
+try:
+    import toytree
+except ImportError:
+    pass
+
+_MISSING_TOYTREE = """
+This ipyrad.analysis tool requires the dependency 'toytree'. 
+You can install it with the following command from a terminal:
+
+conda install toytree -c eaton-lab
+"""
 
 """
 Infer whole scaffold if windowsize = 0, None
@@ -69,6 +78,10 @@ class TreeSlider():
         # imap=None,
         # minmap=None,
         ):
+
+        # check installations
+        if not sys.modules.get("toytree"):
+            raise ImportError(_MISSING_TOYTREE)
 
         # store attributes
         self.name = name
@@ -427,7 +440,7 @@ def remote_tree_inference(
                     data=fname,
                     name="temp_" + str(os.getpid()),
                     workdir=tempfile.gettempdir(),
-                    **initkwargs,
+                    **initkwargs
                 )
 
                 # run command
@@ -550,50 +563,6 @@ def progressbar(finished, total, start, message):
           end="")
     sys.stdout.flush()
 
-
-
-@njit
-def count_snps(seqarr):
-    nsnps = 0
-    for site in range(seqarr.shape[1]):
-        # make new array
-        catg = np.zeros(4, dtype=np.int16)
-
-        ncol = seqarr[:, site]
-        for idx in range(ncol.shape[0]):
-            if ncol[idx] == 67:    # C
-                catg[0] += 1
-            elif ncol[idx] == 65:  # A
-                catg[1] += 1
-            elif ncol[idx] == 84:  # T
-                catg[2] += 1
-            elif ncol[idx] == 71:  # G
-                catg[3] += 1
-            elif ncol[idx] == 82:  # R
-                catg[1] += 1       # A
-                catg[3] += 1       # G
-            elif ncol[idx] == 75:  # K
-                catg[2] += 1       # T
-                catg[3] += 1       # G
-            elif ncol[idx] == 83:  # S
-                catg[0] += 1       # C
-                catg[3] += 1       # G
-            elif ncol[idx] == 89:  # Y
-                catg[0] += 1       # C
-                catg[2] += 1       # T
-            elif ncol[idx] == 87:  # W
-                catg[1] += 1       # A
-                catg[2] += 1       # T
-            elif ncol[idx] == 77:  # M
-                catg[0] += 1       # C
-                catg[1] += 1       # A
-        # get second most common site
-        catg.sort()
-
-        # if invariant e.g., [0, 0, 0, 9], then nothing (" ")
-        if catg[2] > 1:
-            nsnps += 1
-    return nsnps
 
 
 

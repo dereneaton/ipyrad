@@ -8,25 +8,37 @@ from builtins import range
 
 # standard
 import os
+import sys
 import time
 import itertools
 # import subprocess as sps
 
 # third party
 import pandas as pd
-# import toyplot
-# import numpy as np
+import numpy as np
 from .utils import progressbar
 from ..core.Parallel import Parallel
 
+# import tested at init
 try:
     import toytree
 except ImportError:
-    MISSING_IMPORTS = """
-To use the ipa.structure module you must install two additional 
-libraries which can be done with the following conda command. 
+    pass
+_TOYTREE_IMPORT = """
+This ipyrad analysis tool requires 
+You can install it with the following command:
 
-conda install toytree -c eaton-lab
+   conda install toytree -c eaton-lab
+"""
+try:
+    import toyplot
+except ImportError:
+    pass
+_TOYPLOT_IMPORT = """
+This ipyrad analysis tool requires the toyplot package.
+You can install it with the following command:
+
+   conda install toyplot -c eaton-lab
 """
 
 
@@ -51,6 +63,12 @@ class CladeWeights(object):
             workdir="analysis-clade_weights",
             minsupport=0,
             ):
+
+        # check external imports
+        if not sys.modules.get("toytree"):
+            raise ImportError(_TOYTREE_IMPORT)
+        if not sys.modules.get("toyplot"):
+            raise ImportError(_TOYPLOT_IMPORT)
 
         # store attrs
         self.name = name

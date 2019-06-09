@@ -236,14 +236,10 @@ class FileLinker:
 
         # collect link job results           
         for sname in rasyncs:
-            rasync = rasyncs[sname]
-            if rasync.successful():
-                res = rasyncs[sname].get() / 4
-                self.data.samples[sname].stats.reads_raw = res
-                self.data.samples[sname].stats_dfs.s1["reads_raw"] = res
-                self.data.samples[sname].state = 1
-            else:
-                raise IPyradError(rasync.get())
+            res = rasyncs[sname].get() / 4
+            self.data.samples[sname].stats.reads_raw = res
+            self.data.samples[sname].stats_dfs.s1["reads_raw"] = res
+            self.data.samples[sname].state = 1
 
         # print if data were linked
         if createdinc:
@@ -495,13 +491,10 @@ class Demultiplexer:
             # cleanup finished ridx jobs and grab stats
             for ridx in finished:
                 handle, rasync = rasyncs[ridx]
-                if rasync.successful():
-                    pkl = rasync.get()
-                    self.stats.fill_from_pickle(pkl, handle)
-                    del rasyncs[ridx]
-                    done += 1
-                else:
-                    raise IPyradError(rasync.get())
+                pkl = rasync.get()
+                self.stats.fill_from_pickle(pkl, handle)
+                del rasyncs[ridx]
+                done += 1
 
             # print progress
             self.data._progressbar(njobs, done, start, printstr)

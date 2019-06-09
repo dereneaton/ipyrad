@@ -10,7 +10,9 @@ import gzip
 
 class DigestGenome(object):
     """
-
+    Digest a fasta genome file with one or two restriction enzymes to create
+    pseudo-fastq files to treat as samples in a RAD assembly. 
+    
     # Example:
     dg = ipa.digest_genome(
         fasta="genome.fa", 
