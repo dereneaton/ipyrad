@@ -6,13 +6,9 @@ from __future__ import print_function, division
 
 # from ipyrad.core.parallel import register_ipcluster
 from ipyrad.assemble.utils import IPyradError, detect_cpus
-from pkg_resources import get_distribution
-from distutils.version import LooseVersion
-
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
-import requests
 import sys
 import os
 
@@ -75,42 +71,17 @@ class CLI:
             self.branch_assembly()
             sys.exit(0)
 
+        # finally run the requested functions
         self.run()
 
 
-
-    def check_for_new_version(self):
-        "Test if there's a newer version and nag the user to upgrade."
-
-        try:
-            # get response and parse it
-            url = "https://anaconda.org/ipyrad/ipyrad"
-            response = requests.get(url)
-            htmldat = response.text.split("\n")
-
-            # pull version from html
-            curversion = (next(
-                (x for x in htmldat if "subheader" in x), None)
-                .split(">")[1]
-                .split("<")[0])
-
-            # check version against current
-            if LooseVersion(ip.__version__) < LooseVersion(curversion):
-                print(VERSION_UPDATE.format(curversion))
-        
-        # Let this fail silently
-        except Exception:
-            pass
-
-
     def check_args(self):
-        if not any(i in ["params", "new"] for i in vars(self.args).keys()):
-            print("""
-        Bad arguments: ipyrad command must include at least one of the 
-        following args: -p or -n. 
-        """)
-            self.parser.print_help()
-            sys.exit(1)
+        "user must enter -p or -n as an argument"
+        if not (self.args.params or self.args.new):
+            sys.exit("\n" + "\n".join([
+                "  ipyrad command must include either -p or -n ",
+                "  run 'ipyrad -h' for further command line instructions\n",
+            ]))
 
 
     def parse_params(self):
@@ -146,7 +117,7 @@ class CLI:
         self.parser.add_argument(
             '-v', '--version', 
             action='version', 
-            version=str(get_distribution('ipyrad'))
+            version=str('ipyrad {}'.format(ip.__version__))
         )
         self.parser.add_argument('-r', "--results", action='store_true',
             help="show results summary for Assembly in params.txt and exit")
