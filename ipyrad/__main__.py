@@ -517,15 +517,6 @@ class CLI:
                 auto=True,
                 )
             pool.wrap_run()
-
-            # # run assembly steps
-            # steps = list(self.args.steps)
-            # self.data.run(
-            #     steps=steps, 
-            #     force=self.args.force, 
-            #     show_cluster=1, 
-            #     ipyclient=ipyclient,
-            #     )
         
         # show results summary                 
         if self.args.results:
