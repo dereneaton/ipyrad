@@ -18,6 +18,16 @@ __interactive__ = 1
 # get binaries from conda/bin or conda/env/bin
 class _Bins:
     pass
+
+
+_IMPORT_ERROR = """
+Missing requirement: {}
+
+Please run 'conda install {} -c bioconda' or to install
+all requirements run 'conda upgrade ipyrad -c bioconda'.
+"""
+
+# check binaries
 bins = _Bins()
 bins.muscle = _os.path.join(_sys.prefix, "bin", "muscle")
 bins.samtools = _os.path.join(_sys.prefix, "bin", "samtools")
@@ -25,7 +35,6 @@ bins.bedtools = _os.path.join(_sys.prefix, "bin", "bedtools")
 bins.vsearch = _os.path.join(_sys.prefix, "bin", "vsearch")
 bins.bwa = _os.path.join(_sys.prefix, "bin", "bwa")
 
-# check binaries
 for binary, path in bins.__dict__.items():
 
     # check for conda version
@@ -34,10 +43,10 @@ for binary, path in bins.__dict__.items():
 
         # if not then check for binary in PATH (less reliable versioned...)
         if _sps.call(['which', binary]):
-            raise ImportError("Missing requirement: {}".format(binary))
+            raise ImportError(_IMPORT_ERROR.format(binary, binary))
+
 
 # if user installed with pip then the following may be missing:
-# _other_deps = ["pysam", "mpi4py", ""]
 try:
     import pysam
 except ImportError:
@@ -50,5 +59,4 @@ You must first install 'pysam' with either conda or pip, e.g.,:
 
     pip install pysam
 """)
-
 
