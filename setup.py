@@ -20,6 +20,7 @@ setup(
     author_email="de2356@columbia.edu",
     description="Interactive assembly and analysis of RAD-seq data sets",
     long_description=open('README.rst').read(),
+    long_description_content_type='text/x-rst',
     packages=find_packages(),
     install_requires=[
         "future",
@@ -32,10 +33,8 @@ setup(
         "h5py",
         "cutadapt",
         "requests",
-        # "mpi4py",
     ],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
-    # data_files=[('bin', glob.glob("./bin/*"))],
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
