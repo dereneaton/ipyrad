@@ -170,16 +170,21 @@ class TreeSlider():
 
 
     def show_inference_command(self, show_full=False):
+        # show a warning if user entered threads
+        if "T" in self.inference_args:
+            print("\n".join([
+                "threads argument (T) must be set in ipcluster. ",
+                "e.g., tet.ipcluster['threads'] = 4"
+            ]))
+
         # debug inference args
-        initkwargs = {
-            "T": max(1, self.ipcluster["threads"]),
-        }
-        initkwargs.update(self.inference_args)
+        threads = {"T": max(1, self.ipcluster["threads"])}
+        self.inference_args.update(threads)
         rax = raxml(
             data=self.data, 
             name=self.name,
             workdir=tempfile.gettempdir(),
-            **initkwargs
+            **self.inference_args
         )
 
         # return it
