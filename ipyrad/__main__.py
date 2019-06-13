@@ -7,12 +7,12 @@ from __future__ import print_function, division
 # from ipyrad.core.parallel import register_ipcluster
 from ipyrad.assemble.utils import IPyradError, detect_cpus
 from pkg_resources import get_distribution
-from distutils.version import LooseVersion
+# from distutils.version import LooseVersion
 
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
-import requests
+# import requests
 import sys
 import os
 
@@ -78,29 +78,28 @@ class CLI:
         self.run()
 
 
+    # def check_for_new_version(self):
+    #     "Test if there's a newer version and nag the user to upgrade."
 
-    def check_for_new_version(self):
-        "Test if there's a newer version and nag the user to upgrade."
+    #     try:
+    #         # get response and parse it
+    #         url = "https://anaconda.org/ipyrad/ipyrad"
+    #         response = requests.get(url)
+    #         htmldat = response.text.split("\n")
 
-        try:
-            # get response and parse it
-            url = "https://anaconda.org/ipyrad/ipyrad"
-            response = requests.get(url)
-            htmldat = response.text.split("\n")
+    #         # pull version from html
+    #         curversion = (next(
+    #             (x for x in htmldat if "subheader" in x), None)
+    #             .split(">")[1]
+    #             .split("<")[0])
 
-            # pull version from html
-            curversion = (next(
-                (x for x in htmldat if "subheader" in x), None)
-                .split(">")[1]
-                .split("<")[0])
-
-            # check version against current
-            if LooseVersion(ip.__version__) < LooseVersion(curversion):
-                print(VERSION_UPDATE.format(curversion))
+    #         # check version against current
+    #         if LooseVersion(ip.__version__) < LooseVersion(curversion):
+    #             print(VERSION_UPDATE.format(curversion))
         
-        # Let this fail silently
-        except Exception:
-            pass
+    #     # Let this fail silently
+    #     except Exception:
+    #         pass
 
 
     def check_args(self):
@@ -586,7 +585,7 @@ HEADER = """
   ipyrad [v.{}]
   Interactive assembly and analysis of RAD-seq data
  -------------------------------------------------------------\
- """.format(ip.__version__)
+ """.format(str(get_distribution('ipyrad')))  # ip.__version__)
 
 
 EPILOG = """
