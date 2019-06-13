@@ -292,7 +292,7 @@ class PCA(object):
             data = self.snps
 
         # decompose pca call
-        model = decomposition.PCA(self.ncomponents)
+        model = decomposition.PCA(None)  # self.ncomponents)
         model.fit(data)
         newdata = model.transform(data)
 

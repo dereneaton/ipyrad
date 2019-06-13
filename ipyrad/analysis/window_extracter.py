@@ -15,8 +15,6 @@ import numpy as np
 import pandas as pd
 
 from .utils import count_snps
-from ipyrad.assemble.utils import IPyradError
-
 
 
 class WindowExtracter(object):
