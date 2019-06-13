@@ -15,9 +15,13 @@ from builtins import range
 # standard lib
 import h5py
 import numpy as np
-from numba import njit
 from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.utils import jsubsample_snps
 
+"""
+.snps should be returned as dtype=... int8, int64?
+.check imap for the user, e.g., no dups.
+"""
 
 class SNPsExtracter(object):
     """
@@ -27,8 +31,8 @@ class SNPsExtracter(object):
     def __init__(
         self, 
         data, 
-        imap,
-        minmap,
+        imap=None,
+        minmap=None,
         mincov=0.0,
         quiet=False,
         ):
@@ -41,7 +45,7 @@ class SNPsExtracter(object):
         self.mincov = mincov
         self.quiet = quiet
 
-        # get names from imap else this will be filled (ordered) by db
+        # get names from imap, else will be filled/checked against db
         self.names = []
         for key, val in self.imap.items():
             if isinstance(val, (list, tuple)):
@@ -55,13 +59,43 @@ class SNPsExtracter(object):
         self.snpsmap = None
 
         # check input data
-        if ".seqs.hdf5" in self.data:
+        if self.data.endswith(".seqs.hdf5"):
             raise IPyradError("data should be .snps.hdf5 file not .seqs.hdf5.")
+        if self.data.endswith(".vcf"):
+            raise NotImplementedError("VCF parsing coming soon.")
+        self.parse_names_from_hdf5()
+
 
 
     def _print(self, message):
         if not self.quiet:
             print(message)
+
+
+    def parse_names_from_hdf5(self):
+        """
+        Parse ordered sample names from HDF5 and check agains imap names.
+        """
+        # load arrays from hdf5; could be more efficient...
+        io5 = h5py.File(self.data, 'r')
+
+        # all names in database, maybe fewer in this analysis
+        self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
+        # check for sample names not in the database file
+        badnames = set(self.names).difference(self.dbnames)
+        if badnames:
+            raise IPyradError(
+                "Samples [{}] are not in data file: {}"
+                .format(badnames, self.data))
+        
+        # if no names then use database names, else order imap names in dborder
+        if not self.names:
+            self.names = self.dbnames 
+        else:
+            self.names = [i for i in self.dbnames if i in self.names]
+
+        # mask snp rows to only include selected samples
+        self.sidxs = np.array(sorted([self.dbnames.index(i) for i in self.names]))
 
 
     def parse_genos_from_hdf5(self):
@@ -75,42 +109,23 @@ class SNPsExtracter(object):
         # snps is used to filter multi-allel and indel containing 
         snps = io5["snps"][:]
 
-        # all names in database, maybe fewer in this analysis
-        dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
-
         # snpsmap is used to subsample per locus
         snpsmap = io5["snpsmap"][:, :2]
 
         # genos are the actual calls we want, after filtering
         genos = io5["genos"][:]  # .sum(axis=2).T
 
-        # check for sample names not in the database file
-        badnames = set(self.names).difference(dbnames)
-        if badnames:
-            raise IPyradError(
-                "Samples [{}] are not in data file: {}"
-                .format(badnames, self.data))
-        
-        # if no names then use database names, else order imap names in dborder
-        if not self.names:
-            self.names = dbnames 
-        else:
-            self.names = [i for i in dbnames if i in self.names]
-
         # report pre-filter
         self._print("Samples: {}".format(len(self.names)))
         self._print("Sites before filtering: {}".format(snps.shape[1]))
 
-        # mask snp rows to only include selected samples
-        sidxs = np.array(sorted([dbnames.index(i) for i in self.names]))
-
         # filter all sites containing an indel in selected samples
-        mask0 = np.any(snps[sidxs, :] == 45, axis=0)
+        mask0 = np.any(snps[self.sidxs, :] == 45, axis=0)
         self._print("Filtered (indels): {}".format(mask0.sum()))
 
         # filter all sites w/ multi-allelic
-        mask1 = np.sum(genos[:, sidxs] == 2, axis=2).sum(axis=1).astype(bool)
-        mask1 += np.sum(genos[:, sidxs] == 3, axis=2).sum(axis=1).astype(bool)
+        mask1 = np.sum(genos[:, self.sidxs] == 2, axis=2).sum(axis=1).astype(bool)
+        mask1 += np.sum(genos[:, self.sidxs] == 3, axis=2).sum(axis=1).astype(bool)
         self._print("Filtered (bi-allel): {}".format(mask1.sum()))
 
         # convert genos (e.g., 0/1) to genos sums (e.g., 2)
@@ -119,11 +134,11 @@ class SNPsExtracter(object):
         genos[genos == 18] = 9
 
         # filter based on total sample min coverage
-        cov = np.sum(genos[sidxs, :] != 9, axis=0)
+        cov = np.sum(genos[self.sidxs, :] != 9, axis=0)
         if isinstance(self.mincov, int):
             mask2 = cov < self.mincov
         elif isinstance(self.mincov, float):
-            mask2 = cov < self.mincov * len(sidxs)
+            mask2 = cov < self.mincov * len(self.sidxs)
         else:
             raise IPyradError("mincov should be an int or float.")
         self._print("Filtered (mincov): {}".format(mask2.sum()))
@@ -135,7 +150,7 @@ class SNPsExtracter(object):
             mask3 = np.zeros(snps.shape[1], dtype=np.bool_)
             for key, val in self.imap.items():
                 mincov = self.minmap[key]
-                pidxs = np.array(sorted(dbnames.index(i) for i in val))
+                pidxs = np.array(sorted(self.dbnames.index(i) for i in val))
                 subarr = genos[pidxs, :]
                 counts = np.sum(subarr != 9, axis=0)
                 if isinstance(mincov, float):
@@ -150,7 +165,7 @@ class SNPsExtracter(object):
         summask = mask0 + mask1 + mask2 + mask3
         allmask = np.invert(summask)
         self._print("Filtered (combined): {}".format(summask.sum()))
-        self.snps = genos[sidxs, :][:, allmask]
+        self.snps = genos[self.sidxs, :][:, allmask]
 
         # bail out if ALL snps were filtered
         if self.snps.size == 0:
@@ -193,22 +208,6 @@ class SNPsExtracter(object):
     def subsample_snps(self, random_seed=None):
         if not random_seed:
             random_seed = np.random.randint(0, 1e9)
-        subarr = self.snps[:, subsample_snps(self.snpsmap, random_seed)]
+        subarr = self.snps[:, jsubsample_snps(self.snpsmap, random_seed)]
         self._print("subsampled {} unlinked SNPs".format(subarr.shape[1]))
         return subarr
-
-
-
-@njit
-def subsample_snps(snpsmap, seed):
-    "Subsample snps, one per locus, using snpsmap"
-    np.random.seed(seed)
-    sidxs = np.unique(snpsmap[:, 0])
-    subs = np.zeros(sidxs.size, dtype=np.int64)
-    idx = 0
-    for sidx in sidxs:
-        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
-        site = np.random.choice(sites)
-        subs[idx] = site
-        idx += 1
-    return subs
