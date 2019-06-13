@@ -28,7 +28,7 @@ class SNPsImputer(object):
         to remove any sites that are not wanted. Only 0,1,2,9 should be 
         in matrix.
     names: list
-        Ordered names.
+        Ordered names as extracted from the HDF5 database.
     imap: (dict; default=None)
         Dictionary to assign samples to groups to be used with minmap.
     impute_method: (str; default='sample')
@@ -47,10 +47,6 @@ class SNPsImputer(object):
         quiet=False,
         ):
 
-        # only check import at init
-        # if not sys.modules.get("sklearn"):
-        # raise IPyradError(_MISSING_SKLEARN)
-
         # init attributes
         self.quiet = quiet
         self.snps = deepcopy(data)
@@ -68,25 +64,17 @@ class SNPsImputer(object):
         if not self.quiet:
             print(msg)
 
-
     def run(self):
         """
         Impute data in-place updating self.snps by filling missing (9) values.
         """
-        # simple imputer method
-        #if self.impute_method == "simple":
-        #    self.snps = self._impute_simple()
-
         if self.impute_method == "sample":
             self.snps = self._impute_sample()
-
-        #elif isinstance(self.impute_method, int):
-        #    self.snps = self._impute_kmeans()
 
         else:
             self.snps[self.snps == 9] = 0
             self._print(
-                "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
+                "Imputation: 'None'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(100, 0, 0)            
             )
         return self.snps
@@ -125,7 +113,7 @@ class SNPsImputer(object):
         # get all imputed values
         imputed = newdata[np.where(self.snps == 9)]
         self._print(
-            "Imputation (sampled by freq. within pops): {:.1f}%, {:.1f}%, {:.1f}%"
+            "Imputation: 'sampled'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
             .format(
                 100 * np.sum(imputed == 0) / imputed.size,
                 100 * np.sum(imputed == 1) / imputed.size,
@@ -133,8 +121,3 @@ class SNPsImputer(object):
             )
         )
         return newdata
-
-
-
-if __name__ == "__main__":
-    print("Nothing implemented here.")
