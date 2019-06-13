@@ -136,24 +136,21 @@ class TreeSlider():
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # get outfile name
+        # get outfile names and init/load tree_table
+        self.tree_table = None
         if self.name:
             tree_table_path = os.path.join(
                 self.workdir,
                 "{}.tree_table.csv".format(self.name))
+
+            # if CSV exists then load it (user can overwrite with run(force))
             if os.path.exists(tree_table_path):
                 self.tree_table = pd.read_csv(tree_table_path, sep="\t")
                 print("existing results loaded from {}".format(
                     tree_table_path))
 
-        # # fill mindict
-        # if not minmap:
-        #     if imap:
-        #         self.minmap = {i: 1 for i in self.imap}
-
         # parsed attributes
         self.scaffold_table = None
-        self.tree_table = None
         self.phymap = None
         self._pnames = None
         self._parameter_check()
@@ -166,7 +163,8 @@ class TreeSlider():
             self.scaffold_idxs = sorted(self.scaffold_idxs)
 
         # build the tree table from the scaffolds, windows, and slides.
-        self._parse_tree_table()
+        if self.tree_table is None:
+            self._parse_tree_table()
 
 
     def show_inference_command(self, show_full=False):
