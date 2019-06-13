@@ -4,8 +4,8 @@
 
 from __future__ import print_function, division  
 
-# from ipyrad.core.parallel import register_ipcluster
 from ipyrad.assemble.utils import IPyradError, detect_cpus
+from pkg_resources import get_distribution
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
@@ -548,7 +548,7 @@ HEADER = """
   ipyrad [v.{}]
   Interactive assembly and analysis of RAD-seq data
  -------------------------------------------------------------\
- """.format(ip.__version__)
+ """.format(str(get_distribution('ipyrad')))  # ip.__version__)
 
 
 EPILOG = """

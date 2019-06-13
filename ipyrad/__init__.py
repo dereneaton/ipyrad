@@ -9,7 +9,7 @@ import sys as _sys
 import subprocess as _sps
 
 # Dunders
-__version__ = "0.9.8"
+__version__ = "0.9.9"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
@@ -59,4 +59,3 @@ You must first install 'pysam' with either conda or pip, e.g.,:
 
     pip install pysam
 """)
-

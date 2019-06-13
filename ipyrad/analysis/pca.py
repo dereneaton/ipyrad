@@ -6,13 +6,13 @@ from __future__ import print_function, division
 
 import os
 import sys
-import h5py
 import numpy as np
 import pandas as pd
-from numba import njit
 
 # ipyrad tools
 from .snps_extracter import SNPsExtracter
+from .snps_imputer import SNPsImputer
+from ipyrad.analysis.utils import jsubsample_snps
 from ipyrad.assemble.utils import IPyradError
 
 # missing imports to be raised on class init
@@ -30,7 +30,6 @@ conda install toyplot -c eaton-lab
 
 try:
     from sklearn import decomposition 
-    from sklearn.impute import SimpleImputer
     from sklearn.cluster import KMeans
 except ImportError:
     pass
@@ -57,21 +56,28 @@ class PCA(object):
         A general .vcf file or a .snps.hdf5 file produced by ipyrad.
     workdir: (str; default="./analysis-pca")
         A directory for output files. Will be created if absent.
-    ncomponents: (int; default=2)
-        Number of PCA components
-    kmeans: (int; default=None)
-        Number of expected clusters, optionally used for data imputation.
     imap: (dict; default=None)
-        Dictionary to assign samples to groups to be used with minmap.
+        Dictionary mapping population names to a list of sample names.
     minmap: (dict; default={})
-        Dictionary to assign minimum coverage for groups to filter SNPs
-        for inclusion in the analysis. This filter applies before 
-        (optional) data imputation step.
+        Dictionary mapping population names to float values (X).
+        If a site does not have data across X proportion of samples for
+        each population, respectively, the site is filtered from the data set.
     mincov: (float; default=0.5)
-        Proportion of total samples that are not N at any site to include
-        in data set. 
+        If a site does not have data across this proportion of total samples
+        in the data then it is filtered from the data set.
     impute_method: (str; default='sample')
-        None, "sample", "simple", "kmeans"
+        None, "sample", or an integer for the number of kmeans clusters.
+    topcov: (float; default=0.9)
+        Affects kmeans method only.    
+        The most stringent mincov used as the first iteration in kmeans 
+        clustering. Subsequent iterations (niters) are equally spaced between
+        topcov and mincov. 
+    niters: (int; default=5)
+        Affects kmeans method only.        
+        kmeans method only.
+        Number of iterations of kmeans clustering with decreasing mincov 
+        thresholds used to refine population clustering, and therefore to 
+        refine the imap groupings used to filter and impute sites.
 
     Functions:
     ----------
@@ -84,8 +90,10 @@ class PCA(object):
         imap=None,
         minmap=None,
         mincov=0.1,
-        ncomponents=None,
         quiet=False,
+        topcov=0.9,
+        niters=5,
+        #ncomponents=None,
         ):
 
         # only check import at init
@@ -99,47 +107,64 @@ class PCA(object):
         self.data = os.path.realpath(os.path.expanduser(data))
 
         # data attributes
-        self.ncomponents = ncomponents
+        #self.ncomponents = ncomponents
         self.impute_method = impute_method
         self.mincov = mincov        
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
+        self.topcov = topcov
+        self.niters = niters
 
         # get names from imap else we'll fill this later with all
-        self.names = []
-        for key, val in self.imap.items():
-            if isinstance(val, (list, tuple)):
-                self.names.extend(val)
-            elif isinstance(val, str):
-                self.names.append(val)
+        # self.names = []
+        # for key, val in self.imap.items():
+        #     if isinstance(val, (list, tuple)):
+        #         self.names.extend(val)
+        #     elif isinstance(val, str):
+        #         self.names.append(val)
 
         # to be filled
         self.snps = np.array([])
         self.snpsmap = np.array([])
         self.nmissing = 0
 
+        # coming soon...
+        if self.data.endswith(".vcf"):
+            raise NotImplementedError(
+                "Sorry, not yet supported. Use .snps.hdf5.")
+
         # load .snps and .snpsmap from HDF5
+        first = (True if isinstance(self.impute_method, int) else quiet)
         ext = SNPsExtracter(
-            self.data, self.imap, self.minmap, self.mincov, quiet=quiet,
+            self.data, self.imap, self.minmap, self.mincov, quiet=first,
         )
-        ext.parse_genos_from_hdf5()
+
+        # run snp extracter to parse data files
+        ext.parse_genos_from_hdf5()       
         self.snps = ext.snps
         self.snpsmap = ext.snpsmap
         self.names = ext.names
         self._mvals = ext._mvals
 
-        if self.data.endswith(".vcf"):
-            raise NotImplementedError(
-                "Sorry, not yet supported. Use .snps.hdf5.")
-
         # make imap for imputing if not used in filtering.
         if not self.imap:
             self.imap = {'1': self.names}
-            self.minmap = {'1': 2}
+            self.minmap = {'1': 0.5}
+            
+        # record missing data per sample
+        self.missing = pd.DataFrame({
+            "missing": [0.],
+            },
+            index=self.names,
+        )
+        miss = np.sum(self.snps == 9, axis=1) / self.snps.shape[1]
+        for name in self.names:
+            self.missing.missing[name] = round(miss[self.names.index(name)], 2)
 
         # impute missing data
         if (self.impute_method is not False) and self._mvals:
             self._impute_data()
+
 
 
     def _seed(self):   
@@ -156,162 +181,81 @@ class PCA(object):
         Impute data in-place updating self.snps by filling missing (9) values.
         """
         # simple imputer method
-        if self.impute_method == "simple":
-            self.snps = self._impute_simple()
+        # if self.impute_method == "simple":
+        # self.snps = SNPsImputer(
+        # self.snps, self.names, self.imap, None).run()
 
-        elif self.impute_method == "sample":
-            self.snps = self._impute_sample()
+        if self.impute_method == "sample":
+            self.snps = SNPsImputer(
+                self.snps, self.names, self.imap, "sample", self.quiet).run()
 
         elif isinstance(self.impute_method, int):
-            self.snps = self._impute_kmeans()
+            self.snps = self._impute_kmeans(
+                self.topcov, self.niters, self.quiet)
 
         else:
             self.snps[self.snps == 9] = 0
             self._print(
                 "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
-                .format(self._mvals, 0, 0)            
+                .format(100, 0, 0)            
             )
 
 
-    def _impute_sample(self, imap=None):
-        """
-        Sample derived alleles by their frequency for each population and 
-        assign to fill 9 in each column for each pop.
-        """
-        # override imap
-        if not imap:
-            imap = self.imap
+    def _impute_kmeans(self, topcov=0.9, niters=5, quiet=False):
 
-        # impute data by mean value in each population
-        newdata = self.snps.copy()
-        for pop, samps in imap.items():
-            
-            # sample pop data
-            sidxs = sorted(self.names.index(i) for i in samps)
-            data = newdata[sidxs, :].copy()
-
-            # number of alleles at each site that are not 9
-            nallels = np.sum(data != 9, axis=0) * 2
-
-            # get prob derived at each site using tmp array w/ missing to zero 
-            tmp = data.copy()
-            tmp[tmp == 9] = 0
-            fderived = tmp.sum(axis=0) / nallels
-
-            # sampler
-            sampled = np.random.binomial(n=2, p=fderived, size=data.shape)
-            data[data == 9] = sampled[data == 9]
-            newdata[sidxs, :] = data
-
-        # get all imputed values
-        imputed = newdata[np.where(self.snps == 9)]
-        self._print(
-            "Imputation (sampled by freq. within pops): {:.1f}%, {:.1f}%, {:.1f}%"
-            .format(
-                100 * np.sum(imputed == 0) / imputed.size,
-                100 * np.sum(imputed == 1) / imputed.size,
-                100 * np.sum(imputed == 2) / imputed.size,
-            )
-        )
-        return newdata
-
-
-    def _impute_simple(self, quiet=False, imap=None):
-        """
-        Assign most frequent value to fill 9 in each column for each pop.
-        """
-        # override imap
-        if not imap:
-            imap = self.imap
-
-        # impute data by mean value in each population
-        newdata = self.snps.copy()
-        model = SimpleImputer(missing_values=9, strategy="most_frequent")
-        for pop, samps in imap.items():
-            sidxs = sorted(self.names.index(i) for i in samps)
-            data = self.snps[sidxs, :]
-            model.fit(data)
-            newdata[sidxs] = model.transform(data).astype(int)
-
-        # get all imputed values
-        imputed = newdata[np.where(self.snps == 9)]
-        self._print(
-            "Imputation (simple; most freq. within pops): {:.1f}%, {:.1f}%, {:.1f}%"
-            .format(
-                100 * np.sum(imputed == 0) / imputed.size,
-                100 * np.sum(imputed == 1) / imputed.size,
-                100 * np.sum(imputed == 2) / imputed.size,
-            )
-        )
-        return newdata
-
-
-    def _impute_kmeans(self, quiet=False):
-        """
-        kmeans imputer method takes the following steps:
-        
-        1. A temporary data set is created by imputing missing data with 
-           the most frequent base across all data. 
-        2. Clusters are formed using kmeans clustering from unlinked SNPs 
-           randomly sampled from this tmp data set. 
-        3. Missing data in the original data set are imputed for samples in 
-           each clustered group by taking the most frequent base in that 
-           cluster. 
-        4. If all data were missing for a site in a given cluster then the
-           imputed value is the most frequent across all samples. 
-        """
-        # bail out if no imap dictionary
-        if not self.impute_method:
-            raise IPyradError(
-                "Kmeans imputation method requires 'kmeans' value.")
-
-        # ML models
-        fill_model = SimpleImputer(missing_values=9, strategy="most_frequent")
+        # the ML models to fit
+        pca_model = decomposition.PCA(n_components=None)  # self.ncomponents)
         kmeans_model = KMeans(n_clusters=self.impute_method)
-        pca_model = decomposition.PCA(n_components=self.ncomponents)
 
-        # first impute into a copy with most-frequent value across all 
-        fill_model.fit(self.snps)
-        tmp_data = fill_model.transform(self.snps).astype(int)
-        gfreq = fill_model.statistics_
+        # start kmeans with a global imap
+        kmeans_imap = {'global': self.names}
 
-        # cluster data based on subsample of unlinked SNPs from tmp_data
-        data = tmp_data[:, subsample_snps(self.snpsmap, self._seed())]
-        newdata = pca_model.fit_transform(data)
-        kmeans_model.fit(newdata)
+        # iterate over step values
+        iters = np.linspace(topcov, self.mincov, niters)
+        for it, kmeans_mincov in enumerate(iters):
 
-        # create a new tmp_imap from kmeans clusters
-        labels = np.unique(kmeans_model.labels_)
-        tmp_imap = {
-            i: np.where(kmeans_model.labels_ == i)[0] for i in labels
-        }
-
-        # impute data by mean value in each population. 
-        newdata = self.snps.copy()
-        for pop, sidxs in tmp_imap.items():
-            data = self.snps[sidxs, :]
-
-            # find and fill values that are ALL missing with global most freqx
-            allmiss = np.all(data == 9, axis=0)
-            data[:, allmiss] = gfreq[allmiss]
-
-            # then use Simple tranformer on rest
-            fill_model.fit(data)
-            newdata[sidxs] = fill_model.transform(data).astype(int)
-
-        # report
-        if not quiet:
-            # get all imputed values
-            imputed = newdata[np.where(self.snps == 9)]
+            # start message
+            kmeans_minmap = {i: self.mincov for i in kmeans_imap}
             self._print(
-                "Imputation (kmeans; most freq in clusters): {:.1f}%, {:.1f}%, {:.1f}%"
-                .format(
-                    100 * np.sum(imputed == 0) / imputed.size,
-                    100 * np.sum(imputed == 1) / imputed.size,
-                    100 * np.sum(imputed == 2) / imputed.size,
-                )
+                "Kmeans clustering: iter={}, K={}, mincov={}, minmap={}"
+                .format(it, self.impute_method, kmeans_mincov, kmeans_minmap))
+
+            # 1. Load orig data and filter with imap, minmap, mincov=step
+            se = SNPsExtracter(
+                self.data, 
+                imap=kmeans_imap, 
+                minmap=kmeans_minmap, 
+                mincov=kmeans_mincov,
+                quiet=self.quiet,
             )
-        return newdata
+            se.parse_genos_from_hdf5()
+
+            # update snpsmap to new filtered data to use for subsampling            
+            self.snpsmap = se.snpsmap
+
+            # 2. Impute missing data using current kmeans clusters
+            impdata = SNPsImputer(
+                se.snps, se.names, kmeans_imap, "sample", self.quiet).run()
+
+            # x. On final iteration return this imputed array as the result
+            if it == 4:
+                return impdata
+
+            # 3. subsample unlinked SNPs
+            subdata = impdata[:, jsubsample_snps(se.snpsmap, self._seed())]
+
+            # 4. PCA on new imputed data values
+            pcadata = pca_model.fit_transform(subdata)
+
+            # 5. Kmeans clustering to find new imap grouping
+            kmeans_model.fit(pcadata)
+            labels = np.unique(kmeans_model.labels_)           
+            kmeans_imap = {
+                i: [se.names[j] for j in 
+                    np.where(kmeans_model.labels_ == i)[0]] for i in labels
+            }
+            self._print(kmeans_imap)
+            self._print("")
 
 
     def run(self, seed=None, subsample=True):
@@ -339,13 +283,13 @@ class PCA(object):
 
         # sample one SNP per locus
         if subsample:
-            data = self.snps[:, subsample_snps(self.snpsmap, self.seed)]
+            data = self.snps[:, jsubsample_snps(self.snpsmap, self.seed)]
+            self._print(
+                "Subsampling SNPs: {}/{}"
+                .format(data.shape[1], self.snps.shape[1])
+            )
         else:
             data = self.snps
-        self._print(
-            "Subsampling SNPs: {}/{}"
-            .format(data.shape[1], self.snps.shape[1])
-        )
 
         # decompose pca call
         model = decomposition.PCA(self.ncomponents)
@@ -423,24 +367,3 @@ class PCA(object):
             )
 
         return canvas, axes, mark
-
-
-
-@njit
-def subsample_snps(snpsmap, seed):
-    "Subsample snps, one per locus, using snpsmap"
-    np.random.seed(seed)
-    sidxs = np.unique(snpsmap[:, 0])
-    subs = np.zeros(sidxs.size, dtype=np.int64)
-    idx = 0
-    for sidx in sidxs:
-        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
-        site = np.random.choice(sites)
-        subs[idx] = site
-        idx += 1
-    return subs
-
-
-
-if __name__ == "__main__":
-    print("Nothing implemented here.")

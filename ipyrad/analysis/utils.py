@@ -17,6 +17,23 @@ import numpy as np
 from numba import njit, prange
 
 
+
+@njit
+def jsubsample_snps(snpsmap, seed):
+    "Subsample snps, one per locus, using snpsmap"
+    np.random.seed(seed)
+    sidxs = np.unique(snpsmap[:, 0])
+    subs = np.zeros(sidxs.size, dtype=np.int64)
+    idx = 0
+    for sidx in sidxs:
+        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
+        site = np.random.choice(sites)
+        subs[idx] = site
+        idx += 1
+    return subs
+
+
+
 njit(parallel=True)
 def get_spans(maparr, spans):
     """ 
