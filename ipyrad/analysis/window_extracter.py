@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 
 from .utils import count_snps
+from ipyrad.assemble.utils import GETCONS
+from ipyrad.assemble.write_outputs import reftrick
 
 
 class WindowExtracter(object):
@@ -25,16 +27,28 @@ class WindowExtracter(object):
 
     Parameters:
     -----------
-    ...
+    data (str):
+        A seqs.hdf5 file from ipyrad.
+    name (str):
+        Prefix name used for outfiles. If None then it is created from the 
+        scaffold, start and end positions.
+    workdir (str):
+        Location for output files to be written. Created if it doesn't exist.
+    scaffold_idx (int):
+
+
     """
     def __init__(
         self, 
         data, 
+        name=None,
         workdir="analysis-window_extracter",
         scaffold_idx=None, 
         start=None, 
         end=None, 
+        mincov=4,
         exclude=None,
+        imap=None,
         quiet=False,
         ):
         
@@ -45,65 +59,87 @@ class WindowExtracter(object):
         self.start = start
         self.end = end
         self.exclude = (exclude if exclude else [])
+        self.mincov = mincov
+        self.imap = imap
+        self.quiet = quiet
+        # self.minmap = minmap
 
         # file to write to
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
-        self.outfile = os.path.join(
-            self.workdir, 
-            "scaf{}-{}-{}.phy".format(
+
+        # use provided name else auto gen a name
+        if not name:
+            self.name = "scaf{}-{}-{}".format(
                 self.scaffold_idx,
                 self.start,
-                self.end,
+                self.end
             )
-        )
+        else:
+            self.name = name
 
         # parse scaffold info
         self.scaffold_table = None
         self.names = []
 
-        # todo: get sidxs here...
+        # gets names, pnames, scaffold_table, ...
         self._parse_scaffolds()
 
+        # allow user to init with None to get scaffold names.
         if self.scaffold_idx is not None:
+
             # check requested window is in scaff
             self._check_window()
 
             # pull the sequence from the database
             self.phymap = None
-            self._parse_scaffold_phymap(self.scaffold_idx)         
+            self._extract_phymap_df()
+            self._init_stats()
 
-            # report stats on window (ntaxa all missing; nsnps, ntrimmed sites, ..)
-            self._get_stats()
+            # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
+            self._extract_seqarr()
+            self._calc_initial_stats()
+            self._imap_consensus_reduce()
+            self._filter_seqarr()
+            self._calc_filtered_stats()
 
-            try:
-                self.stats = pd.DataFrame({
-                    "Scaffold": [self.scaffold_table.scaffold_name[self.scaffold_idx]],
-                    "Start": [self.start],
-                    "End": [self.end],
-                    "nSites": [self._sites],
-                    "nSNPs": [self._nsnps],
-                    "Missing": [round(self._propn, 2)],
-                    "Samples": [self._nsamplecov],
-                    "Empty/drop samples": [len(self._dropped)],
-                })
-
-            except AttributeError:
-                self.stats = None
+            # no data
+            if not self.seqarr.size:
                 print("No data in selected window.")
+
+
+    def _print(self, message):
+        if not self.quiet:
+            print(message)
 
 
     def run(self, force=False):
         """
         Write sequence alignment to a file 
         """
+        # bail if user never selected a window.
+        if self.scaffold_idx is None:
+            return "No scaffold selected"
+
+        # make outfile path name
+        self.outfile = os.path.join(
+            self.workdir, self.name + ".phy")
+
+        # check for force/overwrite
         if force or (not os.path.exists(self.outfile)):
-            write_phydict_to_phy(self._phydict, self.outfile)
-        print("Wrote data to {}".format(self.outfile))
+            # convert to file format
+            self.write_to_phy()
+            self._print("Wrote data to {}".format(self.outfile))
+        else:
+            raise IOError(
+                "Output file already exists. Use force to overwrite.")
 
 
-    def _get_stats(self):
-
+    def _extract_seqarr(self):
+        """
+        Extracts seqarr of the full selected window and computes stats on
+        the window.
+        """
         # get mask to select window array region
         mask = (self.phymap.pos0 > self.start) & (self.phymap.pos1 < self.end)
         cmap = self.phymap.values[mask, :]
@@ -116,34 +152,87 @@ class WindowExtracter(object):
 
         # extract array from window        
         with h5py.File(self.data) as io5:
-            seqarr = io5["phy"][self.sidxs, wmin:wmax]
+            self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
             
         # is there any data at all?
-        if not seqarr.size:
+        if not self.seqarr.size:
             return
 
-        # calculate stats on seqarr
-        all_ns = np.all(seqarr == 78, axis=1)
-        self._nsamplecov = seqarr.shape[0] - all_ns.sum()
-        self._nsnps = count_snps(seqarr)
-        self._sites = seqarr.shape[1]
 
-        # drop all N samples(?)
-        pnames = self._pnames[~all_ns]
-        pseqs = seqarr[~all_ns, :]
-        self._propn = np.sum(seqarr == 78) / seqarr.size
-        self._dropped = self._pnames[all_ns]
-
-        # return dictionary
-        self._phydict = {}
-        for name, seq in zip(pnames, pseqs):
-            name = name + " " * (self._longname - len(name))
-            seq = b"".join(seq.view("S1")).decode()
-            self._phydict[name] = seq
+    def _calc_initial_stats(self):
+        # enter initial stats
+        self.stats.loc["prefilter", "sites"] = self.seqarr.shape[1]
+        self.stats.loc["prefilter", "snps"] = count_snps(self.seqarr)
+        self.stats.loc["prefilter", "missing"] = round(
+            np.sum(self.seqarr == 78) / self.seqarr.size, 2)
+        self.stats.loc["prefilter", "samples"] = self.seqarr.shape[0]
 
 
-    def _parse_scaffold_phymap(self, scaffold_idx):
-        "scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table"
+    def _imap_consensus_reduce(self):
+        """
+        Get consensus sequence for all samples in clade. 
+        """
+        # skip if no imap
+        if not self.imap:
+            return 
+
+        # empty array of shape imap groups
+        iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
+        inames = np.array(sorted(self.imap.keys()))
+
+        # iterate over imap groups
+        for ikey, ivals in self.imap.items():
+            
+            # get subarray for this group
+            sidxs = [np.where(self.names == i)[0][0] for i in ivals]
+            subarr = self.seqarr[sidxs, :]
+
+            # get consensus sequence
+            cons = reftrick(subarr, GETCONS)[:, 0]
+
+            # insert to iarr
+            iidx = np.where(inames == ikey)[0][0]
+            iarr[iidx] = cons
+
+        # save as new data
+        iarr[iarr == 0] = 78
+        self.seqarr = iarr
+        self.names = inames
+        self._longname = 1 + max([len(i) for i in self.names])
+        self._pnames = np.array([
+            "{}{}".format(name, " " * (self._longname - len(name)))
+            for name in self.names
+        ])               
+
+
+    def _filter_seqarr(self):
+        """
+        Apply filters to remove taxa.
+        """
+        # drop sites that are too many Ns given (global) mincov
+        keep = np.sum(self.seqarr != 78, axis=0) >= self.mincov
+        self.seqarr = self.seqarr[:, keep]
+
+        # drop samples that are all Ns
+        keep = np.invert(np.all(self.seqarr == 78, axis=1))
+        self.seqarr = self.seqarr[keep, :]
+        self.names = self.names[keep]
+
+
+    def _calc_filtered_stats(self):
+        # update stats
+        self.stats.loc["postfilter", "sites"] = self.seqarr.shape[1]
+        self.stats.loc["postfilter", "snps"] = count_snps(self.seqarr)
+        self.stats.loc["postfilter", "missing"] = round(
+            np.sum(self.seqarr == 78) / self.seqarr.size, 2)
+        self.stats.loc["postfilter", "samples"] = self.seqarr.shape[0]
+
+
+    def _extract_phymap_df(self):
+        """
+        This extracts the phymap DataFrame.
+        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
+        """
         with h5py.File(self.data) as io5:
             colnames = io5["phymap"].attrs["columns"]
 
@@ -157,6 +246,21 @@ class WindowExtracter(object):
             )
 
 
+    def _init_stats(self):
+        # stats table
+        scaf = [self.scaffold_table.scaffold_name[self.scaffold_idx]]
+        self.stats = pd.DataFrame({
+            "scaffold": scaf,
+            "start": [self.start],
+            "end": [self.end],
+            "sites": [0],
+            "snps": [0],
+            "missing": [0],
+            "samples": [0],
+        }, index=["prefilter", "postfilter"],
+        )
+
+
     def _check_window(self):
         "check that scaf start end is in scaffold_table"
         assert self.end > self.start, "end must be > start"
@@ -168,19 +272,27 @@ class WindowExtracter(object):
         "get chromosome lengths from the database"
         with h5py.File(self.data) as io5:
 
-            # parse formatting from db
+            # get sample names
             self._pnames = np.array([
                 i.decode() for i in io5["phymap"].attrs["phynames"]
             ])
             self.names = [i.strip() for i in self._pnames]
+
+            # filter to only the included samples
             self.sidxs = [
                 i for (i, j) in enumerate(self.names) if j not in self.exclude]
-            self.names = [
-                j for (i, j) in enumerate(self.names) if i in self.sidxs]
+            self.names = np.array([
+                j for (i, j) in enumerate(self.names) if i in self.sidxs])
             self._pnames = self._pnames[self.sidxs]
-            self._longname = 1 + max([len(i) for i in self._pnames])
 
-            # parse names and lengths from db
+            # format names to include spacer for phylip, etc.
+            self._longname = 1 + max([len(i) for i in self._pnames])
+            self._pnames = np.array([
+                "{}{}".format(name, " " * (self._longname - len(name)))
+                for name in self._pnames
+            ])               
+
+            # parse scaf names and lengths from db
             scafnames = [i.decode() for i in io5["scaffold_names"][:]]
             scaflens = io5["scaffold_lengths"][:]
             self.scaffold_table = pd.DataFrame(
@@ -192,15 +304,74 @@ class WindowExtracter(object):
             )
 
 
+    # def write_to_fasta(self):
+    #     """
+    #     Split into separate loci, only include samples in a locus if they are
+    #     not empty, apply filters for locus inclusion. 
+    #     """       
+        
+    #     # make outfile path name
+    #     self.outfile = os.path.join(
+    #         self.workdir, self.name + ".fasta")
 
-def write_phydict_to_phy(phydict, outhandle):
+    #     # build loci
+    #     locs = []
+    #     for idx in self.phymap.index:
+    #         start = self.phymap.phy0[idx]
+    #         end = self.phymap.phy1[idx]
 
-    # dress up as phylip format
-    phylip = ["{} {}".format(len(phydict), len(next(iter(phydict.values()))))]
-    for name, seq in phydict.items():
-        phylip.append("{} {}".format(name, seq))
-    phystring = ("\n".join(phylip))
+    #         loc = []
+    #         for sidx in range(self.seqarr.shape[0]):
+    #             aseq = self.seqarr[sidx, start:end]
+    #             if not np.all(aseq == 78):
+    #                 name = self.names[sidx]
+    #                 seq = bytes(aseq).decode()
+    #                 scaf = self.scaffold_table.scaffold_name[self.scaffold_idx]
+    #                 header = ">{} | {}:{}-{}".format(name, scaf, start, end)
+    #                 loc.append("{}\n{}".format(header, seq))
+    #         locs.append("\n".join(loc))
 
-    # write to temp file
-    with open(outhandle, 'w') as temp:
-        temp.write(phystring)
+    #     # write to file
+    #     with open(self.outfile, 'w') as out:
+    #         out.write("\n\n".join(locs))
+
+
+    # def write_to_loci(self):
+    #     """
+    #     Split into separate loci, only include samples in a locus if they are
+    #     not empty, apply filters for locus inclusion. 
+    #     """           
+    #     raise NotImplementedError("coming soon")
+    #     # build loci
+    #     locs = []
+    #     for idx in self.phymap.index:
+    #         start = self.phymap.phy0[idx]
+    #         end = self.phymap.phy1[idx]
+
+    #         for sidx in range(self.seqarr.shape[0]):
+    #             aseq = self.seqarr[sidx, start:end]
+    #             if not np.all(aseq == 78):
+    #                 name = self.names[sidx]
+    #                 seq = bytes(aseq).decode()
+    #                 scaf = self.scaffold_table.scaffold_name[self.scaffold_idx]
+    #                 header = ">{} | {}:{}-{}".format(name, scaf, start, end)
+    #                 locs.append("{}\n{}".format(header, seq))
+
+    #     # write to file
+    #     with open(self.outfile, 'w') as out:
+    #         out.write("\n\n".join(locs))        
+
+
+    def write_to_phy(self):
+
+        # build phy
+        phy = []
+        for idx, name in enumerate(self._pnames):
+            seq = bytes(self.seqarr[idx]).decode()
+            phy.append("{} {}".format(name, seq))
+       
+        # write to temp file
+        ntaxa, nsites = self.seqarr.shape
+        with open(self.outfile, 'w') as out:
+            out.write("{} {}\n".format(ntaxa, nsites))
+            out.write("\n".join(phy))
