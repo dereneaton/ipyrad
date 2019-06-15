@@ -9,7 +9,7 @@ from __future__ import print_function
 import os
 import sys
 import time
-import datetime
+import shutil
 import tempfile
 
 # third party
@@ -19,7 +19,8 @@ import numpy as np
 # internal librries
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
-from .utils import count_snps
+from .window_extracter import WindowExtracter as window_extracter
+from .utils import ProgressBar
 from ..core.Parallel import Parallel
 
 # suppress the terrible h5 warning
@@ -47,7 +48,7 @@ extract PHY and trim for a given window entered...
 """
 
 
-class TreeSlider():
+class TreeSlider(object):
     """
     Performs phylo inference across RAD data sampled in windows. Uses the
     hdf5 database output from ipyrad as input (".seqs.hdf5"). If no window 
@@ -72,11 +73,11 @@ class TreeSlider():
         slide_size=None,
         scaffold_idxs=None,
         minsnps=1,
+        mincov=0,
+        imap={},
         inference_method="raxml",
         inference_args={},
-        # no_missing_taxa=True,
-        # imap=None,
-        # minmap=None,
+        quiet=False,
         ):
 
         # check installations
@@ -87,25 +88,27 @@ class TreeSlider():
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.data = os.path.realpath(os.path.expanduser(data))
+        self.tmpdir = os.path.join(self.workdir, "tmpdir")
 
         # work
         self.scaffold_idxs = scaffold_idxs
         self.window_size = window_size
         self.slide_size = slide_size
         self.minsnps = minsnps
+        self.imap = imap
+        self.mincov = mincov
+        self.inference_method = inference_method
+        self.inference_args = inference_args
+        self.quiet = quiet
 
         # use user name else create one
         if not self.name:
-            self.name = "all-scaffolds"
+            self.name = "test"               
 
         # get outfile name
         self.tree_table_path = os.path.join(
             self.workdir,
             "{}.tree_table.csv".format(self.name))
-
-        # inference 
-        self.inference_method = inference_method
-        self.inference_args = inference_args
 
         # parallelization
         self.ipcluster = {
@@ -119,61 +122,43 @@ class TreeSlider():
             "pids": {},
             }        
 
-        # if not window then slide is set to window
-        if (not self.window_size) or (not self.slide_size):
-            self.slide_size = self.window_size
-
-        # # parse attributes
-        # self.imap = imap
-        # self.minmap = minmap
-        # self.rmap = {}
-        # if self.imap:
-        #     for k, v in self.imap.items():
-        #         for i in v:
-        #             self.rmap[i] = k
-
-        # ensure workdir
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
-
-        # get outfile names and init/load tree_table
+        # to-be parsed attributes
         self.tree_table = None
-        if self.name:
-            tree_table_path = os.path.join(
-                self.workdir,
-                "{}.tree_table.csv".format(self.name))
-
-            # if CSV exists then load it (user can overwrite with run(force))
-            if os.path.exists(tree_table_path):
-                self.tree_table = pd.read_csv(tree_table_path, sep="\t")
-                print("existing results loaded from {}".format(
-                    tree_table_path))
-
-        # parsed attributes
         self.scaffold_table = None
         self.phymap = None
         self._pnames = None
+
+        # checks params and loads tree table if existing.
         self._parameter_check()
 
+        # get scaffold names and lengths
+        self._init_scaffold_table()
+
         # default to all scaffolds if none entered.
-        self._parse_scaffolds()
-        if not self.scaffold_idxs:
+        if self.scaffold_idxs is None:
             self.scaffold_idxs = self.scaffold_table.index.tolist()
-        if isinstance(self.scaffold_idxs, (list, tuple, set)):
+        elif isinstance(self.scaffold_idxs, (list, tuple, set)):
             self.scaffold_idxs = sorted(self.scaffold_idxs)
+        elif isinstance(self.scaffold_idxs, int):
+            self.scaffold_idxs = [self.scaffold_idxs]
 
         # build the tree table from the scaffolds, windows, and slides.
         if self.tree_table is None:
-            self._parse_tree_table()
+            self._init_tree_table()
+
+
+    def _print(self, message):
+        if not self.quiet:
+            print(message)
 
 
     def show_inference_command(self, show_full=False):
         # show a warning if user entered threads
-        if "T" in self.inference_args:
-            print("\n".join([
-                "threads argument (T) must be set in ipcluster. ",
-                "e.g., tet.ipcluster['threads'] = 4"
-            ]))
+        # if "T" in self.inference_args:
+        # print("\n".join([
+        # "threads argument (T) must be set in ipcluster. ",
+        # "e.g., tet.ipcluster['threads'] = 4"
+        # ]))
 
         # debug inference args
         threads = {"T": max(1, self.ipcluster["threads"])}
@@ -200,14 +185,50 @@ class TreeSlider():
             print(rax.command)
 
 
-
     def _parameter_check(self):
         assert os.path.exists(self.data), "database file not found"
         assert self.data.endswith(".seqs.hdf5"), (
             "data must be '.seqs.hdf5' file.")
 
+        # if not window then slide is set to window
+        if (not self.window_size) or (not self.slide_size):
+            self.slide_size = self.window_size
 
-    def _parse_scaffolds(self):
+        # ensure workdir
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
+
+
+    def _load_existing_tree_table(self):
+
+        # if CSV exists then load it (user can overwrite with run(force))
+        if os.path.exists(self.tree_table_path):
+
+            # load the existing table
+            self.tree_table = pd.read_csv(
+                self.tree_table_path, sep=",", index_col=0)
+
+            # is table finished or incomplete?
+            completed = (0 if np.any(self.tree_table.tree == 0) else 1)               
+            if not completed:
+                # report message
+                msg = "\n".join([
+                    "Unfinished tree_table loaded from [workdir]/[name].",
+                    "You can continue filling the table from this checkpoint",
+                    "by calling .run without using the force flag."
+                    "Path: {}"
+                ])
+            else:
+                msg = "\n".join([
+                    "Finished tree_table loaded from [workdir]/[name].",
+                    "Call run with force=True to overwrite these results,", 
+                    "or set a new name or workdir to use a new file path.",
+                    "Path: {}"
+                ])
+            self._print(msg.format(self.tree_table_path))
+
+
+    def _init_scaffold_table(self):
         "get chromosome lengths from the database"
         with h5py.File(self.data) as io5:
 
@@ -229,7 +250,7 @@ class TreeSlider():
             )
 
 
-    def _parse_tree_table(self):
+    def _init_tree_table(self):
         "Build DataFrame for storing results"
         dfs = []
         for scaffold in self.scaffold_idxs:
@@ -255,11 +276,16 @@ class TreeSlider():
                 "scaffold": scaffold,
                 "start": starts,
                 "end": ends,
-                "nsnps": np.nan,
-                "nsamplecov": np.nan,
-                "tree": np.nan,
+                "snps": 0,  # np.nan,
+                "sites": 0,
+                "samples": 0,
+                "missing": 0.0,  # np.nan,
+                "tree": 0,
                 }, 
-                columns=["scaffold", "start", "end", "nsnps", "nsamplecov", "tree"], 
+                columns=[
+                    "scaffold", "start", "end", 
+                    "sites", "snps", "samples", "missing", "tree"
+                ], 
             )
             dfs.append(df)
 
@@ -285,8 +311,34 @@ class TreeSlider():
 
     def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
         """
-        Run command for tree slider.
+        Distribute tree slider jobs in parallel. 
+
+        Parameters:
+        -----------
+        ipyclient: (type=ipyparallel.Client); Default=None. 
+            If you started an ipyclient manually then you can 
+            connect to it and use it to distribute jobs here.
+        
+        force: (type=bool); Default=False.
+            Force overwrite of existing output with the same name.
+
+        show_cluster: (type=bool); Default=False.
+            Print information about parallel connection.
+
+        auto: (type=bool); Default=False.
+            Let ipyrad automatically manage ipcluster start and shutdown. 
+            This will connect to all avaiable cores by default, but can 
+            be modified by changing the parameters of the .ipcluster dict 
+            associated with this tool.
         """
+
+        # TODO: This is a little complicated b/c we need to store and load old
+        # params also...
+        # check for results
+        # if not force:
+        # self._load_existing_tree_table()
+
+        # wrap analysis in parallel client
         pool = Parallel(
             tool=self, 
             ipyclient=ipyclient,
@@ -299,9 +351,8 @@ class TreeSlider():
 
     def _run(self, force=False, ipyclient=None):
         """
-        Hidden func to run parallel job.
+        Hidden func to distribute jobs that is wrapped inside Parallel.
         """
-
         # do not overwrite tree table
         if os.path.exists(self.tree_table_path):
             if not force:
@@ -310,98 +361,119 @@ class TreeSlider():
         .format(self.tree_table_path)))
                 return
 
-        # THREADING
+        # THREADING set to match between ipcluster and raxml 
         if "T" in self.inference_args:
-            self.ipcluster["threads"] = int(self.inference_args["T"])
+            self.ipcluster["threads"] = max(2, int(self.inference_args["T"]))
+        self.inference_args["T"] = max(2, int(self.ipcluster["threads"]))
+        threads = self.inference_args["T"]
 
         # load balance parallel jobs 2-threaded
-        threads = int(max(2, self.ipcluster["threads"]))
         lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::threads])
 
-        # distribute jobs on client
-        time0 = time.time()
-        rasyncs = {}
-
         # initial progress ticker to run during job submission
-        print(
+        self._print(
             "building database: nwindows={}; minsnps={}"
             .format(
                 self.tree_table.shape[0],
                 self.minsnps,
             ))
 
-        # subset phymap for this scaffold
-        io5 = h5py.File(self.data, 'r')
-        scaffs = io5["phymap"][:, 0]
-
         # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, )
         jidx = 0
-        for scaff in self.tree_table.scaffold.unique():
+        finished = 0
+        rasyncs = {}
+        for idx in self.tree_table.index:
 
-            # load phymap for each scaff at a time
-            phymap = io5["phymap"][scaffs == scaff + 1, :]
-            subtree = self.tree_table[self.tree_table.scaffold == scaff]
+            # if continuing an existing job, skip if row already filled
+            if self.tree_table.tree[idx] != 0:
+                finished += 1
+                continue
 
-            # submit jobs each window at a time
-            for idx in subtree.index:
+            # extract the phylip alignment for this window
+            ext = window_extracter(
+                data=self.data,
+                workdir=os.path.join(self.workdir, "tmpdir"),
+                scaffold_idx=self.tree_table.scaffold[idx],
+                start=self.tree_table.start[idx],
+                end=self.tree_table.end[idx],
+                mincov=self.mincov,
+                imap=self.imap,
+                quiet=True,
+            )
 
-                # get window margins
-                start, stop = (
-                    subtree.loc[idx, ["start", "end"]].astype(int))
+            # fill table stats
+            self.tree_table.loc[idx, "snps"] = ext.stats.loc["postfilter", "snps"]
+            self.tree_table.loc[idx, "sites"] = ext.stats.loc["postfilter", "sites"]
+            self.tree_table.loc[idx, "missing"] = ext.stats.loc["postfilter", "missing"]
+            self.tree_table.loc[idx, "samples"] = ext.stats.loc["postfilter", "samples"]
 
-                # subset phymap for this window range
-                mask = (phymap[:, 3] > start) & (phymap[:, 4] < stop)
-                cmap = phymap[mask, :]
+            # filter by SNPs
+            if ext.stats.loc["postfilter", "snps"] < self.minsnps:
+                self.tree_table.loc[idx, "tree"] = np.nan
+                finished += 1
 
-                # only if there is RAD sequence data in this window send job
-                if cmap.size:
-                    wmin = cmap[:, 1].min()
-                    wmax = cmap[:, 2].max()
+            else:
+                # write phylip file to the tmpdir
+                ext.run(force=True)
 
-                    # store async result
-                    args = (
-                        self.data, wmin, wmax, self.minsnps, 
-                        threads, 4, 
-                        self.inference_method, self.inference_args,
-                    )
-                    rasyncs[jidx] = lbview.apply(remote_tree_inference, *args)
-
-                # advance fill counter, leaves NaN in rows with no data.
+                # send remote tree inference job
+                args = [ext.outfile, self.inference_args]
+                rasyncs[jidx] = lbview.apply(remote_raxml, *args)
                 jidx += 1
 
-        # close database
-        io5.close()
+        # wait for jobs to finish
+        prog = ProgressBar(self.tree_table.shape[0], None, "inferring trees")
+        prog.finished = finished
 
-        # track progress and save result table
-        message = "inferring raxml trees"
-        self._track_progress_and_store_results(rasyncs, time0, message)
-        self.tree_table.to_csv(self.tree_table_path)
-
-
-    def _track_progress_and_store_results(self, rasyncs, time0, message):
-        # track progress and collect results.
-        nwindows = self.tree_table.shape[0]
-        done = 0
         while 1:
+            # check for completed
             finished = [i for i in rasyncs if rasyncs[i].ready()]
             for idx in finished:
-                if rasyncs[idx].successful():
-                    self.tree_table.iloc[idx, 3:] = rasyncs[idx].get()
-                    self.tree_table.to_csv(self.tree_table_path)
-                    del rasyncs[idx]
-                    done += 1
-                else:
-                    raise Exception(rasyncs[idx].get())
+                self.tree_table.iloc[idx, -1] = rasyncs[idx].get()
+                self.tree_table.to_csv(self.tree_table_path)
+                prog.finished += 1
+                del rasyncs[idx]
 
-            # progress
-            progressbar(done, nwindows, time0, message)
-            time.sleep(0.5)
+            # show progress
+            prog.update()
+            time.sleep(0.9)
             if not rasyncs:
-                print("")
+                self._print("")
                 break
+        shutil.rmtree(self.tmpdir)
 
 
 
+def remote_raxml(phyfile, inference_args):
+    """
+    Call raxml on phy and returned parse tree result
+    """
+    # call raxml on the input phylip file with inference args
+    rax = raxml(
+        data=phyfile,
+        name="temp_" + str(os.getpid()),
+        workdir=tempfile.gettempdir(),
+        **inference_args
+    )
+    rax.run(force=True, quiet=True, block=True)
+
+    # get newick string from result
+    if os.path.exists(rax.trees.bipartitions):
+        tree = toytree.tree(rax.trees.bipartitions).newick
+    else:
+        tree = toytree.tree(rax.trees.bestTree).newick
+
+    # remote tree files
+    for tfile in rax.trees:
+        tpath = getattr(rax.trees, tfile)
+        if os.path.exists(tpath):
+            os.remove(tpath)
+
+    # return results
+    return tree
+
+
+# DEPRECATED 
 def remote_tree_inference(
     database, 
     wmin, 
@@ -414,10 +486,10 @@ def remote_tree_inference(
     ):
     "remote job to run phylogenetic inference."
 
-    # get seqarr for phy indices
+    # get seqarr for phy indices    
+    nsnps = np.nan
     tree = np.nan
     nsamplecov = np.nan
-    nsnps = np.nan
 
     # parse phylip string if there is sequence in this window
     if wmax > wmin:
@@ -427,7 +499,7 @@ def remote_tree_inference(
 
         # infer a tree if there is variation in this window
         if (nsamplecov >= mincov) and (nsnps >= minsnps):
-            
+
             # RAxML ML inference
             if inference_method == "raxml":
 
@@ -554,19 +626,6 @@ def parse_phydict(database, wmin, wmax):
         seq = b"".join(seq.view("S1")).decode()
         phydict[name] = seq
     return nsnps, nsamplecov, phydict
-
-
-def progressbar(finished, total, start, message):
-    progress = 100 * (finished / float(total))
-    hashes = '#' * int(progress / 5.)
-    nohash = ' ' * int(20 - len(hashes))
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    print("\r[{}] {:>3}% {} | {:<12} "
-          .format(hashes + nohash, int(progress), elapsed, message),
-          end="")
-    sys.stdout.flush()
-
-
 
 
 
