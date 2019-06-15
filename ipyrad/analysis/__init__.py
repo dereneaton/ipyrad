@@ -30,16 +30,16 @@ from .tetrad import Tetrad as tetrad
 from .treeslider import TreeSlider as treeslider
 from .snps_extracter import SNPExtracter as snps_extracter
 from .snps_imputer import SNPImputer as snps_imputer
+from .distance import Distance as distance
 
 # testing
+from .structure import Structure as structure
+from .clade_weights import CladeWeights as clade_weights
+from .digest_genome import DigestGenome as digest_genome
 # from .baba import Baba as baba
 # from .sratools import SRA as sratools
 # from .momi import Momi as momi
 # from .eems import Eems as eems
-from .structure import Structure as structure
-
-from .clade_weights import CladeWeights as clade_weights
-from .digest_genome import DigestGenome as digest_genome
 
 # from .twisst import Twisst as twisst
 from .bucky import Bucky as bucky
