@@ -31,6 +31,7 @@ conda install toyplot -c eaton-lab
 try:
     from sklearn import decomposition 
     from sklearn.cluster import KMeans
+    from sklearn.manifold import TSNE
 except ImportError:
     pass
 
@@ -258,7 +259,7 @@ class PCA(object):
             self._print("")
 
 
-    def run(self, seed=None, subsample=True):
+    def run(self, seed=None, subsample=True):  # , model="pca"):
         """
         Decompose genotype array (.snps) into n_components axes. 
 
@@ -292,12 +293,19 @@ class PCA(object):
             data = self.snps
 
         # decompose pca call
+        # if model == "pca":
         model = decomposition.PCA(None)  # self.ncomponents)
         model.fit(data)
         newdata = model.transform(data)
+        variance = model.explained_variance_ratio_
+        # elif model in ("tSNE", "t-SNE", "TSNE", "T-SNE"):
+        #     model = TSNE(
+        #         init="pca", perplexity=data.shape[0] / 2., n_iter=100000)
+        #     newdata = model.fit_transform(data)
+        #     variance = "", ""
 
         # return tuple with new coordinates and variance explained
-        return newdata, model.explained_variance_ratio_                
+        return newdata, variance
 
 
     def run_and_plot_2D(
@@ -306,12 +314,13 @@ class PCA(object):
         ax1=1, 
         seed=None, 
         subsample=True, 
+        # model="pca",
         ):
         """
         A convenience function for plotting 2D scatterplot of PCA results.
         """
         # get transformed coordinates and variances
-        data, vexp = self.run(seed, subsample)  # , impute_method, kmeans)
+        data, vexp = self.run(subsample=subsample, seed=seed)
 
         # color map
         colors = toyplot.color.broadcast(
