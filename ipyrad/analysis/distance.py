@@ -27,6 +27,7 @@ class Distance(object):
         mincov=0.0, 
         impute_method="sample",
         subsample_snps=False,
+        # require_nonnegative_symmetric=False,
         random_seed=None,
         quiet=False,
         ):
@@ -40,6 +41,7 @@ class Distance(object):
         self.impute_method = impute_method
         self.quiet = quiet
         self.subsample_snps = subsample_snps
+        # self.require_nonnegative_symmetric = require_nonnegative_symmetric
         
         # get tools 
         self._se = SNPsExtracter(
