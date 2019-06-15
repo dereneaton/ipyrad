@@ -117,7 +117,7 @@ class CLI:
         self.parser.add_argument(
             '-v', '--version', 
             action='version', 
-            version=str('ipyrad {}'.format(ip.__version__))
+            version=str(get_distribution('ipyrad')),
         )
         self.parser.add_argument('-r', "--results", action='store_true',
             help="show results summary for Assembly in params.txt and exit")
@@ -548,7 +548,8 @@ HEADER = """
   ipyrad [v.{}]
   Interactive assembly and analysis of RAD-seq data
  -------------------------------------------------------------\
- """.format(str(get_distribution('ipyrad')))  # ip.__version__)
+ """.format(str(get_distribution('ipyrad')).split()[1])
+# ip.__version__)
 
 
 EPILOG = """
