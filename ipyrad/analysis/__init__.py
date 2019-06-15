@@ -28,8 +28,8 @@ from .treemix import Treemix as treemix
 from .pca import PCA as pca
 from .tetrad import Tetrad as tetrad
 from .treeslider import TreeSlider as treeslider
-from .snps_extracter import SNPExtracter as snps_extracter
-from .snps_imputer import SNPImputer as snps_imputer
+from .snps_extracter import SNPsExtracter as snps_extracter
+from .snps_imputer import SNPsImputer as snps_imputer
 from .distance import Distance as distance
 
 # testing
