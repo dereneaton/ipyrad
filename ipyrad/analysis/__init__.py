@@ -20,13 +20,16 @@ from ipyrad import __version__
 # conda install bucky -c ipyrad
 # conda install bpp -c ipyrad
 
-# tested in 0.9.5
+# tested in 0.9.10
 from .raxml import Raxml as raxml
 from .mrbayes import MrBayes as mrbayes
 from .window_extracter import WindowExtracter as window_extracter
 from .treemix import Treemix as treemix
 from .pca import PCA as pca
 from .tetrad import Tetrad as tetrad
+from .treeslider import TreeSlider as treeslider
+from .snps_extracter import SNPExtracter as snps_extracter
+from .snps_imputer import SNPImputer as snps_imputer
 
 # testing
 # from .baba import Baba as baba
@@ -34,7 +37,7 @@ from .tetrad import Tetrad as tetrad
 # from .momi import Momi as momi
 # from .eems import Eems as eems
 from .structure import Structure as structure
-from .treeslider import TreeSlider as treeslider
+
 from .clade_weights import CladeWeights as clade_weights
 from .digest_genome import DigestGenome as digest_genome
 
