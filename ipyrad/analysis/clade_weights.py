@@ -15,8 +15,7 @@ import itertools
 
 # third party
 import pandas as pd
-import numpy as np
-from .utils import progressbar
+from .utils import ProgressBar
 from ..core.Parallel import Parallel
 
 # import tested at init
@@ -56,13 +55,13 @@ class CladeWeights(object):
 
     """
     def __init__(
-            self, 
-            data, 
-            clades,
-            name="test", 
-            workdir="analysis-clade_weights",
-            minsupport=0,
-            ):
+        self, 
+        data, 
+        imap,
+        name="test", 
+        workdir="analysis-clade_weights",
+        minsupport=0,
+        ):
 
         # check external imports
         if not sys.modules.get("toytree"):
@@ -74,34 +73,35 @@ class CladeWeights(object):
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.minsupport = minsupport
+        self.imap = imap
         if os.path.exists(data):
             self.tree_table = pd.read_csv(data, index_col=0)
         else:
             self.tree_table = None
 
         # make sure clades is a dictionary
-        if not isinstance(clades, dict):
+        if not isinstance(imap, dict):
             raise TypeError("clades argument should be a dictionary.")
 
         # fill clades dictionary with tests
         self.clades = {}
-        for key, value in clades.items():
+        for key, value in imap.items():
             
             # make sure all clades values are lists or tuples of strings
             if isinstance(value, str):
                 raise TypeError("clades values should be lists or tuples")
 
             elif isinstance(value, list):
-                self.clades[key] = value
+                self.imap[key] = value
 
             elif isinstance(value, tuple):
-                self.clades[key] = value
+                self.imap[key] = value
             
             else:
                 raise TypeError("clades argument is malformed.")
 
         # clades must have >1 tip for individual
-        if any([len(i) < 2 for i in self.clades.values()]):
+        if any([len(i) < 2 for i in self.imap.values()]):
             raise Exception(
                 "All clades must have >1 samples in a list or tuple of lists. " + \
                 "e.g., ['a', 'b'] or (['a', 'b'], ['c'])"
@@ -124,7 +124,27 @@ class CladeWeights(object):
 
 
     def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
-        "Run command for clade weight sampling."
+        """
+        Distribute clade weigths jobs in parallel. 
+
+        Parameters:
+        -----------
+        ipyclient: (type=ipyparallel.Client); Default=None. 
+            If you started an ipyclient manually then you can 
+            connect to it and use it to distribute jobs here.
+        
+        force: (type=bool); Default=False.
+            Force overwrite of existing output with the same name.
+
+        show_cluster: (type=bool); Default=False.
+            Print information about parallel connection.
+
+        auto: (type=bool); Default=False.
+            Let ipyrad automatically manage ipcluster start and shutdown. 
+            This will connect to all avaiable cores by default, but can 
+            be modified by changing the parameters of the .ipcluster dict 
+            associated with this tool.
+        """
         pool = Parallel(
             tool=self, 
             ipyclient=ipyclient,
@@ -153,17 +173,17 @@ class CladeWeights(object):
                 print((
         "clade_weights table loaded from {}; Use force to instead overwrite."
         .format(clade_weights_path)))
-                self.clade_weights = pd.read_csv(clade_weights_path, index_col=0)
+                self.clade_weights = pd.read_csv(
+                    clade_weights_path, index_col=0)
                 return
 
         # make empty clade weights table
         self.clade_weights = pd.DataFrame(
-            {i: [0.] * self.tree_table.shape[0] for i in self.clades.keys()}
+            {i: [0.] * self.tree_table.shape[0] for i in self.imap.keys()}
         )
 
         # setup cluster
         lbview = ipyclient.load_balanced_view()
-        time0 = time.time()
         rasyncs = {}
 
         # distribute jobs on client in chunks
@@ -173,27 +193,24 @@ class CladeWeights(object):
             chunk = self.tree_table.tree[idx:idx + chunksize].tolist()
 
             rasyncs[idx] = lbview.apply(
-                clade_weights, *(chunk, self.clades, idx))
+                clade_weights, *(chunk, self.imap, idx))
 
         # caculateing clade weights
+        prog = ProgressBar(len(rasyncs), None, "calculating tree weights")
         done = 0
-        nwindows = len(rasyncs)
-        message = "calculating tree weights | {}".format(self.name)
         while 1:
             finished = [i for i in rasyncs if rasyncs[i].ready()]
             for idx in finished:
-                if rasyncs[idx].successful():
-                    # fill with results
-                    res = rasyncs[idx].get()
-                    # print(res)
-                    self.clade_weights.iloc[idx: idx + chunksize] = res.values
-                    del rasyncs[idx]
-                    done += 1                    
-                else:
-                    raise Exception(rasyncs[idx].get())
+                # fill with results
+                res = rasyncs[idx].get()
+                self.clade_weights.iloc[idx: idx + chunksize] = res.values
+                del rasyncs[idx]
+                prog.finished += 1
+                done += 1                    
+
             # progress
-            progressbar(done, nwindows, time0, message)
-            time.sleep(0.5)
+            prog.update()
+            time.sleep(0.9)
             if not rasyncs:
                 print("")
                 break
