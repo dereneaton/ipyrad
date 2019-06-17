@@ -68,16 +68,6 @@ class WindowExtracter(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # use provided name else auto gen a name
-        if not name:
-            self.name = "scaf{}-{}-{}".format(
-                self.scaffold_idx,
-                self.start,
-                self.end
-            )
-        else:
-            self.name = name
-
         # parse scaffold info
         self.scaffold_table = None
         self.names = []
@@ -88,6 +78,16 @@ class WindowExtracter(object):
         # update end to scaff len if not entered
         if not self.end:
             self.end = int(self.scaffold_table.iloc[self.scaffold_idx, -1])
+
+        # use provided name else auto gen a name (scaff-start-end)
+        if not name:
+            self.name = "scaf{}-{}-{}".format(
+                self.scaffold_idx,
+                self.start,
+                self.end
+            )
+        else:
+            self.name = name
 
         # allow user to init with None to get scaffold names.
         if self.scaffold_idx is not None:
