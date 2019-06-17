@@ -217,6 +217,7 @@ class WindowExtracter(object):
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
         self.names = self.names[keep]
+        self._pnames = self._pnames[keep]
 
 
     def _calc_filtered_stats(self):

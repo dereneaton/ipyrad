@@ -36,12 +36,12 @@ from .distance import Distance as distance
 from .structure import Structure as structure
 from .clade_weights import CladeWeights as clade_weights
 from .digest_genome import DigestGenome as digest_genome
+from .bucky import Bucky as bucky
+from .bpp import Bpp as bpp
 # from .baba import Baba as baba
 # from .sratools import SRA as sratools
 # from .momi import Momi as momi
 # from .eems import Eems as eems
 
 # from .twisst import Twisst as twisst
-from .bucky import Bucky as bucky
-from .bpp import Bpp as bpp
 #from .popgen import Popgen as popgen
