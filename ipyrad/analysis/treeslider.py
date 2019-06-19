@@ -381,6 +381,9 @@ class TreeSlider(object):
         # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, )
         jidx = 0
         finished = 0
+        prog = ProgressBar(self.tree_table.shape[0], None, "inferring trees")
+        prog.finished = finished
+        prog.update()
         rasyncs = {}
         for idx in self.tree_table.index:
 
@@ -420,11 +423,9 @@ class TreeSlider(object):
                 args = [ext.outfile, self.inference_args]
                 rasyncs[jidx] = lbview.apply(remote_raxml, *args)
                 jidx += 1
+            prog.update()
 
         # wait for jobs to finish
-        prog = ProgressBar(self.tree_table.shape[0], None, "inferring trees")
-        prog.finished = finished
-
         while 1:
             # check for completed
             finished = [i for i in rasyncs if rasyncs[i].ready()]
