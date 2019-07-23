@@ -143,20 +143,20 @@ CDICT = {i: j for i, j in zip("CATG", "0123")}
 #     }
 
 # # used in write_outfiles.write_geno
-# TRANSFULL = {
-#     (b'G', b'A'): "R",
-#     (b'G', b'T'): "K",
-#     (b'G', b'C'): "S",
-#     (b'T', b'C'): "Y",
-#     (b'T', b'A'): "W",
-#     (b'C', b'A'): "M",
-#     (b'A', b'C'): "M",
-#     (b'A', b'T'): "W",
-#     (b'C', b'T'): "Y",
-#     (b'C', b'G'): "S",
-#     (b'T', b'G'): "K",
-#     (b'A', b'G'): "R",
-#     }
+TRANSFULL = {
+    ('G', 'A'): "R",
+    ('G', 'T'): "K",
+    ('G', 'C'): "S",
+    ('T', 'C'): "Y",
+    ('T', 'A'): "W",
+    ('C', 'A'): "M",
+    ('A', 'C'): "M",
+    ('A', 'T'): "W",
+    ('C', 'T'): "Y",
+    ('C', 'G'): "S",
+    ('T', 'G'): "K",
+    ('A', 'G'): "R",
+    }
 
 # TRANSINT = {
 #     (71, 65): 82,
