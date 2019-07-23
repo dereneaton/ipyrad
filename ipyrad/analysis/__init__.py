@@ -31,6 +31,7 @@ from .treeslider import TreeSlider as treeslider
 from .snps_extracter import SNPsExtracter as snps_extracter
 from .snps_imputer import SNPsImputer as snps_imputer
 from .distance import Distance as distance
+from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 
 # testing
 from .structure import Structure as structure
