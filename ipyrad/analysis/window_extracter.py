@@ -51,12 +51,12 @@ class WindowExtracter(object):
         imap=None,
         quiet=False,
         ):
-        
+
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.scaffold_idx = scaffold_idx
-        self.start = start
+        self.start = (start if start else 0)
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
@@ -68,7 +68,18 @@ class WindowExtracter(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # use provided name else auto gen a name
+        # parse scaffold info
+        self.scaffold_table = None
+        self.names = []
+
+        # gets names, pnames, scaffold_table, ...
+        self._parse_scaffolds()
+
+        # update end to scaff len if not entered
+        if not self.end:
+            self.end = int(self.scaffold_table.iloc[self.scaffold_idx, -1])
+
+        # use provided name else auto gen a name (scaff-start-end)
         if not name:
             self.name = "scaf{}-{}-{}".format(
                 self.scaffold_idx,
@@ -77,13 +88,6 @@ class WindowExtracter(object):
             )
         else:
             self.name = name
-
-        # parse scaffold info
-        self.scaffold_table = None
-        self.names = []
-
-        # gets names, pnames, scaffold_table, ...
-        self._parse_scaffolds()
 
         # allow user to init with None to get scaffold names.
         if self.scaffold_idx is not None:
@@ -217,6 +221,7 @@ class WindowExtracter(object):
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
         self.names = self.names[keep]
+        self._pnames = self._pnames[keep]
 
 
     def _calc_filtered_stats(self):

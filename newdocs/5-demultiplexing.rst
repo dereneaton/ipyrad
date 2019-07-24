@@ -16,9 +16,9 @@ files then you will need to perform *demultiplexing*.
 .. _file_names:
 Sample Names
 -------------
-If demultiplexing, then Sample names will be extracted from
-the :ref:`barcodes files<barcodes_file>`. Whereas if your data are already 
-sorted demultiplexed then Sample names are extracted from the file names 
+When demultiplexing Sample names will be extracted from
+the :ref:`barcodes files<barcodes_file>` whereas if your data are already 
+demultiplexed then Sample names are extracted from file names 
 directly. Do not include spaces in file names. For paired-end data we need
 to be able to identify which R1 and R2 files go together, and so we require that
 every read1 file name contains the string ``_R1_`` (*with underscores before
@@ -55,7 +55,8 @@ To perform combinatorial indexing you will need to enter two barcodes for
 each sample name. These should be ordered so that the barcode on read1 is 
 first and the barcode on read2 second. A simple way to ensure that barcodes
 are attached to your reads in the way that you expect is to look at the raw 
-data files (e.g., use the command line tool `less`) and check for the barcode sequences. 
+data files (e.g., use the command line tool `less`) and check for the 
+barcode sequences. 
 
 
 .. parsed-literal:: 
@@ -72,7 +73,7 @@ on the Illumina adapters. This is often used to combine multiple plates together
 onto a single sequencing run. You can find the i7 index in the header line of 
 each read in a fastq file. *ipyrad* can demultiplex using i7 indices if you 
 turn on a special flag. An example of how to do this using the *ipyrad* API 
-is shown here: TODO...
+is available in the cookbook section.
 
 
 .. parsed-literal:: 
@@ -85,4 +86,4 @@ Combining multiple libraries
 With *ipyrad* it is very easy to combine multiple sequenced libraries into a
 single assembly. This is accomplished by demultiplexing each lane of data 
 separately and then combining the libraries using *merging*. See the merging
-section for details.
+section for details and examples in the cookbook section.
