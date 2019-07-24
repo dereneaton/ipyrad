@@ -23,35 +23,33 @@ be easily combined.
 
 Filtering/Trimming data
 ------------------------
-We would recommend you start by running the program (fastqc)[fastqc] on your data
-to produce output files with information about the distribution of quality 
-scores, and the occurrence of Illumina adapter sequences. If your 
-data contain adapters, then it is *very* important that these are removed, especially
-for paired-end data. There is a variety of software available to filter your data 
-before starting an ipyrad analysis, such as trimmomatic or cutadapt. We prefer 
-cutadapt. However, you can also filter your data directly in ipyrad, which 
-uses cutadapt. Step 2 of the ipyrad analysis will apply different filters depending
+It is generally good practice to run the program fastqc on your raw data when
+you first get it to gain an idea of the quality of your reads, and the presence
+of adapter contamination. For an ipyrad assembly you do not need to trim your 
+reads before starting an assembly, since ipyrad includes a builtin and 
+recommended trimming step during step 2 of assembly (using the software
+tool cutadapt). If you do choose to trim your data beforehand, however, it 
+should not cause any problems. 
+
+Step 2 of the ipyrad analysis will apply different filters depending
 on the parameter settings you enter, to filter and trim data based on quality scores, 
-and the occurrence of barcode+adapter combinations. Further, for paired-end 
-data ipyrad uses vsearch to merge trimmed paired-end reads, which uses an algorithm
-similar to that in PEAR. The merged and non-merged reads are combined into a 
-single downstream analysis. For more details on how quality and adapter trimming
-are performed in ipyrad (using cutadapt) [see here (link coming soon)](). 
+and the occurrence of barcode+adapter combinations. For paired-end 
+data ipyrad will merge overlapping reads (using vsearch for denovo assembly
+or simply based on mapping positions for reference-mapped assembly).
 
 
 .. _file_names:
 Fastq Data Files and File Names
 --------------------------------
-
 Depending how and where your sequence data were generated you may receive 
 data as one giant file, or in many smaller files. The files may contain data
-from all of your individuals mixed up together, or as separate files for each 
+from all of your individuals mixed together, or as separate files for each 
 Sample. If they are mixed up then the data need to be demultiplexed based on 
 barcodes or indices. Input files to ipyrad can be either demultiplexed or not:
 
 If demultiplexing, then Sample names will be extracted from
 the :ref:`barcodes files<barcodes_file>`. Whereas if your data are already 
-sorted demultiplexed then Sample names are extracted from the file names 
+demultiplexed then Sample names are extracted from the file names 
 directly. Do not include spaces in file names. For paired-end data we need
 to be able to identify which R1 and R2 files go together, and so we require that
 every read1 file name contains the string ``_R1_`` (*with underscores before
@@ -71,14 +69,12 @@ Multiplexing and Multiple Libraries
 If your data are not yet sorted among individuals/samples then you will 
 need to have barcode/index information organized into a 
 :ref:`barcodes file<barcodes_file>` to sort data to separate files for each 
-sample. Alternatively, your data may have arrived to you already demultiplexed
-in which case the file names likely are named by samples or their barcodes. 
-*ipyrad* has many options for demultiplexing by internal barcodes or external
-i7 indices, and for combining samples from many different sequencing runs 
-together into a single analyses, or splitting them into separate analyses, 
+sample. *ipyrad* has several options for demultiplexing by internal barcodes
+or external i7 indices, and for combining samples from many different sequencing
+runs together into a single analyses, or splitting them into separate analyses, 
 as well as for merging data from multiple sequenced lanes into the same 
-sample names (e.g., technical replicates). See the Demultiplexing section 
-for details. 
+sample names (e.g., technical replicates). See the Cookbook section 
+for detailed demultiplexing examples.
 
 
 .. _data_types:
@@ -97,8 +93,7 @@ if it can be analyzed in ipyrad_ :ref:`let us know here<gitter>`.
 DNA fragments for sequencing based on a single cut site. *e.g., RAD-seq, NextRAD*. 
 
 
-**ddrad** -- This category is very similar data types which select fragments that were digested
-by two different restriction enzymes which cut the fragment on either end. 
+**ddrad** -- This category is very similar data types which select fragments that were digested by two different restriction enzymes which cut the fragment on either end. 
 During assembly this type of data is analyzed differently from the **rad** data
 type by more stringent filtering that looks for occurrences of the second 
 (usually more common) cutter. *e.g., double-digest RAD-seq*. 

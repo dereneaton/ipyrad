@@ -13,10 +13,11 @@ installation instructions `below <longform_>`__.
 
 Conda install
 -------------
+ipyrad is available for Python >=2.7 and >=3.5.
 
 .. code:: bash
 
-	conda install ipyrad -c bioconda
+	conda install ipyrad -c bioconda -c conda-forge
 
 
 Recommended additional packages
@@ -38,7 +39,7 @@ is not recommended unless you're involved in development.
 ... code::bash
 	
 	# install external requirements first (e.g., using conda)
-	conda install vsearch muscle bedtools bwa samtools mpi4py -c bioconda
+	conda install vsearch muscle bedtools bwa samtools mpi4py -c bioconda -c conda-forge
 
 	# clone the master branch from repo
 	git clone -b master https://github.com/dereneaton/ipyrad
@@ -56,6 +57,7 @@ The following Python packages are installed as dependencies of ipyrad:
 	- scipy
 	- pandas
 	- h5py
+    - mpi4py
 	- numba
 	- ipyparallel
 	- pysam
@@ -157,8 +159,8 @@ is located in a channel called ipyrad.
 
 .. code-block:: bash
 
-    conda update conda                 ## updates conda
-    conda install ipyrad -b bioconda   ## installs the latest release
+    conda update conda                                # updates conda
+    conda install ipyrad -b bioconda -c conda-forge   # installs the latest release
 
 If you wish to install a specific version of ipyrad_, or to upgrade from an
 older version to the most recent release, you can use one of the following
@@ -166,8 +168,8 @@ commands:
 
 .. code-block:: bash
 
-    conda install -c bioconda ipyrad=0.5.1     ## install specific version
-    conda update -c bioconda ipyrad            ## update to the latest
+    conda install -c bioconda ipyrad=0.9.10      ## install specific version
+    conda update -c bioconda ipyrad              ## update to the latest
 
 
 .. _HPC_installation:
