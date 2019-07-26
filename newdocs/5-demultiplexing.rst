@@ -6,11 +6,7 @@
 
 Getting Started: Demultiplexing
 ================================
-Demultiplexing is the process of sorting sequenced reads into separate files
-for each sample in a sequenced run. You may have received your data already
-demultiplexed, with a separate file for each sample. If so, then you can 
-proceed to the next section. If your data are not yet sorted into separate
-files then you will need to perform *demultiplexing*.
+Demultiplexing is the process of sorting sequenced reads into separate files for each sample in a sequenced run. You may have received your data already demultiplexed, with a separate file for each sample. If so, then you can proceed to the next section. If your data are not yet sorted into separate files then you will need to perform *demultiplexing*.
 
 
 .. _file_names:
