@@ -6,21 +6,13 @@
 
 Assembly: Seven Steps
 =====================
-The goal of the *assembly* process is to convet raw or sorted fastq 
-data into assembled loci that can be formatted for downstream analyses
-in phylogenetic or population genetic inference software. In *ipyrad* we 
-have purposefully atomized this process into :ref:`seven sequential steps 
-<seven_steps>` to create a modular workflow that can be easily restarted if interrupted, and can be :ref:`branched <branching_workflow>` at 
-different points to create assemblies under different combinations of 
-parameter settings. 
+The goal of the *assembly* process is to convet raw or sorted fastq data into assembled loci that can be formatted for downstream analyses in phylogenetic or population genetic inference software. In *ipyrad* we have purposefully atomized this process into :ref:`seven sequential steps <seven_steps>` to create a modular workflow that can be easily restarted if interrupted, and can be :ref:`branched <branching_workflow>` at 
+different points to create assemblies under different combinations of parameter settings. 
 
 
 Basic Assembly Workflow
 ------------------------
-The simplest use of ipyrad is to assemble a data set under a single set of 
-parameters defined in a params file. 
-Step 1 loads/assigns data to each sample; steps 2-5 process data for each sample; step 6 identifies orthologs across samples; and step 7 filters the orthologs and 
-writes formatted files for downstream analyses. 
+The simplest use of ipyrad is to assemble a data set under a single set of parameters defined in a params file. Step 1 loads/assigns data to each sample; steps 2-5 process data for each sample; step 6 identifies orthologs across samples; and step 7 filters the orthologs and writes formatted files for downstream analyses. 
 
 .. image:: images/steps.png
 

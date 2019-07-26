@@ -6,20 +6,29 @@
 
 Getting Started: Demultiplexing
 ================================
-Demultiplexing is the process of sorting sequenced reads into separate files for each sample in a sequenced run. You may have received your data already demultiplexed, with a separate file for each sample. If so, then you can proceed to the next section. If your data are not yet sorted into separate files then you will need to perform *demultiplexing*.
+Demultiplexing is the process of sorting sequenced reads into separate files for each sample in a sequenced run. You may have received your data already demultiplexed, with a separate file for each sample. If so, then you can proceed to the next section. If your data are not yet sorted into separate files then you will need to perform *demultiplexing* during step 1 of the ipyrad assembly.
+
+
+Multiplexing and Multiple Libraries
+-----------------------------------
+If your data are not yet sorted among individuals/samples then you will need to have barcode/index information organized into a 
+:ref:`barcodes file<barcodes_file>` to sort data to separate files for each sample. *ipyrad* has several options for demultiplexing by internal barcodes or external i7 indices, and for combining samples from many different sequencing runs together into a single analysis, or splitting them into separate analyses, as well as for merging data from multiple sequenced lanes into the same sample names (e.g., technical replicates). See the Demultiplexing section for simple examples, and the Cookbook section for further detailed examples.
+
+
+If demultiplexing then Sample names will be extracted from
+the :ref:`barcodes files<barcodes_file>`, whereas if your data are already demultiplexed then Sample names are extracted from the file names directly. Do not include spaces in file names. For paired-end data we need to be able to identify which R1 and R2 files go together, and so we require that every read1 file name contains the string ``_R1_`` (*with underscores before and after*), and every R2 file name must match exactly the R1 file except that it has ``_R2_`` in place of ``_R1_``. See the tutorial data files for an example. 
+
+.. note:: 
+
+    Pay careful attention to file names at the very beginning of an analysis since these names, and any included typos, will be perpetuated through all the resulting data files. Do not include spaces in file names.
 
 
 .. _file_names:
 Sample Names
 -------------
 When demultiplexing Sample names will be extracted from
-the :ref:`barcodes files<barcodes_file>` whereas if your data are already 
-demultiplexed then Sample names are extracted from file names 
-directly. Do not include spaces in file names. For paired-end data we need
-to be able to identify which R1 and R2 files go together, and so we require that
-every read1 file name contains the string ``_R1_`` (*with underscores before
-and after*), and every R2 file name must match exactly the R1 file
-except that it has ``_R2_`` in place of ``_R1_``. 
+the :ref:`barcodes files<barcodes_file>` whereas if your data are lready demultiplexed then Sample names are extracted from file names 
+directly. Do not include spaces in file names. For paired-end data we need to be able to identify which R1 and R2 files go together, and so we require that every read1 file name contains the string ``_R1_`` (*with underscores before and after*), and every R2 file name must match exactly the R1 file except that it has ``_R2_`` in place of ``_R1_``. 
 See the example data for an example. 
 
 .. note:: 

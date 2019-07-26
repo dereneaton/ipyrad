@@ -18,11 +18,7 @@ Another point where branching is useful is for adding or dropping
 samples from an assembly, either to analyze a subset of samples 
 separately from others, or to exclude samples with low coverage. 
 The `branching` and `merging` fuctions in ipyrad make this easy. 
-By requiring a branching process in order to drop samples from an 
-assembly ipyrad inherently forces you to retain the parent assembly
-as a copy. This provides a nice fail safe so that you can mess around
-with your new branched assembly without affecting it's pre-branched 
-parent assembly. 
+By requiring a branching process in order to drop samples from an assembly ipyrad inherently forces you to retain the parent assembly as a copy. This provides a nice fail safe so that you can mess around with your new branched assembly without affecting it's pre-branched parent assembly. 
 
 Examples using the ipyrad CLI
 
