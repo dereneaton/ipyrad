@@ -8,6 +8,7 @@ By default ipyrad produces a number of output files that can be used in downstre
 
 General tools
 ^^^^^^^^^^^^^
+.. + `Jupyter notebook tutorial` <...>__
 + `VCF_to_HDF5 conversion <./cookbook/cookbook_vcf2hdf5.html>`__
 + `SRAtools <./cookbook/cookbook_sratools.html>`__
 .. + `Digest_genome
