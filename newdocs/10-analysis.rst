@@ -38,3 +38,9 @@ Popgen tools
 + `Structure tutorial <./cookbook/cookbook_treeslider.html>`__
 + `Distance tutorial <./cookbook/cookbook_distance.html>`__
 
+
+.. toctree::
+	:maxdepth: 2
+
+	./cookbook/cookbook_tetrad.ipynb
+	./cookbook/cookbook_raxml.ipynb	
