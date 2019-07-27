@@ -24,7 +24,7 @@ on your parameter settings to filter and trim data based on quality scores and/o
 Fastq Data Files and File Names
 --------------------------------
 Depending how and where your sequence data were generated you may receive data as one giant file, or in many smaller files. The files may contain data from all of your individuals mixed together, or as separate files for each Sample. If they are mixed up then the data need to be demultiplexed based on barcodes or indices. Step 1 of ipyrad can take data of either format, and will either demultiplex the reads or simply count/load the pre-demultiplexed data. See the Demultiplexing section for details.
-
+lessq
 
 .. _data_types:
 Supported data types

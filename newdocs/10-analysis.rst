@@ -9,11 +9,11 @@ By default ipyrad produces a number of output files that can be used in downstre
 General tools
 ^^^^^^^^^^^^^
 .. + `Jupyter notebook tutorial` <...>__
-+ `VCF_to_HDF5 conversion <./cookbook/cookbook_vcf2hdf5.html>`__
-+ `SRAtools <./cookbook/cookbook_sratools.html>`__
 .. + `Digest_genome
 .. + `snps_extracter
 .. + `snps_imputer
++ `VCF_to_HDF5 conversion <./cookbook/cookbook_vcf2hdf5.html>`__
++ `SRAtools <./cookbook/cookbook_sratools.html>`__
 
 Phylogenetic tools
 ^^^^^^^^^^^^^^^^^^
@@ -37,10 +37,3 @@ Popgen tools
 + `PCA tutorial <./cookbook/cookbook_pca.html>`__
 + `Structure tutorial <./cookbook/cookbook_treeslider.html>`__
 + `Distance tutorial <./cookbook/cookbook_distance.html>`__
-
-
-.. toctree::
-	:maxdepth: 2
-
-	./cookbook/cookbook_tetrad.ipynb
-	./cookbook/cookbook_raxml.ipynb	

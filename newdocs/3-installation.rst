@@ -1,7 +1,5 @@
 
-
 .. _installation: 
-
 
 Installation
 ============
@@ -27,11 +25,11 @@ If you plan to use the ipyrad API in IPython or Jupyter (which we do recommend, 
 	conda install notebook
 
 
-Optional: install from GitHub
+Alternative: install from GitHub
 -----------------------------
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
 
-... code::bash
+.. code::bash
 	
 	# install external requirements first (e.g., using conda)
 	conda install vsearch muscle bedtools bwa samtools mpi4py -c bioconda -c conda-forge
@@ -67,9 +65,6 @@ Details: Long-form instructions
 -------------------------------
 We put significant effort into making the installation process for ipyrad as easy as possible, whether you are working on your own desktop computer, or remotely on a large computing cluster. Simply copy and paste a few lines of code below and you will be ready to go.
 
-
-Details: install Conda
-----------------------
 The easiest way to install ipyrad and all of its dependencies is with conda, a command line program for installing Python packages. Follow
 these instructions to first install conda for Python 2 or 3 on your system (the code below is for Python3 since this is now recommended).
 
@@ -129,8 +124,8 @@ Linux install instructions for conda
 
 .. _HPC_installation:
 
-Details: using ipyrad on a HPC cluster
---------------------------------------
-If you're working on an HPC cluster you should still follow the exact same instructions above to install conda_ into your local home directory (e.g., /home/user). This does not require administrative privileges. In fact, the whole point is to create a local repository for software that you control yourself, separate from the system-wide software. 
-
-This is useful because it then allows you to install and access ipyrad_ and all its dependencies (other Python modules and executables), and to update them yourself. Lot's of useful software is available on conda, which you can find and install by googling conda and the software name. 
+Details: ipyrad on HPC
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+If you're working on an HPC cluster you should still follow the exact same instructions above to install conda_ into your local home directory (e.g., /home/user). This does not require administrative privileges. In fact, the whole point is to create a local repository for software that you control yourself, separate from the system-wide software. This is 
+what we recommend, however, if there is a system-wide version of ipyrad 
+installed then you can use that on HPC as well. 
