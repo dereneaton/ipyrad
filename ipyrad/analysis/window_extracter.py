@@ -176,7 +176,7 @@ class WindowExtracter(object):
 
             # load dataframe of this scaffold
             self.phymap = pd.DataFrame(
-                data=io5["phymap"][mask, :],
+                data=io5["phymap"][:][mask],
                 columns=[i.decode() for i in colnames],
             )
 
