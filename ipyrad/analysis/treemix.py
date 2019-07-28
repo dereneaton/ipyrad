@@ -35,6 +35,13 @@ You can install it with the following command in a terminal.
 conda install toytree -c eaton-lab 
 """)
 
+_MISSING_TREEMIX = ImportError("""
+This ipyrad tool requires the progam TREEMIX. 
+You can install it with the following command in a terminal.
+
+conda install treemix -c bioconda
+""")
+
 
 
 class Treemix(object):
@@ -110,6 +117,7 @@ class Treemix(object):
         # others
         self.binary = "treemix"
         self.raise_root_error = raise_root_error
+        self._find_binary()
 
         # params dict
         self.params = Params()
@@ -446,6 +454,25 @@ class Treemix(object):
         # parse the llik -------------------------
         with open(self.files.llik) as indat:
             self.results.llik = float(indat.readlines()[-1].split()[-1])
+
+
+
+    def _find_binary(self):
+        # check for binary
+        list_binaries = [self.binary]
+
+        # check user binary first, then backups
+        for binary in list_binaries:
+            proc = subprocess.Popen(["which", binary],
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT).communicate()
+            # if a binary was found then stop
+            if proc[0]:
+                return binary
+
+        # if not binaries found
+        raise Exception(_MISSING_TREEMIX)
+
 
 
 # plotting functions
