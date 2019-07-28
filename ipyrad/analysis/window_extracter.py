@@ -15,15 +15,26 @@ import numpy as np
 import pandas as pd
 
 from .utils import count_snps
-from ipyrad.assemble.utils import GETCONS
+from ipyrad.assemble.utils import GETCONS, IPyradError
 from ipyrad.assemble.write_outputs import reftrick
+
+
+"""
+    TODO:
+    Select scaffold(s) by index number. If unsure, leave this
+    empty when loading a file and then check the .scaffold_table to view
+    the indices of scaffolds. To concatenate data from multiple scaffolds
+    you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
+    To concatenate data from multiple scaffolds
+    you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
+"""
 
 
 class WindowExtracter(object):
     """
     Extract and filter a sequence alignment from a genomic window. You can 
     subselect or filter to include certain samples, and to require that data
-    are not missing across some number of them, or to relabel them...
+    are not missing across some number of them, or to relabel them.
 
     Parameters:
     -----------
@@ -35,7 +46,25 @@ class WindowExtracter(object):
     workdir (str):
         Location for output files to be written. Created if it doesn't exist.
     scaffold_idx (int):
-
+        Select scaffold by index number. If unsure, leave this
+        empty when loading a file and then check the .scaffold_table to view
+        the indices of scaffolds. 
+    start (int):
+        The starting position on a scaffold to obtain data from (default=0)
+    end (int):
+        The final position on a scaffold to obtain data from (default=end).
+    mincov (int):
+        The minimum number of individuals that must have data at a site for it
+        to be included in the concatenated alignment (default=4). 
+    exclude (list):
+        A list of sample names to exclude from the data set. 
+    imap (dict):
+        A dictionary mapping group names (keys) to lists of samples names 
+        (values) to be included in the analysis. The samples in groups will 
+        be reduced to a consensus sequence which can be used to reduce missing
+        data overall in the alignments. 
+    quiet (bool):
+        Do not print progress information.
 
     """
     def __init__(
@@ -50,6 +79,7 @@ class WindowExtracter(object):
         exclude=None,
         imap=None,
         quiet=False,
+        **kwargs
         ):
 
         # store params
@@ -77,15 +107,25 @@ class WindowExtracter(object):
 
         # update end to scaff len if not entered
         if not self.end:
-            self.end = int(self.scaffold_table.iloc[self.scaffold_idx, -1])
+
+            # get length of this scaffold
+            if isinstance(scaffold_idx, int):
+                self.end = int(self.scaffold_table.iloc[self.scaffold_idx, -1])
+
+            # multiple scaffolds
+            else:
+                self.end = None
 
         # use provided name else auto gen a name (scaff-start-end)
         if not name:
-            self.name = "scaf{}-{}-{}".format(
-                self.scaffold_idx,
-                self.start,
-                self.end
-            )
+            if isinstance(scaffold_idx, int):
+                self.name = "scaf{}-{}-{}".format(
+                    self.scaffold_idx,
+                    self.start,
+                    self.end
+                )
+            else:
+                self.name = "test"
         else:
             self.name = name
 
@@ -93,7 +133,7 @@ class WindowExtracter(object):
         if self.scaffold_idx is not None:
 
             # check requested window is in scaff
-            self._check_window()
+            # self._check_window()
 
             # pull the sequence from the database
             self.phymap = None
@@ -111,10 +151,49 @@ class WindowExtracter(object):
             if not self.seqarr.size:
                 print("No data in selected window.")
 
+        else:
+            self.stats = "No stats because no scaffolds selected."
+
 
     def _print(self, message):
         if not self.quiet:
             print(message)
+
+
+    def _extract_phymap_df(self):
+        """
+        This extracts the phymap DataFrame.
+        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
+        """
+        with h5py.File(self.data) as io5:
+            colnames = io5["phymap"].attrs["columns"]
+
+            # mask to select this scaff
+            #mask = np.zeros(io5["phymap"].shape[0], dtype=np.bool_)
+            #for scaff in self.scaffold_idx:
+            #    mask += io5["phymap"][:, 0] == scaff + 1
+            mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
+
+            # load dataframe of this scaffold
+            self.phymap = pd.DataFrame(
+                data=io5["phymap"][mask, :],
+                columns=[i.decode() for i in colnames],
+            )
+
+
+    def _init_stats(self):
+        # stats table
+        scaf = [self.scaffold_table.scaffold_name[self.scaffold_idx]]
+        self.stats = pd.DataFrame({
+            "scaffold": scaf,
+            "start": [self.start],
+            "end": [self.end],
+            "sites": [0],
+            "snps": [0],
+            "missing": [0],
+            "samples": [0],
+        }, index=["prefilter", "postfilter"],
+        )
 
 
     def run(self, force=False):
@@ -233,39 +312,6 @@ class WindowExtracter(object):
         self.stats.loc["postfilter", "samples"] = self.seqarr.shape[0]
 
 
-    def _extract_phymap_df(self):
-        """
-        This extracts the phymap DataFrame.
-        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
-        """
-        with h5py.File(self.data) as io5:
-            colnames = io5["phymap"].attrs["columns"]
-
-            # mask to select this scaff
-            mask = io5["phymap"][:, 0] == self.scaffold_idx + 1
-
-            # load dataframe of this scaffold
-            self.phymap = pd.DataFrame(
-                data=io5["phymap"][mask, :],
-                columns=[i.decode() for i in colnames],
-            )
-
-
-    def _init_stats(self):
-        # stats table
-        scaf = [self.scaffold_table.scaffold_name[self.scaffold_idx]]
-        self.stats = pd.DataFrame({
-            "scaffold": scaf,
-            "start": [self.start],
-            "end": [self.end],
-            "sites": [0],
-            "snps": [0],
-            "missing": [0],
-            "samples": [0],
-        }, index=["prefilter", "postfilter"],
-        )
-
-
     def _check_window(self):
         "check that scaf start end is in scaffold_table"
         assert self.end > self.start, "end must be > start"
@@ -307,6 +353,21 @@ class WindowExtracter(object):
                 }, 
                 columns=["scaffold_name", "scaffold_length"],
             )
+
+
+    def write_to_phy(self):
+
+        # build phy
+        phy = []
+        for idx, name in enumerate(self._pnames):
+            seq = bytes(self.seqarr[idx]).decode()
+            phy.append("{} {}".format(name, seq))
+       
+        # write to temp file
+        ntaxa, nsites = self.seqarr.shape
+        with open(self.outfile, 'w') as out:
+            out.write("{} {}\n".format(ntaxa, nsites))
+            out.write("\n".join(phy))
 
 
     # def write_to_fasta(self):
@@ -365,18 +426,3 @@ class WindowExtracter(object):
     #     # write to file
     #     with open(self.outfile, 'w') as out:
     #         out.write("\n\n".join(locs))        
-
-
-    def write_to_phy(self):
-
-        # build phy
-        phy = []
-        for idx, name in enumerate(self._pnames):
-            seq = bytes(self.seqarr[idx]).decode()
-            phy.append("{} {}".format(name, seq))
-       
-        # write to temp file
-        ntaxa, nsites = self.seqarr.shape
-        with open(self.outfile, 'w') as out:
-            out.write("{} {}\n".format(ntaxa, nsites))
-            out.write("\n".join(phy))
