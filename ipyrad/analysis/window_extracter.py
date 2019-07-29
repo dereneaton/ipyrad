@@ -224,7 +224,7 @@ class WindowExtracter(object):
         the window.
         """
         # get mask to select window array region
-        self.seqarr = np.zeros(0)
+        self.seqarr = np.zeros((len(self.names), 0))
         mask = (self.phymap.pos0 > self.start) & (self.phymap.pos1 < self.end)
         cmap = self.phymap.values[mask, :]
 
