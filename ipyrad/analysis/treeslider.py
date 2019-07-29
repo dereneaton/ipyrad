@@ -276,10 +276,9 @@ class TreeSlider(object):
         "Build DataFrame for storing results"
         dfs = []
 
-        # TODO: minlen scaffs...
-
-        # for scaffold in self.scaffold_idxs:
-        for scaffold in self.scaffold_table.index:
+        # TODO: minlen scaffs..., and make this faster... [not looped]?
+        # for scaffold in self.scaffold_table.index:
+        for scaffold in self.scaffold_idxs:
 
             # get the length of this scaffold
             chromlen = (
