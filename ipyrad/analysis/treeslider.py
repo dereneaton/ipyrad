@@ -248,7 +248,7 @@ class TreeSlider(object):
             mask = np.array(scaflens) > self.scaffold_minlen
             scafnames = np.array(scafnames)[mask]
             scaflens = np.array(scaflens)[mask]
-            self.scaffold_idxs = self.scaffold_idxs[mask]
+            self.scaffold_idxs = np.array(self.scaffold_idxs)[mask]
 
             # organize as a DF
             self.scaffold_table = pd.DataFrame(
