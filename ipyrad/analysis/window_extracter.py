@@ -150,7 +150,10 @@ class WindowExtracter(object):
                 self._calc_initial_stats()
                 self._imap_consensus_reduce()
                 self._filter_seqarr()
-                self._calc_filtered_stats()
+                if not self.seqarr.size:
+                    self._print("No data in filtered window.")
+                else:
+                    self._calc_filtered_stats()
 
         else:
             self.stats = "No stats because no scaffolds selected."
