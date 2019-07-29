@@ -78,6 +78,7 @@ class TreeSlider(object):
         inference_method="raxml",
         inference_args={},
         quiet=False,
+        scaffold_minlen=0,
         ):
 
         # check installations
@@ -100,6 +101,7 @@ class TreeSlider(object):
         self.inference_method = inference_method
         self.inference_args = inference_args
         self.quiet = quiet
+        self.scaffold_minlen = scaffold_minlen
 
         # use user name else create one
         if not self.name:
@@ -241,6 +243,13 @@ class TreeSlider(object):
             # parse names and lengths from db
             scafnames = [i.decode() for i in io5["scaffold_names"][:]]
             scaflens = io5["scaffold_lengths"][:]
+
+            # trim for mins
+            mask = np.array(scaflens) > self.scaffold_minlen
+            scafnames = np.array(scafnames)[mask]
+            scaflens = np.array(scaflens)[mask]
+
+            # organize as a DF
             self.scaffold_table = pd.DataFrame(
                 data={
                     "scaffold_name": scafnames,
