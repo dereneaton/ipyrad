@@ -261,7 +261,7 @@ class TreeSlider(object):
 
             # mask for min scafflen
             self.scaffold_table = (
-                self.scaffold_table[self.scaffold_length > self.scaffold_minlen]
+                self.scaffold_table[self.scaffold_table.scaffold_length > self.scaffold_minlen]
             )
             # if self.scaffold_minlen:
             #     self.mask_minlen = np.array(scaflens) > self.scaffold_minlen
