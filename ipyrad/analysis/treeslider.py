@@ -244,10 +244,11 @@ class TreeSlider(object):
             scafnames = [i.decode() for i in io5["scaffold_names"][:]]
             scaflens = io5["scaffold_lengths"][:]
 
-            # trim for mins
+            # mask for min scafflen
             mask = np.array(scaflens) > self.scaffold_minlen
             scafnames = np.array(scafnames)[mask]
             scaflens = np.array(scaflens)[mask]
+            self.scaffold_idxs = self.scaffold_idxs[mask]
 
             # organize as a DF
             self.scaffold_table = pd.DataFrame(
