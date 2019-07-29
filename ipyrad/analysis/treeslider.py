@@ -143,6 +143,8 @@ class TreeSlider(object):
             self.scaffold_idxs = sorted(self.scaffold_idxs)
         elif isinstance(self.scaffold_idxs, int):
             self.scaffold_idxs = [self.scaffold_idxs]
+        if self.scaffold_minlen:
+            self.scaffold_idxs = np.array(self.scaffold_idxs)[self.mask_minlen]
 
         # build the tree table from the scaffolds, windows, and slides.
         if self.tree_table is None:
@@ -245,10 +247,10 @@ class TreeSlider(object):
             scaflens = io5["scaffold_lengths"][:]
 
             # mask for min scafflen
-            mask = np.array(scaflens) > self.scaffold_minlen
-            scafnames = np.array(scafnames)[mask]
-            scaflens = np.array(scaflens)[mask]
-            self.scaffold_idxs = np.array(self.scaffold_idxs)[mask]
+            if self.scaffold_minlen:
+                self.mask_minlen = np.array(scaflens) > self.scaffold_minlen
+                scafnames = np.array(scafnames)[self.mask_minlen]
+                scaflens = np.array(scaflens)[self.mask_minlen]
 
             # organize as a DF
             self.scaffold_table = pd.DataFrame(
