@@ -263,6 +263,7 @@ class TreeSlider(object):
             self.scaffold_table = (
                 self.scaffold_table[self.scaffold_table.scaffold_length > self.scaffold_minlen]
             )
+            self.scaffold_table.reset_index(drop=True, inplace=True)
             # if self.scaffold_minlen:
             #     self.mask_minlen = np.array(scaflens) > self.scaffold_minlen
             #     scafnames = np.array(scafnames)[self.mask_minlen]
