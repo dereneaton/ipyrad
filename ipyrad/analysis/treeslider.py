@@ -380,16 +380,16 @@ class TreeSlider(object):
 
         # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, )
         jidx = 0
-        finished = 0
+        finished = []
         prog = ProgressBar(self.tree_table.shape[0], None, "inferring trees")
-        prog.finished = finished
+        prog.finished = 0
         prog.update()
         rasyncs = {}
         for idx in self.tree_table.index:
 
             # if continuing an existing job, skip if row already filled
             if self.tree_table.tree[idx] != 0:
-                finished += 1
+                prog.finished += 1
                 continue
 
             # extract the phylip alignment for this window
@@ -413,7 +413,7 @@ class TreeSlider(object):
             # filter by SNPs
             if ext.stats.loc["postfilter", "snps"] < self.minsnps:
                 self.tree_table.loc[idx, "tree"] = np.nan
-                finished += 1
+                prog.finished += 1
 
             else:
                 # write phylip file to the tmpdir
