@@ -143,7 +143,7 @@ class WindowExtracter(object):
             # get seqs
             self._extract_seqarr()
             if not self.seqarr.size:
-                print("No data in selected window.")
+                self._print("No data in selected window.")
 
             # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
             else:
