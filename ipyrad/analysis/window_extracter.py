@@ -140,16 +140,17 @@ class WindowExtracter(object):
             self._extract_phymap_df()
             self._init_stats()
 
-            # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
+            # get seqs
             self._extract_seqarr()
-            self._calc_initial_stats()
-            self._imap_consensus_reduce()
-            self._filter_seqarr()
-            self._calc_filtered_stats()
-
-            # no data
             if not self.seqarr.size:
                 print("No data in selected window.")
+
+            # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
+            else:
+                self._calc_initial_stats()
+                self._imap_consensus_reduce()
+                self._filter_seqarr()
+                self._calc_filtered_stats()
 
         else:
             self.stats = "No stats because no scaffolds selected."
