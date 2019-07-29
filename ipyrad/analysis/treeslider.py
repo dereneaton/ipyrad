@@ -143,6 +143,7 @@ class TreeSlider(object):
             self.scaffold_idxs = sorted(self.scaffold_idxs)
         elif isinstance(self.scaffold_idxs, int):
             self.scaffold_idxs = [self.scaffold_idxs]
+        self.scaffold_idxs = self.scaffold_idxs[:self.scaffold_table.index.max()]
         # if self.scaffold_minlen:
         # self.scaffold_idxs = np.array(self.scaffold_idxs)[self.mask_minlen]
 
