@@ -260,10 +260,12 @@ class TreeSlider(object):
             )
 
             # mask for min scafflen
-            self.scaffold_table = (
-                self.scaffold_table[self.scaffold_table.scaffold_length > self.scaffold_minlen]
-            )
-            self.scaffold_table.reset_index(drop=True, inplace=True)
+            if self.scaffold_minlen:
+                self.scaffold_table = (
+                    self.scaffold_table[self.scaffold_table.scaffold_length > self.scaffold_minlen]
+                )
+                # self.scaffold_table.reset_index(inplace=True)
+                #self.scaffold_table.reset_index(inplace=True, drop=True)            
             # if self.scaffold_minlen:
             #     self.mask_minlen = np.array(scaflens) > self.scaffold_minlen
             #     scafnames = np.array(scafnames)[self.mask_minlen]
@@ -273,7 +275,11 @@ class TreeSlider(object):
     def _init_tree_table(self):
         "Build DataFrame for storing results"
         dfs = []
-        for scaffold in self.scaffold_idxs:
+
+        # TODO: minlen scaffs...
+
+        # for scaffold in self.scaffold_idxs:
+        for scaffold in self.scaffold_table.index:
 
             # get the length of this scaffold
             chromlen = (
