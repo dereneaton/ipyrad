@@ -139,8 +139,13 @@ class TreeSlider(object):
         # default to all scaffolds if none entered.
         if self.scaffold_idxs is None:
             self.scaffold_idxs = self.scaffold_table.index.tolist()
+
+        # if entered then only grab idxs that are in the scaff table
         elif isinstance(self.scaffold_idxs, (list, tuple, set)):
-            self.scaffold_idxs = sorted(self.scaffold_idxs)
+            idxs = sorted(self.scaffold_idxs)
+            idxs = [i for i in idxs if i in self.scaffold_table.index]
+            self.scaffold_idxs = idxs
+        # same ...
         elif isinstance(self.scaffold_idxs, int):
             self.scaffold_idxs = [self.scaffold_idxs]
 
@@ -277,6 +282,7 @@ class TreeSlider(object):
         dfs = []
 
         # TODO: minlen scaffs..., and make this faster... [not looped]?
+        # faster by trimming scaffold table idxs already...
         # for scaffold in self.scaffold_table.index:
         for scaffold in self.scaffold_idxs:
 
