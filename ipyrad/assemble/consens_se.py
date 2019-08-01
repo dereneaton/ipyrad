@@ -178,6 +178,9 @@ class Step5:
             statsdicts = self.remote_process_chunks()
             self.remote_concatenate_chunks()
             self.data_store(statsdicts)
+        except Exception as inst:
+            print("Exception in step 5: {}".format(inst))
+            raise
         finally:
             shutil.rmtree(self.data.tmpdir)
             self.data.save()
