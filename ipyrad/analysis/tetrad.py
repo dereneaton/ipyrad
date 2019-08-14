@@ -24,7 +24,6 @@ except ImportError:
             **kwargs):    
             raise ImportError(MESSAGE)
 
-
     Tetrad = TetradMessage
 
 
