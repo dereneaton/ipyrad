@@ -242,10 +242,11 @@ class SNPsExtracter(object):
         df = df.drop(columns=["CHROM", "REF", "ALT", "QUAL"])
 
 
-    def subsample_snps(self, random_seed=None):
+    def subsample_snps(self, random_seed=None, quiet=False):
         "Calls jitted subsample SNPs function to sample snps using snpsmap."
         if not random_seed:
             random_seed = np.random.randint(0, 1e9)
         subarr = self.snps[:, jsubsample_snps(self.snpsmap, random_seed)]
-        self._print("subsampled {} unlinked SNPs".format(subarr.shape[1]))
+        if not quiet:
+            self._print("subsampled {} unlinked SNPs".format(subarr.shape[1]))
         return subarr
