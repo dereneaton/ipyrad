@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import glob
+import time
 import subprocess as sps
 
 # third party
@@ -19,9 +20,10 @@ import numpy as np
 import pandas as pd
 
 # ipyrad utils
-from ipyrad.core.Parallel import Parallel
-from ipyrad.analysis.utils import get_spans, Params
-from ipyrad.assemble.utils import IPyradError
+from ..core.Parallel import Parallel
+from ..assemble.utils import IPyradError
+from .utils import Params, ProgressBar
+from .snps_extracter import SNPsExtracter
 
 
 MISSING_IMPORTS = """
@@ -32,7 +34,6 @@ conda install -c ipyrad structure clumpp
 """
 
 
-# These are almost all default values.
 class Structure(object):
     """ 
     Create and return an ipyrad.analysis Structure Object. This object allows
@@ -46,13 +47,11 @@ class Structure(object):
         A prefix name for all output files. 
 
     data (str):
-        A .snps.hdf5 file from ipyrad (this is a database file that contains
-        the same data as the .snps and .snpsmap files to know the linkage
-        among snps). This file is used to subsample unlinked SNPs.
+        A .snps.hdf5 file from ipyrad. If you do not have this file see the 
+        ipyrad.analysis docs to create this file from a VCF output.
 
     workdir (str):
         Directory for output files; will be created if not present.
-
 
     Attributes:
     ----------
@@ -89,26 +88,66 @@ class Structure(object):
         imap=None,
         minmap=None,
         mincov=0.0,
+        quiet=False,
+        load_only=False
         ):
 
-        # store args
+        # printing strategy
+        self.quiet = quiet
+
+        # get path to saved files and load any existing files
         self.name = name
-        self.data = os.path.abspath(os.path.expanduser(data))
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
+        if self.result_files:
+            self._print("{} previous results loaded for run [{}]"
+                .format(len(self.result_files), self.name))
+
+        # the snps database file contains data and names, etc.
+        self.data = os.path.abspath(os.path.expanduser(data))
+
+        # filtering parameters
+        self.imap = imap
+        self.minmap = minmap
+        self.mincov = mincov
 
         # run checks
-        self.check_binaries()
-        self.setup_dirs()
-        self.check_files()
+        self._check_binaries()
+        self._setup_dirs()
+
+        # load the database file for filtering/extracting later
+        self._ext = SNPsExtracter(
+            data=self.data, imap=self.imap, 
+            minmap=self.minmap, mincov=self.mincov,
+        )       
+
+        # can skip parsing the file if load=True
+        self._load_only = load_only
+        if not self._load_only:
+            self._ext.parse_genos_from_hdf5()
+
+        # header columns from imap, user can modify after init.
+        self._get_header()
 
         # params
         self.mainparams = _MainParams()
         self.extraparams = _ExtraParams()
         self.clumppparams = _ClumppParams()
-        self.asyncs = []
+        self.rasyncs = {}
+
+        # parallelization
+        self.ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads": 2,
+            "pids": {},
+            }      
 
 
-    def check_binaries(self):
+    def _check_binaries(self):
         "check for structure and clumpp"
         for binary in ['structure', 'CLUMPP']:
             cmd = ["which", binary]
@@ -118,68 +157,50 @@ class Structure(object):
                 raise IPyradError(MISSING_IMPORTS) 
 
 
-    def setup_dirs(self):
+    def _setup_dirs(self):
         # make workdir if it does not exist
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
 
-    def check_files(self):
-        "check file format and get quick stats."
-        with h5py.File(self.data) as io5:
-
-            # handles
-            snps = io5["snps"]
-            snpsmap = io5["snpsmap"]
-
-            # stats
-            self.nsamples = self.data.shape[0]
+    def _print(self, value):
+        if not self.quiet:
+            print(value)
 
 
-    def check_files(self):
-        "check that strfile exists, print and parse some info from it"
-
-        # expand path
-        with open(self.data) as ifile:
-            lines = ifile.readlines()
-            self.ntaxa = len(lines) // 2
-            self.nsites = len(lines[0].strip().split()[1:])
-            self.labels = [i.split('\t')[0].strip() for i in lines][::2]
-            self.popdata = [i.split('\t')[1] for i in lines][::2]
-            self.popflag = [i.split('\t')[2] for i in lines][::2]
-            self.locdata = [i.split('\t')[3] for i in lines][::2]
-            self.phenotype = [i.split('\t')[4] for i in lines][::2]
-            del lines
-
-        # if mapfile then parse it to an array
-        if self.mapfile:
-            with open(self.mapfile) as inmap:
-                maparr = np.genfromtxt(inmap)
-                maparr[:, 1] = 0
-                maparr = maparr.astype(int)
-                spans = np.zeros((maparr[-1, 0], 2), np.uint64)
-                self.maparr = get_spans(maparr, spans)
-                self.nsites = self.maparr.shape[0]
+    def _get_header(self):
+        """
+        Build header columns of the STRUCTURE input file.
+        """
+        # names are alphanumeric (x2) except for "reference" which is at top
+        if "reference" not in self._ext.names:
+            labels = sorted(self._ext.names * 2)
         else:
-            self.maparr = None
-            
+            labels = sorted(self._ext.names[1:] * 2)
+            labels = ["reference", "reference"] + labels
 
-    def _subsample(self):
-        "returns a subsample of unlinked snp sites"
-        spans = np.zeros(self.maparr.shape[0], dtype=np.uint64)
-        for i in range(self.maparr.shape[0]):
-            spans[i] = np.random.randint(
-                self.maparr[i, 0], self.maparr[i, 1], 1)[0]
-        return spans
+        # make reverse imap dict for extracting popdata
+        if self.imap:
+            rdict = {}
+            for key, val in self.imap.items():
+                if isinstance(val, (str, int)):
+                    rdict[val] = key
+                elif isinstance(val, (list, tuple)):
+                    for tax in val:
+                        rdict[tax] = key
 
+        popdata = [""] * len(labels) # [rdict[i] for i in self.labels]
+        popflag = [""] * len(labels) # ["0"] * len(self.labels)
+        locdata = [""] * len(labels)
+        phenotype = [""] * len(labels)        
 
-    @property
-    def header(self):
-        "returns a header dataframe for viewing"
-        header = pd.DataFrame(
-            [self.labels, self.popdata, self.popflag, self.locdata, self.phenotype],
+        self.header = pd.DataFrame(
+            [labels, popdata, popflag, locdata, phenotype],
             index=["labels", "popdata", "popflag", "locdata", "phenotype"]).T
-        return header
+
+
+    # def check_files(self):
+    #     "check file format and get quick stats."
 
 
     @property
@@ -188,22 +209,63 @@ class Structure(object):
         reps = os.path.join(
             self.workdir, 
             self.name + "-K-*-rep-*_f")
-        repfiles = glob.glob(reps)
+        repfiles = sorted(glob.glob(reps))
         return repfiles
 
 
     def run(
-        self,
+        self, 
         kpop, 
         nreps, 
-        ipyclient=None,
-        auto=False,
-        seed=12345, 
-        force=False,
+        seed=12345,
+        ipyclient=None, 
+        force=False, 
         quiet=False,
-        block=False, 
-        ):
+        show_cluster=False, 
+        auto=False):
+        """
+        Distribute structure jobs in parallel. 
 
+        Parameters:
+        -----------
+        ipyclient: (type=ipyparallel.Client); Default=None. 
+            If you started an ipyclient manually then you can 
+            connect to it and use it to distribute jobs here.
+        
+        force: (type=bool); Default=False.
+            Force overwrite of existing output with the same name.
+
+        show_cluster: (type=bool); Default=False.
+            Print information about parallel connection.
+
+        auto: (type=bool); Default=False.
+            Let ipyrad automatically manage ipcluster start and shutdown. 
+            This will connect to all avaiable cores by default, but can 
+            be modified by changing the parameters of the .ipcluster dict 
+            associated with this tool.
+        """
+
+        # bail out if object was init with load=True
+        if self._load_only:
+            sys.stderr.write(
+                "To call .run() you must re-init the structure object without load_only=True."
+            )
+            return
+
+        # load the parallel client
+        pool = Parallel(
+            tool=self, 
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={
+                "force": force, "nreps": nreps,
+                "kpop": kpop, "seed": seed, "quiet": False},
+            )
+        pool.wrap_run()
+
+
+    def _run(self, kpop, nreps=1, seed=12345, force=False, ipyclient=None, quiet=False):
         """ 
         submits a job to run on the cluster and returns an asynchronous result
         object. K is the number of populations, randomseed if not set will be 
@@ -215,12 +277,13 @@ class Structure(object):
 
         Parameters:
         -----------
-        kpop: (int)
+        kpop: (int or list)
             The MAXPOPS parameter in structure, i.e., the number of populations
-            assumed by the model (K). 
+            assumed by the model (K). You can enter multiple integers as a list.
 
         nreps: (int):
-            Number of independent runs starting from distinct seeds.
+            Number of independent replicate runs starting from distinct 
+            random seeds.
 
         ipyclient: (ipyparallel.Client Object)
             An ipyparallel client connected to an ipcluster instance. This is 
@@ -234,8 +297,7 @@ class Structure(object):
             until all submitted jobs are finished.
 
         seed: (int):
-            Random number seed used for subsampling unlinked SNPs if a mapfile
-            is linked to the Structure Object. 
+            Random number seed.
 
         force: (bool):
             If force is true then old replicates are removed and new reps start
@@ -247,35 +309,26 @@ class Structure(object):
         Example: 
         ---------
         import ipyparallel as ipp
-        import ipyrad.analysis as ipa
 
-        ## get parallel client
-        ipyclient = ipp.Client()
-
-        ## get structure object
+        # init structure object
         s = ipa.structure(
-                name="test",
-                data="mydata.str", 
-                mapfile="mydata.snps.map",
-                workdir="structure-results",
-                )
+            name="test",
+            data="mydata.str", 
+            mapfile="mydata.snps.map",
+            workdir="structure-results",
+        )
 
-        ## modify some basic params
+        # modify some basic params
         s.mainparams.numreps = 100000
         s.mainparams.burnin = 10000
 
-        ## submit many jobs
-        for kpop in [3, 4, 5]:
-            s.run(
-                kpop=kpop, 
-                nreps=10, 
-                ipyclient=ipyclient,
-                )
-
-        ## block until all jobs finish
-        ipyclient.wait()
+        # submit many jobs
+        s.run(
+            kpop=[2,3,4,5,6], 
+            nreps=10, 
+            auto=True,
+            )
         """
-
         # initiate starting seed
         np.random.seed(seed)
 
@@ -283,28 +336,49 @@ class Structure(object):
         if ipyclient:
             lbview = ipyclient.load_balanced_view()
 
-        # remove old jobs with this same name
-        handle = os.path.join(
-            self.workdir, 
-            self.name + "-K-{}-*".format(kpop))
-        oldjobs = glob.glob(handle)
-        if force or (not oldjobs):
-            for job in oldjobs:
-                os.remove(job)
-            repstart = 0
-            repend = nreps
+        # build new requested jobs
+        if isinstance(kpop, int):
+            kpop = [kpop]
+        jobs = []
+        for k in kpop:
+            for rep in range(nreps):
+                jobs.append((k, rep))
+
+        # get previous results 
+        res = {}
+        for i in self.result_files:
+            d1 = i.split("-")[-3:]
+            tup = (int(d1[0]), int(d1[-1][0]))
+            res[tup] = i
+
+        # if force then remove old files and leave tups in jobs
+        if force:
+            for i in res.values():
+                os.remove(i)
+
+        # if not force then remove tups from jobs and use existing results
         else:
-            repstart = max([int(i.split("-")[-1][:-2]) for i in oldjobs])
-            repend = repstart + nreps
+            for i in res:
+                jobs.remove(i)
 
-        ## check that there is a ipcluster instance running
-        for rep in range(repstart, repend):
+        # track jobs
+        njobs = len(jobs)
+        finished = []
+        printstr = "running {} structure jobs".format(njobs)
+        prog = ProgressBar(njobs, None, printstr)
+        prog.finished = 0
+        prog.update()
+        rasyncs = {}
 
-            ## sample random seed for this rep
+        for job in jobs:
+            # sample random seed for this rep
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
 
-            ## prepare files (randomly subsamples snps if mapfile)
-            mname, ename, sname = self.write_structure_files(kpop, rep)
+            # prepare files (randomly subsamples snps in each rep)
+            k, rep = job
+            mname, ename, sname = self.write_structure_files(k, rep)
+
+            # build args with new tmp file strings
             args = [
                 mname, ename, sname,
                 self.name, 
@@ -312,28 +386,28 @@ class Structure(object):
                 self.extraparams.seed, 
                 self.ntaxa, 
                 self.nsites,
-                kpop, 
-                rep]
+                k,
+                rep,
+            ]
 
-            if ipyclient:
-                ## call structure
-                rasync = lbview.apply(_call_structure, *(args))
-                self.asyncs.append(rasync)
+            # call structure (submit job to queue)
+            rasync = lbview.apply(_call_structure, *(args))
+            name = "{}-{}".format(k, rep)
+            self.rasyncs[name] = rasync
+            prog.update()
 
-            else:
-                if not quiet:
-                    sys.stderr.write(
-                        "submitted 1 structure job [{}-K-{}]\n"
-                        .format(self.name, kpop))
-                comm = _call_structure(*args)
-                return comm
+        # track progress...
+        while 1:
+            fins = [i for i in self.rasyncs if self.rasyncs[i].ready()]
+            for i in fins:
+                prog.finished += 1
+                del self.rasyncs[i]
+            prog.update()
+            time.sleep(0.9)
 
-        if ipyclient:
-            if not quiet:
-                sys.stderr.write(
-                    "submitted {} structure jobs [{}-K-{}]\n"
-                    .format(nreps, self.name, kpop))
-
+            if not self.rasyncs:
+                print("")
+                break
 
 
     def write_structure_files(self, kpop, rep=1):
@@ -366,41 +440,35 @@ class Structure(object):
         tmp_m.write(self.mainparams._asfile())
         tmp_e.write(self.extraparams._asfile())
 
-        ## subsample SNPs as unlinked if a mapfile is present
-        ## & write pop data to the tmp_s file if present
-        assert len(self.popdata) == len(self.labels), \
-            "popdata list must be the same length as the number of taxa"
+        # get sequence array
+        subs = self._ext.subsample_snps(quiet=True)
+        arr = np.zeros(
+            (self.header.shape[0], subs.shape[1]),
+            dtype=np.int8,
+        )
 
-        with open(self.data) as ifile:
-            _data = ifile.readlines()
-            ## header
-            header = np.array([i.strip().split("\t")[:5] for i in _data])
-            ## seqdata
-            seqdata = np.array([i.strip().split("\t")[5:] for i in _data])
+        # update object for subsampled array
+        self.ntaxa = subs.shape[0]
+        self.nsites = subs.shape[1]
 
-            ## enter popdata into seqfile if present in self
-            if any(self.popdata):
-                ## set popdata in header
-                header[::2, 1] = self.popdata
-                header[1::2, 1] = self.popdata
-                
-                ## set flag to all 1s if user entered popdata but no popflag
-                if not any(self.popflag):
-                    self.popflag = [1 for i in self.popdata]
-                    header[:, 2] = 1
-                else:
-                    header[::2, 2] = self.popflag
-                    header[1::2, 2] = self.popflag
+        # build split row genotype matrix (ugh, what a terrible format)
+        for idx in range(subs.shape[0]):
 
-            ## subsample SNPs if mapfile is present
-            if isinstance(self.maparr, np.ndarray):
-                seqdata = seqdata[:, self._subsample()]
-                
-            ## write fullstr
-            fullstr = np.concatenate([header, seqdata], axis=1)
-            np.savetxt(tmp_s, fullstr, delimiter="\t", fmt="%s")
+            sidx = idx * 2
 
-        ## close tmp files
+            # on odd numbers subtract both
+            arr[sidx] = subs[idx].copy()
+            arr[sidx + 1] = subs[idx].copy()
+
+            arr[sidx][(arr[sidx] == 1) | (arr[sidx] == 2)] -= 1
+            arr[sidx + 1][arr[sidx + 1] == 2] -= 1
+        arr[arr == 9] = -9
+
+        # convert to dataframe for writing
+        df = pd.concat([self.header, pd.DataFrame(arr)], axis=1)
+        df.to_csv(tmp_s, sep="\t", header=False, index=False)
+
+        # close tmp files
         tmp_m.close()
         tmp_e.close()
         tmp_s.close()
@@ -518,6 +586,9 @@ def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpo
     # call the shell function
     proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.STDOUT)
     comm = proc.communicate()
+
+    if proc.returncode:
+        raise IPyradError(comm[0])
 
     # cleanup
     oldfiles = [mname, ename, sname]
@@ -702,11 +773,11 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     
     ## create CLUMPP args string
     outfile = os.path.join(self.workdir, 
-        "{}-K-{}.outfile".format(self.name, kpop))
+        "{}-K-{}.clumpp.outfile".format(self.name, kpop))
     indfile = os.path.join(self.workdir, 
-        "{}-K-{}.indfile".format(self.name, kpop))
+        "{}-K-{}.clumpp.indfile".format(self.name, kpop))
     miscfile = os.path.join(self.workdir, 
-        "{}-K-{}.miscfile".format(self.name, kpop))
+        "{}-K-{}.clumpp.miscfile".format(self.name, kpop))
 
     # shorten filenames because clumpp can't handle names > 50 chars.
     clumphandle = clumphandle.replace(os.path.realpath('.'), '.', 1)
@@ -740,16 +811,16 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     # parse clumpp results file
     ofile = os.path.join(
         self.workdir, 
-        "{}-K-{}.outfile".format(self.name, kpop))
+        "{}-K-{}.clumpp.outfile".format(self.name, kpop))
     if os.path.exists(ofile):
         csvtable = pd.read_csv(ofile, delim_whitespace=True, header=None)
         table = csvtable.loc[:, 5:]
     
         ## apply names to cols and rows
         table.columns = range(table.shape[1])
-        table.index = self.labels
+        table.index = self.header.labels[::2]
         if not quiet:
-            sys.stderr.write(
+            print(
                 "[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
                 .format(kpop, nreps, nreps + excluded, max_var_multiple))
         return table
@@ -777,7 +848,7 @@ def _concat_reps(self, kpop, max_var_multiple, quiet, **kwargs):
    
     ## make an output handle
     outf = os.path.join(self.workdir, 
-        "{}-K-{}.indfile".format(self.name, kpop))
+        "{}-K-{}.clumpp.indfile".format(self.name, kpop))
     
     ## combine replicates and write to indfile
     excluded = 0
