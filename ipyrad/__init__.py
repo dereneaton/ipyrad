@@ -42,7 +42,11 @@ for binary, path in bins.__dict__.items():
         setattr(bins, binary, binary)
 
         # if not then check for binary in PATH (less reliable versioned...)
-        if _sps.call(['which', binary]):
+        cmd = ['which', binary]
+        proc = _sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        errmsg = proc.communicate()[0]
+        if proc.returncode:
+            print(errmsg.decode())
             raise ImportError(_IMPORT_ERROR.format(binary, binary))
 
 
