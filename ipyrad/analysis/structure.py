@@ -609,8 +609,8 @@ class _MainParams(Params):
     struct.mainparams["popflag"] = 1
     """
     def __init__(self):
-        self.burnin = int(250000)
-        self.numreps = int(1e6)
+        self.burnin = int(10000)
+        self.numreps = int(50000)
         self.ploidy = 2
         self.missing = -9
         self.onerowperind = 0
@@ -812,17 +812,29 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     ofile = os.path.join(
         self.workdir, 
         "{}-K-{}.clumpp.outfile".format(self.name, kpop))
+
+    # load clumpp outfile as pandas df
     if os.path.exists(ofile):
-        csvtable = pd.read_csv(ofile, delim_whitespace=True, header=None)
-        table = csvtable.loc[:, 5:]
-    
-        ## apply names to cols and rows
+
+        # load table and select columns with ancestry proportions
+        table = pd.read_csv(ofile, delim_whitespace=True, header=None)
+        table = table.iloc[:, 5:]
         table.columns = range(table.shape[1])
-        table.index = self.header.labels[::2]
+
+        # set index to names based on header (data file subset by imap)
+        try:
+            table.index = self.header.labels[::2].values           
+        except ValueError as inst:
+            print("N samples has changed, be sure to load imap dictionary.")
+            raise inst
+
+        # print report to user
         if not quiet:
             print(
-                "[K{}] {}/{} results permuted across replicates (max_var={}).\n"\
+                "[K{}] {}/{} results permuted across replicates (max_var={})."
                 .format(kpop, nreps, nreps + excluded, max_var_multiple))
+
+        # return the final table
         return table
 
     else:
