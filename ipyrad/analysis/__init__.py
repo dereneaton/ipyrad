@@ -31,7 +31,7 @@ from .snps_imputer import SNPsImputer as snps_imputer
 from .treeslider import TreeSlider as treeslider
 from .distance import Distance as distance
 from .structure import Structure as structure
-from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
+# from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 
 # testing
 from .tetrad import Tetrad as tetrad
