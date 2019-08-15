@@ -43,7 +43,7 @@ for binary, path in bins.__dict__.items():
 
         # if not then check for binary in PATH (less reliable versioned...)
         cmd = ['which', binary]
-        proc = _sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+        proc = _sps.Popen(cmd, stderr=_sps.STDOUT, stdout=_sps.PIPE)
         errmsg = proc.communicate()[0]
         if proc.returncode:
             print(errmsg.decode())
