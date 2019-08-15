@@ -25,9 +25,9 @@ class VCFtoHDF5(object):
     """
     def __init__(
         self, 
+        data,
         name="test", 
         workdir="./analysis-vcf2hdf5", 
-        data=None,
         ld_block_size=None,
         quiet=False,
         ):
@@ -46,7 +46,6 @@ class VCFtoHDF5(object):
 
         # check for data file
         self.database = os.path.join(self.workdir, self.name + ".snps.hdf5")
-        assert self.data, "You must enter a valid VCF file as the data input."
         assert os.path.exists(self.data), "file {} not found".format(self.data)
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
@@ -55,6 +54,11 @@ class VCFtoHDF5(object):
         self.source = ""
         self.reference = ""
 
+
+    def run(self):
+        """
+        Parse and convert data to HDF5 file format. 
+        """
         # print message
         self._print("Indexing VCF to HDF5 database file")
 
@@ -93,35 +97,42 @@ class VCFtoHDF5(object):
         # store a list of chrom names
         chroms = set()
 
-        # iterate through vcf data lines 
-        with open(self.data) as infile:
-            # get data header line
-            for dat in infile:
+        if self.data.endswith(".gz"):
+            import gzip
+            infile = gzip.open(self.data)
+        else:
+            infile = open(self.data)
 
-                # split on space
-                data = dat.split()
+        # get data header line
+        for dat in infile:
 
-                # parse meta data lines
-                if data[0][0] == "#":
-                    if data[0][1] != "#":
-                        # parse names from header line in their order
-                        self.names = data[9:]
-                        self.nsamples = len(self.names)
-                    else:
-                        # store header line count and look for format str
-                        self.hlines += 1
-                        if "source=" in data[0].lower():
-                            self.source = data[0].split("source=")[-1].strip()
-                        if "reference=" in data[0].lower():
-                            self.reference = data[0].split("reference=")[-1].strip()
+            # split on space
+            data = dat.decode().split()
 
-                # meta snps data
+            # parse meta data lines
+            if data[0][0] == "#":
+                if data[0][1] != "#":
+                    # parse names from header line in their order
+                    self.names = data[9:]
+                    self.nsamples = len(self.names)
                 else:
-                    self.nsnps += 1
-                    chroms.add(data[0])
+                    # store header line count and look for format str
+                    self.hlines += 1
+                    if "source=" in data[0].lower():
+                        self.source = data[0].split("source=")[-1].strip()
+                    if "reference=" in data[0].lower():
+                        self.reference = data[0].split("reference=")[-1].strip()
+
+            # meta snps data
+            else:
+                self.nsnps += 1
+                chroms.add(data[0])
+
+        # close file handle
+        infile.close()
 
         # convert chroms into a factorized list
-        self._print("VCF: {} snps; {} scaffolds".format(self.nsnps, len(chroms)))        
+        self._print("VCF: {} SNPs; {} scaffolds".format(self.nsnps, len(chroms)))        
 
 
     def init_database(self):
@@ -139,12 +150,30 @@ class VCFtoHDF5(object):
             io5["genos"].attrs["names"] = [i.encode() for i in self.names]
 
 
+    def build_chunked_matrix(self):
+        """
+        Fill HDF5 database with VCF data in chunks at a time.
+        """
+        self.df = pd.read_csv(
+            self.data, 
+            sep="\t", 
+            skiprows=self.hlines, 
+            chunksize=int(1e6),
+        )
+
+        # iterate over chunks of the file
+        for chunkdf in self.df:
+
+            genos, snps, snpmap = jfill_arrays_from_df()
+
+
+
     def build_matrix(self):
         """
         Fill database with VCF data
         """
 
-        # load vcf as dataframe (TODO: chunk for large files)
+        # load vcf as dataframe (chunking makes this an iterator)
         self.df = pd.read_csv(self.data, sep="\t", skiprows=self.hlines)
 
         # get ref and alt alleles as a string series
@@ -282,3 +311,108 @@ def get_genos(gstr):
     First pulls the indices then uses refalt to pull genos.
     """
     return gstr[0], gstr[2]
+
+
+
+def return_g(g, i):
+    "returns the genotype str from vcf at one position (0/1) -> 0"
+    return g[i]
+
+# vectorized version of return g
+v_return_g = np.vectorize(return_g, otypes=[np.int8])
+
+
+def chunk_to_arrs(chunkdf, nsamples):
+
+    # nsnps in this chunk
+    nsnps = chunkdf.shape[0]
+
+    # chrom, pos as factor, integers
+    arrpos = chunkdf.values[:, [0, 1]]
+    arrpos[:, 0] = pd.factorize(arrpos[:, 0])[0]
+    arrpos = arrpos.astype(np.int64)
+
+    # base calls as int8
+    ref = chunkdf.values[:, 3].astype(bytes)
+    alts = chunkdf.values[:, 4].astype(bytes)
+    sas = np.char.replace(alts, b",", b"")
+    alts1 = np.zeros(alts.size, dtype=bytes)
+    alts2 = np.zeros(alts.size, dtype=bytes)
+    alts3 = np.zeros(alts.size, dtype=bytes)
+    lens = np.array([len(i) for i in sas])
+    alts1[lens == 1] = [i[0] for i in sas[lens == 1]]
+    alts2[lens == 2] = [i[1] for i in sas[lens == 2]]
+    alts3[lens == 3] = [i[2] for i in sas[lens == 3]]
+
+    # genotypes as int8 
+    g0 = v_return_g(chunkdf.values[:, 9:], 0)
+    g1 = v_return_g(chunkdf.values[:, 9:], 2)
+
+    # TODO: all below here could be numba compiled if using ints (and dict workaround)
+
+    # genos array to fill from geno indices and refalt
+    genos = np.zeros((nsnps, nsamples, 2), dtype="u1")
+    snps = np.zeros((nsnps, nsamples), dtype="S1")
+    snpsmap = np.zeros((nsnps, 5), dtype="u4")
+
+    # fill genos with sum of calls except missing to 9
+    genos[:, :, 0] = g0
+    genos[:, :, 1] = g1
+
+    # fill snps in rows by indexing genos from ref,alt with g0,g1
+    for ridx in range(snps.shape[0]):
+        
+        # missing values are N=78
+        snps[ridx, g0[ridx] == 9] = b"N"
+        
+        # 0/0 put in the ref allele at each row
+        snps[ridx, (g0[ridx] + g1[ridx]) == 0] = ref[ridx]
+        
+        # 1/1 put in the alt0 allele
+        snps[ridx, ((g0 == 1) & (g1 == 1))[ridx]] = alt1[ridx]
+
+        # 2/2 put in the alt1 allele
+        snps[ridx, ((g0 == 2) & (g1 == 2))[ridx]] = alt2[ridx]
+
+        # 3/3 put in the alt2 allele
+        snps[ridx, ((g0 == 3) & (g1 == 3))[ridx]] = alt3[ridx]    
+
+    # fill ambiguity sites 
+    ambs = np.where(g0 != g1)
+    for idx in range(ambs[0].size):
+
+        # row, col indices of the ambiguous site in the snps mat
+        row = ambs[0][idx]
+        col = ambs[1][idx]
+        
+        # get genos (0123) from the geno matrices
+        a0 = g0[row, col]
+        a1 = g1[row, col]        
+        alls = sorted([a0, a1])
+        
+        # get the alleles (CATG) from the ref/alt matrices
+        if alls[0] == 0:
+            b0 = ref[row]
+            if alls[1] == 1:
+                b1 = alt1[row]
+            elif alls[1] == 2:
+                b1 = alt2[row]
+            else:
+                b1 = alt3[row]
+        elif alls[0] == 1:
+            b0 = alt1[row]
+            if alls[1] == 2:
+                b1 = alt2[row]
+            else:
+                b1 = alt3[row]
+        elif alls[0] == 2:
+            b0 = alt2[row]
+            b1 = alt3[row]
+        
+        # convert allele tuples into an ambiguity byte
+        snps[row, col] = TRANSFULL[(b0, b1)].encode()
+
+
+    # return the three arrays
+    return genos, snps, snpsmap
+
