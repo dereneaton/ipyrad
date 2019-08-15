@@ -4,7 +4,7 @@
 Installation
 ============
 
-ipyrad can be installed using pip or conda. We strongly recommend the conda version. If you are not familiar with conda then please check out our long-form installation instructions `below <longform_>`__.
+ipyrad can be installed using pip or conda. We strongly recommend the conda version. If you are not familiar with conda then please check out our long-form installation instructions `below <longform_>`__ to start by installing the conda package manager.
 
 
 Conda install
@@ -18,28 +18,30 @@ ipyrad is available for Python >=2.7 and >=3.5.
 
 Recommended additional packages
 -------------------------------
-If you plan to use the ipyrad API in IPython or Jupyter (which we do recommend, especially for downstream analyses) then you should also install IPython and Jupyter, which you can do with the following command.
+The ipyrad API provides a powerful interface to using ipyrad for assembling and analyzing data inside of jupyter notebooks, a tool for reproducible science. Many of our downstream analysis tutorials are focused on using the API in jupyter. You can install jupyter easily with the conda command below. In addition, if you wish to distribute jobs over multiple nodes of a HPC cluster then you must install the additional tool mpi4py (more details in Parallelization section).
 
 .. code:: bash
 
-	conda install notebook
+	conda install notebook -c conda-forge
+    conda install mpi4py -c conda-froge
 
 
 Alternative: install from GitHub
------------------------------
+--------------------------------
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
 
 .. code::bash
 	
 	# install external requirements first (e.g., using conda)
-	conda install vsearch muscle bedtools bwa samtools mpi4py -c bioconda -c conda-forge
+	conda install vsearch muscle bedtools bwa samtools -c bioconda
+    conda install mpi4py notebook -c conda-forge
 
 	# clone the master branch from repo
 	git clone -b master https://github.com/dereneaton/ipyrad
 
 	# cd into source and install w/ pip (notice final . in command)
 	cd ./ipyrad
-	pip install .
+	pip install -e .
 
 
 Details: dependencies:
@@ -84,9 +86,15 @@ Mac install instructions for *conda*
     # Take note that the -O flag is a capital o not a zero.
     curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 
-    # Install miniconda. By default it will install into your home directory.
-    # e.g., `/home/user/miniconda3`
+    # Install miniconda into $HOME/miniconda3
     bash Miniconda3-latest-MacOSX-x86_64.sh -b 
+
+    # Make it so miniconda is always in your PATH when you open a terminal.
+    echo 'PATH=$HOME/miniconda3/bin/:$PATH' >> ~/.bash_profile
+    source ~/.bash_profile
+
+    # test that conda is installed. Will print info about your conda install.
+    conda info
 
     # Now run the following command to reload your ~/.bash_profile so that 
     # miniconda will be in your path. This is necessary so that the conda 
@@ -107,18 +115,14 @@ Linux install instructions for conda
     # that the -O flag is a capital o not a zero.
     wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
-    # Install miniconda. Follow the directions, by default it will propose installing
-    # to your home directory, which should be fine, e.g., `/home/user/miniconda3`
-    # When asked yes/no whether to append the miniconda directory to $PATH, say yes.
+    # Install miniconda into $HOME/miniconda3
     bash Miniconda3-latest-Linux-x86_64.sh -b 
 
-    # You could now quit and reopen the terminal, or just run the following command
-    # which reloads your ~/.bashrc so that miniconda will now be in your path.
-    # This is necessary so that the conda program can be found from the terminal by
-    # simply typing conda.
+    # Make it so miniconda is always in your PATH when you open a terminal.
+    echo 'PATH=$HOME/miniconda3/bin/:$PATH' >> ~/.bashrc
     source ~/.bashrc
 
-    # test that conda is installed. This will print info about your conda install.
+    # test that conda is installed. Will print info about your conda install.
     conda info
 
 
