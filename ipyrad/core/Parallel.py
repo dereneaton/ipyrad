@@ -81,6 +81,17 @@ class Parallel(object):
         # if engines=="MPI" then add --ip arg to view all sockets  
         iparg = ("--ip=*" if "MPI" in self.tool.ipcluster["engines"] else "")
 
+        # check for MPI4PY installation here:
+        try:
+            import mpi4py
+        except ImportError:
+            raise ImportError(
+                "To use MPI you must install an additional library: mpi4py\n" + \
+                "You can do this with the following command: \n" + \
+                "  conda install mpi4py -c conda-forge \n\n" + \
+                "See the ipyrad docs section (Parallelization) for details."
+                )
+
         # make ipcluster arg call
         standard = [
             "ipcluster", "start",
