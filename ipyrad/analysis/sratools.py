@@ -17,8 +17,9 @@ import subprocess as sps
 
 # third party
 import pandas as pd
-from ipyrad.assemble.utils import IPyradError
-from ipyrad.analysis.utils import progressbar
+from ..core.Parallel import Parallel
+from ..assemble.utils import IPyradError
+from .utils import progressbar
 
 
 ## raise warning if missing imports
@@ -93,18 +94,18 @@ class SRA(object):
 
     def run(
         self, 
-        ipyclient=None,
-        force=False, 
         name_fields=(1, 30), 
         name_separator="_", 
         dry_run=False, 
         split_pairs=None,
         gzip=False,
         show_cluster=False,
+        ipyclient=None,
+        force=False, 
         auto=False,
         ):
         """
-        Download the accessions into a the designated workdir. 
+        Download the accessions as fastq files into a designated workdir. 
 
         Parameters
         ----------
@@ -131,7 +132,8 @@ class SRA(object):
 
         split_pairs: (bool or None)
             If True then pairs are split, if False they are not split, if None
-            then we will auto-detect if paired or not.
+            then we will auto-detect if paired or not. Forcing splitting can 
+            be helpful when the data were not uploaded properly.
 
         gzip: bool
             Gzip compress fastq files.
@@ -145,21 +147,21 @@ class SRA(object):
             os.makedirs(self.workdir)
 
         # distribute job wrapped in ipcluster cleanup
-        pool = Parallel()
-        # parallelize_run(
-        #     self,
-        #     run_kwargs={
-        #         "ipyclient": ipyclient,
-        #         "force": force,
-        #         "name_fields": name_fields,
-        #         "name_separator": name_separator,
-        #         "dry_run": dry_run,
-        #         "split_pairs": split_pairs,
-        #         "gzip": gzip,
-        #     },
-        #     show_cluster=show_cluster, 
-        #     auto=auto,
-        # )
+        pool = Parallel(
+            tool=self, 
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={
+                "force": force,
+                "name_fields": name_fields,
+                "name_separator": name_separator,
+                "dry_run": dry_run,
+                "split_pairs": split_pairs,
+                "gzip": gzip,
+            },
+        )
+        pool.wrap_run()
 
 
     def _run(
@@ -225,7 +227,7 @@ class SRA(object):
         nfinished = 0
         ntotal = int(df.shape[0]) * 2
         start = time.time()
-        message = "downloading/converting fastq data files"
+        message = "downloading/extracting fastq data"
         download_asyncs = {}
         for sidx in df.index:
             progressbar(nfinished, ntotal, start, message)
@@ -307,7 +309,7 @@ class SRA(object):
             print("\rFetching project data...", end="")
 
         if fields is None:
-            fields = list(range(30))
+            fields = list(range(31))
         fields = fields_checker(fields)
 
         sra_ids = []
@@ -329,19 +331,27 @@ class SRA(object):
                     .format(self.accessions))
             time.sleep(3)
 
-        # SRA Runinfo for each ID
-        res = requests.get(
-            url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", 
-            params={
-                "db": "sra",
-                "id": ",".join(sra_ids),
-                "tool": "ipyrad", 
-                "email": "de2356@columbia.edu",
-                "rettype": "runinfo", 
-                "retmode": "text",                
-                },
-            )
-        df = pd.read_csv(StringIO(res.text.strip()))
+        # Get SRA Runinfo in batches of 20 at a time b/c who knows...
+        blocks = []
+        for block in range(0, len(sra_ids), 20):
+
+            res = requests.get(
+                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", 
+                params={
+                    "db": "sra",
+                    "id": ",".join(sra_ids[block:block + 20]),
+                    "tool": "ipyrad", 
+                    "email": "de2356@columbia.edu",
+                    "rettype": "runinfo", 
+                    "retmode": "text",                
+                    },
+                )
+            time.sleep(3)
+            df = pd.read_csv(StringIO(res.text.strip()))
+            blocks.append(df)
+
+        df = pd.concat(blocks)
+        df.reset_index(drop=True, inplace=True)
         return df.iloc[:, [i - 1 for i in fields]]
 
 
