@@ -665,6 +665,9 @@ class Processor(object):
         self.fmaxhet = self.data.params.max_shared_Hs_locus
         if isinstance(self.fmaxhet, tuple):
             self.fmaxhet = self.fmaxhet[0]
+        # TODO: This backwards compatibility is hard coded. Maybe better to 
+        # just raise an error here, or really during parsing of the params
+        # file is best.
         if isinstance(self.fmaxhet, int):
             self.fmaxhet = 0.5  # backwards compatibility make as a float
 
@@ -1602,6 +1605,7 @@ def write_loci_and_alleles(data):
                     seq = line[pad:]
                     lchunk.append(name + seq.upper())
 
+                    import pdb; pdb.set_trace()
                     all1, all2 = splitalleles(seq)
                     aname, spacer = name.split(" ", 1)
                     achunk.append(aname + "_0 " + spacer + all1)
