@@ -118,10 +118,10 @@ class SRA(object):
             will be overwritten. 
 
         name_fields: (int, str):
-            Provide the index of the name fields to be used as a prefix
-            for fastq output files. The default is 30, which is the 
-            SampleName field. Use sra.fetch_fields to see all available
-            fields and their indices. A likely alternative is 1 (Run). 
+            Provide the index (1-indexed) of the name fields to be used as a 
+            prefix for fastq output files. The default is (1,30), which is the 
+            accession + SampleName fields. Use sra.fetch_fields to see all 
+            available fields and their indices. 
             If multiple are listed then they will be joined by a "_" 
             character. For example (29,30) would yield something like:
             latin-name_sample-name (e.g., mus_musculus-NR10123).
