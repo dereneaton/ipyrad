@@ -338,6 +338,10 @@ def stackarray(data, sample):
         cutlens[0] = len(data.params.restriction_overhang[0])
         cutlens[1] = maxlen - len(data.params.restriction_overhang[1])
     except TypeError:
+        ## Raised if either restriction_overhang parameters is an int
+        pass
+    except IndexError:
+        ## If you don't include ro sequences then just carries on
         pass
 
     # fill stacked
