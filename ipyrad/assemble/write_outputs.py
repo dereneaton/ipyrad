@@ -744,14 +744,17 @@ class Processor(object):
             self.filter_minsamp_pops()
             self.filters[self.iloc, 4] += int(edges.bad)
 
-            # bail out of locus now if it is already bad...
-            if self.filters[self.iloc].sum():
-                continue
-
             # trim edges, need to use uppered seqs for maxvar & maxshared
             edg = self.edges[self.iloc]
             ublock = self.useqs[:, edg[0]:edg[3]]
             ablock = self.aseqs[:, edg[0]:edg[3]]
+
+            # filter if are any empty samples after trimming
+            self.filters[self.iloc, 4] += np.sum(np.all(ublock == 45, axis=1))
+
+            # bail out of locus now if it is already bad...
+            if self.filters[self.iloc].sum():
+                continue
 
             # [denovo]: store shift of left edge start position from 
             # alignment, this position is needed for pulling depths in VCF.
