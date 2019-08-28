@@ -1608,7 +1608,6 @@ def write_loci_and_alleles(data):
                     seq = line[pad:]
                     lchunk.append(name + seq.upper())
 
-                    import pdb; pdb.set_trace()
                     all1, all2 = splitalleles(seq)
                     aname, spacer = name.split(" ", 1)
                     achunk.append(aname + "_0 " + spacer + all1)
