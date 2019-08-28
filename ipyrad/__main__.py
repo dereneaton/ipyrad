@@ -2,7 +2,7 @@
 
 """ the main CLI for calling ipyrad """
 
-from __future__ import print_function, division  
+from __future__ import print_function
 
 from ipyrad.assemble.utils import IPyradError, detect_cpus
 from pkg_resources import get_distribution
@@ -77,7 +77,7 @@ class CLI:
 
     def check_args(self):
         "user must enter -p or -n as an argument"
-        if not (self.args.params or self.args.new):
+        if not (self.args.params or self.args.new or self.args.download):
             sys.exit("\n" + "\n".join([
                 "  ipyrad command must include either -p or -n ",
                 "  run 'ipyrad -h' for further command line instructions\n",
@@ -254,24 +254,26 @@ class CLI:
         # call the analysis tool
         import ipyrad.analysis as ipa
         sra = ipa.sratools(
-            accession=self.args.download[0],
+            accessions=self.args.download[0],
             workdir=downloaddir,
-            force=self.args.force,
         )
 
-        ## get run info and print spacer after
+        # get run info and print spacer after
         df = sra.fetch_runinfo((1, 4, 6, 29, 30))
         print("")
 
-        ## rename spots for prettier printing and send to screen
+        # rename spots for prettier printing and send to screen
         df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
         print(df)
 
-        ## run download with default name_fields and separator
+        # run download with default name_fields and separator
         sra.run(
             name_fields=(30, 1), 
             name_separator="_", 
-            force=self.args.force)
+            force=self.args.force,
+            auto=True,
+            show_cluster=True,
+        )
         print("")
 
 
@@ -522,25 +524,6 @@ class CLI:
         if self.args.results:
             self.show_stats()
           
-
-
-def sratools_download(SRP, workdir='SRA_fastqs', force=False):
-    import ipyrad.analysis as ipa
-    sra = ipa.sratools(accession=SRP, workdir=workdir)
-
-    ## get run info and print spacer after
-    df = sra.fetch_runinfo((1, 4, 6, 29, 30))
-    print("")
-
-    ## rename spots for prettier printing and send to screen
-    df.rename(columns={"spots_with_mates": "mates"}, inplace=True)
-    print(df)
-
-    ## run download with default name_fields and separator
-    sra.run(name_fields=(30, 1), name_separator="_", force=force)
-    print("")
-
-
 
 
 HEADER = """

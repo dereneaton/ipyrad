@@ -31,6 +31,7 @@ from .snps_imputer import SNPsImputer as snps_imputer
 from .treeslider import TreeSlider as treeslider
 from .distance import Distance as distance
 from .structure import Structure as structure
+from .sratools import SRA as sratools
 # from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 
 # testing
@@ -40,7 +41,7 @@ from .clade_weights import CladeWeights as clade_weights
 from .digest_genome import DigestGenome as digest_genome
 from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
-# from .sratools import SRA as sratools
+
 # from .fasttree import Fastree as fastree
 # from .baba import Baba as baba
 # from .momi import Momi as momi

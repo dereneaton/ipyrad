@@ -747,14 +747,17 @@ class Processor(object):
             self.filter_minsamp_pops()
             self.filters[self.iloc, 4] += int(edges.bad)
 
-            # bail out of locus now if it is already bad...
-            if self.filters[self.iloc].sum():
-                continue
-
             # trim edges, need to use uppered seqs for maxvar & maxshared
             edg = self.edges[self.iloc]
             ublock = self.useqs[:, edg[0]:edg[3]]
             ablock = self.aseqs[:, edg[0]:edg[3]]
+
+            # filter if are any empty samples after trimming
+            self.filters[self.iloc, 4] += np.sum(np.all(ublock == 45, axis=1))
+
+            # bail out of locus now if it is already bad...
+            if self.filters[self.iloc].sum():
+                continue
 
             # [denovo]: store shift of left edge start position from 
             # alignment, this position is needed for pulling depths in VCF.
@@ -1690,10 +1693,14 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
             io5["scaffold_lengths"] = get_fai_values(data, "length")
             io5["scaffold_names"] = get_fai_values(data, "scaffold").astype("S")
             phymap.attrs["reference"] = data.params.reference_sequence
-            phymap.attrs["phynames"] = [i.encode() for i in data.pnames]
-            phymap.attrs["columns"] = [
-                b"chroms", b"phy0", b"phy1", b"pos0", b"pos1", 
-            ]
+        else:
+            phymap.attrs["reference"] = "pseudoref"
+
+        # store names and 
+        phymap.attrs["phynames"] = [i.encode() for i in data.pnames]
+        phymap.attrs["columns"] = [
+            b"chroms", b"phy0", b"phy1", b"pos0", b"pos1", 
+        ]
 
         # gather all loci bits
         locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
@@ -1841,6 +1848,13 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
             phymap[mapstart:mapend, 3] = mappos0
             phymap[mapstart:mapend, 4] = mappos1
         phymap[1:, 1] = phymap[:-1, 2]
+
+        # fill 'scaffold' information for denovo data sets from the data
+        if "reference" not in data.params.assembly_method:
+            # 1-index the "chromosomes" and store lengths as loclens
+            phymap[:, 0] += 1  # <- does not cause problems for outfiles...
+            io5["scaffold_names"] = (io5["phymap"][:, 0]).astype("S")
+            io5["scaffold_lengths"] = io5["phymap"][:, 2] - io5["phymap"][:, 1]
 
         # write stats to the output file
         with open(data.stats_files.s7, 'a') as outstats:
