@@ -54,13 +54,13 @@ class CLI:
             self._flagdownload()
             sys.exit(0)
 
-        # check that -p is accompanied by an action (-s, -r, -m)
-        self._flagparams()
-
         # check for merge of branches
         if self.args.merge:
             self.merge_assemblies()
             sys.exit(0)
+
+        # check that -p is accompanied by an action (-s, -r, -b)
+        self._flagparams()
         
         # fill parsedict with params from paramsfile
         self.parse_params()
@@ -77,7 +77,7 @@ class CLI:
 
     def check_args(self):
         "user must enter -p or -n as an argument"
-        if not (self.args.params or self.args.new or self.args.download):
+        if not (self.args.params or self.args.new or self.args.download or self.args.merge):
             sys.exit("\n" + "\n".join([
                 "  ipyrad command must include either -p or -n ",
                 "  run 'ipyrad -h' for further command line instructions\n",
@@ -275,7 +275,6 @@ class CLI:
             show_cluster=True,
         )
         print("")
-
 
 
     def merge_assemblies(self):
