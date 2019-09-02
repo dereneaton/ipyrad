@@ -352,7 +352,7 @@ pinfo = OrderedDict([
     data.set_params(24) = 9999         ## set arbitrarily high
     data.set_params("max_shared_Hs_locus") = 4      ## verbose
     ----------------------------------------------------------------------
-    """, "Max # heterozygous sites per locus (R1, R2)")
+    """, "Max # heterozygous sites per locus")
 ),
 
 ("25", ("""

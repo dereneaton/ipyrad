@@ -33,7 +33,7 @@ You can alternatively install ipyrad from its source code on GitHub. This is not
 .. code::bash
 	
 	# install external requirements first (e.g., using conda)
-	conda install vsearch muscle bedtools bwa samtools cutadapt -c bioconda
+	conda install vsearch muscle bedtools bwa samtools pysam cutadapt -c bioconda
     conda install mpi4py notebook -c conda-forge
 
 	# clone the master branch from repo
