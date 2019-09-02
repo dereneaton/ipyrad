@@ -23,7 +23,7 @@ The ipyrad API provides a powerful interface to using ipyrad for assembling and 
 .. code:: bash
 
 	conda install notebook -c conda-forge
-    conda install mpi4py -c conda-froge
+    conda install mpi4py -c conda-forge
 
 
 Alternative: install from GitHub
@@ -33,7 +33,7 @@ You can alternatively install ipyrad from its source code on GitHub. This is not
 .. code::bash
 	
 	# install external requirements first (e.g., using conda)
-	conda install vsearch muscle bedtools bwa samtools -c bioconda
+	conda install vsearch muscle bedtools bwa samtools cutadapt -c bioconda
     conda install mpi4py notebook -c conda-forge
 
 	# clone the master branch from repo
@@ -96,16 +96,6 @@ Mac install instructions for *conda*
     # test that conda is installed. Will print info about your conda install.
     conda info
 
-    # Now run the following command to reload your ~/.bash_profile so that 
-    # miniconda will be in your path. This is necessary so that the conda 
-    # program can be found from the terminal by simply typing conda. If a 
-    # ~/.bash_profile does not exist it might alternatively be named ~/.bashrc.
-    source ~/.bash_profile
-
-    # test that conda is installed. This will print info about your conda install.
-    conda info
-
-
 Linux install instructions for conda
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -129,7 +119,11 @@ Linux install instructions for conda
 .. _HPC_installation:
 
 Details: ipyrad on HPC
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-If you're working on an HPC cluster you should still follow the exact same instructions above to install conda_ into your local home directory (e.g., /home/user). This does not require administrative privileges. In fact, the whole point is to create a local repository for software that you control yourself, separate from the system-wide software. This is 
-what we recommend, however, if there is a system-wide version of ipyrad 
-installed then you can use that on HPC as well. 
+^^^^^^^^^^^^^^^^^^^^^^
+If you're working on an HPC cluster we still recommend that you follow the 
+instructions above to install your own local miniconda directory that you can
+use to install local software into. However, you can alternatively ask your 
+administrator to install ipyrad into a system-wide conda distribution (and
+a specific conda environment) which you and many other users can then use. The 
+drawback of this approach is that if you want to upgrade or install additional
+software tools you need to ask your administrator and this will likely cause delays.
