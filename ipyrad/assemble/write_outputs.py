@@ -607,18 +607,20 @@ def process_chunk(data, chunksize, chunkfile):
     proc.var = {i: j for (i, j) in proc.var.items() if i <= mvar}
     proc.pis = {i: j for (i, j) in proc.pis.items() if i <= mpis}
 
-    # write process stats to a pickle file for collating later.
-    out = {
-        "filters": proc.filters, 
-        "lcov": proc.lcov, 
-        "scov": proc.scov,
-        "var": proc.var,
-        "pis": proc.pis,
-        "nbases": proc.nbases
-    }
+    ## If no loci survive filtering then don't dump the stats
+    if np.fromiter(proc.lcov.values(), dtype=int).sum() > 0:
+        # write process stats to a pickle file for collating later.
+        out = {
+            "filters": proc.filters, 
+            "lcov": proc.lcov, 
+            "scov": proc.scov,
+            "var": proc.var,
+            "pis": proc.pis,
+            "nbases": proc.nbases
+        }
 
-    with open(proc.outpickle, 'wb') as outpickle:
-        pickle.dump(out, outpickle)
+        with open(proc.outpickle, 'wb') as outpickle:
+            pickle.dump(out, outpickle)
 
 
 ##############################################################
@@ -827,13 +829,15 @@ class Processor(object):
                 locus = self.to_locus(ablock, snparr, edg)
                 self.outlist.append(locus)
 
-        # write the chunk to tmpdir
-        with open(self.outfile, 'w') as outchunk:
-            outchunk.write("\n".join(self.outlist) + "\n")
+        ## If no loci survive filtering then don't write the files
+        if np.fromiter(self.lcov.values(), dtype=int).sum() > 0:
+            # write the chunk to tmpdir
+            with open(self.outfile, 'w') as outchunk:
+                outchunk.write("\n".join(self.outlist) + "\n")
 
-        # thin edgelist to filtered loci and write to array
-        mask = np.invert(self.filters.sum(axis=1).astype(np.bool_))
-        np.save(self.outarr, self.edges[mask, 0])
+            # thin edgelist to filtered loci and write to array
+            mask = np.invert(self.filters.sum(axis=1).astype(np.bool_))
+            np.save(self.outarr, self.edges[mask, 0])
 
         # close file handle
         self.io.close()
@@ -1840,12 +1844,11 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
         # there can be 000 at the end of phy. This is ok, we trim it when
         # writing phylip file, but good to be aware it's there for other things
         phy[:, gstart:gstart + trim] = tmparr[:, :trim]           
-        mapend = mapstart + len(mapends) + 1
-        phymap[mapstart:mapend, 0] = mapchroms
-        phymap[mapstart:mapend, 2] = mapends
+        phymap[mapstart:locidx, 0] = mapchroms
+        phymap[mapstart:locidx, 2] = mapends
         if data.isref:
-            phymap[mapstart:mapend, 3] = mappos0
-            phymap[mapstart:mapend, 4] = mappos1
+            phymap[mapstart:locidx, 3] = mappos0
+            phymap[mapstart:locidx, 4] = mappos1
         phymap[1:, 1] = phymap[:-1, 2]
 
         # fill 'scaffold' information for denovo data sets from the data
