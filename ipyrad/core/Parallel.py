@@ -89,9 +89,9 @@ class Parallel(object):
             except ImportError:
                 raise ImportError(
                     "To use MPI you must install an additional library: mpi4py\n" + \
-                    "You can do this with the following command: \n" + \
+                    "  You can do this with the following command: \n" + \
                     "  conda install mpi4py -c conda-forge \n\n" + \
-                    "See the ipyrad docs section (Parallelization) for details."
+                    "  See the ipyrad docs section (Parallelization) for details."
                     )
 
         # make ipcluster arg call
