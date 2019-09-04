@@ -50,7 +50,7 @@ class Step7:
 
         # dict mapping of samples to padded names for loci file aligning.
         self.data.snames = [i.name for i in self.samples]
-        self.data.pnames, self.data.snppad = self.get_padded_names()      
+        self.data.pnames, self.data.snppad = self.get_padded_names()
 
         # output file formats to produce ('l' is required).
         self.formats = set(['l']).union(
@@ -140,15 +140,15 @@ class Step7:
         # if ref init a new sample for reference if including
         if self.data.params.assembly_method == 'reference':
             ref = ipyrad.core.sample.Sample("reference")
-            snames = [ref] + sorted(
+            samples = [ref] + sorted(
                 list(set(self.data.samples.values())), 
                 key=lambda x: x.name)
-            return snames
+            return samples
         else:
-            snames = sorted(
+            samples = sorted(
                 list(set(self.data.samples.values())),
                 key=lambda x: x.name)
-            return snames
+            return samples
 
 
     def setup_dirs(self):
@@ -1758,11 +1758,11 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                             .split("-")
                         )
 
-                    # seq into an array as int8 (py2/3 checked)
-                    loc = np.array(
-                        [list(bytes(tmploc[i].encode())) for i in snames
-                         if i in tmploc]
-                        ).astype(np.int8)
+                    # seq ordered into array by snames as int8 (py2/3 checked)
+                    loc = np.array([
+                        list(bytes(tmploc[i].encode())) for i in snames
+                        if i in tmploc
+                        ]).astype(np.int8)
                     # loc = (np.array([list(i) for i in tmploc.values()])
                     # .astype(bytes).view(np.uint8))
                     
@@ -1776,8 +1776,21 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
                     
                     # store end position of locus for map
                     end = start + loc.shape[1]
-                    for idx, name in enumerate(tmploc):
-                        tmparr[sidxs[name], start:end] = loc[idx]
+
+                    # checked for py2/3 (keeping name order straight important)
+                    lidx = 0
+                    for name in snames:
+                        if name in tmploc:
+                            sidx = sidxs[name]
+                            tmparr[sidx, start:end] = loc[lidx]
+                            lidx += 1
+                    # tnames = sorted(tmploc.keys())
+                    # for idx, name in enumerate(snames):
+                        # if name in tmploc
+                        # sidx = sidxs[name]
+                        # tmparr[sidx, start:end] = loc[idx]
+                    # for idx, name in enumerate(tmploc):
+                        # tmparr[sidxs[name], start:end] = loc[idx]
                     mapends.append(gstart + end)
 
                     if data.isref:
@@ -1962,8 +1975,16 @@ def fill_snp_array(data, ntaxa, nsnps):
 
                     # store end position of locus for map
                     end = start + snpsites.shape[1]
-                    for idx, name in enumerate(tmploc):
-                        tmparr[sidxs[name], start:end] = snpsites[idx, :]
+
+                    # checked for py2/3 (keeping name order straight important)
+                    lidx = 0
+                    for name in data.snames:
+                        if name in tmploc:
+                            sidx = sidxs[name]
+                            tmparr[sidx, start:end] = snpsites[lidx, :]
+                            lidx += 1
+                    # for idx, name in enumerate(tmploc):
+                        # tmparr[sidxs[name], start:end] = snpsites[idx, :]
                         
                     # store snpsmap data 1-indexed with chroms info
                     if data.isref:
