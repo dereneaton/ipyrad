@@ -170,7 +170,7 @@ class Params(object):
         else:
             self._i += 1
             return keys[self._i - 1]
-        
+    next = __next__  # Python 2        
 
     def update(self, dict):
         self.__dict__.update(dict)
