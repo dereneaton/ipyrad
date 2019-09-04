@@ -1876,10 +1876,10 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
             trim = phymap[-1, 2]  # locidx - 1]
             missmask = phy[:trim] == 78
             missmask += phy[:trim] == 45
-            missing = 100 * (missmask.sum() / phy[:trim].size)
+            missing = 100 * (missmask.sum() / float(phy[:trim].size))
             print("sequence matrix size: ({}, {}), {:.2f}% missing sites."
                 .format(
-                    len(data.samples), 
+                    len(snames), 
                     trim, 
                     max(0, missing),
                 ),
@@ -2030,10 +2030,10 @@ def fill_snp_array(data, ntaxa, nsnps):
         with open(data.stats_files.s7, 'a') as outstats:
             missmask = io5["snps"][:] == 78
             missmask += io5["snps"][:] == 45
-            missing = 100 * (missmask.sum() / io5["snps"][:nsnps].size)
+            missing = 100 * (missmask.sum() / float(io5["snps"][:nsnps].size))
             print("snps matrix size: ({}, {}), {:.2f}% missing sites."
                 .format(
-                    len(data.samples),
+                    len(data.snames),
                     nsnps,
                     missing,
                 ),
