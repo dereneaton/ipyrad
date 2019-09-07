@@ -25,6 +25,9 @@ Dealing with Missing Data Downstream
 * Ferretti et al 2012 - `Neutrality Tests for Sequences with Missing Data <http://www.genetics.org/content/genetics/191/4/1397.full.pdf>`__
     "In this article we presented a general framework for estimators of variability and neutrality tests based on the frequency spectrum that take into account missing data in a natural way." Cool paper, however no code is provided to implement this.
 
+* Euclide et al 2019 - `Attack of the PCR clones: Rates of clonality have little effect on RAD‐seq genotype calls<https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13087>`
+    "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
+
 Troubleshooting Procedures
 ==========================
 
