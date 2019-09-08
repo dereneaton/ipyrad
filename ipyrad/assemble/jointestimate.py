@@ -383,7 +383,9 @@ def stackarray(data, sample):
                     [np.sum(arrayed == i, axis=0) for i in list("CATG")],
                     dtype=np.uint64).T
 
-                stacked[nclust, :catg.shape[0], :] = catg
+                ## Ensure catg honors the maxlen setting. If not you get a nasty
+                ## broadcast error.
+                stacked[nclust, :catg.shape[0], :] = catg[:maxlen, :]
                 nclust += 1
         # bail out when nclusts have been done
         if nclust == hidepth:
