@@ -3,13 +3,10 @@
 Frequenty Asked Questions
 =========================
 
-Tuning Assembly Parameters
-==========================
-This is a collection of papers related to tuning different assembly
-parameters and how these may or may not impact downstream analysis. 
-Just because we include a paper here doesn't mean we endorse the results, 
-only that we think it's worth considering. Where necessary, we 
-highlight specific papers and interesting/important results below.
+This is a collection of papers related to various aspects of RADSeq assembly and analysis
+Just because we include a paper here doesn't mean we endorse the results, only that we think
+it's worth considering. Where necessary, we highlight specific papers and interesting/important 
+results below.
 
 * Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
     Especially useful. TL;DR Don't over-filter missing data. In practice this means allowing for more permissive `min_samples_locus` parameter settings. Sometimes people have a tendency to treat RAD data as if it were a giant multi-locus Sanger dataset. They want to see a "complete data matrix", so use very high `min_samples_locus` settings in order to reduce the amount of missing data. This is bad, and this paper shows us why.
@@ -20,6 +17,8 @@ highlight specific papers and interesting/important results below.
     Don't over-filter your data.
 * Euclide et al 2019 - `Attack of the PCR clones: Rates of clonality have little effect on RAD‐seq genotype calls <https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13087>`__
     "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
+* Benjelloun et al 2019 - `An evaluation of sequencing coverage and genotyping strategies to assess neutral and adaptive diversity <https://sci-hub.tw/https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13070>`__
+    "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
 
 Dealing with Missing Data Downstream
 ------------------------------------
