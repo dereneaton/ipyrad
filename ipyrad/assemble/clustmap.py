@@ -1053,17 +1053,15 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
             clusts = infile.read().decode().split("//\n//\n")
             # remove any empty spots
             clusts = [i for i in clusts if i]
-            # Skip entirely empty chunks
+            # Skip entirely empty chunks; return 0 if no clusters in file
+            # Allows some chunks to be empty without raising an error.
             if not clusts:
-                raise IPyradError("no clusters in file: {}".format(handle))
+                return 0
 
     # return 0 if file not read for some reason...
     except IOError:
         return 0
 
-    # return 0 if no clusters in file
-    if not clusts:
-        return 0
 
     ## count discarded clusters for printing to stats later
     highindels = 0
