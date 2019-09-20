@@ -82,8 +82,8 @@ class Step7:
             self.remote_build_vcf()
 
         # cleanup
-        if os.path.exists(self.data.tmpdir):
-            shutil.rmtree(self.data.tmpdir)
+        #if os.path.exists(self.data.tmpdir):
+        #    shutil.rmtree(self.data.tmpdir)
 
 
     def print_headers(self):
@@ -607,20 +607,21 @@ def process_chunk(data, chunksize, chunkfile):
     proc.var = {i: j for (i, j) in proc.var.items() if i <= mvar}
     proc.pis = {i: j for (i, j) in proc.pis.items() if i <= mpis}
 
-    ## If no loci survive filtering then don't dump the stats
-    if np.fromiter(proc.lcov.values(), dtype=int).sum() > 0:
-        # write process stats to a pickle file for collating later.
-        out = {
-            "filters": proc.filters, 
-            "lcov": proc.lcov, 
-            "scov": proc.scov,
-            "var": proc.var,
-            "pis": proc.pis,
-            "nbases": proc.nbases
-        }
+    # write process stats to a pickle file for collating later.
+    # We have to write stats for each process, even if it returns
+    # no loci in order for the filtering stats to make sense.
+    # https://github.com/dereneaton/ipyrad/issues/358
+    out = {
+        "filters": proc.filters, 
+        "lcov": proc.lcov, 
+        "scov": proc.scov,
+        "var": proc.var,
+        "pis": proc.pis,
+        "nbases": proc.nbases
+    }
 
-        with open(proc.outpickle, 'wb') as outpickle:
-            pickle.dump(out, outpickle)
+    with open(proc.outpickle, 'wb') as outpickle:
+        pickle.dump(out, outpickle)
 
 
 ##############################################################
