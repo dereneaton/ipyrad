@@ -890,7 +890,7 @@ def tree2tests(newick, constraint_dict, constraint_exact):
     
     # topnode must have children. All traversals use default "levelorder"
     for topnode in tree.treenode.traverse():
-        
+       
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact[3]):

@@ -4,7 +4,6 @@ try:
     from tetrad.tetrad import Tetrad as external_tetrad
     Tetrad = external_tetrad
 
-
 # takes the same input args as tetrad but only returns error message
 except ImportError:
 

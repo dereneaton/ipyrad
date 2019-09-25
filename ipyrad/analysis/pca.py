@@ -167,7 +167,6 @@ class PCA(object):
             self._impute_data()
 
 
-
     def _seed(self):   
         return np.random.randint(0, 1e9)        
 
