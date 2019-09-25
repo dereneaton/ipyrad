@@ -469,7 +469,7 @@ branching process. Below is an example.
 
     ## access all Sample names in data1
     allsamples = data1.samples.keys()
-    print "Samples in data1:\n", "\n".join(subsamples)
+    print "Samples in data1:\n", "\n".join(allsamples)
 
 
 .. parsed-literal::
@@ -932,7 +932,7 @@ params file for use by the *ipyrad* command line tool.
     data1.save()
     
     ## load assembly object
-    data1 = ip.load_assembly("pedicularis/data1.json")
+    data1 = ip.load_json("pedicularis/data1.json")
     
     ## write params file for use by the CLI
     data1.write_params()

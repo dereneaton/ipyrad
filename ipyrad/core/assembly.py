@@ -387,6 +387,9 @@ class Assembly(object):
             if not r1_try1 + r1_try2 + r1_try3:
                 raise IPyradWarningExit(
                     "Paired filenames are improperly formatted. See Documentation")
+            if not r2_try1 + r2_try2 + r2_try3:
+                raise IPyradWarningExit(
+                    "Paired filenames are improperly formatted. See Documentation")
 
             ## find the one with the right number of R1s
             for idx, tri in enumerate(r1s):
@@ -568,7 +571,7 @@ class Assembly(object):
             barcodefile = glob.glob(self.paramsdict["barcodes_path"])[0]
 
             ## read in the file
-            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1)
+            bdf = pd.read_csv(barcodefile, header=None, delim_whitespace=1, dtype=str)
             bdf = bdf.dropna()
 
             ## make sure bars are upper case
@@ -691,12 +694,11 @@ class Assembly(object):
                         popmins.update({i.split(':')[0]:int(i.split(':')[1]) \
                                         for i in minlist})
                 else:
-                    raise IPyradError(NO_MIN_SAMPLES_PER_POP)
+                    raise IPyradError(MIN_SAMPLES_PER_POP_MALFORMED)
 
             except (ValueError, IOError):
                 LOGGER.warn("Populations file may be malformed.")
-                raise IPyradError("  Populations file malformed - {}"\
-                                  .format(popfile))
+                raise IPyradError(MIN_SAMPLES_PER_POP_MALFORMED)
 
         else:
             ## pop dict is provided by user
@@ -711,6 +713,10 @@ class Assembly(object):
             LOGGER.warn("Some names from population input do not match Sample "\
                         + "names: ".format(", ".join(badsamples)))
             LOGGER.warn("If this is a new assembly this is normal.")
+
+        ## If popmins not set, just assume all mins are zero
+        if not popmins:
+            popmins = {i: 0 for i in popdict.keys()}
 
         ## check popmins
         ## cannot have higher min for a pop than there are samples in the pop
@@ -936,7 +942,7 @@ class Assembly(object):
 
 
 
-    def _step1func(self, force, preview, ipyclient):
+    def _step1func(self, force, ipyclient):
         """ hidden wrapped function to start step 1 """
 
         ## check input data files
@@ -969,7 +975,6 @@ class Assembly(object):
                 if glob.glob(sfiles):
                     self._link_fastqs(ipyclient=ipyclient, force=force)
                 else:
-                    #assemble.demultiplex.run(self, preview, ipyclient, force)                    
                     assemble.demultiplex.run2(self, ipyclient, force)
 
         ## Creating new Samples
@@ -980,7 +985,6 @@ class Assembly(object):
 
             ## otherwise do the demultiplexing
             else:
-                #assemble.demultiplex.run(self, preview, ipyclient, force)
                 assemble.demultiplex.run2(self, ipyclient, force)
 
 
@@ -1010,7 +1014,7 @@ class Assembly(object):
 
 
 
-    def _step3func(self, samples, noreverse, maxindels, force, preview, ipyclient):
+    def _step3func(self, samples, noreverse, maxindels, force, ipyclient):
         """ hidden wrapped function to start step 3 """
         ## print headers
         if self._headers:
@@ -1058,7 +1062,7 @@ class Assembly(object):
 
         ## run the step function
         assemble.cluster_within.run(self, samples, noreverse, maxindels,
-                                    force, preview, ipyclient)
+                                    force, ipyclient)
 
 
 
@@ -1237,7 +1241,7 @@ class Assembly(object):
 
 
 
-    def run(self, steps=0, force=False, preview=False, ipyclient=None, 
+    def run(self, steps=0, force=False, ipyclient=None, 
         show_cluster=0, **kwargs):
         """
         Run assembly steps of an ipyrad analysis. Enter steps as a string,
@@ -1290,7 +1294,7 @@ class Assembly(object):
             ## has many fixed arguments right now, but we may add these to
             ## hackerz_only, or they may be accessed in the API.
             if '1' in steps:
-                self._step1func(force, preview, ipyclient)
+                self._step1func(force, ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -1301,7 +1305,7 @@ class Assembly(object):
 
             if '3' in steps:
                 self._step3func(samples=None, noreverse=0, force=force,
-                             maxindels=8, preview=preview, ipyclient=ipyclient)
+                             maxindels=8, ipyclient=ipyclient)
                 self.save()
                 ipyclient.purge_everything()
 
@@ -2135,7 +2139,7 @@ BAD_BARCODE = """\
     Barcodes must contain only characters from this list "RKSYWMCATG".
     Doublecheck your barcodes file is properly formatted.
     """
-NO_MIN_SAMPLES_PER_POP = """\n\
+MIN_SAMPLES_PER_POP_MALFORMED = """\n\
     Population assignment file must include a line indicating the minimum
     number of samples per population. This line should come at the end
     of the file and should be preceded by a hash sign (#), e.g.:

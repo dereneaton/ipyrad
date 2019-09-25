@@ -772,8 +772,11 @@ def get_seeds_and_hits(uhandle, bseeds, snames):
     builds a seeds and hits (uarr) array of ints from the utemp.sort file.
     Saves outputs to files ...
     """
+    ## Get max name length. Allow for trailing _ + up to 9 digits
+    ## of numbers of loci (an astronomical number of unique loci)
+    maxlen_names = np.max(map(len, snames)) + 10
     ## read in the utemp.sort file
-    updf = np.loadtxt(uhandle, dtype="S")
+    updf = np.loadtxt(uhandle, dtype="S".format(maxlen_names))
 
     ## Get seeds for all matches from usort
     seeds = np.unique(updf[:, 1])

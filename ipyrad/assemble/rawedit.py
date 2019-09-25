@@ -13,6 +13,7 @@ from __future__ import print_function
 # pylint: disable=C0301
 
 import os
+import io
 import time
 import datetime
 import numpy as np
@@ -40,7 +41,7 @@ def assembly_cleanup(data):
     data.stats_files.s2 = os.path.join(data.dirs.edits, 's2_rawedit_stats.txt')
 
     ## write stats for all samples
-    with open(data.stats_files.s2, 'w') as outfile:
+    with io.open(data.stats_files.s2, 'w', encoding='utf-8') as outfile:
         data.stats_dfs.s2.fillna(value=0).astype(np.int).to_string(outfile)
 
 

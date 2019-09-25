@@ -531,12 +531,13 @@ def _loci_to_arr(loci, taxdict, mindict):
 
     ## make the array (4 or 5) and a mask array to remove loci without cov
     nloci = len(loci)
+    maxlen = np.max(np.array([len(locus.split("\n")[0]) for locus in loci]))
     keep = np.zeros(nloci, dtype=np.bool_)
-    arr = np.zeros((nloci, 4, 300), dtype=np.float64)
+    arr = np.zeros((nloci, 4, maxlen), dtype=np.float64)
 
     ## six rows b/c one for each p3, and for the fused p3 ancestor
     if len(taxdict) == 5:
-        arr = np.zeros((nloci, 6, 300), dtype=np.float64)
+        arr = np.zeros((nloci, 6, maxlen), dtype=np.float64)
 
     ## if not mindict, make one that requires 1 in each taxon
     if isinstance(mindict, int):
@@ -670,7 +671,7 @@ def tree2tests(newick, constraint_dict, constraint_exact):
     tests = []
     
     ## topnode must have children
-    for topnode in tree.tree.traverse("levelorder"):
+    for topnode in tree.treenode.traverse("levelorder"):
         for oparent in topnode.children:
             for onode in oparent.traverse("levelorder"):
                 if test_constraint(onode, cdict, "p4", constraint_exact[3]):

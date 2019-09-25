@@ -99,7 +99,8 @@ And here is an example *sbatch* script:
     #!/bin/bash
     #SBATCH --partition general
     #SBATCH --nodes 1
-    #SBATCH --ntasks-per-node 20
+    #SBATCH --tasks-per-node 1
+    #SBATCH --cpus-per-task 32
     #SBATCH --exclusive
     #SBATCH --time 7-00:00:00
     #SBATCH --mem-per-cpu 2000

@@ -14,7 +14,6 @@ source:
       - osx_rpath.patch [osx]
 build:
     number: '3'
-    skip: 'False'
 requirements:
     build:
         - gcc
@@ -23,10 +22,14 @@ requirements:
         - setuptools
         - zlib
         - curl
+        - openssl <1.1.0
     run:
+        - python {{PY_VER}}*,>=2.7
+        - curl
         - libgcc
         - zlib
         - curl
+        - openssl <1.1.0
 test:
     imports:
         - pysam

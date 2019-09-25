@@ -28,13 +28,14 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0     
+    - openssl<1.1.0
 
   run:
     - python {{PY_VER}}*,>=2.7
     - setuptools >=28.0.0
     - jupyter
     - ipython >=5.0.0
-    - ipyparallel >=6.0.2
+    - ipyparallel
     - cython
     - scipy >=0.16
     - h5py
@@ -47,6 +48,8 @@ requirements:
     - dask
     - cutadapt >=1.12
     - pysam >=0.10.0
+    - scikit-allel >=1.2.0
+    - openssl<1.1.0
 
   commands:
     - ipyrad -h

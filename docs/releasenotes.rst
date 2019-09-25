@@ -5,6 +5,111 @@
 Release Notes
 =============
 
+0.7.30
+------
+**March 09, 2019**
+
+- Fix pca for scikit 1.2.0 API and a few minor fixes.
+- Update faq.rst
+- Update faq.rst
+
+0.7.29
+------
+**January 21, 2019**
+
+- Fix nasty ValueError bug in step 7 (re: merged PE loci)
+- Update faq.rst
+- Update faq.rst
+- Update faq.rst
+- Adding more docs
+- Starting list of papers related to assembly parameters
+- Remove 'skip' flags from meta.yaml, because False is default now
+- Add funcsigs dependency
+- Fix baba.py so max locus length is autodetected from the data, instead of being fixed at 300
+- Adding a nexus2loci.py conversion script which takes in a directory of nexus alignments and writes out a .loci file. This is as stupid as possible and it makes a lot of assumptions about the data, so don't be surprised if it doesn't work right.
+- added missing dependency on cutadapt (#314)
+- Add support for finding bins in a virtualenv environment installed with pip
+- add missing requirement: dask[array] (#313)
+- Update faq.rst
+- Update faq.rst
+- fix branching docs
+- Fix a nasty bug in sra tools if you try to dl more than 50 or 60 samples.
+- fix dox
+- Fix references to load_assembly to point to load_json
+- Removing docs of preview mode
+- Purge references to preview mode. Clean up some deprecated code blocks in demux.
+- Remove import of util.* from load, and include only the few things it needs, remove circular dependency.
+- Add docs about structure parallel runs failing silently
+- Removing the restriction on ipyparallel version to obtain the 'IPython cluster' tab in notebooks.
+- Adding docs about engines that die silently on headless nodes
+- Add title and save ability to pca.plot()
+- Make pca.plot() less chatty
+- Forbid nPCs < n samples
+- Update ipyrad meta.yaml to specify ipyparallel, and scikit-allel version.
+- Fix pis docs in faq
+- Update full_tutorial_CLI.rst
+- Update full_tutorial_CLI.rst
+- Update full_tutorial_CLI.rst
+- Update full_tutorial_CLI.rst
+- Adding scikit-allel dependency for pca analysis tool
+- Update cookbook-PCA-pedicularis.ipynb
+- Fix a bug that was causing _link_fastqs to fail silently.
+- fixing inconsistencies in the pedicularis CLI tutorial
+- Big update to the PCA cookbook.
+
+0.7.28
+------
+**June 18, 2018**
+
+- Add functions for missingness, trim missing, and fill missing.
+- Adding PCA cookbook
+- pcs are now stored as pandas, also, you can specify ncomps
+
+0.7.27
+------
+**June 15, 2018**
+
+- Add distance plot, and pca.pcs to hold coordinates per sample
+- remove some crust from pca.pywq
+
+0.7.26
+------
+**June 14, 2018**
+
+- Adding analysis.pca
+- Allow passing in just a dict for specifying populations to _link_populations(), and assume all minsamps = 0
+- Some of step 2 docs were outdated
+- Fix stupid link
+- Adding some docs about MIG-seq.
+- Damn this cluster config mayhem is a mess.
+- Fix faq re pyzmq
+- adding docs about max_snp_locus settings
+- Fix merge conflict
+- Add docs to fix the GLIBC error
+- Docs for r1/r2 not the same length
+
+0.7.25
+------
+**May 17, 2018**
+
+- nb showing fix for 6-7 branching
+- nb showing fix for 6-7 branching
+- fixed branching between 6-7 when using populations information
+- suppress h5py warning
+- Allow sample names to be numbers as well.
+
+0.7.24
+------
+**May 03, 2018**
+
+- Better handling of utf-8 in sample names by default.
+- Add docs in the faq about the empty varcounts array
+- Catch an exception in sratools raised by non-existant sra directory.
+- Add HDF5 file locking fix to the faq.
+- Add docs to peddrad notebook.
+- Adding PE-ddRAD analysis notebook.
+- Add the right imports error message to the structure analysis tool.
+
 0.7.23
 ------
 **February 21, 2018**

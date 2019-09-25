@@ -27,9 +27,9 @@ import copy
 import time
 import glob
 import gzip
-import h5py
 import re
 import os
+import io
 from collections import Counter, OrderedDict
 from ipyrad import __version__
 from util import *
@@ -41,6 +41,12 @@ except ImportError:
 
 import logging
 LOGGER = logging.getLogger(__name__)
+
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    import h5py
+
 
 
 ## List of all possible output formats. This is global because it's
@@ -128,7 +134,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     ## locus_filtering, sample_coverages, and snp_distributions
     data.stats_files.s7 = os.path.join(data.dirs.outfiles,
                                        data.name+"_stats.txt")
-    outstats = open(data.stats_files.s7, 'w')
+    outstats = io.open(data.stats_files.s7, 'w', encoding="utf-8")
 
     ########################################################################
     ## get stats for locus_filtering, use chunking.
@@ -230,8 +236,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     retained["total_filtered_loci"] = passed
 
 
-    print("\n\n## The number of loci caught by each filter."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_filters\n",
+    print(u"\n\n## The number of loci caught by each filter."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_filters\n",
           file=outstats)
     data.stats_dfs.s7_filters = pd.DataFrame([filtdat, applied, retained]).T
     data.stats_dfs.s7_filters.to_string(buf=outstats)
@@ -248,8 +254,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     #covdict = {name: val for name, val in zip(samples, samplecounts[sidx])}
     covdict = pd.Series(samplecounts, name="sample_coverage", index=anames)
     covdict = covdict[covdict != 0]
-    print("\n\n\n## The number of loci recovered for each Sample."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
+    print(u"\n\n\n## The number of loci recovered for each Sample."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_samples\n",
           file=outstats)
     data.stats_dfs.s7_samples = pd.DataFrame(covdict)
     data.stats_dfs.s7_samples.to_string(buf=outstats)
@@ -262,8 +268,8 @@ def make_stats(data, samples, samplecounts, locuscounts):
     start = data.paramsdict["min_samples_locus"]-1
     locsums = pd.Series({i: np.sum(locdat.values[start:i]) for i in lrange},
                         name="sum_coverage", index=lrange)
-    print("\n\n\n## The number of loci for which N taxa have data."+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_loci\n",
+    print(u"\n\n\n## The number of loci for which N taxa have data."+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_loci\n",
           file=outstats)
     data.stats_dfs.s7_loci = pd.concat([locdat, locsums], axis=1)
     data.stats_dfs.s7_loci.to_string(buf=outstats)
@@ -293,10 +299,10 @@ def make_stats(data, samples, samplecounts, locuscounts):
         sumd[i] = np.sum([i*pisdat.values[i] for i in range(i+1)])
     pissums = pd.Series(sumd, name="sum_pis", index=range(smax))
 
-    print("\n\n\n## The distribution of SNPs (var and pis) per locus."+\
-          "\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
-          "\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
-          "\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
+    print(u"\n\n\n## The distribution of SNPs (var and pis) per locus."+\
+          u"\n## var = Number of loci with n variable sites (pis + autapomorphies)"+\
+          u"\n## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)"+\
+          u"\n## ipyrad API location: [assembly].stats_dfs.s7_snps\n",
           file=outstats)
     data.stats_dfs.s7_snps = pd.concat([vardat, varsums, pisdat, pissums],
                                         axis=1)
@@ -308,7 +314,7 @@ def make_stats(data, samples, samplecounts, locuscounts):
     fullstat['state'] = 7
     fullstat["loci_in_assembly"] = data.stats_dfs.s7_samples
 
-    print("\n\n\n## Final Sample stats summary\n", file=outstats)
+    print(u"\n\n\n## Final Sample stats summary\n", file=outstats)
     fullstat.to_string(buf=outstats)
 
     ## close it
@@ -317,14 +323,17 @@ def make_stats(data, samples, samplecounts, locuscounts):
 
 
 
-def select_samples(dbsamples, samples):
+def select_samples(dbsamples, samples, pidx=None):
     """
     Get the row index of samples that are included. If samples are in the
     'excluded' they were already filtered out of 'samples' during _get_samples.
     """
     ## get index from dbsamples
     samples = [i.name for i in samples]
-    sidx = [list(dbsamples).index(i) for i in samples]
+    if pidx:
+        sidx = [list(dbsamples[pidx]).index(i) for i in samples]
+    else:
+        sidx = [list(dbsamples).index(i) for i in samples]
     sidx.sort()
     return sidx
 
@@ -360,8 +369,9 @@ def filter_all_clusters(data, samples, ipyclient):
         for pop in data.populations:
             try:
                 _samps = [data.samples[i] for i in data.populations[pop][1]]
-                data._populations[pop] = (data.populations[pop][0],
-                                          select_samples(dbsamples, _samps))
+                data._populations[pop] = (
+                    data.populations[pop][0],
+                    select_samples(dbsamples, _samps, sidx))
             except:
                 print("    Sample in populations file not present in assembly - {}".format(data.populations[pop][1]))
                 raise
@@ -644,11 +654,11 @@ def get_alleles(locdat):
                 spacer = lastspace - firstspace + 1
                 name, seq = line.split()
                 seq1, seq2 = splitalleles(seq)
-                LOGGER.info("""
-                    seqx %s
-                    seq1 %s
-                    seq2 %s
-                    """, seq, seq1, seq2)
+                #LOGGER.info("""
+                #    seqx %s
+                #    seq1 %s
+                #    seq2 %s
+                #    """, seq, seq1, seq2)
                 inloc.append(name+"_0" + spacer * " " + seq1)
                 inloc.append(name+"_1" + spacer * " " + seq2)
             except ValueError as inst:
@@ -1311,7 +1321,12 @@ def filter_indels(data, superints, edgearr):
             block2 = superints[idx, :, edgearr[idx, 2]:edgearr[idx, 3]]
 
             sums1 = maxind_numba(block1)
-            sums2 = maxind_numba(block2)
+            ## If all loci are merged then block2 will be empty which will
+            ## cause maxind_numba to throw a very confusing ValueError
+            if np.any(block2):
+                sums2 = maxind_numba(block2)
+            else:
+                sums2 = 0
 
             if (sums1 > maxinds[0]) or (sums2 > maxinds[1]):
                 ifilter[idx] = True
@@ -1323,7 +1338,13 @@ def filter_indels(data, superints, edgearr):
             ## shorten block to exclude terminal indels
             ## if data at this locus (not already filtered by edges/minsamp)
             if block.shape[1] > 1:
-                sums = maxind_numba(block)
+                try:
+                    sums = maxind_numba(block)
+                except ValueError as inst:
+                    msg = "All loci filterd by max_Indels_locus. Try increasing this parameter value."
+                    raise IPyradError(msg)
+                except Exception as inst:
+                    LOGGER.error("error in block {}".format(block))
                 #LOGGER.info("maxind numba %s %s", idx, sums)
                 #LOGGER.info("sums, maxinds[0], compare: %s %s %s",
                 #             sums, maxinds[0], sums > maxinds[0])
@@ -1342,9 +1363,12 @@ def maxind_numba(block):
     inds = 0
     for row in xrange(block.shape[0]):
         where = np.where(block[row] != 45)[0]
-        left = np.min(where)
-        right = np.max(where)
-        obs = np.sum(block[row, left:right] == 45)
+        if len(where) == 0:
+            obs = 100
+        else:
+            left = np.min(where)
+            right = np.max(where)
+            obs = np.sum(block[row, left:right] == 45)
         if obs > inds:
             inds = obs
     return inds
@@ -2258,7 +2282,7 @@ def vcfchunk(data, optim, sidx, chunk, full):
     ## maybe later replace this with a h5 array
     tmph = os.path.join(data.dirs.outfiles, ".tmp.{}.h5".format(hslice[0]))
     htmp = h5py.File(tmph, 'w')
-    htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S20")
+    htmp.create_dataset("vcf", shape=(nrows, sum(sidx)), dtype="S24")
 
     ## which loci passed all filters
     init = 0
@@ -2351,7 +2375,7 @@ def vcfchunk(data, optim, sidx, chunk, full):
 
         ## build geno+depth strings
         ## for each taxon enter 4 catg values
-        fulltmp = np.zeros((seq.shape[1], catg.shape[0]), dtype="S20")
+        fulltmp = np.zeros((seq.shape[1], catg.shape[0]), dtype="S24")
         for cidx in xrange(catg.shape[0]):
             ## fill catgs from catgs
             tmp0 = [str(i.sum()) for i in catg[cidx]]
@@ -2359,7 +2383,6 @@ def vcfchunk(data, optim, sidx, chunk, full):
             tmp2 = ["".join(i+j+":"+k) for i, j, k in zip(genos[:, cidx], tmp0, tmp1)]
             ## fill tmp allcidx
             fulltmp[:, cidx] = tmp2
-
         ## write to h5 for this locus
         htmp["vcf"][init:init+seq.shape[1], :] = fulltmp
 

@@ -146,10 +146,13 @@ class SRA(object):
                 dry_run=dry_run,
                 )
 
+        except IPyradWarningExit as inst:
+            print(inst)
         ## exceptions to catch, cleanup and handle ipyclient interrupts
         except KeyboardInterrupt:
             print("keyboard interrupt...")
-
+        except Exception as inst:
+            print("Exception in run() - {}".format(inst))
         finally:
             ## reset working sra path
             self._restore_vdbconfig_path()
@@ -370,7 +373,7 @@ class SRA(object):
         if o:
             vals = o.strip().split("\n")
             names = vals[0].split(",")
-            items = [i.split(",") for i in vals[1:]]
+            items = [i.split(",") for i in vals[1:] if i not in ["", vals[0]]]
             return pd.DataFrame(items, columns=names)
         else:
             raise IPyradWarningExit("no samples found in {}".format(self.accession))

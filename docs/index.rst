@@ -45,6 +45,7 @@ Documentation
    analysis.rst
    citing.rst
    releasenotes.rst
+   faq.rst
    support.rst
    license.rst
 

@@ -2,7 +2,7 @@
 
 
 ## dunders
-__version__ = "0.7.23"
+__version__ = "0.7.30"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
@@ -165,7 +165,11 @@ def _getbins():
     _platform = _sys.platform
 
     ## get current location
-    path = _os.path.abspath(_os.path.dirname(__file__))
+    if 'VIRTUAL_ENV' in _os.environ:
+        ipyrad_path = _os.environ['VIRTUAL_ENV']
+    else:
+        path = _os.path.abspath(_os.path.dirname(__file__))
+        ipyrad_path = _os.path.dirname(path)
 
     ## find bin directory
     ipyrad_path = _os.path.dirname(path)

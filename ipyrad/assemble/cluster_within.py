@@ -16,6 +16,7 @@ from __future__ import print_function
 # pylint: disable=R0912
 
 import os
+import io
 import gzip
 import glob
 import itertools
@@ -49,12 +50,22 @@ def get_quick_depths(data, sample):
     ## func can be used in step 4 and that can occur after merging
     ## assemblies after step3, and if we then referenced by data.dirs.clusts
     ## the path would be broken.
-    if sample.files.clusters:
-        pass
-    else:
-        ## set cluster file handles
-        sample.files.clusters = os.path.join(
-            data.dirs.clusts, sample.name+".clustS.gz")
+    ##
+    ## If branching at step 3 to test different clust thresholds, the
+    ## branched samples will retain the samples.files.clusters of the
+    ## parent (which have the clust_threshold value of the parent), so
+    ## it will look like nothing has changed. If we call this func
+    ## from step 3 then it indicates we are in a branch and should
+    ## reset the sample.files.clusters handle to point to the correct
+    ## data.dirs.clusts directory. See issue #229.
+    ## Easier to just always trust that samples.files.clusters is right,
+    ## no matter what step?
+    #if sample.files.clusters and not sample.stats.state == 3:
+    #    pass
+    #else:
+    #    ## set cluster file handles
+    sample.files.clusters = os.path.join(
+         data.dirs.clusts, sample.name+".clustS.gz")
 
     ## get new clustered loci
     fclust = data.samples[sample.name].files.clusters
@@ -153,7 +164,9 @@ def sample_cleanup(data, sample):
                 ## Handle clusters_hidepth == NaN
                 sample.stats_dfs.s3["clusters_hidepth"] = 0
             sample.stats_dfs.s3["avg_depth_total"] = depths.mean()
+            LOGGER.debug("total depth {}".format(sample.stats_dfs.s3["avg_depth_total"]))
             sample.stats_dfs.s3["avg_depth_mj"] = keepmj.mean()
+            LOGGER.debug("mj depth {}".format(sample.stats_dfs.s3["avg_depth_mj"]))
             sample.stats_dfs.s3["avg_depth_stat"] = keepstat.mean()
             sample.stats_dfs.s3["sd_depth_total"] = depths.std()
             sample.stats_dfs.s3["sd_depth_mj"] = keepmj.std()
@@ -528,6 +541,7 @@ def build_clusters(data, sample, maxindels):
             ## grab the next line
             try:
                 hit, seed, _, ind, ori, _ = isort.next().strip().split()
+                LOGGER.debug(">{} {} {}".format(hit, seed, ori, seq))
             except StopIteration:
                 break
 
@@ -1067,7 +1081,7 @@ def derep_and_sort(data, infile, outfile, nthreads):
             "--sizeout", 
             "--relabel_md5",
             ]
-    LOGGER.info("derep cmd %s", cmd)
+    LOGGER.info("derep cmd %s", " ".join(cmd))
 
     ## run vsearch
     proc1 = sps.Popen(catcmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
@@ -1089,7 +1103,7 @@ def data_cleanup(data):
     """ cleanup / statswriting function for Assembly obj """
     data.stats_dfs.s3 = data._build_stat("s3")
     data.stats_files.s3 = os.path.join(data.dirs.clusts, "s3_cluster_stats.txt")
-    with open(data.stats_files.s3, 'w') as outfile:
+    with io.open(data.stats_files.s3, 'w') as outfile:
         data.stats_dfs.s3.to_string(
             buf=outfile,
             formatters={
@@ -1412,7 +1426,7 @@ def cleanup_and_die(async_results):
 
 
 
-def run(data, samples, noreverse, maxindels, force, preview, ipyclient):
+def run(data, samples, noreverse, maxindels, force, ipyclient):
     """ run the major functions for clustering within samples """
 
     ## list of samples to submit to queue
@@ -1562,9 +1576,7 @@ JOBORDER = {
 
 
 NO_UHITS_ERROR = """\
-    No clusters (.utemp hits) found for {}. If you are running preview mode and
-    the size of the truncated input file isn't big enough try increasing the
-    size of <your_assembly>._hackersonly[\"preview_truncate_length\"
+    No clusters (.utemp hits) found for {}.
     """
 
 

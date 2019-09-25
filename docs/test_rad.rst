@@ -193,7 +193,6 @@ Assembly object name.
 .. code:: python
 
     ## run step 3 to cluster reads within samples using vsearch
-    #data1.step3(['2E_0'], force=True, preview=True)  # ["2H_0", "2G_0"])
     data1.step3(force=True)
     ## print the results
     print data1.stats.head()
@@ -275,7 +274,7 @@ Step 4: Joint estimation of heterozygosity and error rate
 .. code:: python
 
     import ipyrad as ip
-    data1 = ip.load_assembly("test_rad/data1")
+    data1 = ip.load_json("test_rad/data1.json")
 
 .. code:: python
 
@@ -348,5 +347,5 @@ the ``save`` command.
     #ip.save_assembly("data1.p")
     
     ## load assembly object
-    #data = ip.load_assembly("data1.p")
+    #data = ip.load_json("data1.p.json")
     #print data.name

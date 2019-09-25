@@ -1,11 +1,30 @@
 
 .. _faq:  
+Frequenty Asked Questions
+=========================
 
+This is a collection of papers related to various aspects of RADSeq assembly and analysis
+Just because we include a paper here doesn't mean we endorse the results, only that we think
+it's worth considering. Where necessary, we highlight specific papers and interesting/important 
+results below.
 
-FAQ
-===
+* Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
+    Especially useful. TL;DR Don't over-filter missing data. In practice this means allowing for more permissive `min_samples_locus` parameter settings. Sometimes people have a tendency to treat RAD data as if it were a giant multi-locus Sanger dataset. They want to see a "complete data matrix", so use very high `min_samples_locus` settings in order to reduce the amount of missing data. This is bad, and this paper shows us why.
+* Shafer et al. 2016 - `Bioinformatic processing of RAD-seq data dramatically impacts downstream population genetic inference <https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12700>`__
+* Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
+    Don't over-filter your data. Filtering too strictly on MAF reduces power to detect population structure. Given that low-frequency variants retain much of the signal of recent history this result seems sensible.
+* Crotti et al 2019 - `Causes and analytical impacts of missing data in RADseq phylogenetics: Insights from an African frog (Afrixalus) <https://onlinelibrary.wiley.com/doi/abs/10.1111/zsc.12335>`__
+    Don't over-filter your data.
+* Euclide et al 2019 - `Attack of the PCR clones: Rates of clonality have little effect on RAD‐seq genotype calls <https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13087>`__
+    "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
+* Benjelloun et al 2019 - `An evaluation of sequencing coverage and genotyping strategies to assess neutral and adaptive diversity <https://sci-hub.tw/https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13070>`__
+    "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
 
-* wat
+Dealing with Missing Data Downstream
+------------------------------------
+
+* Ferretti et al 2012 - `Neutrality Tests for Sequences with Missing Data <http://www.genetics.org/content/genetics/191/4/1397.full.pdf>`__
+    "In this article we presented a general framework for estimators of variability and neutrality tests based on the frequency spectrum that take into account missing data in a natural way." Cool paper, however no code is provided to implement this.
 
 Troubleshooting Procedures
 ==========================
@@ -216,17 +235,17 @@ it's probably because you are on a cluster and it's using an old version of GLIB
 fix this you need to recompile whatever binary isn't working on your crappy old machine.
 Easiest way to do this is a conda local build and install. Using `bpp` as the example:
 
-```
-git clone https://github.com/dereneaton/ipyrad.git
-conda build ipyrad/conda.recipe/bpp/
-conda install --use-local bpp
-```
+.. parsed-literal:: 
+
+    git clone https://github.com/dereneaton/ipyrad.git
+    conda build ipyrad/conda.recipe/bpp/
+    conda install --use-local bpp
 
 How do I interpret the `distribution of SNPs (var and pis) per locus` in the *_stats.txt output file
 ----------------------------------------------------------------------------------------------------
 Here is an example of the first few lines of this block in the stats file:
 
-.. code-block:: 
+.. parsed-literal:: 
 
     bash    var  sum_var    pis  sum_pis
     0    661        0  10090        0
@@ -272,3 +291,83 @@ This can actually be caused by a couple of different problems that all result in
 
 **pop_assign_file** A third way you can get this error is related to the previous one. The last line of the pop_assign_file is used for specifying min_sample per population for writing a locus. If you mis-specify the values for the pops in this line then it's possible to filter out all your data and thus obtain the above error.
 
+How do I fix this error: "OSError: /lib64/libpthread.so.0: version `GLIBC_2.12' not found"?
+-------------------------------------------------------------------------------------------
+This error crops up if you are running ipyrad on a cluster that has an older version of GLIBC. The way to work around this is to install specific versions of some of the requirements that are compiled for the older version. Thanks to Edgardo M. Ortiz for this solution.
+
+
+First clean up your current environment:
+
+.. code-block:: bash
+
+    module unload python2
+    rm -rf miniconda2 .conda
+
+    bash Miniconda2-latest-Linux-x86_64.sh
+    source ~/.bashrc
+
+then install the old version of llvmlite (and optionally the old versions of pyzmq and ipyparallel if necessary):
+
+.. code-block:: bash
+
+    conda install llvmlite=0.22
+
+    conda install pyzmq=16
+    conda install ipyparallel=5.2
+
+and finally reinstall ipyrad:
+
+.. code-block:: bash
+    conda install -c ipyrad ipyrad
+    conda install toytree -c eaton-lab
+
+optional:
+
+.. code-block:: bash
+    conda clean --all
+
+Why am i getting the 'ERROR   R1 and R2 files are not the same length.' during step 1?
+--------------------------------------------------------------------------------------
+This is almost certainly a disk space issue. Please be sure you have _plenty_ of disk space on whatever drive you're doing your assembly on. Running out of disk can cause weird problems that seem to defy logic, and that are a headache to debug (like this one). Check your disk space: `df -h`
+
+Why does the number of pis recovered in the output stats change when I change the value of `max_snp_locus`?
+-----------------------------------------------------------------------------------------------------------
+While it does seem that the # of pis shouldn't change under varying `max_snp_locus` thresholds, it is in fact not true. This is because the setting is for max __SNP__ per locus, not max __PIS__. So for example if you have `max_snp_locus` set to 5, and you have a locus with 5 singleton snps and one doubleton snp (which is parsimony informative), then this locus would be filtered out. However if you set `max_snp_locus` to 10, then this locus would be included and the 'pis' counter would be incremented by 1. In this way you can see that the number of PIS recovered will change because of variation in this parameter setting.
+
+Can ipyrad assemble MIG-seq data?
+---------------------------------
+MIG-seq (multiplexed ISSR genotyping by sequencing) is a method proposed by Suyama and Matsuki (2015), which involves targeting variable regions between simple sequence repeats (SSR). The method produces data that is somewhat analogous to ddRAD, in that you have the variable region which is flanked on either side by sequences that are known to be repeated randomly and at some appreciable frequency throughout the genome. Check out the `figure from the manuscript <https://www.nature.com/articles/srep16963/figures/1>`__. Anyway.... yes, ipyrad can assemble this kind of data, though there are some tricks. Primarily we recommend higher values of `filter_min_trim_len` and `clust_threshold`. If sequenced on a desktop NGS platform (Ion Torrent PGM, MiSeq) it also helps to reduce both `mindepth` params to recover more clusters.
+
+Why are my ipcluster engines dying silently on cluster compute notes?
+---------------------------------------------------------------------
+This is a nasty bug that's bitten me more than once. If you are having trouble with cluster engines running jobs and then dying silently it may be because the cluster is headless and the engines are trying to interact with a GUI backend. This causes nasty things to happen. Here are a couple links that provide workable solutions:
+
+https://groups.google.com/a/continuum.io/forum/#!topic/anaconda/o0pnE9PEqA0
+
+https://github.com/ipython/ipyparallel/issues/213
+
+Why are my ipyrad.analysis.structure runs taking so long/not doing anything?
+----------------------------------------------------------------------------
+See the previous FAQ answer. It's typical for HPC cluster systems to be configured without a GUI backend. Unfortunately ipyparallel and this particular GUI-less environment have a hard time interacting (for complicated reasons). We have derived a workaround that allows the parallelization to function. You should execute the following commands in a terminal on your cluster head node.
+
+VERY IMPORTANT: This environment variable needs to be set in both .bashrc and .profile so that it is picked up when you run ipyparallel in either the head node of the cluster or on compute nodes.
+
+.. code-block:: bash
+    $ echo "# Prevent ipyparallel engines from dying in a headless environment" >> ~/.bashrc
+    $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.bashrc
+    $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.profile
+    $ source ~/.bashrc
+    $ source ~/.profile
+    $ env | grep QT
+
+Why is my structure analysis crashing when it looks like it should be working?
+------------------------------------------------------------------------------
+When running structure, specifically in the `get_clumpp_table` call, you might be told that "No files ready for XXX-K-2 in </your/structure/folder>", when in fact there are files ready. Well it turns out that CLUMPP has a 100 character file name limit, and it'll crash with names longer than this. The ipyrad.analysis.structure functions use absolute paths to specify file names, so it's not hard to see how this 100 character limit could be violated. Try moving your structure analysis to a place higher in the file system hierarchy. Baffling!
+
+Problems with SRATools analysis package
+---------------------------------------
+Occasionlly with the sratools package you might have some trouble with downloading. It could look something like this `Exception in run() - index 29 is out of bounds for axis 0 with size 1`. This is a problem with your `esearch` install, which does not have https support built in. You can verify with with the command `esearch -db sra -query SRP021469`, which should give you an https protocol support error. You can easily fix this by installing `ssleay`: `conda install -c bioconda perl-net-ssleay`. Thanks to @ksil91.
+
+ValueError in step 7
+--------------------
+During step 7 if you see something like this `error in filter_stacks on chunk 0: ValueError(zero-size array to reduction operation minimum which has no identity)` it means that one of your filtering parameters is filtering out all the loci. This is bad, obviously, and it's probably because one of your filtering parameters is too strict. Take a look at a couple of the samples in the *_consens directory to make sure they are reasonable, then try adjusting your filtering parameters based on how the consensus reads look.
