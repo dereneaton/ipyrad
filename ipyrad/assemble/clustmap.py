@@ -46,7 +46,6 @@ class Step3:
         self.tune_threads()
 
 
-
     def run(self):
         "Run the assembly functions for this step"
 
@@ -257,6 +256,7 @@ class Step3:
         self.data.dirs.clusts = os.path.join(
             pdir, "{}_clust_{}"
             .format(self.data.name, self.data.params.clust_threshold))
+
         if not os.path.exists(self.data.dirs.clusts):
             os.mkdir(self.data.dirs.clusts)
 
@@ -409,6 +409,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
+
         self.data._print("")
         for job in basyncs:
             if not basyncs[job].successful():
@@ -440,6 +441,7 @@ class Step3:
                 handle = os.path.join(
                     self.data.tmpdir,
                     "{}_chunk_{}.ali".format(sample.name, idx))
+
                 rasync = self.lbview.apply(
                     align_and_parse,
                     *(handle, self.maxindels, self.gbs)
@@ -466,6 +468,7 @@ class Step3:
             time.sleep(0.1)
             if len(ready) == sum(ready):
                 break
+
         self.data._print("")
         for job in allasyncs:
             if not job.successful():
@@ -1061,7 +1064,6 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     # return 0 if file not read for some reason...
     except IOError:
         return 0
-
 
     ## count discarded clusters for printing to stats later
     highindels = 0
