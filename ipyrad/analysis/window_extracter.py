@@ -90,9 +90,9 @@ class WindowExtracter(object):
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
+        # self.minmap = minmap
         self.imap = imap
         self.quiet = quiet
-        # self.minmap = minmap
 
         # file to write to
         if not os.path.exists(self.workdir):
