@@ -24,7 +24,7 @@ copyright = '2019, Deren Eaton & Isaac Overcast'
 author = 'Deren Eaton & Isaac Overcast'
 
 # The short X.Y version
-version = '0.9.11'
+version = '1.0.0'
 # The full version, including alpha/beta/rc tags
 release = ''
 

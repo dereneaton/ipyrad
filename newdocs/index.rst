@@ -23,5 +23,8 @@ Documentation
    7-outline.rst
    8-branching.rst
    9-tutorials.rst
-   cookbook/index
+   
+   API-assembly/index.rst
+   API-analysis/index.rst
+
 
