@@ -9,7 +9,8 @@ API: ipyrad analysis tools
 
 .. toctree::
    :maxdepth: 1
-
+   :titlesonly:
+   
    cookbook-treemix.ipynb
    cookbook-pca.ipynb
    cookbook-tetrad.ipynb

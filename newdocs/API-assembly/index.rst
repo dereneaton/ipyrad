@@ -9,6 +9,7 @@ API: ipyrad assembly workflow
 
 .. toctree::
    :maxdepth: 1
+   :titlesonly:
 
    cookbook-empirical-API-1-pedicularis.ipynb
    cookbook-demultiplex-i7.ipynb
