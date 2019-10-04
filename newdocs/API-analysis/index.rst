@@ -21,3 +21,6 @@ API: ipyrad-analysis tools
    cookbook-structure.ipynb
    cookbook-mrbayes.ipynb  
    cookbook-sratools.ipynb
+   cookbook-abba-baba.ipynb
+   cookbook-bucky.ipynb
+   cookbook-bpp.ipynb
