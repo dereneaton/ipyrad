@@ -4,10 +4,11 @@
    contain the root `toctree` directive.
 
 
-API: ipyrad-analysis tools
-==========================
+API: ipyrad assembly workflow 
+=============================
 
 .. toctree::
    :maxdepth: 1
 
-   cookbook-demultiplex-i7s.ipynb
+   cookbook-empirical-API-1-pedicularis.ipynb
+   cookbook-demultiplex-i7.ipynb

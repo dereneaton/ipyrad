@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 
-API: ipyrad-analysis tools
+API: ipyrad analysis tools
 ==========================
 
 .. toctree::
