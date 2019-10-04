@@ -13,7 +13,7 @@ ipyrad is available for Python >=2.7 and >=3.5.
 
 .. code:: bash
 
-	conda install ipyrad -c bioconda
+    conda install ipyrad -c bioconda
 
 
 Recommended additional packages
@@ -22,7 +22,7 @@ The ipyrad API provides a powerful interface to using ipyrad for assembling and 
 
 .. code:: bash
 
-	conda install notebook -c conda-forge
+    conda install notebook -c conda-forge
     conda install mpi4py -c conda-forge
 
 
@@ -31,33 +31,33 @@ Alternative: install from GitHub
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
 
 .. code::bash
-	
-	# install external requirements first (e.g., using conda)
-	conda install vsearch muscle bedtools bwa samtools pysam cutadapt -c bioconda
+    
+    # install external requirements first (e.g., using conda)
+    conda install vsearch muscle bedtools bwa samtools pysam cutadapt -c bioconda
     conda install mpi4py notebook -c conda-forge
 
-	# clone the master branch from repo
-	git clone -b master https://github.com/dereneaton/ipyrad
+    # clone the master branch from repo
+    git clone -b master https://github.com/dereneaton/ipyrad
 
-	# cd into source and install w/ pip (notice final . in command)
-	cd ./ipyrad
-	pip install -e .
+    # cd into source and install w/ pip (notice final . in command)
+    cd ./ipyrad
+    pip install -e .
 
 
 Details: dependencies:
 ----------------------
 The following Python packages are installed as dependencies of ipyrad:
 
-	- numpy
-	- scipy
-	- pandas
-	- h5py
+    - numpy
+    - scipy
+    - pandas
+    - h5py
     - mpi4py
-	- numba
-	- ipyparallel
-	- pysam
-	- cutadapt
-	- requests
+    - numba
+    - ipyparallel
+    - pysam
+    - cutadapt
+    - requests
 
 
 .. _longform:
