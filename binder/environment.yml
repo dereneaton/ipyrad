@@ -1,0 +1,19 @@
+name: ipyrad
+channels: 
+  - bioconda
+  - eaton-lab
+  - conda-forge
+  - ipyrad
+dependencies:
+  - python>=3
+  - toytree
+  - ipyrad 
+  - raxml
+  - structure
+  - clumpp
+  - tetrad 
+  - scikit-learn 
+  - bcftools
+  - htslib
+  - bpp
+  - treemix
