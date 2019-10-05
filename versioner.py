@@ -31,7 +31,7 @@ with open(initfile, 'r') as infile:
 print("last version - {}".format(prev_version))
 
 # Update docs/releasenotes.rst to include commit history for this version
-release_file = "docs/releasenotes.rst"
+release_file = "newdocs/releasenotes.rst"
 
 # Get all commits since last tag
 # git log --pretty=oneline tagA..
@@ -40,7 +40,7 @@ new_commits = subprocess.check_output(cmd.split())
 
 # Split off just the first element, cuz we don't care about the
 # commit tag
-commit_lines = [x.split(" ", 1) for x in new_commits.split("\n")]
+commit_lines = [x.split(b" ", 1) for x in new_commits.split(b"\n")]
 
 checkfor = "Merge branch 'master' of https://github.com/dereneaton/ipyrad"
 # Write updates to releasenotes.rst
@@ -83,9 +83,9 @@ try:
 except Exception as e:
     print("Something broke - {}".format(e))
 
-print("Push new version of conda installer")
-
-try:
-    subprocess.call(["conda", "build", "conda.recipe/ipyrad"])
-except Exception as e:
-    print("something broke - {}".format(e))
+## Bioconda now handles the coda packaging
+## print("Push new version of conda installer")
+#try:
+#    subprocess.call(["conda", "build", "conda.recipe/ipyrad"])
+#except Exception as e:
+#    print("something broke - {}".format(e))
