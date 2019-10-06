@@ -107,11 +107,11 @@ pinfo = OrderedDict([
     complete reference sequence, including all chromosomes, scaffolds, and
     contigs in one huge file (most reference sequences available will be
     in this format, especially non-model references). The first time you 
-    attempt to use this sequence it will be indexed (we are using smalt 
+    attempt to use this sequence it will be indexed (we are using bwa
     for reference mapping). This is a time intensive process so expect the 
     first run to take some time, certainly more than ten minutes, but less 
     than an hour. If you desire to index the reference yourself you can do 
-    this, but best not to unless you really care about smalt indexing 
+    this, but best not to unless you really care about bwa indexing 
     settings. We chose conservative defaults that have worked well for us 
     on other projects. 
 
