@@ -537,7 +537,6 @@ HEADER = """
 EPILOG = """
   * Example command-line usage: 
     ipyrad -n data                       ## create new file called params-data.txt 
-    ipyrad -p params-data.txt            ## run ipyrad with settings in params file
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
