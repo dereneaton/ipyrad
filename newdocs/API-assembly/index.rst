@@ -3,12 +3,11 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-
+=============================
 API: ipyrad assembly workflow 
 =============================
 
 .. toctree::
-   :maxdepth: 1
    :titlesonly:
 
    cookbook-empirical-API-1-pedicularis.ipynb

@@ -3,16 +3,17 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-
+=================
 Welcome to ipyrad
-==================
+=================
 
 
 Documentation
 --------------
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth:1
+   :titlesonly:
 
    1-ethos.rst
    2-try-it.rst

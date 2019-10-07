@@ -4,24 +4,24 @@
    contain the root `toctree` directive.
 
 
+==========================
 API: ipyrad analysis tools
 ==========================
 
 .. toctree::
-   :maxdepth: 1
    :titlesonly:
-   
-   cookbook-treemix.ipynb
-   cookbook-pca.ipynb
-   cookbook-tetrad.ipynb
-   cookbook-treeslider.ipynb
-   cookbook-treeslider-downstream.ipynb     
-   cookbook-raxml.ipynb
-   cookbook-window_extracter.ipynb
-   cookbook-genetic-distance.ipynb
-   cookbook-structure.ipynb
-   cookbook-mrbayes.ipynb  
-   cookbook-sratools.ipynb
-   cookbook-abba-baba.ipynb
-   cookbook-bucky.ipynb
-   cookbook-bpp.ipynb
+
+   ipa.treemix <cookbook-treemix.ipynb>
+   ipa.pca <cookbook-pca.ipynb>
+   ipa.raxml <cookbook-raxml.ipynb>
+   ipa.tetrad <cookbook-tetrad.ipynb>
+   ipa.structure <cookbook-structure.ipynb>
+   ipa.sratools <cookbook-sratools.ipynb>
+   ipa.baba <cookbook-abba-baba.ipynb>
+   ipa.bucky <cookbook-bucky.ipynb>
+   ipa.bpp <cookbook-bpp.ipynb>
+   ipa.window_extacter <cookbook-window_extracter.ipynb>
+   ipa.treeslider 1 <cookbook-treeslider.ipynb>
+   ipa.treeslider 2 <cookbook-treeslider-downstream.ipynb>
+   ipa.distance <cookbook-genetic-distance.ipynb>
+   ipa.mrbayes <cookbook-mrbayes.ipynb>
