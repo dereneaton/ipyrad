@@ -16,5 +16,5 @@ dependencies:
   - bcftools
   - htslib
   - bpp
-  - treemix
-  - fastqc
+#  - fastqc
+#  - treemix   # forces openblas on numpy/scipy
