@@ -1,5 +1,6 @@
 .. _anaconda: http://docs.continuum.io/anaconda/install.html
 .. _bedtools: http://bedtools.readthedocs.org/en/latest/
+.. _bwa: http://bio-bwa.sourceforge.net/
 .. _conda: http://docs.continuum.io/conda/
 .. _Cython: http://www.cython.org
 .. _eatonAndRee: http://sysbio.oxfordjournals.org/content/62/5/689.full
@@ -19,7 +20,6 @@
 .. _pyrad: https://github.com/dereneaton/pyrad  
 .. _samtools: http://www.htslib.org/
 .. _Scipy: https://www.scipy.org/
-.. _smalt: http://www.sanger.ac.uk/science/tools/smalt-0
 .. _Sphinx: http://sphinx-doc.org/
 .. _Toyplot: https://github.com/sandialabs/toyplot
 .. _vsearch: https://github.com/torognes/vsearch

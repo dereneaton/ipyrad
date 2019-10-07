@@ -144,7 +144,7 @@ Step 3 first dereplicates the sequences from step 2, recording the number of
 times each unique read is observed. If the data are paired-end, it then uses
 vsearch_ to merge paired reads which overlap. The resulting data are 
 then either de novo clustered (using vsearch_) or mapped to a reference 
-genome (using smalt_ and bedtools_), depending on the selected assembly method.
+genome (using bwa_ and bedtools_), depending on the selected assembly method.
 In either case, reads are matched together on the basis of sequence similarity
 and the resulting clusters are aligned using muscle_. 
 
