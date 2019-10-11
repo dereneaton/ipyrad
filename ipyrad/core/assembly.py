@@ -308,7 +308,7 @@ class Assembly(object):
         self.barcodes = {}
         for key, value in backup.items():
             key = "".join([
-                i.replace(i, "_") if i in BADCHARS else i for i in key
+                i.replace(i, "_") if i in BADCHARS else i for i in str(key)
             ])
             self.barcodes[key] = value
 
