@@ -731,6 +731,9 @@ class Params(object):
             if fullpath.endswith(".gz"):
                 raise IPyradError("reference sequence file must be decompressed.")
             self._reference_as_filter = fullpath
+            if self._reference_as_filter == self._reference_sequence:
+                print("Warning: reference_sequence should not be "
+                      "same as reference_as_filter")
         else:
             self._reference_as_filter = ""
 
