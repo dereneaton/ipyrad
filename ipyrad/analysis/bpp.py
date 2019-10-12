@@ -16,7 +16,9 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-from ipyrad.analysis.utils import IPyradError, Params
+
+from .utils import progressbar, Params
+from ipyrad.assemble.utils import IPyradError
 
 try:
     import toytree
@@ -147,8 +149,9 @@ class Bpp(object):
 
     """    
 
-    ## init object for params
-    def __init__(self,
+    # init object for params
+    def __init__(
+        self,
         name,
         data=None,
         workdir="analysis-bpp", 
@@ -158,7 +161,7 @@ class Bpp(object):
         *args, 
         **kwargs):
 
-        ## results files
+        # results files
         self.files = Params()
         self.files.mcmcfiles = []
         self.files.outfiles = []
@@ -204,7 +207,7 @@ class Bpp(object):
         # check that toytree is installed
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
-        
+
         # check that bpp is installed and in path            
         for binary in [self._kwargs["binary"]]:
             cmd = ['which', binary]
@@ -275,7 +278,7 @@ class Bpp(object):
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
-        
+
         ## load existing results files for this named bpp object if they exist
         if self.load_existing_results:
             self._load_existing_results(self.name, workdir=self.workdir)
@@ -373,7 +376,7 @@ class Bpp(object):
                 #if randomize_order:
                 self._write_seqfile(randomize_order=randomize_order)
                 ctlfile = self._write_ctlfile()
-                
+
                 ## submit to engines
                 rasync = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, is_alg00))
                 self.asyncs.append(rasync)

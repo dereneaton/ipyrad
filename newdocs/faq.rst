@@ -3,29 +3,6 @@
 Frequenty Asked Questions
 =========================
 
-This is a collection of papers related to various aspects of RADSeq assembly and analysis
-Just because we include a paper here doesn't mean we endorse the results, only that we think
-it's worth considering. Where necessary, we highlight specific papers and interesting/important 
-results below.
-
-* Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
-    Especially useful. TL;DR Don't over-filter missing data. In practice this means allowing for more permissive `min_samples_locus` parameter settings. Sometimes people have a tendency to treat RAD data as if it were a giant multi-locus Sanger dataset. They want to see a "complete data matrix", so use very high `min_samples_locus` settings in order to reduce the amount of missing data. This is bad, and this paper shows us why.
-* Shafer et al. 2016 - `Bioinformatic processing of RAD-seq data dramatically impacts downstream population genetic inference <https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12700>`__
-* Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
-    Don't over-filter your data. Filtering too strictly on MAF reduces power to detect population structure. Given that low-frequency variants retain much of the signal of recent history this result seems sensible.
-* Crotti et al 2019 - `Causes and analytical impacts of missing data in RADseq phylogenetics: Insights from an African frog (Afrixalus) <https://onlinelibrary.wiley.com/doi/abs/10.1111/zsc.12335>`__
-    Don't over-filter your data.
-* Euclide et al 2019 - `Attack of the PCR clones: Rates of clonality have little effect on RAD‐seq genotype calls <https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13087>`__
-    "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
-* Benjelloun et al 2019 - `An evaluation of sequencing coverage and genotyping strategies to assess neutral and adaptive diversity <https://sci-hub.tw/https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13070>`__
-    "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
-
-Dealing with Missing Data Downstream
-------------------------------------
-
-* Ferretti et al 2012 - `Neutrality Tests for Sequences with Missing Data <http://www.genetics.org/content/genetics/191/4/1397.full.pdf>`__
-    "In this article we presented a general framework for estimators of variability and neutrality tests based on the frequency spectrum that take into account missing data in a natural way." Cool paper, however no code is provided to implement this.
-
 Troubleshooting Procedures
 ==========================
 
@@ -370,4 +347,29 @@ Occasionlly with the sratools package you might have some trouble with downloadi
 
 ValueError in step 7
 --------------------
-During step 7 if you see something like this `error in filter_stacks on chunk 0: ValueError(zero-size array to reduction operation minimum which has no identity)` it means that one of your filtering parameters is filtering out all the loci. This is bad, obviously, and it's probably because one of your filtering parameters is too strict. Take a look at a couple of the samples in the *_consens directory to make sure they are reasonable, then try adjusting your filtering parameters based on how the consensus reads look.
+During step 7 if you see something like this `error in filter_stacks on chunk 0: ValueError(zero-size array to reduction operation minimum which has no identity)` it means that one of your filtering parameters is filtering out all the loci. This is bad, obviously, and it's probably because one of your filtering parameters is too strict. Take a look at a couple of the samples in the `*_consens` directory to make sure they are reasonable, then try adjusting your filtering parameters based on how the consensus reads look.
+
+RADSeq related papers
+---------------------
+
+This is a collection of papers related to various aspects of RADSeq assembly and analysis
+Just because we include a paper here doesn't mean we endorse the results, only that we think
+it's worth considering. Where necessary, we highlight specific papers and interesting/important 
+results below.
+
+* Ferretti et al 2012 - `Neutrality Tests for Sequences with Missing Data <http://www.genetics.org/content/genetics/191/4/1397.full.pdf>`__
+    "In this article we presented a general framework for estimators of variability and neutrality tests based on the frequency spectrum that take into account missing data in a natural way." Cool paper, however no code is provided to implement this.
+* Huang & Knowles 2016 - `Unforeseen Consequences of Excluding Missing Data from Next-Generation Sequences: Simulation Study of RAD Sequences <https://academic.oup.com/sysbio/article/65/3/357/2468879>`__
+    Especially useful. TL;DR Don't over-filter missing data. In practice this means allowing for more permissive `min_samples_locus` parameter settings. Sometimes people have a tendency to treat RAD data as if it were a giant multi-locus Sanger dataset. They want to see a "complete data matrix", so use very high `min_samples_locus` settings in order to reduce the amount of missing data. This is bad, and this paper shows us why.
+* Shafer et al. 2016 - `Bioinformatic processing of RAD-seq data dramatically impacts downstream population genetic inference <https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.12700>`__
+* Linck & Battey 2018 - `Minor allele frequency thresholds dramatically affect population structure inference with genomic datasets <https://www.biorxiv.org/content/biorxiv/early/2018/10/21/188623.full.pdf>`__
+    Don't over-filter your data. Filtering too strictly on MAF reduces power to detect population structure. Given that low-frequency variants retain much of the signal of recent history this result seems sensible.
+* Crotti et al 2019 - `Causes and analytical impacts of missing data in RADseq phylogenetics: Insights from an African frog (Afrixalus) <https://onlinelibrary.wiley.com/doi/abs/10.1111/zsc.12335>`__
+    Don't over-filter your data.
+* Euclide et al 2019 - `Attack of the PCR clones: Rates of clonality have little effect on RAD‐seq genotype calls <https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13087>`__
+    "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
+* Benjelloun et al 2019 - `An evaluation of sequencing coverage and genotyping strategies to assess neutral and adaptive diversity <https://sci-hub.tw/https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13070>`__
+    "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
+* McCartney‐Melstad et ak 2019 - `An empirical pipeline for choosing the optimal clustering
+threshold in RADseq studies <https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13029>`__
+    Similar in spirit to the Mastretta‐Yanes et al. (2015) paper that everyone currently cites.
