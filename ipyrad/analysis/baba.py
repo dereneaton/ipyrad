@@ -54,14 +54,14 @@ class Baba:
         data can be entered as a Numpy array of float allele frequencies 
         with dimension (nloci, 4 or 5, maxlen). See simulation example 
         in the docs.
-        
+
     tests : dict or list of dicts
         A dictionary mapping Sample names to test taxon names, e.g., 
         test = {'p1': ['a', 'b'], 'p2': ['c'], 'p3': ['e'], 'p4': ['f']}.
         Four taxon tests should have p1-p4 whereas five taxon tests will 
         used if dict keys are p1-p5. Other key names will raise an error. 
         The highest value name (e.g., p5) is the outgroup. 
-    
+
     newick: str
         ...
 
@@ -74,7 +74,8 @@ class Baba:
     plot()
         ...
     """
-    def __init__(self, 
+    def __init__(
+        self, 
         data=None,
         imap=None,
         minmap=1,
@@ -110,7 +111,7 @@ class Baba:
         # results storage
         self.results_table = None
         self.results_boots = None
-       
+
         # cluster attributes
         self.ipcluster = {
             "cluster_id": "", 
@@ -172,7 +173,8 @@ class Baba:
 
 
 
-    def generate_tests_from_tree(self, 
+    def generate_tests_from_tree(
+        self, 
         constraint_dict=None, 
         constraint_exact=False, 
         verbose=True):
@@ -194,7 +196,7 @@ class Baba:
             applied to [p1, p2, p3, p4]. For example, if the constraint_dict is
             {"p1": sample1, "p2": sample2, "p3": sample3, "p4": [sample4, sample5]},
             then with constraint_exact==False you get:
-            
+
             sample1, sample2, sample3, sample4
             sample1, sample2, sample3, sample5
             sample1, sample2, sample3, [sample4, sample5]
@@ -214,7 +216,8 @@ class Baba:
 
 
 
-    def plot(self, 
+    def plot(
+        self, 
         show_test_labels=True, 
         use_edge_lengths=False,         
         collapse_outgroup=False, 
@@ -226,7 +229,7 @@ class Baba:
         **kwargs):
         """ 
         Draw a multi-panel figure with tree, tests, and results 
-        
+
         Parameters:
         -----------
         height: int
@@ -341,6 +344,7 @@ class Baba:
             idx += 1
 
 
+
 def write_tmp_h5(baba):
     "Reduce VCF to temp h5 that jobs will slice from"
 
@@ -361,7 +365,7 @@ def write_tmp_h5(baba):
     # reduce geno calls to only genos
     for column in df.columns[3:]:
         df[column] = df[column].apply(lambda x: x.split(":")[0])
-    
+
     # set missing data to NaN
     df.iloc[:, 3:] = df.iloc[:, 3:].applymap(sumto)
 
@@ -373,8 +377,6 @@ def write_tmp_h5(baba):
 
         # save loc as int 
         io5["LOC"] = [4, 4, 10]
-    
-    
 
 
 
@@ -384,7 +386,7 @@ def sumto(value):
         return np.nan
     else:
         return sum((int(i) for i in value.split("/") if i in ("0", "1"))) / 2.
-    
+
 
 def batch(baba, ipyclient=None):
     """
@@ -471,17 +473,17 @@ def batch(baba, ipyclient=None):
             ## check for failures
             for job in keys:
                 if not asyncs[job].successful():
-                    raise IPyradWarningExit(\
+                    raise IPyradError(
                         " error: {}: {}".format(job, asyncs[job].exception()))
                 ## enter results for successful jobs
                 else:
                     _res, _bot = asyncs[job].result()
-                    
+
                     ## store D4 results
                     if _res.shape[0] == 1:
                         resarr[job] = _res.T.as_matrix()[:, 0]
                         bootsarr[job] = _bot
-                    
+
                     ## or store D5 results                        
                     else:   
                         paneldict[job] = _res.T
@@ -641,11 +643,6 @@ def loci_to_arr(self, loci):
 
 def vcf_to_arr(self, loci):
     "Converts VCF SNP data to binary array where outgroup is 0"
-
-
-
-
-
 
 
 
