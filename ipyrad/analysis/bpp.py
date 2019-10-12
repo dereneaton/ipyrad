@@ -16,7 +16,7 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-from ipyrad.assemble.utils import IPyradError, Params
+from ipyrad.analysis.utils import IPyradError, Params
 
 try:
     import toytree
