@@ -79,6 +79,7 @@ indicate taxa being assembled.
 This will print the message:
 
 .. code:: parsed-literal
+
   New file 'params-pedicularis.txt' created in /home/deren/Documents/ipyrad/sandbox
 
 
