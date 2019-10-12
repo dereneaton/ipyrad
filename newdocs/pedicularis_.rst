@@ -33,11 +33,37 @@ already exist. The compressed file size is approximately 1.1GB.
 
 .. code:: bash
 
-    # first we need to download an additional tool
-    >>> conda install sra-tools -c bioconda
+  # first we need to download an additional tool
+  >>> conda install sra-tools -c bioconda
 
-    # then, download the fastq data from the SRA database
-    >>> ipyrad --download SRP021469 example_empirical_data/
+  # then, use ipyrad to download the fastq data from the SRA database
+  >>> ipyrad --download SRP021469 example_empirical_data/
+
+
+The `--download` function will print the following output:
+
+.. code:: parsed-literal
+
+  Fetching project data...
+             Run    spots  mates                ScientificName              SampleName
+  0   SRR1754715   696994      0           Pedicularis superba           29154_superba
+  1   SRR1754720  1452316      0       Pedicularis thamnophila            30556_thamno
+  2   SRR1754730  1253109      0      Pedicularis cyathophylla      30686_cyathophylla
+  3   SRR1754729   964244      0       Pedicularis przewalskii       32082_przewalskii
+  4   SRR1754728   636625      0       Pedicularis thamnophila            33413_thamno
+  5   SRR1754727  1002923      0       Pedicularis przewalskii       33588_przewalskii
+  6   SRR1754731  1803858      0               Pedicularis rex               35236_rex
+  7   SRR1754726  1409843      0               Pedicularis rex               35855_rex
+  8   SRR1754725  1391175      0               Pedicularis rex               38362_rex
+  9   SRR1754723   822263      0               Pedicularis rex               39618_rex
+  10  SRR1754724  1707942      0               Pedicularis rex               40578_rex
+  11  SRR1754722  2199740      0  Pedicularis cyathophylloides  41478_cyathophylloides
+  12  SRR1754721  2199613      0  Pedicularis cyathophylloides  41954_cyathophylloides
+  Parallel connection | latituba: 8 cores
+  [####################] 100% 0:01:43 | downloading/extracting fastq data 
+
+  13 fastq files downloaded to /home/deren/Documents/ipyrad/sandbox/pedicularis/example_empirical_data
+
 
 
 Setup a params file
@@ -48,12 +74,12 @@ indicate taxa being assembled.
 
 .. code:: bash
 
-    >>> ipyrad -n pedicularis
+  >>> ipyrad -n pedicularis
 
 This will print the message:
 
-.. parsed-literal::
-    New file 'params-pedicularis.txt' created in /home/deren/Documents/ipyrad/tests
+.. code:: parsed-literal
+  New file 'params-pedicularis.txt' created in /home/deren/Documents/ipyrad/sandbox
 
 
 In this example, the data come to us already demultiplexed so we are going to 
@@ -68,7 +94,7 @@ ipyrad will create it. Take note when entering the values below into your
 params file that they properly correspond to parameters 1 and 4, respectively.
 Use any text editor to edit the params file.
 
-.. parsed-literal::
+.. code:: parsed-literal
     # Use your text editor to enter the following values:
     # The wildcard (*) tells ipyrad to select all files ending in .gz
     analysis-ipyrad                    ## [1] [project_dir] ...
@@ -78,8 +104,8 @@ We'll add a few additional options as well to: filter for adapters (param 16);
 trim the 3' edge of R1 aligned loci by 5bp (param 26; this is optional, but helps 
 to remove poorly aligned 3' edges); and produce all output formats (param 27).
 
-.. parsed-literal::
-    ## enter the following params as well
+.. code:: parsed-literal
+    # enter the following params as well
     2                                ## [16] [filter_adapters] ...
     0, 5, 0, 0                       ## [26] [trim_loci] ...
     *                                ## [27] [output_formats] ...
@@ -102,40 +128,47 @@ pass it the `-r` argument so that it will print a results summary when finished.
     >>> ipyrad -p params-pedicularis.txt -s 1 -r
 
 
-.. parsed-literal:: 
+.. code:: parsed-literal
 
+ -------------------------------------------------------------
+  ipyrad [v.0.9.14]
+  Interactive assembly and analysis of RAD-seq data
+ ------------------------------------------------------------- 
+  Parallel connection | latituba: 8 cores
+  
+  Step 1: Loading sorted fastq data to Samples
+  [####################] 100% 0:00:06 | loading reads          
+  13 fastq files loaded to 13 Samples.
 
-
-
-   -------------------------------------------------------------
-    ipyrad [v.0.7.28]
-    Interactive assembly and analysis of RAD-seq data
-   -------------------------------------------------------------
-    New Assembly: pedicularis
-    host compute node: [20 cores] on tinus
-
-    Step 1: Loading sorted fastq data to Samples
-    [####################] 100%  loading reads         | 0:00:11  
-    13 fastq files loaded to 13 Samples.
-
+  Parallel connection closed.
 
   Summary stats of Assembly pedicularis
   ------------------------------------------------
-                          state  reads_raw
-  29154_superba               1     696994
-  30556_thamno                1    1452316
-  30686_cyathophylla          1    1253109
-  32082_przewalskii           1     964244
-  33413_thamno                1     636625
-  33588_przewalskii           1    1002923
-  35236_rex                   1    1803858
-  35855_rex                   1    1409843
-  38362_rex                   1    1391175
-  39618_rex                   1     822263
-  40578_rex                   1    1707942
-  41478_cyathophylloides      1    2199740
-  41954_cyathophylloides      1    2199613
+                                     state  reads_raw
+  29154_superba_SRR1754715               1     696994
+  30556_thamno_SRR1754720                1    1452316
+  30686_cyathophylla_SRR1754730          1    1253109
+  32082_przewalskii_SRR1754729           1     964244
+  33413_thamno_SRR1754728                1     636625
+  33588_przewalskii_SRR1754727           1    1002923
+  35236_rex_SRR1754731                   1    1803858
+  35855_rex_SRR1754726                   1    1409843
+  38362_rex_SRR1754725                   1    1391175
+  39618_rex_SRR1754723                   1     822263
+  40578_rex_SRR1754724                   1    1707942
+  41478_cyathophylloides_SRR1754722      1    2199740
+  41954_cyathophylloides_SRR1754721      1    2199613
 
+
+  Full stats files
+  ------------------------------------------------
+  step 1: ./analysis-ipyrad/pedicularis_s1_demultiplex_stats.txt
+  step 2: None
+  step 3: None
+  step 4: None
+  step 5: None
+  step 6: None
+  step 7: None
 
 
 Run the remaining assembly steps
@@ -143,10 +176,8 @@ Run the remaining assembly steps
 Because the point of this tutorial is to demonstrate run times and 
 statistics, I will leave the rest of the parameters at their
 defaults and simply run all remaining steps. Further below I will 
-explain in more detail the stats files for each step and what the values mean. 
-To fully assemble this data set on a 4-core laptop takes about 2.25 hours. 
-The example here was run on a 20-core workstation and can finish in ~20 minutes.
-
+explain in more detail the stats files for each step and the meaning
+of the stats values. 
 
 .. code:: bash
 
@@ -154,86 +185,70 @@ The example here was run on a 20-core workstation and can finish in ~20 minutes.
     >>> ipyrad -p params-pedicularis.txt -s 234567 -r
 
 
-.. parsed-literal::
-   -------------------------------------------------------------
-    ipyrad [v.0.7.28]
-    Interactive assembly and analysis of RAD-seq data
-   -------------------------------------------------------------
-    loading Assembly: pedicularis
-    from saved path: ~/Documents/ipyrad/tests/analysis-ipyrad/pedicularis.json
-    host compute node: [20 cores] on tinus
+.. code:: parsed-literal
 
-    Step 2: Filtering reads 
-    [####################] 100%  processing reads      | 0:01:21  
+ -------------------------------------------------------------
+  ipyrad [v.0.9.14]
+  Interactive assembly and analysis of RAD-seq data
+ ------------------------------------------------------------- 
+  Parallel connection | latituba: 8 cores
+  
+  Step 2: Filtering and trimming reads
+  [####################] 100% 0:01:59 | processing reads     
+  
+  Step 3: Clustering/Mapping reads within samples
+  [####################] 100% 0:00:12 | dereplicating          
+  [####################] 100% 0:07:34 | clustering/mapping     
+  [####################] 100% 0:00:01 | building clusters      
+  [####################] 100% 0:00:00 | chunking clusters      
+  [####################] 100% 0:12:11 | aligning clusters      
+  [####################] 100% 0:00:04 | concat clusters        
+  [####################] 100% 0:00:03 | calc cluster stats     
+  
+  Step 4: Joint estimation of error rate and heterozygosity
+  [####################] 100% 0:00:31 | inferring [H, E]       
+  
+  Step 5: Consensus base/allele calling 
+  Mean error  [0.00314 sd=0.00090]
+  Mean hetero [0.02171 sd=0.00385]
+  [####################] 100% 0:00:03 | calculating depths     
+  [####################] 100% 0:00:05 | chunking clusters      
+  [####################] 100% 0:09:12 | consens calling        
+  [####################] 100% 0:00:06 | indexing alleles       
+  
+  Step 6: Clustering/Mapping across samples 
+  [####################] 100% 0:00:03 | concatenating inputs   
+  [####################] 100% 0:02:06 | clustering across    
+  [####################] 100% 0:00:02 | building clusters      
+  [####################] 100% 0:01:31 | aligning clusters      
+  
+  Step 7: Filtering and formatting output files 
+  [####################] 100% 0:00:14 | applying filters       
+  [####################] 100% 0:00:09 | building arrays        
+  [####################] 100% 0:00:10 | writing conversions    
+  [####################] 100% 0:01:27 | indexing vcf depths    
+  [####################] 100% 0:00:24 | writing vcf output     
 
-    Step 3: Clustering/Mapping reads
-    [####################] 100%  dereplicating         | 0:00:09  
-    [####################] 100%  clustering            | 0:05:02  
-    [####################] 100%  building clusters     | 0:00:30  
-    [####################] 100%  chunking              | 0:00:05  
-    [####################] 100%  aligning              | 0:03:27  
-    [####################] 100%  concatenating         | 0:00:17  
-
-    Step 4: Joint estimation of error rate and heterozygosity
-    [####################] 100%  inferring [H, E]      | 0:01:17  
-
-    Step 5: Consensus base calling 
-    Mean error  [0.00283 sd=0.00081]
-    Mean hetero [0.01563 sd=0.00238]
-    [####################] 100%  calculating depths    | 0:00:05  
-    [####################] 100%  chunking clusters     | 0:00:07  
-    [####################] 100%  consens calling       | 0:03:12  
-
-    Step 6: Clustering at 0.85 similarity across 13 samples
-    [####################] 100%  concat/shuffle input  | 0:00:06  
-    [####################] 100%  clustering across     | 0:03:16  
-    [####################] 100%  building clusters     | 0:00:06  
-    [####################] 100%  aligning clusters     | 0:01:14  
-    [####################] 100%  database indels       | 0:00:15  
-    [####################] 100%  indexing clusters     | 0:00:09  
-    [####################] 100%  building database     | 0:00:30  
-
-    Step 7: Filter and write output files for 13 Samples
-    [####################] 100%  filtering loci        | 0:00:06  
-    [####################] 100%  building loci/stats   | 0:00:01  
-    [####################] 100%  building vcf file     | 0:00:08  
-    [####################] 100%  writing vcf file      | 0:00:00  
-    [####################] 100%  building arrays       | 0:00:04  
-    [####################] 100%  writing outfiles      | 0:01:48  
-    Outfiles written to: ~/Documents/ipyrad/tests/analysis-ipyrad/pedicularis_outfiles
-
+  Parallel connection closed.
 
   Summary stats of Assembly pedicularis
   ------------------------------------------------
-                          state  reads_raw  reads_passed_filter  clusters_total
-  29154_superba               6     696994               689996          130735   
-  30556_thamno                6    1452316              1440314          199587   
-  30686_cyathophylla          6    1253109              1206947          233183   
-  32082_przewalskii           6     964244               955480          146566   
-  33413_thamno                6     636625               626084          169514   
-  33588_przewalskii           6    1002923               993873          153089   
-  35236_rex                   6    1803858              1787366          410136   
-  35855_rex                   6    1409843              1397068          169357   
-  38362_rex                   6    1391175              1379626          128389   
-  39618_rex                   6     822263               813990          142844   
-  40578_rex                   6    1707942              1695523          215721   
-  41478_cyathophylloides      6    2199740              2185364          166229   
-  41954_cyathophylloides      6    2199613              2176210          293120   
+                                     state  reads_raw  ...  error_est  reads_consens
+  29154_superba_SRR1754715               6     696994  ...   0.003211          29903
+  30556_thamno_SRR1754720                6    1452316  ...   0.003184          43870
+  30686_cyathophylla_SRR1754730          6    1253109  ...   0.003297          45856
+  32082_przewalskii_SRR1754729           6     964244  ...   0.003079          34733
+  33413_thamno_SRR1754728                6     636625  ...   0.003317          26228
+  33588_przewalskii_SRR1754727           6    1002923  ...   0.003267          38137
+  35236_rex_SRR1754731                   6    1803858  ...   0.002206          46683
+  35855_rex_SRR1754726                   6    1409843  ...   0.004316          46234
+  38362_rex_SRR1754725                   6    1391175  ...   0.002350          46081
+  39618_rex_SRR1754723                   6     822263  ...   0.003636          37259
+  40578_rex_SRR1754724                   6    1707942  ...   0.002229          48255
+  41478_cyathophylloides_SRR1754722      6    2199740  ...   0.001721          47976
+  41954_cyathophylloides_SRR1754721      6    2199613  ...   0.005028          64654
 
-                          clusters_hidepth  hetero_est  error_est  reads_consens  
-  29154_superba                      34539    0.015084   0.002612          32913  
-  30556_thamno                       51736    0.016421   0.003716          48957  
-  30686_cyathophylla                 53357    0.014842   0.003001          50649  
-  32082_przewalskii                  41518    0.018446   0.002874          39315  
-  33413_thamno                       30913    0.017537   0.002662          29417  
-  33588_przewalskii                  45282    0.018394   0.002772          42987  
-  35236_rex                          53678    0.015655   0.001939          51485  
-  35855_rex                          55421    0.019357   0.003986          52107  
-  38362_rex                          51863    0.012369   0.002065          49989  
-  39618_rex                          43044    0.014691   0.002916          41122  
-  40578_rex                          55350    0.015747   0.002098          53177  
-  41478_cyathophylloides             53965    0.012430   0.001714          51816  
-  41954_cyathophylloides             73857    0.012264   0.004415          70662  
+  [13 rows x 8 columns]
 
 
   Full stats files
@@ -243,7 +258,7 @@ The example here was run on a 20-core workstation and can finish in ~20 minutes.
   step 3: ./analysis-ipyrad/pedicularis_clust_0.85/s3_cluster_stats.txt
   step 4: ./analysis-ipyrad/pedicularis_clust_0.85/s4_joint_estimate.txt
   step 5: ./analysis-ipyrad/pedicularis_consens/s5_consens_stats.txt
-  step 6: ./analysis-ipyrad/pedicularis_consens/s6_cluster_stats.txt
+  step 6: ./analysis-ipyrad/pedicularis_across/pedicularis_clust_database.fa
   step 7: ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
 
 
@@ -256,42 +271,42 @@ which filters removed data from the assembly, how many loci were recovered
 per sample, how many samples had data for each locus, and how many variable
 sites are in the assembled data. 
 
-.. code:: python
+.. code:: bash
 
-    cat ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
+    >>> cat ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
 
-.. parsed-literal::
+.. code:: parsed-literal
+
   ## The number of loci caught by each filter.
-  ## ipyrad API location: [assembly].statsfiles.s7_filters
+  ## ipyrad API location: [assembly].stats_dfs.s7_filters
 
                               total_filters  applied_order  retained_loci
-  total_prefiltered_loci              88341              0          88341
-  filtered_by_rm_duplicates            2566           2566          85775
-  filtered_by_max_indels                518            518          85257
-  filtered_by_max_snps                  212            121          85136
-  filtered_by_max_shared_het            946            908          84228
-  filtered_by_min_sample              39170          38942          45286
-  filtered_by_max_alleles             10196           5101          40185
-  total_filtered_loci                 40185              0          40185
+  total_prefiltered_loci                  0              0          80481
+  filtered_by_rm_duplicates             828            828          79653
+  filtered_by_max_indels               1290           1290          78363
+  filtered_by_max_SNPs                  946            914          77449
+  filtered_by_max_shared_het            718            699          76750
+  filtered_by_min_sample              35889          35672          41078
+  total_filtered_loci                 39671          39403          41078
 
 
   ## The number of loci recovered for each Sample.
   ## ipyrad API location: [assembly].stats_dfs.s7_samples
 
-                          sample_coverage
-  29154_superba                     20755
-  30556_thamno                      30996
-  30686_cyathophylla                26288
-  32082_przewalskii                 14496
-  33413_thamno                      18214
-  33588_przewalskii                 16846
-  35236_rex                         32353
-  35855_rex                         32397
-  38362_rex                         32795
-  39618_rex                         27194
-  40578_rex                         33154
-  41478_cyathophylloides            30667
-  41954_cyathophylloides            27961
+                                     sample_coverage
+  29154_superba_SRR1754715                     21095
+  30556_thamno_SRR1754720                      31418
+  30686_cyathophylla_SRR1754730                26754
+  32082_przewalskii_SRR1754729                 14507
+  33413_thamno_SRR1754728                      18504
+  33588_przewalskii_SRR1754727                 16928
+  35236_rex_SRR1754731                         32588
+  35855_rex_SRR1754726                         32462
+  38362_rex_SRR1754725                         33372
+  39618_rex_SRR1754723                         27673
+  40578_rex_SRR1754724                         33260
+  41478_cyathophylloides_SRR1754722            31255
+  41954_cyathophylloides_SRR1754721            28381
 
 
   ## The number of loci for which N taxa have data.
@@ -301,46 +316,67 @@ sites are in the assembled data.
   1                0             0
   2                0             0
   3                0             0
-  4             5136          5136
-  5             3702          8838
-  6             3311         12149
-  7             2942         15091
-  8             3028         18119
-  9             4014         22133
-  10            4904         27037
-  11            5486         32523
-  12            4740         37263
-  13            2922         40185
+  4             5347          5347
+  5             3809          9156
+  6             3488         12644
+  7             3096         15740
+  8             3330         19070
+  9             4217         23287
+  10            5102         28389
+  11            5422         33811
+  12            4562         38373
+  13            2705         41078
 
 
-  ## The distribution of SNPs (var and pis) per locus.
+  The distribution of SNPs (var and pis) per locus.
   ## var = Number of loci with n variable sites (pis + autapomorphies)
   ## pis = Number of loci with n parsimony informative site (minor allele in >1 sample)
   ## ipyrad API location: [assembly].stats_dfs.s7_snps
+  ## The "reference" sample is included if present unless 'exclude_reference=True'
 
        var  sum_var    pis  sum_pis
-  0   2107        0  10483        0
-  1   3878     3878   9695     9695
-  2   5048    13974   7088    23871
-  3   5365    30069   4765    38166
-  4   4921    49753   3084    50502
-  5   4330    71403   1960    60302
-  6   3532    92595   1260    67862
-  7   2975   113420    819    73595
-  8   2253   131444    489    77507
-  9   1743   147131    270    79937
-  10  1331   160441    144    81377
-  11   948   170869     73    82180
-  12   665   178849     26    82492
-  13   388   183893     19    82739
-  14   271   187687      9    82865
-  15   178   190357      0    82865
-  16   111   192133      1    82881
-  17    65   193238      0    82881
-  18    39   193940      0    82881
-  19    27   194453      0    82881
-  20    10   194653      0    82881
+  0   1806        0  10232        0
+  1   3528     3528   9935     9935
+  2   4758    13044   7601    25137
+  3   5297    28935   5109    40464
+  4   5183    49667   3212    53312
+  5   4650    72917   2029    63457
+  6   3893    96275   1225    70807
+  7   3340   119655    757    76106
+  8   2529   139887    456    79754
+  9   1967   157590    302    82472
+  10  1480   172390    132    83792
+  11  1145   184985     68    84540
+  12   796   194537     16    84732
+  13   541   201570      4    84784
+  14   151   203684      0    84784
+  15    13   203879      0    84784
+  16     0   203879      0    84784
+  17     0   203879      0    84784
+  18     0   203879      0    84784
+  19     1   203898      0    84784
 
+
+  ## Final Sample stats summary
+                                     state  reads_raw  reads_passed_filter  clusters_total  clusters_hidepth  hetero_est  error_est  reads_consens  loci_in_assembly
+  29154_superba_SRR1754715               7     696994               689996          126896             34145    0.024641   0.003211          29903             21095
+  30556_thamno_SRR1754720                7    1452316              1440314          192920             50491    0.022635   0.003184          43870             31418
+  30686_cyathophylla_SRR1754730          7    1253109              1206947          225144             52464    0.020622   0.003297          45856             26754
+  32082_przewalskii_SRR1754729           7     964244               955480          142366             41046    0.027211   0.003079          34733             14507
+  33413_thamno_SRR1754728                7     636625               626084          165338             30754    0.024820   0.003317          26228             18504
+  33588_przewalskii_SRR1754727           7    1002923               993873          148920             44642    0.025917   0.003267          38137             16928
+  35236_rex_SRR1754731                   7    1803858              1787366          401906             52694    0.019709   0.002206          46683             32588
+  35855_rex_SRR1754726                   7    1409843              1397068          164312             54484    0.025071   0.004316          46234             32462
+  38362_rex_SRR1754725                   7    1391175              1379626          124417             51061    0.016379   0.002350          46081             33372
+  39618_rex_SRR1754723                   7     822263               813990          138973             42451    0.022817   0.003636          37259             27673
+  40578_rex_SRR1754724                   7    1707942              1695523          210842             54539    0.019760   0.002229          48255             33260
+  41478_cyathophylloides_SRR1754722      7    2199740              2185364          162093             53191    0.015180   0.001721          47976             31255
+  41954_cyathophylloides_SRR1754721      7    2199613              2176210          286667             72791    0.017415   0.005028          64654             28381
+
+
+  ## Alignment matrix statistics:
+  snps matrix size: (13, 203898), 35.26% missing sites.
+  sequence matrix size: (13, 2840602), 35.60% missing sites.
 
 
 Take a peek at the .loci output
@@ -357,65 +393,56 @@ or more total loci.
 .. code:: bash
 
   ## head -n 50 prints just the first 50 lines of the file to stdout
-  head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.loci
+  >>> head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.loci
 
 .. code:: bash 
 
-  29154_superba              TCTGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTTTCGATCTCAGGCG
-  30556_thamno               TCCGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTAGATCTCAGGCG
-  30686_cyathophylla         TCCAGTCCCGCGGGTGATCAAGGCCCCACCACCGCATCTCACATTCTCGATCTCAGGCG
-  33413_thamno               TCCGGTCCTTCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTAGATCTCAGGCG
-  35236_rex                  TCCGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTMGATCTCAGGCG
-  35855_rex                  TCCGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTAGATCTCAGGCG
-  38362_rex                  TCCGGTCCTTCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTAGATCTCAGGCG
-  40578_rex                  TCCGGTCCYKCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTCTCGATCTCAGGCG
-  41478_cyathophylloides     TCCGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTATCGATCTCAGGCG
-  41954_cyathophylloides     TCCGGTCCCGCGGGTGATCAAGGCCCCACCACCGCGTCTCACATTATCGATCTCAGGCG
-  //                           --    **                         -         * *           |1|
-  29154_superba              TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTAGTATTGTGAAATATATGCTTAAA
-  30556_thamno               TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  30686_cyathophylla         TAAAAGCGAGTCACATCTAATGATCTANAATCTGTGGTATTGTGAAATATATGCTTAAA
-  33413_thamno               TAAAAGCAAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  35236_rex                  TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  35855_rex                  TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  38362_rex                  TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTCAAA
-  39618_rex                  TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTCAAA
-  40578_rex                  TAAAAGCGAGTCACATCTAATGATCTAAAMTCTGTGGTATTGTGAAATATATGCTTAAA
-  41478_cyathophylloides     TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  41954_cyathophylloides     TAAAAGCGAGTCACATCTAATGATCTAAAATCTGTGGTATTGTGAAATATATGCTTAAA
-  //                                -                     -     -                   *   |3|
-  29154_superba              AATGGGTTGTTCCATGGATAACAACTCCGTTTTATRCCAAATACTGTGACACGCACRCA
-  32082_przewalskii          AATGGGTTGTTCCATGGTTAACAACTCCGTTTTATGCCAACTACTGCGACACACACGCA
-  33588_przewalskii          AATGGGTTGTTCCATGGTTAACAACTCCGTTTTATGCCAACTACTGCGACACGCACGCA
-  41478_cyathophylloides     AATGGGTTGTTCCATGGATAACAACTCCGTTTTATGCCAAATACTGTGACACGCACGCA
-  41954_cyathophylloides     AATGGGTTGTTCCATGGATAACAACTCCGTTTTATGCCAAATACTGTGACACGCACGCA
-  //                                          *                 -    *     *     -   -  |5|
-  29154_superba              AGCCGATTCGGTCGCGAGCAGCGATATTTTGTTTCCCCTCAAAATCTTCACAATCTCTA
-  30686_cyathophylla         AGCCGATTTGGTTGCGAGCAGCGATATTTTGTTTCCCCTCAAAATCTTCACAATCTCCG
-  35236_rex                  AGCYGATTTGGTCGCGAGCAGCGATGTTTTGTTTCCCCTCAAAATCTTCATAATCTCTA
-  38362_rex                  AGCYGATTTGGTYGCGAGCAGCGATRTTTTGYTTCCCCTCAAAATCTTCAYAATCTCYR
-  41478_cyathophylloides     AGCCGATTTGGTTGCGAGCAGCGATATTTTGTTTCCCCTCAAAATCTTCACAATCTCCA
-  41954_cyathophylloides     AGCCGATTTGGTTGCGAGCAGCGATATTTTGTTTCCCCTCAAAATCTTCACAATCTCCA
-  //                            *    -   *            *     -                  *      **|7|
-  29154_superba              TCGACGCCATGTATGACTGTTCAAAATATCAAATGTACT-ATTACNACCACCCTTTTTT
-  30686_cyathophylla         TCGACGCCATGTATGACTGTTCAAAATATCAAATGTACTAATTACCACCACCCTTTTTT
-  38362_rex                  TCGACGCCATGTATGACTGTTCAAAATATCAAATGTACT-ATTACCACCACCCTTTTTT
-  40578_rex                  TCGACGCCATNTATGACTGTTCAAAATATCAAACGTACT-ATTACCACCACCCTTTTTT
-  //                                                          -                         |14|
-  29154_superba              ATCGATCATTTCGCCTCACAGTTGCTGGGTGCAGAAAAANNTCTTCATCTGATTCAGGT
-  30556_thamno               ATCGATCATTTCTTCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  30686_cyathophylla         ATCGATCATTTCGCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  32082_przewalskii          ATCGATCATTTCGCCTCACAGTTGCTGGATGCAGAAAAAATTCTTCATCTGATTCAGGT
-  33413_thamno               ATCGATCATTTCTNCTCACAGTTGCTGGGTNCAGAAAA---------------------
-  33588_przewalskii          ATCGATCATTTCGCCTCACAGTTGCTGGATGCAGAAAAAATTCTTCATCTGATTCAGGT
-  35236_rex                  ATCGATCATTTCTCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  35855_rex                  ATCGATCATTTCTCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  38362_rex                  ATCGATCATTTCTCCTCACAGTTGCTGGGTGCAAAAAAAATTCTTCATCTGATTCAGGT
-  39618_rex                  ATCGATCATTTCTCCTCACAGTTGCTGGGTGCAAAAAAAATTCTTCATCTGATTCAGGT
-  40578_rex                  ATCGATCATTTCTCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  41478_cyathophylloides     ATCGATCATTTCGCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  41954_cyathophylloides     ATCGATCATTTCGCCTCACAGTTGCTGGGTGCAGAAAAAATTCTTCATCTGATTCAGGT
-  //                                     *-              *    *                         |16|
+  29154_superba_SRR1754715              TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGGGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  30556_thamno_SRR1754720               TAGGGTGGGTCKCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  30686_cyathophylla_SRR1754730         TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGGGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  32082_przewalskii_SRR1754729          TAGGGTGGGTCTCGTTCAAGGTATTCGAACAAGAGGGTACCCTGCGAACTTCCAAATTCACCCTCNTCG
+  33413_thamno_SRR1754728               TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  33588_przewalskii_SRR1754727          TAGGGTGGGTCTCNTTCAAGGTATTCGAACAASAGGGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  35236_rex_SRR1754731                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  35855_rex_SRR1754726                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  38362_rex_SRR1754725                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  39618_rex_SRR1754723                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCG
+  40578_rex_SRR1754724                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCCTGCGAACTTCCAAATTCACCCTCATCA
+  41478_cyathophylloides_SRR1754722     TAGGGTGGGTCTCGTTCAAGGTATTCGAACAATAGGGTACCCAGCGAACTTCCAAATTCACCCTCATCG
+  41954_cyathophylloides_SRR1754721     TAGGGTGGGTCTCGTTCAAGGTATTCGAACAATAGGGTACCCAGCGAACTTCCAAATTCACCCTCATCG
+  //                                               -                    *  *      *                         -|0|
+  29154_superba_SRR1754715              ACGACGTCTCTCCCCGAGCCGGCTATCAGGAGACGGATTTTCGAGATGGGGGGTCGTTTTGCTGTTTGT
+  30556_thamno_SRR1754720               ACGACGTCTCTCCCCGAGCCGGCTATCAGGAGACGGATTTTCGAGATGGGGGGTCGTTTTGCTGTTTGT
+  33413_thamno_SRR1754728               ACGACGTCTCTCCCCGAGMCGGCTATCAGGAGACGGATTTTCGAGATGGGGGGTCGTTTTGCTGTTTGT
+  40578_rex_SRR1754724                  ACGACGTCTCTCCCCGAGCCGGCTATCAGGAGACGGATTTTCGAGATGGGGGGTCGTTTTGCTGTTTGT
+  //                                                      -                                                  |1|
+  29154_superba_SRR1754715              CTTGGCACTGAATTAGCAGAACTTCAACAATTAAGTCTCCAGTATAATTGAATTYGATTTAATTTAATT
+  30686_cyathophylla_SRR1754730         CTTGGCACTGAATTAGCAGAACTTCAACAATTAAGTCTCCAGTATAACTGAATTTGATTTAATTTAATT
+  35236_rex_SRR1754731                  CTTGGCACTGAAGTAGCAGAACTTCAACAATTAAGTCTCCAGTATAATTGAATTTGATTTAATTTAATG
+  35855_rex_SRR1754726                  CTTGGCACTGAAGTAGCAGAACTTCAACAATTAAGTCTCCGGTATAATTGAATTTGATTTAATTTAATG
+  38362_rex_SRR1754725                  CTTGGCACTGAAGTAGCAGAACTTCAACAATTAAGTCTCAGGTATAATTGAATTTGATTTAATTTAATT
+  40578_rex_SRR1754724                  CTTGGCACTCAAGTAGCAGAACTTCAACAATTAAGTCTCCGGTATAATTGAATTTGATTTAATTTAATG
+  41478_cyathophylloides_SRR1754722     CTTGGCACTGAAGTAGCAGAACTTCAACAATTAAGTCTCCAGTATAATTGAATTTGATTTAATTTAATT
+  41954_cyathophylloides_SRR1754721     CTTGGCACTGAAGTAGCAGAACTTCAACAATTAAGTCTCCAGTATAATTGAATTTGATTTAATTTAATT
+  //                                             -  *                          -*      -      -             *|2|
+  29154_superba_SRR1754715              GATCCTGAAATGACAASAAACATAACANGGGGGTAATTTTTTGTAATTAT---CCCTTAGA-TAAACTATACA
+  33413_thamno_SRR1754728               GATCCTGAAACGACAACAAACATAACACGGGGGTAATYTTTTGTAATTAT---CCCTTMGA-TAAACTATACA
+  35236_rex_SRR1754731                  GATCCTGAAACGACAACAAACATAACACGGGGGTAATTTTTTGTAATTAT---CCCTTAGA-TAAACTATACA
+  38362_rex_SRR1754725                  GATCCTGAAACGACAACAAACATAACACGGGGGTAATTTTTTGTAATTAT---CCCTTAGA-TAAACTATACA
+  39618_rex_SRR1754723                  GATCCTGAAACGACAACAAACATAACACGGGGGTAATTTTTTGTAATTAT---CCCTTAGA-TAAACTATACA
+  40578_rex_SRR1754724                  GATCCTGAAACGACAACAAACATAACAYGGGGGTAATTTTTTGTAATTAY---CCCTTAGA-TAAACTATACA
+  41478_cyathophylloides_SRR1754722     GATCCTGAAATGACAACAAACATAACAGGGGGGTAATTTTTTGTAATTATCCCCCCTTAGATTAAACTA----
+  41954_cyathophylloides_SRR1754721     GATCCTGAAATGACAACAAACATAACAGGGGGGTAATTTTTTGTAATTATCCCCCCTTAGATTAAACT-----
+  //                                              *     -          *         -           -        -              |3|
+  29154_superba_SRR1754715              AAAACAGGATGAGTGCATATCTCTCGTTCTAACTACTGCAATGCTAGGNAAATAAAATACAGACTAAAA
+  30686_cyathophylla_SRR1754730         AAAACAGGATGAGTGCATATCTCTCGTTCTAACTACTGCAATGCTAGGTAAATAAAATACAGACTAAAA
+  32082_przewalskii_SRR1754729          AAAACAGGATGAGTGCATATCTCTCGTACTAACTACTGCAATGCTAGGTAAATAAAATACAGACTAAAA
+  33588_przewalskii_SRR1754727          AAAACAGGATGAGTGCATATCTCTCGTACTAACTACTGCAATGCTAGGTAAATAAAATACAGACTAAAA
+  41478_cyathophylloides_SRR1754722     AAAACAGGATGAGTGCATATCTCTCGTTTTAACTACTGCAATGCTAGGTAAATAAAATAGAGACTAAAA
+  41954_cyathophylloides_SRR1754721     AAAACAGGATGAGTGCATATCTCTCGTTTTAACTACTGCAATGCTAGGTAAATAAAATAGAGACTAAAA
+  //                                                               **                              *         |4|
+
+
 
 
 peek at the .phy files
@@ -428,24 +455,25 @@ used in phylogenetic analyses, like in the program *raxml*. This super matrix is
 .. code:: bash
 
   ## cut -c 1-80 prints only the first 80 characters of the file
-  cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.phy
+  >>> cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.phy
 
 
-.. parsed-literal::
-  13 2577585
-  29154_superba              AATGATGGTGGTACACATATTAATTACAATTTGGACAACGGCGGCTTTGTTCA
-  30556_thamno               ACAGATGGTGGTACACATGTCAATTACAATTTGGATAACGGCGGNNNNNNNNN
-  30686_cyathophylla         AATGATGGTGGTACACATATTAATTACAATTTGGACAACGGCGGCTTTGTTCA
-  32082_przewalskii          NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  33413_thamno               AGTGATGGTGGTACACATGTCNANTACAATTTGGACAACGGCGGCTTTGTTCN
-  33588_przewalskii          NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  35236_rex                  NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  35855_rex                  NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  38362_rex                  NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  39618_rex                  NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  40578_rex                  AATGATGGTGGTACACATATYAATTACAAYTTGGAYAACGGCGGCTTTGTTCA
-  41478_cyathophylloides     NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
-  41954_cyathophylloides     NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+.. code:: parsed-literal
+
+  13 2840602
+  29154_superba_SRR1754715              TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGGGTACCC
+  30556_thamno_SRR1754720               TAGGGTGGGTCKCGTTCAAGGTATTCGAACAACAGAGTACCC
+  30686_cyathophylla_SRR1754730         TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGGGTACCC
+  32082_przewalskii_SRR1754729          TAGGGTGGGTCTCGTTCAAGGTATTCGAACAAGAGGGTACCC
+  33413_thamno_SRR1754728               TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  33588_przewalskii_SRR1754727          TAGGGTGGGTCTCNTTCAAGGTATTCGAACAASAGGGTACCC
+  35236_rex_SRR1754731                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  35855_rex_SRR1754726                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  38362_rex_SRR1754725                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  39618_rex_SRR1754723                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  40578_rex_SRR1754724                  TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGAGTACCC
+  41478_cyathophylloides_SRR1754722     TAGGGTGGGTCTCGTTCAAGGTATTCGAACAATAGGGTACCC
+  41954_cyathophylloides_SRR1754721     TAGGGTGGGTCTCGTTCAAGGTATTCGAACAATAGGGTACCC
 
 
 peek at the .snps.phy file
@@ -458,25 +486,25 @@ randomly selects only a single SNP per locus.
 .. code:: bash
 
     ## cut -c 1-80 prints only the first 80 characters of the file
-    cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.snps.phy
+    >>> cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.snps.phy
 
 
-.. parsed-literal::
-  13 194653
-  29154_superba              ATATTCAAACTATTCAAAGTAACTGATGAAAYCTAGGGGAKCAGTTCGCGTGC
-  30556_thamno               CAGCTTAAATTATNNGGCGCAACCGGAGAAANNNNNNNNNGAAGGTTACATNN
-  30686_cyathophylla         ATATTCAAACTATAANNNNNAACTGATGAAACTTGTCGGNGCAGGTTACATGC
-  32082_przewalskii          NNNNNNNNNNNNNACNNNNNCANNNNNNNNNNNNNNNNNCNNNNGTCGCGTNN
-  33413_thamno               GTGCTCAAATTAANNNNNNNAGCCGAAGAAACCCGGCATNGCAKGTTANANNN
-  33588_przewalskii          NNNNNNNNNNNNNACNNNNNAANNNNNNNNNNNNNNNNNCNNNNGTCGCGYNN
-  35236_rex                  NNNNNNAAATTGTNNGGCGTAACCAAAGAAANNNNNNNNNGCAGGTTAAATNN
-  35855_rex                  NNNNNNACATTATNNNNNNNAATCGAAGAAANNNNNNNNNNNNNGTTACATGC
-  38362_rex                  NNNNNNGAATTATNNNNNNNAACCAAAGAAACCCG-CCGNNNNNGTTACATNN
-  39618_rex                  NNNNNNGAATTATNNNNNNNAACCAAAGAAACCCG-CCGNNNNNGKTACATNN
-  40578_rex                  ATAYYYRAATYATNNGGCKTAACCGAAGAGGNNNNNNNNNNNNNGTTACATRC
-  41478_cyathophylloides     NNNNNNATTTTATACNNNNNAACTGATTGAACCTAGGGGAGCGGGTTACATGT
-  41954_cyathophylloides     NNNNNNATTTTATACNNNNNAANNNNNNNNNCCTAGGGGAGCGGGTTACATGT
+.. code:: parsed-literal
 
+  13 203898
+  29154_superba_SRR1754715              TCGTGCGTCATYTTSNTTATCCGAYYACTGTGTAAGCCGGGG
+  30556_thamno_SRR1754720               KCATGCNNNNNNNNNNNNNNNNGACCGNNGTGTAAGCCGGGG
+  30686_cyathophylla_SRR1754730         TCGTGNGTCACTTNNNNNNTCCGACCACTGTGTAAGCCAGGG
+  32082_przewalskii_SRR1754729          TGGTGNNNNNNNNNNNNNNACCNNNNNNNNNNNNNNNTGCAA
+  33413_thamno_SRR1754728               TCATGMNNNNNNNCCCYTMNNNGACCGNNGTGTAAGCNNNNN
+  33588_przewalskii_SRR1754727          TSGTGNNNNNNNNNNNNNNACCATCCGNNACATAAGCTGCAA
+  35236_rex_SRR1754731                  TCATGNGGCATTGCCCTTANNNGACCGYTGTGTRRGCNNNNN
+  35855_rex_SRR1754726                  TCATGNGGCGTTGNNNNNNNNNGACCGCTGTGTAAGCNNNNN
+  38362_rex_SRR1754725                  TCATGNGGAGTTTCCCTTANNNGACCGNNTTGTAAGANNNNN
+  39618_rex_SRR1754723                  TCATGNNNNNNNNCCCTTANNNGACCGNNNNNNNNNNNNNNN
+  40578_rex_SRR1754724                  TCATACCGCGTTGCCYTYANNNGACCGCWGTGAAARCNNNNN
+  41478_cyathophylloides_SRR1754722     TTGAGNGGCATTTTCGTTATTGGACCGCTGTGTAAGCCGGGG
+  41954_cyathophylloides_SRR1754721     TTGAGNGGCATTTTCGTTATTGGACCGCTGTGTAAGCCGGGG
 
 
 peek at the .vcf.gz file
@@ -496,7 +524,7 @@ correct low-depth base calls at this stage. Stay tuned.
     ## and we pipe this to 'cut', which shows only the first 80 rows of data
     ## for easier viewing. 
 
-    head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.vcf | cut -c 1-80
+    >>> head -n 50 analysis-ipyrad/pedicularis_outfiles/pedicularis.vcf | cut -c 1-80
 
 
 .. parsed-literal::
@@ -551,29 +579,3 @@ correct low-depth base calls at this stage. Stay tuned.
   locus_12  45  . G C,A 13  PASS  NS=7;DP=94  GT:DP:CATG  0/0:7:0,0,0,7 ./.:0:0,0,0
   locus_12  47  . G T 13  PASS  NS=7;DP=94  GT:DP:CATG  0/0:7:0,0,0,7 ./.:0:0,0,0,0
 
-
-
-
-.. downstream analyses
-.. ~~~~~~~~~~~~~~~~~~~
-.. We are in the process of developing many downstream tools for analyzing 
-.. RAD-seq data. The first of which is the program svd4tet, which is installed 
-.. alongside ipyrad during the conda installation. 
-.. This program implements the svdquartets algorithm of Chifmann & Kubatko (2014). 
-.. It includes alternative methods for sampling quartets over
-.. very large trees to heuristically reduce the total number of quartets needed 
-.. in order to resolve a large tree. For this demonstration we'll simply run 
-.. the default option which is to infer all quartets. 
-.. The summary tree that it spits out is the same tree inferred in Eaton & Ree 
-.. (2013), and if we plot the tree with support values you will see that we find 
-.. lower support across the edges of the tree that are known to be involved in 
-.. introgression. This part of the tutorial is under construction -- more to come. 
-
-.. .. code:: bash
-
-..     ## run svd4tet on the unlinked snps file (-s) (.u.snps.phy suffix)
-..     ## and give it the output prefix (-o) 'pedictree'
-..     svd4tet -s analysis-ipyrad/pedicularis_outfiles/pedicularis.u.snps.phy -o pedictree
-
-.. .. parsed-literal::
-    
