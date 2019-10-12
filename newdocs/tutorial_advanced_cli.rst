@@ -94,7 +94,7 @@ the code below into a terminal. This will create a new directory called
 .. code:: bash
 
     ## The curl command needs a capital O, not a zero.
-    >>> curl -LkO https://github.com/dereneaton/ipyrad/raw/master/tests/ipsimdata.tar.gz
+    >>> curl -LkO https://eaton-lab.org/data/ipsimdata.tar.gz
     >>> tar -xvzf ipsimdata.tar.gz
 
 
@@ -121,9 +121,9 @@ default values for now. This tells ipyrad that we are going to use the name
 ``iptutorial`` as our project_dir (where output files will be created), and 
 that the input data and barcodes file are located in ``ipsimdata/``.
 
-.. parsed-literal::
+.. code:: parsed-literal
     ## enter these lines into the params-data1.txt file
-    ./iptutorial                              ## [1] [project_dir] ...
+    ./iptutorial                             ## [1] [project_dir] ...
     ./ipsimdata/rad_example_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
     ./ipsimdata/rad_example_barcodes.txt     ## [3] [barcodes_path] ...
 
@@ -137,20 +137,22 @@ files in the ``iptutorial/`` directory.
     >>> ipyrad -p params-data1.txt -s 12
 
 
-.. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.3.20]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  New Assembly: data1
-  ipyparallel setup: Local connection to 4 Engines
+.. code:: parsed-literal
 
-  Step1: Demultiplexing fastq data to Samples
-  [####################] 100%  sorting file  0       | 0:00:04 
-  [####################] 100%  writing files         | 0:00:00 
+ -------------------------------------------------------------
+  ipyrad [v.0.9.14]
+  Interactive assembly and analysis of RAD-seq data
+ ------------------------------------------------------------- 
+  Parallel connection | latituba: 8 cores
+  
+  Step 1: Demultiplexing fastq data to Samples
+  [####################] 100% 0:00:03 | sorting reads          
+  [####################] 100% 0:00:01 | writing/compressing    
 
-  Step2: Filtering reads 
-  [####################] 100%  processing reads      | 0:00:34 
+  Step 2: Filtering and trimming reads
+  [####################] 100% 0:00:02 | processing reads     
+  
+  Parallel connection closed.
 
 
 Inside ``iptutorial`` you'll see that ipyrad has created two subdirectories 
@@ -164,7 +166,7 @@ since editing it by hand could cause errors in your assembly.
 
     >>> ls ./iptutorial
 
-.. parsed-literal::
+.. code:: parsed-literal
     data1_edits/   data1_fastqs/   data1.json
 
 
@@ -192,7 +194,7 @@ and add the reference sequence file.
 
 Then make the following edits to ``params-data2.txt``:
 
-.. parsed-literal::
+.. code:: parsed-literal
     reference                                   ## [5] [assembly_method] ...
     ./ipsimdata/rad_example_genome.fa           ## [6] [reference_sequence] ...
 
@@ -209,84 +211,93 @@ file and each will create its own output files and saved results.
    >>> ipyrad -p params-data2.txt -s 34567
 
 
-.. parsed-literal::
- --------------------------------------------------
-  ipyrad [v.0.3.20]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: data1
-  from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
-  ipyparallel setup: Local connection to 4 Engines
+.. code:: bash
 
-  Step3: Clustering/Mapping reads
-  [####################] 100%  dereplicating         | 0:00:01 
-  [####################] 100%  clustering            | 0:00:02 
-  [####################] 100%  chunking              | 0:00:00 
-  [####################] 100%  aligning              | 0:00:41 
-  [####################] 100%  concatenating         | 0:00:00 
+ -------------------------------------------------------------
+  ipyrad [v.0.9.14]
+  Interactive assembly and analysis of RAD-seq data
+ ------------------------------------------------------------- 
+  Parallel connection | latituba: 8 cores
+  
+  Step 3: Clustering/Mapping reads within samples
+  [####################] 100% 0:00:01 | join merged pairs      
+  [####################] 100% 0:00:00 | join unmerged pairs    
+  [####################] 100% 0:00:00 | dereplicating          
+  [####################] 100% 0:00:01 | clustering/mapping     
+  [####################] 100% 0:00:00 | building clusters      
+  [####################] 100% 0:00:00 | chunking clusters      
+  [####################] 100% 0:00:16 | aligning clusters      
+  [####################] 100% 0:00:00 | concat clusters        
+  [####################] 100% 0:00:00 | calc cluster stats     
+  
+  Step 4: Joint estimation of error rate and heterozygosity
+  [####################] 100% 0:00:02 | inferring [H, E]       
+  
+  Step 5: Consensus base/allele calling 
+  Mean error  [0.00075 sd=0.00002]
+  Mean hetero [0.00196 sd=0.00005]
+  [####################] 100% 0:00:00 | calculating depths     
+  [####################] 100% 0:00:00 | chunking clusters      
+  [####################] 100% 0:00:21 | consens calling        
+  [####################] 100% 0:00:01 | indexing alleles       
+  
+  Step 6: Clustering/Mapping across samples 
+  [####################] 100% 0:00:00 | concatenating inputs   
+  [####################] 100% 0:00:01 | clustering across    
+  [####################] 100% 0:00:00 | building clusters      
+  [####################] 100% 0:00:08 | aligning clusters      
+  
+  Step 7: Filtering and formatting output files 
+  [####################] 100% 0:00:06 | applying filters       
+  [####################] 100% 0:00:01 | building arrays        
+  [####################] 100% 0:00:00 | writing conversions    
 
-  Step4: Joint estimation of error rate and heterozygosity
-  [####################] 100%  inferring [H, E]      | 0:00:50 
+  Parallel connection closed.
 
-  Step5: Consensus base calling 
-  Mean error  [0.00076 sd=0.00002]
-  Mean hetero [0.00196 sd=0.00018]
-  [####################] 100%  consensus calling     | 0:00:30 
 
-  Step6: Clustering across 12 samples at 0.85 similarity
-  [####################] 100%  concat/shuffle input  | 0:00:00 
-  [####################] 100%  clustering across     | 0:00:00 
-  [####################] 100%  building clusters     | 0:00:00 
-  [####################] 100%  aligning clusters     | 0:00:07 
-  [####################] 100%  indexing clusters     | 0:00:18 
-  [####################] 100%  building database     | 0:00:05 
+.. code:: bash
 
-  Step7: Filter and write output files for 12 Samples
-  [####################] 100%  filtering loci        | 0:00:02 
-  [####################] 100%  building loci/stats   | 0:00:01 
-  [####################] 100%  building vcf file     | 0:00:10 
-  [####################] 100%  writing outfiles      | 0:00:01 
-  Outfiles written to: ~/Documents/ipyrad/tests/iptutorial/data1_outfiles
+ -------------------------------------------------------------
+  ipyrad [v.0.9.14]
+  Interactive assembly and analysis of RAD-seq data
+ ------------------------------------------------------------- 
+  Parallel connection | latituba: 8 cores
+  
+  Step 3: Clustering/Mapping reads within samples
+  [####################] 100% 0:00:00 | indexing reference     
+  [####################] 100% 0:00:01 | join merged pairs      
+  [####################] 100% 0:00:00 | join unmerged pairs    
+  [####################] 100% 0:00:00 | dereplicating          
+  [####################] 100% 0:00:02 | clustering/mapping     
+  [####################] 100% 0:00:00 | building clusters      
+  [####################] 100% 0:00:00 | chunking clusters      
+  [####################] 100% 0:00:16 | aligning clusters      
+  [####################] 100% 0:00:00 | concat clusters        
+  [####################] 100% 0:00:00 | calc cluster stats     
+  
+  Step 4: Joint estimation of error rate and heterozygosity
+  [####################] 100% 0:00:02 | inferring [H, E]       
+  
+  Step 5: Consensus base/allele calling 
+  Mean error  [0.00075 sd=0.00002]
+  Mean hetero [0.00196 sd=0.00005]
+  [####################] 100% 0:00:00 | calculating depths     
+  [####################] 100% 0:00:00 | chunking clusters      
+  [####################] 100% 0:00:22 | consens calling        
+  [####################] 100% 0:00:01 | indexing alleles       
+  
+  Step 6: Clustering/Mapping across samples 
+  [####################] 100% 0:00:00 | concatenating inputs   
+  [####################] 100% 0:00:01 | clustering across    
+  [####################] 100% 0:00:00 | building clusters      
+  [####################] 100% 0:00:08 | aligning clusters      
+  
+  Step 7: Filtering and formatting output files 
+  [####################] 100% 0:00:06 | applying filters       
+  [####################] 100% 0:00:01 | building arrays        
+  [####################] 100% 0:00:00 | writing conversions    
 
- --------------------------------------------------
-  ipyrad [v.0.3.20]
-  Interactive assembly and analysis of RADseq data
- --------------------------------------------------
-  loading Assembly: data2
-  from saved path: ~/Documents/ipyrad/tests/iptutorial/data2.json
-  ipyparallel setup: Local connection to 4 Engines
-
-  Step3: Clustering/Mapping reads
-    Reference sequence index exists
-  [####################] 100%  dereplicating         | 0:00:01 
-  [####################] 100%  mapping               | 0:00:01 
-  [####################] 100%  finalize mapping      | 0:00:09 
-  [####################] 100%  chunking              | 0:00:00 
-  [####################] 100%  aligning              | 0:00:05 
-  [####################] 100%  concatenating         | 0:00:00 
-
-  Step4: Joint estimation of error rate and heterozygosity
-  [####################] 100%  inferring [H, E]      | 0:00:17 
-
-  Step5: Consensus base calling 
-  Mean error  [0.00076 sd=0.00007]
-  Mean hetero [0.00224 sd=0.00061]
-  [####################] 100%  consensus calling     | 0:00:05 
-
-  Step6: Clustering across 12 samples at 0.85 similarity
-  [####################] 100%  concat/shuffle input  | 0:00:00 
-  [####################] 100%  clustering across     | 0:00:00 
-  [####################] 100%  building clusters     | 0:00:00 
-  [####################] 100%  aligning clusters     | 0:00:02 
-  [####################] 100%  indexing clusters     | 0:00:04 
-  [####################] 100%  building database     | 0:00:00 
-
-  Step7: Filter and write output files for 12 Samples
-  [####################] 100%  filtering loci        | 0:00:00 
-  [####################] 100%  building loci/stats   | 0:00:01 
-  [####################] 100%  building vcf file     | 0:00:01 
-  [####################] 100%  writing outfiles      | 0:00:01 
-  Outfiles written to: ~/Documents/ipyrad/tests/iptutorial/data2_outfiles
+  Parallel connection closed.
 
 
 Now let's suppose we're interested in the effect of missing data on our assemblies
@@ -301,22 +312,13 @@ want to skip over them. You can override this behavior by passing the ``-f`` fla
 or ``--force``, which tells ipyrad that you want it to run the step even though
 it's already finished it. The two assemblies we finished were both assembled at
 the default value of 4 for ``min_samples_locus``, so below I set up code to 
-branch and then run step7 on each of these assemblies with a new setting of 8 or 12. 
+branch and then run step7 on data1 with a new setting of 8 or 12. 
 
 .. code:: bash
    
    ## branch data1 to make min8 and min12 data sets
    >>> ipyrad -p params-data1.txt -b data1-min8
    >>> ipyrad -p params-data1.txt -b data1-min12
-
-Now use a text editor to set "min_samples_locus" to the new value (8 or 12) 
-in the params file of each of these assemblies. 
-
-.. code:: bash
-
-   ## branch data2 to make min8 and min12 data sets
-   >>> ipyrad -p params-data2.txt -b data2-min8
-   >>> ipyrad -p params-data2.txt -b data2-min12
 
 Once again, use a text editor to set "min_samples_locus" to the new value (8 or 12) 
 for these assemblies. Then, we will run step7 to get the final data sets. 
@@ -326,8 +328,6 @@ for these assemblies. Then, we will run step7 to get the final data sets.
    ## run step7 on using the new min_samples_locus settings
    >>> ipyrad -p params-data1-min8.txt -s 7  
    >>> ipyrad -p params-data1-min12.txt -s 7  
-   >>> ipyrad -p params-data2-min8.txt -s 7 
-   >>> ipyrad -p params-data2-min12.txt -s 7
 
 
 Now if we look in our project_dir ``iptutorial/`` we see that the fastq/ 
@@ -358,16 +358,11 @@ I show the file tree structure a bit more clearly below:
   ├── data2_clust_0.85
   ├── data2_consens
   ├── data2.json
-  ├── data2-min12.json
-  ├── data2-min12_outfiles
-  ├── data2-min8.json
-  ├── data2-min8_outfiles
   ├── data2_outfiles
   └── data2_refmapping
 
 
-In your working directory you will have the four params files which 
-have the full set of parameters used in each of your assemblies. 
+In your working directory you will have a params files with the full set of parameters used in each of your assemblies. 
 This makes for a good reproducible workflow, and can be referenced later
 as a reminder of the parameters used for each data set. 
 
@@ -384,10 +379,11 @@ including only the 4 samples listed.
    
     ## Branch subset of Samples to a new Assembly by passing in
     ## sample names to include.
-   >>> ipyrad -p params-data1.txt -b subdata 1A_0 1B_0 1C_0 1D_0
+    >>> ipyrad -p params-data1.txt -b subdata 1A_0 1B_0 1C_0 1D_0
 
 
-.. parsed-literal::
+.. code:: parsed-literal
+
   loading Assembly: data1
   from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
   Creating a new branch called 'subdata' with 4 Samples
@@ -403,7 +399,7 @@ So we made it so you can do that. The format of the file for listing
 sample names is literally just a text file with one sample name per line.
 Here is an example sample names file ``samples_to_keep.txt``
 
-.. parsed_literal::
+.. code:: parsed_literal
     1A_0
     1B_0
     1C_0
@@ -415,11 +411,13 @@ And the command to do the branching:
     ## Branch subset of Samples by passing in a file with sample names
     >>> ipyrad -p params-data1.txt -b subdata samples_to_keep.txt
 
-.. parsed-literal::
+.. code:: parsed-literal
+
   loading Assembly: data1
   from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
   Creating a new branch called 'subdata' with 3 Samples
   Writing new params file to params-subdata.txt
+
 
 What's next
 ~~~~~~~~~~~
