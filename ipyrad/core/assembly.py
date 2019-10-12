@@ -471,7 +471,7 @@ class Assembly(object):
         if "_" + param not in self.params._keys:
             raise IPyradError(
                 "Parameter key not recognized: {}".format(param))
-        
+
         # set parameter newvalue
         setattr(self.params, param, newvalue)
 
