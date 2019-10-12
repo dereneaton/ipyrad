@@ -22,7 +22,7 @@ from ..assemble.utils import IPyradError
 from .utils import progressbar
 
 
-## raise warning if missing imports
+# raise warning if missing imports
 MISSING_IMPORTS = """
 To use the ipa.sratools module you must install the sra-tools
 software, which you can do with the following conda command. 
@@ -53,7 +53,7 @@ class SRA(object):
         self.is_project = False
         self._oldtmpdir = None
 
-        ## cluster attributes
+        # cluster attributes
         self.ipcluster = {
             "cluster_id": "", 
             "profile": "default",
@@ -177,7 +177,7 @@ class SRA(object):
 
         # get run info and sort so largest samples are on top
         df = self.fetch_runinfo(list(range(31)), quiet=True)
-        df = df.sort_values(by="spots", ascending=False)
+        df = df.sort_values(by="spots", ascending=False).reset_index(drop=True)
 
         # parallelize downloads
         if ipyclient:
@@ -218,7 +218,8 @@ class SRA(object):
 
         # test run to see file names and location without download
         if dry_run:
-            print("\rThe following files will be written to: {}\n"
+            print(
+                "\rThe following files will be written to: {}\n"
                 .format(self.workdir))
             print("{}\n".format(df.Accession))
             return
@@ -276,7 +277,7 @@ class SRA(object):
                     self._call_fastq_dump_on_SRRs(*args)
                     download_asyncs.pop(key)
                     nfinished += 1
-                
+
         # final report
         self._report(int(ntotal / 2))
 
@@ -327,7 +328,8 @@ class SRA(object):
                 )
             sra_ids += [i[4:-5] for i in res.text.split() if "<Id>" in i]
             if not sra_ids:
-                raise IPyradError("No SRA samples found in {}"
+                raise IPyradError(
+                    "No SRA samples found in {}"
                     .format(self.accessions))
             time.sleep(3)
 
@@ -367,7 +369,7 @@ class SRA(object):
         outname = os.path.split(srr)[-1]
         outname = outname.rsplit(".sra")[0]
 
-        ## build command for fastq-dumping
+        # build command for fastq-dumping
         fd_cmd = [
             "fastq-dump", srr,
             "--accession", outname,
@@ -379,14 +381,14 @@ class SRA(object):
         if paired:
             fd_cmd += ["--split-files"]
 
-        ## call fq dump command
+        # call fq dump command
         proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
         o, e = proc.communicate()
 
         if proc.returncode:
             raise IPyradError(o.decode())
 
-        ## delete the temp sra file from the place 
+        # delete the temp sra file from the place 
         if os.path.exists(srr):
             os.remove(srr)
 
