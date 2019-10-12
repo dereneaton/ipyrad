@@ -9,7 +9,7 @@ from builtins import range
 import os
 import tempfile
 
-import h5py 
+import h5py
 import numpy as np
 import pandas as pd
 from ..assemble.utils import TRANSFULL, IPyradError
@@ -18,16 +18,16 @@ from ..assemble.utils import TRANSFULL, IPyradError
 class VCFtoHDF5(object):
     """
     Creates a temporary snps.hdf5 file conversion of the VCF file.
-    For ipyrad assembled RAD seq data this will use RAD loci as the 
-    grouping of SNPs into linkage blocks for subsampling. If VCF is from 
-    some other assembly (e.g., WGS) then you can use the ld_block_size arg to 
+    For ipyrad assembled RAD seq data this will use RAD loci as the
+    grouping of SNPs into linkage blocks for subsampling. If VCF is from
+    some other assembly (e.g., WGS) then you can use the ld_block_size arg to
     group SNPs into linkage blocks for subsampling analyses.
     """
     def __init__(
-        self, 
+        self,
         data,
-        name="test", 
-        workdir="./analysis-vcf2hdf5", 
+        name="test",
+        workdir="./analysis-vcf2hdf5",
         ld_block_size=None,
         quiet=False,
         ):
@@ -42,7 +42,7 @@ class VCFtoHDF5(object):
         self.hlines = 0
         self.ld_block_size = ld_block_size
         self.database = ""
-        self.quiet = quiet 
+        self.quiet = quiet
 
         # check for data file
         self.database = os.path.join(self.workdir, self.name + ".snps.hdf5")
@@ -57,7 +57,7 @@ class VCFtoHDF5(object):
 
     def run(self):
         """
-        Parse and convert data to HDF5 file format. 
+        Parse and convert data to HDF5 file format.
         """
         # print message
         self._print("Indexing VCF to HDF5 database file")
@@ -317,6 +317,7 @@ def get_genos(gstr):
 def return_g(g, i):
     "returns the genotype str from vcf at one position (0/1) -> 0"
     return g[i]
+
 
 # vectorized version of return g
 v_return_g = np.vectorize(return_g, otypes=[np.int8])
