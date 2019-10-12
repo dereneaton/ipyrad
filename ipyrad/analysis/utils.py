@@ -161,7 +161,7 @@ class Params(object):
 
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
         if self._i > len(keys) - 1:

@@ -2051,7 +2051,7 @@ def fill_snp_array(data, ntaxa, nsnps):
         # with ambiguous bases resolved: (87, 78, 0, 0).
         if data.params.assembly_method != 'reference':
             io5['pseudoref'][:] = reftrick(snparr, GETCONS)
-    
+
         else:
             ref = snparr[data.snames.index('reference')]   
             pseudoref = reftrick(snparr, GETCONS)
@@ -2489,14 +2489,14 @@ def reftrick(iseq, consdict):
     altrefs[:, 1] = 46
 
     for col in range(iseq.shape[1]):
-        ## expand colums with ambigs and remove N-
+        # expand colums with ambigs and remove N-
         fcounts = np.zeros(111, dtype=np.int64)
         counts = np.bincount(iseq[:, col])  #, minlength=90)
         fcounts[:counts.shape[0]] = counts
-        ## set N and - to zero, wish numba supported minlen arg
+        # set N and - to zero, wish numba supported minlen arg
         fcounts[78] = 0
         fcounts[45] = 0
-        ## add ambig counts to true bases
+        # add ambig counts to true bases
         for aidx in range(consdict.shape[0]):
             nbases = fcounts[consdict[aidx, 0]]
             for _ in range(nbases):
@@ -2504,23 +2504,23 @@ def reftrick(iseq, consdict):
                 fcounts[consdict[aidx, 2]] += 1
             fcounts[consdict[aidx, 0]] = 0
 
-        ## now get counts from the modified counts arr
+        # now get counts from the modified counts arr
         who = np.argmax(fcounts)
         altrefs[col, 0] = who
         fcounts[who] = 0
 
-        ## if an alt allele fill over the "." placeholder
+        # if an alt allele fill over the "." placeholder
         who = np.argmax(fcounts)
         if who:
             altrefs[col, 1] = who
             fcounts[who] = 0
 
-            ## if 3rd or 4th alleles observed then add to arr
+            # if 3rd or 4th alleles observed then add to arr
             who = np.argmax(fcounts)
             altrefs[col, 2] = who
             fcounts[who] = 0
 
-            ## if 3rd or 4th alleles observed then add to arr
+            # if 3rd or 4th alleles observed then add to arr
             who = np.argmax(fcounts)
             altrefs[col, 3] = who
 
@@ -2530,7 +2530,7 @@ def reftrick(iseq, consdict):
 @njit
 def get_genos(f10, f01, pseudoref):
     res = np.zeros((f10.size, 2), dtype=np.uint8)
-    
+
     for i in range(f10.size):
         match = np.where(f10[i] == pseudoref[i])[0]
         if match.size:
