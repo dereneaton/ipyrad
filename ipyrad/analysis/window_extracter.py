@@ -270,7 +270,7 @@ class WindowExtracter(object):
 
         # iterate over imap groups
         for ikey, ivals in self.imap.items():
-            
+
             # get subarray for this group
             sidxs = [np.where(self.names == i)[0][0] for i in ivals]
             subarr = self.seqarr[sidxs, :]
