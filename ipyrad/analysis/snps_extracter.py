@@ -23,6 +23,7 @@ from ipyrad.analysis.utils import jsubsample_snps
 .check imap for the user, e.g., no dups.
 """
 
+
 class SNPsExtracter(object):
     """
     Extract .snps and .snpsmap from snps.hdf5 after filtering for indels, 
@@ -87,7 +88,7 @@ class SNPsExtracter(object):
             raise IPyradError(
                 "Samples [{}] are not in data file: {}"
                 .format(badnames, self.data))
-        
+
         # if no names then use database names, else order imap names in dborder
         if not self.names:
             self.names = self.dbnames 
@@ -211,7 +212,7 @@ class SNPsExtracter(object):
     #     0/1/2 or 9 for missing. In other words, it's the geno file 
     #     format. 
     #     """
-        
+
     #     raise NotImplementedError("VCF parsing NOT IMPLEMENTED YET")
 
     #     # to match hdf5 function this needs to parse a genotype matrix (.snps)
