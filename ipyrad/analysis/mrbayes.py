@@ -9,7 +9,6 @@ from ipyrad.assemble.utils import IPyradError
 
 OPJ = os.path.join
 
-
 # template for standard tree inference
 NEX_TEMPLATE_1 = """\
 #NEXUS
