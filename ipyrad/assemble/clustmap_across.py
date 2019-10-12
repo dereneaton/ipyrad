@@ -131,6 +131,7 @@ class Step6:
 
     def assign_groups(self):
         "assign samples to groups if not user provided for hierarchical clust"
+
         # use population info to split samples into groups; or assign random
         if self.data.populations:
             self.cgroups = {}
@@ -337,7 +338,7 @@ class Step6:
         printstr = ("clustering across   ", "s6")
         args = (self.data, jobid, 0, True)
         rasync = self.thview.apply(cluster, *args)
-        
+
         prog = 0
         while 1:
             time.sleep(0.5)
