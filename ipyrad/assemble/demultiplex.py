@@ -26,8 +26,8 @@ from collections import Counter
 # ipyrad imports
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
-      
-        
+
+
 
 class Step1:
     def __init__(self, data, force, ipyclient):
@@ -156,7 +156,8 @@ class FileLinker:
         endings = ("gz", "fastq", "fq")
         self.fastqs = [i for i in self.fastqs if i.split(".")[-1] in endings]
         if not self.fastqs:
-            raise IPyradError(NO_FILES_FOUND_PAIRS
+            raise IPyradError(
+                NO_FILES_FOUND_PAIRS
                 .format(self.data.params.sorted_fastq_path))
 
         # link pairs into tuples
@@ -168,7 +169,8 @@ class FileLinker:
             # file checks
             if not r1s:
                 raise IPyradError(
-                    "No fastqs files found. Names may be improperly formatted. See Docs.")
+                    "No fastqs files found. Names may be "
+                    "improperly formatted. See Docs.")
             if len(r1s) != len(r2s):
                 raise IPyradError(
                     R1_R2_name_error.format(len(r1s), len(r2s)))
@@ -200,7 +202,7 @@ class FileLinker:
 
         # iterate over input files
         for ftup in self.ftuples:
-            
+
             # remove file extension from name
             sname = get_name_from_file(ftup[0], None, None)
 
@@ -217,7 +219,11 @@ class FileLinker:
         rasyncs = {}
         if createdinc:
             for sample in self.data.samples.values():
+
+                # get zip var
                 gzipped = bool(sample.files.fastqs[0][0].endswith(".gz"))
+
+                # submit job to count lines and store async
                 rasyncs[sample.name] = self.lbview.apply(
                     zbufcountlines, 
                     *(sample.files.fastqs[0][0], gzipped)
@@ -434,7 +440,7 @@ class Demultiplexer:
                 # break when all jobs are finished
                 if all([i.ready() for i in rasyncs.values()]):
                     break
-                
+
                 # ntemp files written or being written
                 done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
                 self.data._progressbar(njobs, done, start, printstr)
@@ -451,7 +457,7 @@ class Demultiplexer:
 
         # return value
         self.chunksdict = chunksdict
-        
+
 
     def remote_run_barmatch(self):
         "Submit chunks to be sorted by barmatch() and collect stats"
@@ -564,7 +570,7 @@ class Demultiplexer:
             if all(ready):
                 self.data._print("")
                 break
-        
+
 
     def store_stats(self):
         "Write stats and stores to Assembly object."
@@ -575,7 +581,8 @@ class Demultiplexer:
         outfile = open(self.data.stats_files.s1, 'w')
 
         # write the header for file stats ------------------------------------
-        outfile.write("{:<35}  {:>13}{:>13}{:>13}\n"
+        outfile.write(
+            "{:<35}  {:>13}{:>13}{:>13}\n"
             .format("raw_file", "total_reads", "cut_found", "bar_matched"))
 
         # write the file stats
@@ -595,7 +602,8 @@ class Demultiplexer:
                 )
 
         # spacer, how many records for each sample --------------------------
-        outfile.write("\n{:<35}  {:>13}\n"
+        outfile.write(
+            "\n{:<35}  {:>13}\n"
             .format("sample_name", "total_reads"))
 
         # names alphabetical. Write to file. Will save again below to Samples.
@@ -604,7 +612,7 @@ class Demultiplexer:
             if "-technical-replicate-" in sname:
                 sname = sname.rsplit("-technical-replicate", 1)[0]
             snames.add(sname)
-            
+
         for sname in sorted(list(snames)):
             outfile.write("{:<35}  {:>13}\n"
                 .format(sname, self.stats.fsamplehits[sname]))
@@ -777,7 +785,6 @@ class BarMatch:
         """
         Gzips are always bytes so let's use rb to make unzipped also bytes.
         """
-
         # get file type
         if self.ftuple[0].endswith(".gz"):
             self.ofile1 = gzip.open(self.ftuple[0], 'rb')
@@ -787,7 +794,7 @@ class BarMatch:
         # create iterators 
         fr1 = iter(self.ofile1) 
         quart1 = izip(fr1, fr1, fr1, fr1)
-        
+
         # create second read iterator for paired data
         if self.ftuple[1]:
             if self.ftuple[0].endswith(".gz"):
@@ -818,7 +825,7 @@ class BarMatch:
                 self.filestat[0] += 1
             except StopIteration:
                 break
-        
+
             # i7 barcodes (get from name string instead of sequence)
             if self.data.hackersonly.demultiplex_on_i7_tags:
                 barcode = read1[0].decode().rsplit(":", 1)[-1].split("+")[0]
@@ -840,7 +847,7 @@ class BarMatch:
                 barcode = barcode.decode()
             except AttributeError:
                 pass          
-       
+
             # find if it matches 
             sname_match = self.matchdict.get(barcode)
 
@@ -856,7 +863,7 @@ class BarMatch:
                     self.barhits[barcode] += 1
                 else:
                     self.barhits[barcode] = 1
-        
+
                 # trim off barcode
                 lenbar1 = len(barcode)
                 if '3rad' in self.data.params.datatype:
@@ -867,7 +874,7 @@ class BarMatch:
                 # no trim on i7 demux
                 if self.data.hackersonly.demultiplex_on_i7_tags:
                     lenbar1 = lenbar2 = 0
-        
+
                 # for 2brad we trim the barcode AND the synthetic overhang
                 # The `+1` is because it trims the newline
                 if self.data.params.datatype == '2brad':
@@ -877,14 +884,14 @@ class BarMatch:
                 else:
                     read1[1] = read1[1][lenbar1:]
                     read1[3] = read1[3][lenbar1:]
-        
+
                 # Trim barcode off R2 and append. Only 3rad datatype
                 # pays the cpu cost of splitting R2
                 if '3rad' in self.data.params.datatype:
                     read2 = list(read2)
                     read2[1] = read2[1][lenbar2:]
                     read2[3] = read2[3][lenbar2:]
-        
+
                 # append to sorted reads list
                 self.read1s[sname_match].append(b"".join(read1).decode())
                 if 'pair' in self.data.params.datatype:
@@ -897,12 +904,12 @@ class BarMatch:
 
             # Write to each sample file (pid's have different handles)
             if not self.filestat[0] % int(1e6):
-                
+
                 # write reads to file
                 write_to_file(self.data, self.read1s, 1, self.epid)
                 if 'pair' in self.data.params.datatype:
                     write_to_file(self.data, self.read2s, 2, self.epid)
-                
+
                 # clear out lits of sorted reads
                 for sname in self.data.barcodes:
                     if "-technical-replicate-" in sname:
@@ -1032,17 +1039,17 @@ def zbufcountlines(filename, gzipped):
 
 def find3radbcode(cutters, longbar, read):
     "find barcode sequence in the beginning of read"
-    ## default barcode string
+    # default barcode string
     for ambigcuts in cutters:
         for cutter in ambigcuts:
-            ## If the cutter is unambiguous there will only be one.
+            # If the cutter is unambiguous there will only be one.
             if not cutter:
                 continue
             search = read[1][:int(longbar[0] + len(cutter) + 1)]
             splitsearch = search.decode().rsplit(cutter, 1)
             if len(splitsearch) > 1:
                 return splitsearch[0]
-    ## No cutter found
+    # No cutter found
     return splitsearch[0] 
 
 
