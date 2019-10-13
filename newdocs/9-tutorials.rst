@@ -29,7 +29,7 @@ and assemble data with respect to a reference genome.
    + `Introductory tutorial to the ipyrad CLI <tutorial_intro_cli.html>`__ (command line)  
    + `Advanced tutorial to the ipyrad CLI <tutorial_advanced_cli.html>`__ (command line)  
    + `Running on ipyrad on HPC <HPC_script.html>`__  
-   + `Introductory tutorial to the ipyrad API <API_user-guide.html>`__  
+   + `Introductory tutorial to the ipyrad API <API-assembly/cookbook-empirical-API-1-pedicularis.ipynb>`__  
 
 
 .. _empirical_example:
