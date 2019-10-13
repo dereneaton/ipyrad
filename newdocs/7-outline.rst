@@ -14,7 +14,7 @@ Basic Assembly Workflow
 ------------------------
 The simplest use of ipyrad is to assemble a data set under a single set of parameters defined in a params file. Step 1 loads/assigns data to each sample; steps 2-5 process data for each sample; step 6 identifies orthologs across samples; and step 7 filters the orthologs and writes formatted files for downstream analyses. 
 
-.. image:: images/steps.png
+.. image:: ./images/steps.png
 
 The code to run a basic workflow is quite simple:
 
