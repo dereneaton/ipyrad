@@ -3,6 +3,7 @@
 """ wrapper to make simple calls to mb """
 
 import os
+import sys
 import subprocess
 from ipyrad.assemble.utils import Params
 from ipyrad.assemble.utils import IPyradError
@@ -102,7 +103,8 @@ class MrBayes(object):
     """    
 
     # init object for params
-    def __init__(self,
+    def __init__(
+        self,
         data,
         name="test",
         workdir="analysis-mb", 
@@ -188,13 +190,14 @@ class MrBayes(object):
     @property 
     def command(self):
         return "mb {}".format(self.nexus)
-    
+
     @property
     def nexus_string(self):
         return self._nexstring
 
 
-    def run(self, 
+    def run(
+        self, 
         ipyclient=None, 
         quiet=False,
         force=False,
@@ -204,7 +207,8 @@ class MrBayes(object):
         Submits mrbayes job to run. If no ipyclient object is provided then 
         the function will block until the mb run is finished. If an ipyclient
         is provided then the job is sent to a remote engine and an asynchronous 
-        result object is returned which can be queried or awaited until it finishes.
+        result object is returned which can be queried or awaited until it 
+        finishes.
 
         Parameters
         -----------
@@ -235,12 +239,12 @@ class MrBayes(object):
         if not ipyclient:
             self.stdout = _call_mb([self.binary, self.nexus])
         else:
-            ## find all hosts and submit job to the host with most available engines
+            # find all hosts and submit job to host with most available engines
             lbview = ipyclient.load_balanced_view()
             self.rasync = lbview.apply(
                 _call_mb, [self.binary, self.nexus])
 
-        ## initiate random seed
+        # initiate random seed
         if not quiet:
             if not ipyclient:
                 print("job {} finished successfully".format(self.name))
@@ -264,20 +268,21 @@ class MrBayes(object):
         # check for binary
         list_binaries = [
             search_first,
-            "mb",
+            os.path.join(sys.prefix, "bin", "mb"),
         ]
         list_binaries = [i for i in list_binaries if i]
 
         # check user binary first, then backups
         for binary in list_binaries:
-            proc = subprocess.Popen(["which", binary],
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT).communicate()
+            proc = subprocess.Popen(
+                ["which", binary],
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT).communicate()
             # update the binary
             if proc[0]:
                 self.binary = binary
 
-        ## if none then raise error
+        # if none then raise error
         if not proc[0]:
             raise Exception(
                 "cannot find mb; run 'conda install mrbayes -c bioconda'")
