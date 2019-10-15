@@ -3,12 +3,13 @@
 """ wrapper to make simple calls to raxml """
 
 import os
+import sys
 import glob
 import subprocess
 from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
-## alias
+# alias
 OPJ = os.path.join
 
 
@@ -67,15 +68,16 @@ class Raxml(object):
         submits a raxml job to locally or on an ipyparallel client cluster. 
     """    
 
-    ## init object for params
-    def __init__(self,
+    # init object for params
+    def __init__(
+        self,
         data,
         name="test",
         workdir="analysis-raxml", 
         *args, 
         **kwargs):
 
-        ## path attributes
+        # path attributes
         self._kwargs = {
             "f": "a", 
             "T": 4,  # <- change to zero !?
@@ -99,30 +101,31 @@ class Raxml(object):
         if not os.path.exists(workdir):
             os.makedirs(workdir)
 
-        ## entered args
+        # store entered args in params object
         self.params = Params()
         self.params.n = name
         self.params.w = workdir
         self.params.s = os.path.abspath(os.path.expanduser(data))
 
-        ## find the binary
-        if not self._kwargs["binary"]:
-            self.params.binary = _find_binary()
+        # if arg append kwargs to top of list of binaries to search for
+        binaries = _get_binary_paths()
+        if self._kwargs["binary"]:
+            binaries = [self._kwargs["binary"]] + binaries
 
-        ## set params
+        # sefind a binary from the list
+        self.params.binary = _check_binaries(binaries)
+
+        # set params 
         notparams = set(["workdir", "name", "data", "binary"])
         for key in set(self._kwargs.keys()) - notparams:
             self.params[key] = self._kwargs[key]
 
-        ## check binary
-        self._get_binary()
-
-        ## attributesx
+        # attributesx
         self.rasync = None
         self.stdout = None
         self.stderr = None
 
-        ## results files        
+        # results files        
         self.trees = Params()
         self.trees.bestTree = OPJ(workdir, "RAxML_bestTree." + name)
         self.trees.bipartitionsBranchLabels = OPJ(workdir, "RAxML_bipartitionsBranchLabels." + name)
@@ -153,7 +156,7 @@ class Raxml(object):
         # If no bootstraps then run -f D not -f a, and drop -x and -N 
         #        if "-f D":
 
-        ## add ougroups
+        # add ougroups
         if 'o' in self.params:
             cmd += ["-o"]
             cmd += [",".join(self.params.o)]
@@ -166,7 +169,8 @@ class Raxml(object):
         return " ".join(self._command_list)
 
 
-    def run(self, 
+    def run(
+        self, 
         ipyclient=None, 
         quiet=False,
         force=False,
@@ -174,9 +178,10 @@ class Raxml(object):
         ):
         """
         Submits raxml job to run. If no ipyclient object is provided then 
-        the function will block until the raxml run is finished. If an ipyclient
-        is provided then the job is sent to a remote engine and an asynchronous 
-        result object is returned which can be queried or awaited until it finishes.
+        the function will block until the raxml run is finished. If an 
+        ipyclient is provided then the job is sent to a remote engine and an
+        asynchronous result object is returned which can be queried or awaited
+        until it finishes.
 
         Parameters
         -----------
@@ -212,14 +217,14 @@ class Raxml(object):
             self.stdout = proc[0]
             self.stderr = proc[1]
         else:
-            ## find all hosts and submit job to the host with most available engines
+            # find all hosts and submit job to the host with most available engines
             lbview = ipyclient.load_balanced_view()
             self.rasync = lbview.apply(_call_raxml, self._command_list)
 
-        ## initiate random seed
+        # initiate random seed
         if not quiet:
             if not ipyclient:
-                ## look for errors
+                # look for errors
                 if "Overall execution time" not in self.stdout.decode():
                     print("Error in raxml run\n" + self.stdout.decode())
                 else:
@@ -229,7 +234,8 @@ class Raxml(object):
                     print("job {} running".format(self.params.n))
                     ipyclient.wait()
                     if self.rasync.successful():
-                        print("job {} finished successfully"
+                        print(
+                            "job {} finished successfully"
                             .format(self.params.n))
                     else:
                         raise IPyradError(self.rasync.get())
@@ -238,28 +244,7 @@ class Raxml(object):
 
 
 
-    def _get_binary(self):
-        """ find binaries available"""
-
-        ## check for binary
-        backup_binaries = ["raxmlHPC-PTHREADS", "raxmlHPC-PTHREADS-SSE3"]
-
-        ## check user binary first, then backups
-        for binary in [self.params.binary] + backup_binaries:
-            proc = subprocess.Popen(["which", self.params.binary], 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT).communicate()
-            ## update the binary
-            if proc:
-                self.params.binary = binary
-
-        ## if none then raise error
-        if not proc[0]:
-            raise Exception(BINARY_ERROR.format(self.params.binary))
-
-
-
-def _find_binary():
+def _get_binary_paths():
     # check for binary
     list_binaries = [
         "raxmlHPC-PTHREADS-AVX2",
@@ -267,18 +252,31 @@ def _find_binary():
         "raxmlHPC-PTHREADS-SSE3",
         "raxmlHPC-PTHREADS", 
         ]
+    # expand for env path
+    list_binaries = [os.path.join(sys.prefix, "bin", i) for i in list_binaries]
+    return list_binaries
+
+
+
+def _check_binaries(binaries):
+    """ find and return a working binary"""
 
     # check user binary first, then backups
-    for binary in list_binaries:
-        proc = subprocess.Popen(["which", binary],
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT).communicate()
-        # if a binary was found then stop
+    for binary in binaries:
+
+        # call which to find 
+        proc = subprocess.Popen(
+            ["which", binary],
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT,
+        ).communicate()
+
+        # if it exists then update the binary
         if proc[0]:
             return binary
 
-    # if not binaries found
-    raise Exception("cannot find raxml; run 'conda install raxml -c bioconda'")
+    # if you get here then no binaries were found
+    raise NameError(BINARY_ERROR)
 
 
 def _call_raxml(command_list):
@@ -294,17 +292,13 @@ def _call_raxml(command_list):
 
 
 BINARY_ERROR = """
-  Binary {} not found. 
+  RAxML binary not found. 
 
-  Check that you have raxml installed. If you have a different binary
-  installed you can select it using the argument 'binary'. 
-
-  For example, 
-    rax = ipa.raxml(name='test', data='test.phy', binary='raxmlHPC')
-
-  or, you can set it after object creation with:
-    rax.params.binary = "raxmlHPC-PTHREADS"
-
-  If you install raxml with conda ipyrad should be able to find it:
+  Check that you have raxml installed. For example, with conda:
   'conda install raxml -c bioconda'
+
+  If you have a different binary installed you can select it using 
+  the argument 'binary'. For example:
+
+  rax = ipa.raxml(name='test', data='test.phy', binary='raxmlHPC')
 """
