@@ -347,12 +347,15 @@ class Demultiplexer:
         else:
             self.longbar = (max(blens), 'diff')
 
-        # For 3rad we need to add the length info for barcodes_R2
-        if "3rad" in self.data.params.datatype:
-            blens = [
-                len(i.split("+")[1]) for i in self.data.barcodes.values()
-            ]
-            self.longbar = (self.longbar[0], self.longbar[1], max(blens))
+        # i7 tags there will be only one barcode, so this overrides "datatype"
+        # so that if you are using pair3rad if doesn't cause problems.
+        # For pair3rad we need to add the length info for barcodes_R2
+        if not self.data.hackersonly.demultiplex_on_i7_tags:
+            if "3rad" in self.data.params.datatype:
+                blens = [
+                    len(i.split("+")[1]) for i in self.data.barcodes.values()
+                ]
+                self.longbar = (self.longbar[0], self.longbar[1], max(blens))
 
         # gather raw sequence filenames (people want this to be flexible ...)
         if 'pair' in self.data.params.datatype:
