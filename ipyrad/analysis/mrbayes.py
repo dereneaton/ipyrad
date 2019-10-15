@@ -180,7 +180,7 @@ class MrBayes(object):
 
 
     def print_command(self):
-        print("mb {}".format(self.nexus))
+        print("{} {}".format(self.params.binary, self.nexus))
 
 
     def print_nexus_string(self):
@@ -189,7 +189,7 @@ class MrBayes(object):
 
     @property 
     def command(self):
-        return "mb {}".format(self.nexus)
+        return "{} {}".format(self.params.binary, self.nexus)
 
     @property
     def nexus_string(self):
@@ -253,7 +253,8 @@ class MrBayes(object):
                     print("job {} running".format(self.name))
                     ipyclient.wait()
                     if self.rasync.successful():
-                        print("job {} finished successfully"
+                        print(
+                            "job {} finished successfully"
                             .format(self.name))
                     else:
                         self.rasync.get()
