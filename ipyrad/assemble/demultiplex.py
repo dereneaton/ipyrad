@@ -291,9 +291,9 @@ class Demultiplexer:
             targets = self.ipyclient.ids[:4]
         self.lbview = self.ipyclient.load_balanced_view(targets=targets)
 
-        # we better have barcodes...
-        # if not self.data.barcodes:
-        # self.data._link_barcodes()
+        # re-parse the barcodes file in case hackers options changed
+        # e.g., (i7 demuxing or merge technical replicates)
+        self.data._link_barcodes()
 
         # attrs filled by check_files
         self.ftuples = []
@@ -1194,35 +1194,55 @@ def inverse_barcodes(data):
     bases = set("CATGN")
     poss = set()
 
-    ## do perfect matches
+    # do perfect matches
     for sname, barc in data.barcodes.items():
-        ## remove -technical-replicate-N if present
+        
+        # remove -technical-replicate-N if present
         if "-technical-replicate-" in sname:
             sname = sname.rsplit("-technical-replicate", 1)[0]
+
+        # store {barcode: name} mapping
         matchdict[barc] = sname
+
+        # record that this barcodes has been seen
         poss.add(barc)
 
+        # get x-off barcodes 
         if data.params.max_barcode_mismatch:
-            ## get 1-base diffs
+            
+            # iterate over bases in the barcode
             for idx1, base in enumerate(barc):
+                
+                # get bases that are not this one
                 diffs = bases.difference(base)
+                
+                # iter over the ways this barcode has other bases as this pos.
                 for diff in diffs:
                     lbar = list(barc)
                     lbar[idx1] = diff
                     tbar1 = "".join(lbar)
+
+                    # if this new barcode has not been observed store it.
                     if tbar1 not in poss:
-                        matchdict[tbar1] = sname                    
+                        matchdict[tbar1] = sname
                         poss.add(tbar1)
+
+                    # if it has been seen in another taxon, problem.
                     else:
-                        if matchdict.get(tbar1) != sname:
-                            print("""\
-        Note: barcodes {}:{} and {}:{} are within {} base change of each other
-            Ambiguous barcodes that match to both samples will arbitrarily
-            be assigned to the first sample. If you do not like this idea 
-            then lower the value of max_barcode_mismatch and rerun step 1\n"""
-            .format(sname, barc, 
-                matchdict[tbar1], data.barcodes[matchdict[tbar1]],
-                data.params.max_barcode_mismatch))
+                        print("""\n
+        Warning: 
+        Sample: {} ({})
+        is within {} base changes of sample ({})
+        Ambiguous barcodes that match to both samples will arbitrarily 
+        be assigned to the first sample. If you do not like this then 
+        lower the value of max_barcode_mismatch and rerun (recommended).
+        """.format(
+            sname,
+            barc, 
+            data.params.max_barcode_mismatch + 1,
+            matchdict.get(tbar1), 
+            )
+        )
 
                 ## if allowing two base difference things get big
                 ## for each modified bar, allow one modification to other bases
