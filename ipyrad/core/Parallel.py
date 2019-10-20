@@ -23,6 +23,10 @@ from ..assemble.utils import IPyradError, detect_cpus
 # from IPython.display import display
 
 
+# find ipcluster binary even if we're in a conda env
+IPCLUSTER_BIN = os.path.join(sys.prefix, "bin", "ipcluster")
+
+
 class Parallel(object):
     """
     Connect or launch ipcluster and wrap jobs running on Client engines so 
@@ -96,7 +100,8 @@ class Parallel(object):
 
         # make ipcluster arg call
         standard = [
-            "ipcluster", "start",
+            IPCLUSTER_BIN,
+            "start",
             "--daemonize", 
             "--cluster-id={}".format(self.tool.ipcluster["cluster_id"]),
             "--engines={}".format(self.tool.ipcluster["engines"]),
@@ -104,7 +109,7 @@ class Parallel(object):
             "--n={}".format(self.tool.ipcluster["cores"]),
             "{}".format(iparg),
         ]
-                   
+
         # wrap ipcluster start
         try:
             subprocess.check_call(
@@ -136,7 +141,8 @@ class Parallel(object):
                 raise
 
         except Exception as inst:
-            sys.exit("Error launching ipcluster for parallelization:\n({})\n"
+            sys.exit(
+                "Error launching ipcluster for parallelization:\n({})\n"
                 .format(inst))
 
 
@@ -188,7 +194,7 @@ class Parallel(object):
 
                 # Looking for all available cores, auto stop 
                 else:
-                    
+
                     # If MPI and not all found break if no more in 3 secs
                     if self.tool.ipcluster["engines"] == "MPI":
                         # are any cores found yet? do long wait.
@@ -232,7 +238,7 @@ class Parallel(object):
             if not engine.outstanding:
                 hosts.append(engine.apply(socket.gethostname))
 
-        ## report it
+        # report it
         hosts = [i.get() for i in hosts]
         hostdict = {}
         for hostname in set(hosts):
@@ -342,7 +348,7 @@ class Parallel(object):
         # cancel/kill any unfinished jobs and shutdown hub if 'auto=True'
         finally:           
             self.cleanup()
-            
+
             # print traceback and exit if CLI, just print if API
             if ip.__interactive__:
                 if iptrace:
@@ -385,7 +391,7 @@ class Parallel(object):
                             "\n{}Parallel connection closed."
                             .format(self.spacer))
                         time.sleep(0.5)
-        
+
             # close the cluster info
             # self.widget.close()
 

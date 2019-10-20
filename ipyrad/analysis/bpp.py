@@ -17,7 +17,7 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 
-from .utils import progressbar, Params
+from .utils import Params
 from ipyrad.assemble.utils import IPyradError
 
 try:
@@ -178,7 +178,7 @@ class Bpp(object):
         # update kwargs 
         self.asyncs = []
         self._kwargs = {
-            "binary": "bpp",
+            "binary": os.path.join(sys.prefix, "bin", "bpp"),
             "maxloci": None,
             "minmap": None,
             "minsnps": 0,
@@ -674,14 +674,14 @@ class Bpp(object):
 
 def _call_bpp(binary, ctlfile, is_alg00):
 
-    ## call the command and block until job finishes
-    proc = sps.Popen(["bpp", ctlfile], stderr=sps.STDOUT, stdout=sps.PIPE)
+    # call the command and block until job finishes
+    proc = sps.Popen([binary, ctlfile], stderr=sps.STDOUT, stdout=sps.PIPE)
     comm = proc.communicate()
 
-    ## Look for the ~/Figtree.tre file that bpp creates.
-    ## This has to be done here to make sure it is instantly run
-    ## when the job finishes so other reps won't write over it.
-    ## Kludge due to bpp writing forcing the file to $HOME.
+    # Look for the ~/Figtree.tre file that bpp creates.
+    # This has to be done here to make sure it is instantly run
+    # when the job finishes so other reps won't write over it.
+    # Kludge due to bpp writing forcing the file to $HOME.
     if is_alg00:
         default_figtree_path = os.path.join(os.path.expanduser("~"), "FigTree.tre")
         new_figtree_path = ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre"
@@ -704,31 +704,31 @@ def _parse_00(ofile):
     return 00 outfile as a pandas DataFrame
     """
     with open(ofile) as infile:
-        ## read in the results summary from the end of the outfile
+        # read in the results summary from the end of the outfile
         arr = np.array(
             [" "] + infile.read().split("Summary of MCMC results\n\n\n")[1:][0]\
             .strip().split())
 
-        ## reshape array 
+        # reshape array 
         rows = 12
         cols = (arr.shape[0] + 1) / rows
         arr = arr.reshape(rows, cols)
-        
-        ## make into labeled data frame
+
+        # make into labeled data frame
         df = pd.DataFrame(
             data=arr[1:, 1:], 
             columns=arr[0, 1:], 
             index=arr[1:, 0],
             ).T
         return df
-   
+
 
 def _parse_01(ofiles, individual=False):
     """ 
     a subfunction for summarizing results
     """
 
-    ## parse results from outfiles
+    # parse results from outfiles
     cols = []
     dats = []
     for ofile in ofiles:
@@ -743,7 +743,7 @@ def _parse_01(ofiles, individual=False):
         shape = (((len(results) - 3) / 4), 4)
         dat = np.array(results[3:]).reshape(shape)
         cols.append(dat[:, 3].astype(float))
-        
+
     if not individual:
         ## get mean results across reps
         cols = np.array(cols)
@@ -756,7 +756,7 @@ def _parse_01(ofiles, individual=False):
         nspecies = 1 + np.array([list(i) for i in dat[:, 1]], dtype=int).sum(axis=1)
         df["nspecies"] = nspecies
         return df
-    
+
     else:
         ## get mean results across reps
         #return cols
@@ -772,7 +772,7 @@ def _parse_01(ofiles, individual=False):
         return res
 
 
-## GLOBALS
+# GLOBALS
 IMAP_REQUIRED = """\
   An IMAP dictionary is required as input to group samples into 'species'.
   Example: {"A":[tax1, tax2, tax3], "B":[tax4, tax5], "C":[tax6, tax7]}

@@ -250,6 +250,7 @@ class Assembly(object):
         """
         Parses Sample barcodes to a dictionary from 'barcodes_path'. This 
         function is called whenever a barcode-ish param is changed. 
+        # This is called by Params()
         """
         # find barcodefile
         barcodefile = glob.glob(self.params.barcodes_path)
@@ -273,19 +274,28 @@ class Assembly(object):
                 self._print(
                     "Warning: technical replicates (same name) present.")
 
-            # adds -technical-replicate-N to replicate names (NON_DEFAULT)
-            # if not self.hackersonly.merge_technical_replicates:                   
-            
             # get duplicated names
             repeated = (bdf[0].value_counts() > 1).index
 
-            # labels technical reps in barcode dict
-            for rep in repeated:
-                farr = bdf[bdf[0] == rep]
-                for idx, index in enumerate(farr.index):
-                    bdf.loc[index, 0] = (
-                        "{}-technical-replicate-{}".format(rep, idx))
-                            
+            # adds label to ONLY replicates which will stay permanently
+            if not self.hackersonly.merge_technical_replicates:
+                # labels technical reps in barcode dict
+                for rep in repeated:
+                    farr = bdf[bdf[0] == rep]
+                    if farr.shape[0] > 1:
+                        for idx, index in enumerate(farr.index):
+                            bdf.loc[index, 0] = (
+                                "{}-technical-replicate-{}".format(rep, idx))
+
+            # adds tmp label to ALL sample which will be removed by end of s1
+            else:
+                # labels technical reps in barcode dict
+                for rep in repeated:
+                    farr = bdf[bdf[0] == rep]
+                    for idx, index in enumerate(farr.index):
+                        bdf.loc[index, 0] = (
+                            "{}-technical-replicate-{}".format(rep, idx))
+                                
         # make sure chars are all proper
         if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
             raise IPyradError(BAD_BARCODE)

@@ -41,7 +41,7 @@ class Hackers(object):
             ("bwa_args", ""),
             ("demultiplex_on_i7_tags", False),
             ("declone_PCR_duplicates", False),
-            ("merge_technical_replicates", False),
+            ("merge_technical_replicates", True),
             ("exclude_reference", False),
             ("trim_loci_min_sites", 4),
         ])
@@ -333,9 +333,9 @@ class Params(object):
             if not os.path.exists(fullbar):
                 raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
 
-            else:
-                self._barcodes_path = fullbar
-                self._data._link_barcodes()
+            # barcodes need to be re-parsed if hackers merge option changes
+            self._barcodes_path = fullbar
+            self._data._link_barcodes()
 
         # if 'Merged:' in value then set to ""
         else:
@@ -365,7 +365,7 @@ class Params(object):
         return self._assembly_method
     @assembly_method.setter
     def assembly_method(self, value):
-        allowed = ["denovo", "reference", "denovo+reference", "denovo-reference"]
+        allowed = ["denovo", "reference", "denovo+reference"]
         assert value in allowed, BAD_ASSEMBLY_METHOD.format(value)
         self._assembly_method = value
 
@@ -393,7 +393,7 @@ class Params(object):
     def datatype(self, value):
         allowed = (
             'rad', 'gbs', 'ddrad', 'pairddrad', 
-            'pairgbs', '2brad', 'pair3rad', 'merged'
+            'pairgbs', '2brad', 'pair3rad',
         )
         assert value in allowed, (
             "datatype must be one of: {}".format(", ".join(allowed)))
