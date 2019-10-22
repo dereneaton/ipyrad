@@ -82,8 +82,8 @@ class Step7:
             self.remote_build_vcf()
 
         # cleanup
-        #if os.path.exists(self.data.tmpdir):
-        #    shutil.rmtree(self.data.tmpdir)
+        if os.path.exists(self.data.tmpdir):
+            shutil.rmtree(self.data.tmpdir)
 
 
     def print_headers(self):
@@ -240,7 +240,7 @@ class Step7:
             # if it requires a pop file and they don't have one then skip
             # and print a warning:
             if (outf in ("t", "m")) and (not self.data.populations):
-                #print(POPULATION_REQUIRED.format(outf), file=sys.stderr)
+                # print(POPULATION_REQUIRED.format(outf), file=sys.stderr)
 
                 # remove format from the set
                 self.formats.discard(outf)
@@ -249,7 +249,7 @@ class Step7:
             else:                
                 # store handle to data object
                 for ending in OUT_SUFFIX[outf]:
-                    
+
                     # store 
                     self.data.outfiles[ending[1:]] = os.path.join(
                         self.data.dirs.outfiles,
@@ -458,7 +458,7 @@ class Step7:
         for jobfile in jobs:
             args = (self.data, self.chunksize, jobfile)
             rasyncs[jobfile] = self.lbview.apply(process_chunk, *args)
-        
+
         # iterate until all chunks are processed
         while 1:
             # get and enter results into hdf5 as they come in
@@ -533,7 +533,7 @@ class Step7:
         for job in rasyncs:
             if not rasyncs[job].successful():
                 rasyncs[job].get()
-      
+
 
     def remote_fill_depths(self):
         """
@@ -777,7 +777,7 @@ class Processor(object):
                 # fill nidxs with nidxs and shift info
                 inidxs = []
                 for idx, (i, j) in enumerate(zip(self.nidxs, ishift)):
-                    
+
                     # add to ishift if trimmed region contains indels
                     indshift = (self.aseqs[idx, j:edges.edges[0]] == 45).size
                     inidxs.append("{}-{}".format(i, j + indshift))
@@ -830,7 +830,7 @@ class Processor(object):
                 locus = self.to_locus(ablock, snparr, edg)
                 self.outlist.append(locus)
 
-        ## If no loci survive filtering then don't write the files
+        # If no loci survive filtering then don't write the files
         if np.fromiter(self.lcov.values(), dtype=int).sum() > 0:
             # write the chunk to tmpdir
             with open(self.outfile, 'w') as outchunk:
@@ -911,7 +911,7 @@ class Processor(object):
 
     def filter_minsamp_pops(self):
         "filter by minsamp or by minsamp x populations"
-        
+
         # default: no population information
         if not self.data.populations:
             if len(self.names) < self.minsamp:  # data.params.min_samples_locus:
@@ -1930,8 +1930,10 @@ def fill_snp_array(data, ntaxa, nsnps):
 
         # gather all loci bits
         locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
-        sortbits = sorted(locibits, 
-            key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
+        sortbits = sorted(
+            locibits, 
+            key=lambda x: int(x.rsplit("-", 1)[-1][:-5])
+        )
 
         # name order for entry in array
         sidxs = {sample: i for (i, sample) in enumerate(data.snames)}
@@ -1951,7 +1953,7 @@ def fill_snp_array(data, ntaxa, nsnps):
             # iterate lines of file until locus endings
             indata = open(bit, 'r')
             for line in iter(indata):
-                
+
                 # while still filling locus until |\n store name,seq in dict
                 if "|\n" not in line:
                     try:
@@ -1989,7 +1991,7 @@ def fill_snp_array(data, ntaxa, nsnps):
                             lidx += 1
                     # for idx, name in enumerate(tmploc):
                         # tmparr[sidxs[name], start:end] = snpsites[idx, :]
-                        
+
                     # store snpsmap data 1-indexed with chroms info
                     if data.isref:
                         chrom, pos = idxs.split(",")[0].split(":")
@@ -2032,7 +2034,8 @@ def fill_snp_array(data, ntaxa, nsnps):
             missmask = io5["snps"][:] == 78
             missmask += io5["snps"][:] == 45
             missing = 100 * (missmask.sum() / float(io5["snps"][:nsnps].size))
-            print("snps matrix size: ({}, {}), {:.2f}% missing sites."
+            print(
+                "snps matrix size: ({}, {}), {:.2f}% missing sites."
                 .format(
                     len(data.snames),
                     nsnps,
@@ -2100,7 +2103,7 @@ class VCF_filler:
         # the sample for this comp
         self.sname = sample.name
         self.isref = bool(data.isref)
-        
+
         # snpsmap has locations of SNPs on trimmed loci, e.g., 
         # no SNPs are on loc 1 and 2, first is on 3 at post-trim pos 11
         # [    3     0    11     1 41935]
@@ -2256,7 +2259,7 @@ def build_vcf(data, chunksize=1000):
     # removed at init of Step function anyway.
     if os.path.exists(data.outfiles.vcf):
         os.remove(data.outfiles.vcf)
-        
+
     # dictionary to translate locus numbers to chroms
     if data.isref:
         revdict = chroms2ints(data, True)
@@ -2286,7 +2289,7 @@ def build_vcf(data, chunksize=1000):
                 # reference based positions: pos on scaffold: 4, yes. tested.
                 pos = snpmap[:, 4]
                 #offset = 1
-                
+
             else:
                 genos = io5['genos'][chunk:chunk + chunksize, :, :]
                 snames = data.snames
@@ -2330,9 +2333,16 @@ def build_vcf(data, chunksize=1000):
 
                 # build geno strings
                 genostrs = [
-                    "{}/{}".format(*k) for k in [i for i in 
-                    [list(j) for j in genos[:, snames.index(sname)]]]
+                    "{}/{}".format(*k) for k in [
+                        i for i in [
+                            list(j) for j in genos[:, snames.index(sname)]
+                        ]
+                    ]
                 ]
+
+                # change 9's into missing
+                genostrs = ["." if i == "9/9" else i for i in genostrs]
+
                 # genostrs = [
                 # b"/".join(i).replace(b"9", b".").decode()
                 # for i in genos[:, snames.index(sname)]
@@ -2371,8 +2381,9 @@ def build_vcf(data, chunksize=1000):
 
             # concat and order columns correctly
             infocols = pd.concat([df_pos, colinfo, colform], axis=1)
-            infocols = infocols[["#CHROM", "POS", "ID", "REF", "ALT",
-                "QUAL", "FILTER", "INFO", "FORMAT"]]
+            infocols = infocols[
+                ["#CHROM", "POS", "ID", "REF", "ALT",
+                 "QUAL", "FILTER", "INFO", "FORMAT"]]
             arr = pd.concat([infocols, df_depth], axis=1)
 
             # debugging                       
