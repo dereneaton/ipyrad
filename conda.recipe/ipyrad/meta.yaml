@@ -6,7 +6,7 @@ package:
   version: {{version}}
 
 source:
-  git_url: https://github.com/eaton-lab/{{name}}.git
+  git_url: https://github.com/dereneaton/{{name}}.git
   git_rev: {{version}}
 
 build:
