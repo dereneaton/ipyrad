@@ -20,7 +20,7 @@ class SNPsImputer(object):
     Imputation of missing data based on population allele frequencies. This
     tool is generally meant to be used internally by ipyrad within other 
     analysis tool methods. 
-    
+
     Parameters:
     -----------
     data: (ndarray)
@@ -92,7 +92,7 @@ class SNPsImputer(object):
         # impute data by mean value in each population
         newdata = self.snps.copy()
         for pop, samps in imap.items():
-            
+
             # sample pop data
             sidxs = sorted(self.names.index(i) for i in samps)
             data = newdata[sidxs, :].copy()
