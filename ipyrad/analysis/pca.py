@@ -32,6 +32,8 @@ try:
     from sklearn import decomposition 
     from sklearn.cluster import KMeans
     from sklearn.manifold import TSNE
+    from sklearn.linear_model import LinearRegression
+    from sklearn.neighbors.nearest_centroid import NearestCentroid   
 except ImportError:
     pass
 
@@ -50,7 +52,7 @@ class PCA(object):
     """
     Principal components analysis of RAD-seq SNPs with iterative
     imputation of missing data.
-    
+
     Parameters:
     -----------
     data: (str, several options)
@@ -151,7 +153,7 @@ class PCA(object):
         if not self.imap:
             self.imap = {'1': self.names}
             self.minmap = {'1': 0.5}
-            
+
         # record missing data per sample
         self.missing = pd.DataFrame({
             "missing": [0.],
@@ -258,7 +260,7 @@ class PCA(object):
             self._print("")
 
 
-    def run(self, seed=None, subsample=True):  # , model="pca"):
+    def run(self, seed=None, subsample=True, quiet=False):  # , model="pca"):
         """
         Decompose genotype array (.snps) into n_components axes. 
 
@@ -268,6 +270,8 @@ class PCA(object):
             Random number seed used if/when subsampling SNPs.
         subsample: (bool)
             Subsample one SNP per RAD locus to reduce effect of linkage.
+        quiet: (bool)
+            Print statements
 
         Returns:
         --------
@@ -275,6 +279,12 @@ class PCA(object):
         into principal coordinate space; the second is an array with the 
         variance explained by each PC axis. 
         """
+
+        # override quiet
+        oldquiet = self.quiet
+        if quiet:
+            self.quiet = quiet
+
         # update seed. Numba seed cannot be None, so get random int if None
         if seed:
             self.seed = seed
@@ -303,6 +313,9 @@ class PCA(object):
         #     newdata = model.fit_transform(data)
         #     variance = "", ""
 
+        # return object to quiet state
+        self.quiet = oldquiet
+
         # return tuple with new coordinates and variance explained
         return newdata, variance
 
@@ -313,13 +326,21 @@ class PCA(object):
         ax1=1, 
         seed=None, 
         subsample=True, 
+        nreplicates=None,
         # model="pca",
         ):
         """
         A convenience function for plotting 2D scatterplot of PCA results.
         """
-        # get transformed coordinates and variances
-        data, vexp = self.run(subsample=subsample, seed=seed)
+        if not nreplicates:
+            nreplicates = 1
+
+        # get data points for all replicate runs
+        datas = {}
+        vexps = {}
+        datas[0], vexps[0] = self.run(subsample=subsample, seed=seed)        
+        for i in range(1, nreplicates):
+            datas[i], vexps[i] = self.run(subsample=subsample, quiet=True)
 
         # color map
         colors = toyplot.color.broadcast(
@@ -341,7 +362,8 @@ class PCA(object):
                 mstyle={
                     "fill": toyplot.color.to_css(colors[idx]),
                     "stroke": "#262626",
-                    "fill-opacity": 0.6,
+                    "stroke-width": 0.5 / nreplicates,
+                    "fill-opacity": 0.6 / nreplicates,
                 },
             )
 
@@ -352,19 +374,73 @@ class PCA(object):
             mark = pstyles[pop]
             marks.append(mark)
 
+        # test reversions of replicate axes (clumpp like) so that all plot
+        # in the same orientation as replicate 0.
+        model = LinearRegression()
+        for i in range(1, nreplicates):
+            for ax in [ax0, ax1]:
+                orig = datas[0][:, ax].reshape(-1, 1)
+                new = datas[i][:, ax].reshape(-1, 1)
+                swap = (datas[i][:, ax] * -1).reshape(-1, 1)
+
+                # get r^2 for both model fits
+                model.fit(orig, new)
+                c0 = model.coef_[0][0]
+                model.fit(orig, swap)
+                c1 = model.coef_[0][0]
+
+                # if swapped fit is better make this the data
+                if c1 > c0:
+                    datas[i][:, ax] = datas[i][:, ax] * -1
+
         # plot points with colors x population
         canvas = toyplot.Canvas(400, 300)
         axes = canvas.cartesian(
             grid=(1, 5, 0, 1, 0, 4),
-            xlabel="PC{} ({:.1f}%) explained".format(ax0, vexp[ax0] * 100),
-            ylabel="PC{} ({:.1f}%) explained".format(ax1, vexp[ax1] * 100),
+            xlabel="PC{} ({:.1f}%) explained".format(ax0, vexps[0][ax0] * 100),
+            ylabel="PC{} ({:.1f}%) explained".format(ax1, vexps[0][ax1] * 100),
         )
-        mark = axes.scatterplot(
-            data[:, ax0],
-            data[:, ax1],
-            marker=marks,
-            title=self.names,
-        )
+
+        # if not replicates then just plot the points
+        if nreplicates < 2:
+            mark = axes.scatterplot(
+                datas[0][:, ax0],
+                datas[0][:, ax1],
+                marker=marks,
+                title=self.names,
+            )
+
+        # replicates show clouds plus centroids
+        else:
+
+            # add the replicates cloud points       
+            for i in range(nreplicates):
+                # get transformed coordinates and variances
+                mark = axes.scatterplot(
+                    datas[i][:, ax0],
+                    datas[i][:, ax1],
+                    marker=marks,
+                )
+
+            # compute centroids
+            Xarr = np.concatenate(
+                [
+                    np.array([datas[i][:, ax0], datas[i][:, ax1]]).T 
+                    for i in range(nreplicates)
+                ]
+            )
+            yarr = np.tile(np.arange(len(self.names)), nreplicates)
+            clf = NearestCentroid()
+            clf.fit(Xarr, yarr)
+
+            # draw centroids
+            mark = axes.scatterplot(
+                clf.centroids_[:, 0],
+                clf.centroids_[:, 1],
+                title=self.names,
+                size=6,
+                mstyle={"stroke-width": 1, "stroke": "white", "fill": "black"},
+            )
 
         # add a legend
         if len(self.imap) > 1:
