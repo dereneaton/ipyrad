@@ -2044,9 +2044,8 @@ def fill_snp_array(data, ntaxa, nsnps):
                 file=outstats,
             )
 
-
         # fill in the reference and geno arrays
-        # convert snps to numeric.
+        # convert snps to characters uppered to get most common as pseudoref
         snparr = io5["snps"][:].view("S1")
         snparr = np.char.upper(snparr).view(np.uint8)
 
@@ -2540,8 +2539,10 @@ def reftrick(iseq, consdict):
 
 @njit
 def get_genos(f10, f01, pseudoref):
+    """
+    returns genotype as 0/1/2/3 or 9 for missing.
+    """
     res = np.zeros((f10.size, 2), dtype=np.uint8)
-
     for i in range(f10.size):
         match = np.where(f10[i] == pseudoref[i])[0]
         if match.size:
