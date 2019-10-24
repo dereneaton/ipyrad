@@ -35,6 +35,7 @@ for reproducible science. See the examples below.
 .. toctree::
    :titlesonly:
 
+   ipa.vcf_to_hdf5 <cookbook-vcf2hdf5.ipynb>
    ipa.treemix <cookbook-treemix.ipynb>
    ipa.pca <cookbook-pca.ipynb>
    ipa.raxml <cookbook-raxml.ipynb>
