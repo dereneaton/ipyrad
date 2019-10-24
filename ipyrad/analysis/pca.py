@@ -353,8 +353,9 @@ class PCA(object):
             for val in vals:
                 irev[val] = pop
 
-        # assign styles to populations
+        # assign styles to populations and to legend markers (not replicate)
         pstyles = {}
+        lstyles = {}
         for idx, pop in enumerate(self.imap):
             pstyles[pop] = toyplot.marker.create(
                 size=10, 
@@ -362,10 +363,21 @@ class PCA(object):
                 mstyle={
                     "fill": toyplot.color.to_css(colors[idx]),
                     "stroke": "#262626",
-                    "stroke-width": 0.5 / nreplicates,
-                    "fill-opacity": 0.6 / nreplicates,
+                    "stroke-width": 0.75 / nreplicates,
+                    "fill-opacity": 0.75 / nreplicates,
                 },
             )
+            lstyles[pop] = toyplot.marker.create(
+                size=10, 
+                shape="o",
+                mstyle={
+                    "fill": toyplot.color.to_css(colors[idx]),
+                    "stroke": "#262626",
+                    "stroke-width": 0.75,
+                    "fill-opacity": 0.75,
+                },
+            )
+
 
         # assign styled markers to data points
         marks = []
@@ -444,10 +456,10 @@ class PCA(object):
 
         # add a legend
         if len(self.imap) > 1:
-            marks = [(pop, marker) for pop, marker in pstyles.items()]
+            marks = [(pop, marker) for pop, marker in lstyles.items()]
             canvas.legend(
                 marks, 
-                corner=("right", 35, 100, min(250, len(pstyles) * 25))
+                corner=("right", 35, 100, min(250, len(lstyles) * 25))
             )
 
         return canvas, axes, mark
