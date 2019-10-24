@@ -12,7 +12,10 @@ import tempfile
 import h5py
 import numpy as np
 import pandas as pd
-from ..assemble.utils import TRANSFULL, IPyradError
+from numba import njit
+
+from .utils import ProgressBar
+from ..assemble.utils import TRANSFULL, GETCONS, IPyradError
 
 
 class VCFtoHDF5(object):
@@ -69,16 +72,20 @@ class VCFtoHDF5(object):
         self.init_database()
 
         # fill snps matrix
-        self.build_matrix()
+        self.build_chunked_matrix()
 
         # report on new database
+        with h5py.File(self.database) as io5:
+            self.nscaffolds = io5["snpsmap"][-1, 0]
+            # self.nlinkagegroups = io5["snpsmap"][-1, 3]
+
         self._print(
-            "HDF5: {} snps; {} scaffolds; {} linkage group"
+            "HDF5: {} SNPs; {} linkage group"
             .format(
-                self.df.shape[0], 
-                len(set(self.df["#CHROM"])), 
-                len(set(self.df["BLOCK"])),
-            ))
+                self.nsnps,
+                self.nscaffolds,
+                )
+            )
         self._print(
             "SNP database written to {}"
             .format(self.database)
@@ -107,7 +114,10 @@ class VCFtoHDF5(object):
         for dat in infile:
 
             # split on space
-            data = dat.decode().split()
+            try:
+                data = dat.decode().split()
+            except AttributeError:
+                data = dat.split()
 
             # parse meta data lines
             if data[0][0] == "#":
@@ -142,30 +152,75 @@ class VCFtoHDF5(object):
         # init the database file
         with h5py.File(self.database, 'w') as io5:
 
-            # core data sets
-            io5.create_dataset("genos", (self.nsnps, self.nsamples, 2), "u1")
-            io5.create_dataset("snps", (self.nsamples, self.nsnps), "u1")
-            io5.create_dataset("snpsmap", (self.nsnps, 5), "u4")
+            # core data sets (should SNPs be S1?)
+            io5.create_dataset("genos", (self.nsnps, self.nsamples, 2), np.uint8)
+            io5.create_dataset("snps", (self.nsamples, self.nsnps), np.uint8)
+            io5.create_dataset("snpsmap", (self.nsnps, 5), np.uint32)
             io5["snps"].attrs["names"] = [i.encode() for i in self.names]
             io5["genos"].attrs["names"] = [i.encode() for i in self.names]
+            io5["snpsmap"].attrs["columns"] = [
+                b"locus", b"locidx", b"locpos", b"scaf", b"scafpos",
+            ]
 
 
     def build_chunked_matrix(self):
         """
         Fill HDF5 database with VCF data in chunks at a time.
         """
+
+        # chunk retriever
         self.df = pd.read_csv(
             self.data, 
             sep="\t", 
             skiprows=self.hlines, 
-            chunksize=int(1e6),
+            chunksize=int(1e5),
         )
 
+        # open h5
+        io5 = h5py.File(self.database, 'a')
+        prog = ProgressBar(self.nsnps, 0, "converting VCF to HDF5")
+        prog.finished = 0
+        prog.update()
+
         # iterate over chunks of the file
+        xx = 0
+        lastchrom = "NULL"
+        e0 = 0  # 1-indexed new-locus index, will advance in get_snps/lastchrom
+        e1 = 0  # 0-indexed snps-per-loc index
+        e2 = 0  # 0-indexed snps-per-loc position
+        e3 = 0  # 1-indexed original-locus index, TODO, advancer
+        e4 = 0  # 0-indexed global snps counter
         for chunkdf in self.df:
 
-            genos, snps, snpmap = jfill_arrays_from_df()
+            # get sub arrays
+            genos, snps = chunk_to_arrs(chunkdf, self.nsamples)
 
+            # get sub snpsmap
+            snpsmap, lastchrom = self.get_snpsmap(
+                chunkdf, lastchrom=lastchrom, e0=e0, e1=e1, e2=e2, e4=e4)
+
+            # store sub arrays
+            e0 = snpsmap[-1, 0].astype(int)
+            e1 = snpsmap[-1, 1].astype(int) + 1
+            e2 = snpsmap[-1, 2].astype(int) + 1
+            e4 = snpsmap[-1, 4].astype(int) + 1
+
+            # write to HDF5
+            io5['snps'][:, xx:xx + chunkdf.shape[0]] = snps.T
+            io5['genos'][xx:xx + chunkdf.shape[0], :] = genos
+            io5['snpsmap'][xx:xx + chunkdf.shape[0], :] = snpsmap
+            xx += chunkdf.shape[0]
+
+            # print progress
+            prog.finished = xx
+            prog.update()
+
+        # return with last chunk
+        self.df = chunkdf
+
+        # close h5 handle
+        self._print("")
+        io5.close()
 
 
     def build_matrix(self):
@@ -200,10 +255,11 @@ class VCFtoHDF5(object):
                 # this sample's geno
                 sgeno = genos[gidx, sidx]
                 genos[gidx, sidx] = sgeno
-                
+
                 # bail if geno is missing (TODO: or indel).
                 if sgeno[0] == 9:
                     call = b"N"
+                    snps[gidx, sidx] = call
                     continue
 
                 # convert to geno alleles
@@ -275,7 +331,7 @@ class VCFtoHDF5(object):
 
                     # check for data and sample a SNP
                     if block.size:
-                        
+
                         # enter new block into dataframe
                         self.df.loc[dfidx:dfidx + block.shape[0], "BLOCK"] = bidx
                         dfidx += block.shape[0]
@@ -287,7 +343,7 @@ class VCFtoHDF5(object):
                     # break on end of scaff
                     if gpos > end:
                         break
-                
+
             # store it (CHROMS/BLOCKS are stored 1-indexed !!!!!!)
             snpsmap[:, 0] = self.df.BLOCK + 1
             snpsmap[:, 1] = np.concatenate(
@@ -304,19 +360,137 @@ class VCFtoHDF5(object):
         del snps
 
 
+    def get_snpsmap(self, chunkdf, lastchrom, e0, e1, e2, e4):
+
+        # convert snps back to "S1" view to enter data...
+        nsnps = chunkdf.shape[0]
+        snpsmap = np.zeros((nsnps, 5), dtype=np.uint32)
+
+        # check whether locus is same as end of last chunk
+        currchrom = chunkdf.iloc[0, 0]
+        if currchrom != lastchrom:
+            e0 += 1
+            e1 = 0
+            e2 = 0
+
+        # snpsmap: if ipyrad denovo it's easy, and they should just use hdf5.
+        if ("ipyrad" in self.source) and ("pseudo-ref" in self.reference):
+
+            # print warning that we're not ussng ld_block_size
+            if self.ld_block_size:
+                print("\nThis appears to be a denovo assembly, "
+                      "ld_block_size arg is being ignored.")
+
+            # get locus index
+            snpsmap[:, 0] = (
+                chunkdf["#CHROM"].factorize()[0].astype(np.uint32) + e0)
+
+            # get snp index counter possibly continuing from last chunk
+            snpsmap[:, 1] = np.concatenate(
+                [range(i[1].shape[0]) for i in chunkdf.groupby("#CHROM")])
+            snpsmap[snpsmap[:, 0] == snpsmap[:, 0].min(), 1] += e1
+
+            # get snp pos counter possibly continuing from last chunk
+            snpsmap[:, 2] = chunkdf.POS + e2
+            snpsmap[:, 3] = snpsmap[:, 0]
+
+            # get total snp counter, always continuing from any previous chunk
+            snpsmap[:, 4] = range(e4, snpsmap.shape[0] + e4)
+
+
+        # snpsmap: if ipyrad ref VCF the per-RAD loc info is available too
+        elif "ipyrad" in self.source:
+
+            # skip to generic vcf method if ld_block_size is set:
+            if not self.ld_block_size:
+                snpsmap[:, 0] = (
+                    chunkdf["#CHROM"].factorize()[0].astype(np.uint32) + e0)
+
+                # add ldx counter from last chunk
+                snpsmap[:, 1] = np.concatenate(
+                    [range(i[1].shape[0]) for i in chunkdf.groupby("#CHROM")])
+                snpsmap[snpsmap[:, 0] == snpsmap[:, 0].min(), 1] += e1
+                snpsmap[:, 2] = chunkdf.POS + e2
+                snpsmap[:, 3] = snpsmap[:, 0]
+                snpsmap[:, 4] = range(e4, snpsmap.shape[0] + e4)
+
+        # snpsmap: for other program's VCF's we need ldsize arg to chunk.
+        else:
+            if not self.ld_block_size:
+                raise IPyradError(
+                    "You must enter an ld_block_size estimate for this VCF.")
+
+        # cut it up by block size (unless it's denovo, then skip.)
+        if (self.ld_block_size) and ("pseudo-ref" not in self.reference):
+
+            # create a BLOCK column to keep track of original chroms
+            chunkdf["BLOCK"] = 0
+
+            # block and df index counters
+            original_e0 = e0
+            dfidx = e4
+
+            # iterate over existing scaffolds (e.g., could be one big chrom)
+            for _, scaff in chunkdf.groupby("#CHROM"):
+
+                # current start and end POS of this scaffold before breaking
+                gpos = e2
+                end = scaff.POS.max()
+
+                # iterate to break scaffold into linkage blocks
+                while 1:
+
+                    # grab a block 
+                    mask = (scaff.POS >= gpos) & (scaff.POS < gpos + self.ld_block_size)
+                    block = scaff[mask]
+
+                    # check for data and sample a SNP
+                    if block.size:
+
+                        # enter new block into dataframe
+                        chunkdf.loc[dfidx:dfidx + block.shape[0], "BLOCK"] = e0
+                        dfidx += block.shape[0]
+                        e0 += 1
+
+                    # advance counter
+                    gpos += self.ld_block_size
+
+                    # break on end of scaff
+                    if gpos > end:
+                        break
+
+            # store it (CHROMS/BLOCKS are stored 1-indexed !!!!!!)
+            snpsmap[:, 0] = chunkdf.BLOCK
+            snpsmap[:, 1] = np.concatenate(
+                [range(i[1].shape[0]) for i in chunkdf.groupby("BLOCK")])
+            # add ldx counter from last chunk
+            snpsmap[snpsmap[:, 0] == snpsmap[:, 0].min(), 1] += e1
+            snpsmap[:, 2] = chunkdf.POS
+            snpsmap[:, 3] = chunkdf["#CHROM"].factorize()[0] + original_e0
+            snpsmap[:, 4] = range(e4, chunkdf.shape[0] + e4)
+        return snpsmap, currchrom
+
 
 def get_genos(gstr):
     """
     Extract geno from vcf string: e.g., (0/1:...). 
     First pulls the indices then uses refalt to pull genos.
     """
-    return gstr[0], gstr[2]
+    gen = gstr.split(":")[0]
+    try:
+        return gen[0], gen[2]
+    except IndexError:
+        return 9, 9
+    # return gstr[0], gstr[2]
 
 
-
-def return_g(g, i):
+def return_g(gstr, i):
     "returns the genotype str from vcf at one position (0/1) -> 0"
-    return g[i]
+    gen = gstr.split(":")[0]
+    if gen != ".":
+        return int(gstr[i])
+    else:
+        return 9
 
 
 # vectorized version of return g
@@ -324,7 +498,10 @@ v_return_g = np.vectorize(return_g, otypes=[np.int8])
 
 
 def chunk_to_arrs(chunkdf, nsamples):
-
+    """
+    In development...
+    Read in chunk of VCF and convert to numpy arrays
+    """
     # nsnps in this chunk
     nsnps = chunkdf.shape[0]
 
@@ -333,13 +510,13 @@ def chunk_to_arrs(chunkdf, nsamples):
     arrpos[:, 0] = pd.factorize(arrpos[:, 0])[0]
     arrpos = arrpos.astype(np.int64)
 
-    # base calls as int8
-    ref = chunkdf.values[:, 3].astype(bytes)
+    # base calls as int8 (0/1/2/3/9)
+    ref = chunkdf.values[:, 3].astype(bytes).view(np.int8)
     alts = chunkdf.values[:, 4].astype(bytes)
     sas = np.char.replace(alts, b",", b"")
-    alts1 = np.zeros(alts.size, dtype=bytes)
-    alts2 = np.zeros(alts.size, dtype=bytes)
-    alts3 = np.zeros(alts.size, dtype=bytes)
+    alts1 = np.zeros(alts.size, dtype=np.int8)
+    alts2 = np.zeros(alts.size, dtype=np.int8)
+    alts3 = np.zeros(alts.size, dtype=np.int8)
     lens = np.array([len(i) for i in sas])
     alts1[lens == 1] = [i[0] for i in sas[lens == 1]]
     alts2[lens == 2] = [i[1] for i in sas[lens == 2]]
@@ -348,35 +525,53 @@ def chunk_to_arrs(chunkdf, nsamples):
     # genotypes as int8 
     g0 = v_return_g(chunkdf.values[:, 9:], 0)
     g1 = v_return_g(chunkdf.values[:, 9:], 2)
-
-    # TODO: all below here could be numba compiled if using ints (and dict workaround)
-
-    # genos array to fill from geno indices and refalt
-    genos = np.zeros((nsnps, nsamples, 2), dtype="u1")
-    snps = np.zeros((nsnps, nsamples), dtype="S1")
-    snpsmap = np.zeros((nsnps, 5), dtype="u4")
-
-    # fill genos with sum of calls except missing to 9
+    genos = np.zeros((nsnps, nsamples, 2), dtype=np.int8)
     genos[:, :, 0] = g0
     genos[:, :, 1] = g1
 
+    # numba func to fill
+    snps = jfill_snps(nsnps, nsamples, ref, g0, g1, alts1, alts2, alts3)
+    return genos, snps
+
+
+@njit()
+def jfill_snps(nsnps, nsamples, ref, g0, g1, alts1, alts2, alts3):
+
+    # fill snps
+    snps = np.zeros((nsnps, nsamples), dtype=np.int8)
+
     # fill snps in rows by indexing genos from ref,alt with g0,g1
     for ridx in range(snps.shape[0]):
-        
-        # missing values are N=78
-        snps[ridx, g0[ridx] == 9] = b"N"
-        
-        # 0/0 put in the ref allele at each row
-        snps[ridx, (g0[ridx] + g1[ridx]) == 0] = ref[ridx]
-        
-        # 1/1 put in the alt0 allele
-        snps[ridx, ((g0 == 1) & (g1 == 1))[ridx]] = alt1[ridx]
 
-        # 2/2 put in the alt1 allele
-        snps[ridx, ((g0 == 2) & (g1 == 2))[ridx]] = alt2[ridx]
+        # get it
+        tmpr = ref[ridx]
+        tmp0 = g0[ridx]
+        tmp1 = g1[ridx]
 
-        # 3/3 put in the alt2 allele
-        snps[ridx, ((g0 == 3) & (g1 == 3))[ridx]] = alt3[ridx]    
+        # missing set to 78
+        tmpsnps = snps[ridx]
+        tmpsnps[tmp0 == 9] = 78
+        snps[ridx] = tmpsnps
+
+        # 0/0 put to ref allele
+        tmpsnps = snps[ridx]
+        tmpsnps[(tmp0 + tmp1) == 0] = tmpr
+        snps[ridx] = tmpsnps
+
+        # 1/1 put to ref allele
+        tmpsnps = snps[ridx]
+        tmpsnps[(tmp0 == 1) & (tmp1 == 1)] = alts1[ridx]
+        snps[ridx] = tmpsnps   
+
+        # 2/2 put to ref allele
+        tmpsnps = snps[ridx]
+        tmpsnps[(tmp0 == 2) & (tmp1 == 2)] = alts2[ridx]
+        snps[ridx] = tmpsnps   
+
+        # 3/3 put to ref allele
+        tmpsnps = snps[ridx]
+        tmpsnps[(tmp0 == 3) & (tmp1 == 3)] = alts3[ridx]
+        snps[ridx] = tmpsnps 
 
     # fill ambiguity sites 
     ambs = np.where(g0 != g1)
@@ -385,35 +580,34 @@ def chunk_to_arrs(chunkdf, nsamples):
         # row, col indices of the ambiguous site in the snps mat
         row = ambs[0][idx]
         col = ambs[1][idx]
-        
+
         # get genos (0123) from the geno matrices
         a0 = g0[row, col]
         a1 = g1[row, col]        
         alls = sorted([a0, a1])
-        
+
         # get the alleles (CATG) from the ref/alt matrices
         if alls[0] == 0:
             b0 = ref[row]
             if alls[1] == 1:
-                b1 = alt1[row]
+                b1 = alts1[row]
             elif alls[1] == 2:
-                b1 = alt2[row]
+                b1 = alts2[row]
             else:
-                b1 = alt3[row]
+                b1 = alts3[row]
         elif alls[0] == 1:
-            b0 = alt1[row]
+            b0 = alts1[row]
             if alls[1] == 2:
-                b1 = alt2[row]
+                b1 = alts2[row]
             else:
-                b1 = alt3[row]
+                b1 = alts3[row]
         elif alls[0] == 2:
-            b0 = alt2[row]
-            b1 = alt3[row]
-        
-        # convert allele tuples into an ambiguity byte
-        snps[row, col] = TRANSFULL[(b0, b1)].encode()
+            b0 = alts2[row]
+            b1 = alts3[row]
 
+        # convert allele tuples into an ambiguity byte
+        fill = np.argmax((GETCONS[:, 2] == b0) & (GETCONS[:, 1] == b1))
+        snps[row, col] = GETCONS[fill, 0]
 
     # return the three arrays
-    return genos, snps, snpsmap
-
+    return snps
