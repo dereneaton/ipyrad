@@ -94,7 +94,8 @@ class Treemix(object):
     """    
 
     # init object for params
-    def __init__(self,
+    def __init__(
+        self,
         data,
         name="test",
         workdir="analysis-treemix", 
