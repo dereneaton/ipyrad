@@ -32,7 +32,7 @@ from .treeslider import TreeSlider as treeslider
 from .distance import Distance as distance
 from .structure import Structure as structure
 from .sratools import SRA as sratools
-# from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
+from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 
 # testing
 from .tetrad import Tetrad as tetrad
