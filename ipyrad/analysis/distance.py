@@ -42,7 +42,7 @@ class Distance(object):
         self.quiet = quiet
         self.subsample_snps = subsample_snps
         # self.require_nonnegative_symmetric = require_nonnegative_symmetric
-        
+
         # get tools 
         self._se = SNPsExtracter(
             self.data, self.imap, self.minmap, self.mincov, self.quiet)
@@ -87,4 +87,3 @@ class Distance(object):
                 diffs[i, j] = np.mean(np.abs(snps[i] - snps[j]) ** 2)
                 diffs[j, i] = diffs[i, j]
         return diffs
-
