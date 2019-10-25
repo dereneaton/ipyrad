@@ -133,6 +133,18 @@ class Step3:
                     args=(),
                 )
 
+            # DENOVO MINUS
+            elif self.data.params.assembly_method == "denovo-reference":
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not yet supported")
+
+            elif self.data.params.assembly_method == "denovo+reference":
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not yet supported")
+
+            else:
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not yet supported")
 
         ## single-end methods ------------------------------------
         else:
@@ -180,6 +192,10 @@ class Step3:
 
             # DENOVO MINUS
             elif self.data.params.assembly_method == "denovo-reference":
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not yet supported")
+
+            elif self.data.params.assembly_method == "denovo+reference":
                 raise NotImplementedError(
                     "datatype + assembly_method combo not yet supported")
 
