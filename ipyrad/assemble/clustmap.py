@@ -2075,7 +2075,7 @@ def store_sample_stats(data, sample, maxlens, depths):
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-    clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
+    clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.txt")
 
     for rfile in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
         if os.path.exists(rfile):
