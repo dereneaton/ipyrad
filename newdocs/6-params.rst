@@ -53,12 +53,12 @@ params file can be found in the :ref:`introductory tutorial<tutorial_intro_cli>`
     0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
     35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
     2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
-    0.05                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus (R1, R2)
-    0.05                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus (R1, R2)
+    0.05                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus
+    0.05                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus
     4                              ## [21] [min_samples_locus]: Min # samples per locus for output
-    0.2                            ## [22] [max_SNPs_locus]: Max # SNPs per locus (R1, R2)
-    8                              ## [23] [max_Indels_locus]: Max # of indels per locus (R1, R2)
-    0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus (R1, R2)
+    0.2                            ## [22] [max_SNPs_locus]: Max # SNPs per locus
+    8                              ## [23] [max_Indels_locus]: Max # of indels per locus
+    0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus
     0, 0, 0, 0                     ## [25] [trim_reads]: Trim raw read edges (R1>, <R1, R2>, <R2) (see docs)
     0, 0, 0, 0                     ## [26] [trim_loci]: Trim locus edges (see docs) (R1>, <R1, R2>, <R2)
     p, s, l                        ## [27] [output_formats]: Output formats (see docs)
@@ -521,38 +521,32 @@ Affected steps = 4, 7. Example entries to params.txt
 
 19. max_Ns_consens:
 --------------------
-The maximum number of uncalled bases allowed in consens seqs (R1, R2). If a
+The maximum fraction of uncalled bases allowed in consens seqs. If a
 base call cannot be made confidently (statistically) then it is called
 as ambiguous (N). You do not want to allow too many Ns in consensus reads
 or it will affect their ability to cluster with consensus reads from other
-Samples, and it may represent a poor alignment. Default is 5, 5.
-For single end data only the first value is used, for paired data the first
-value affects R1s and the second value affects R2s.
+Samples, and it may represent a poor alignment. Default is 0.05.
 
 Affected steps = 5. Example entries to params.txt
 
 .. parsed-literal::
 
-    2                ## [19] allow max of 2 Ns in a consensus seq
-    5, 5             ## [19] allow max of 5 Ns in a consensus seq (R1, R2)
+    0.1                ## [19] allow max of 10% Ns in a consensus seq
 
 
 .. _max_Hs_consens:
 
 20. max_Hs_consens:
 --------------------
-The maximum number of heterozygous bases allowed in consens seqs (R1, R2).
+The maximum fraction of heterozygous bases allowed in consens seqs.
 This filter helps to remove poor alignments which will tend to have an
-excess of Hs. Default is 8, 8.
-For single end data only the first value is used, for paired data the first
-value affects R1s and the second value affects R2s.
+excess of Hs. Default is 0.05.
 
 Affected steps = 5. Example entries to params.txt
 
 .. parsed-literal::
 
-    2                ## [20] allow max of 2 Hs in a consensus seq
-    8, 8             ## [20] allow max of 8 Hs in a consensus seq (R1, R2)
+    0.05                ## [20] allow max of 5% Hs in a consensus seq
 
 
 .. _min_samples_locus:
@@ -581,19 +575,16 @@ Affected steps = 7. Example entries to params.txt
 -------------------
 Maximum number of SNPs allowed in a final locus.
 This can remove potential effects of poor alignments in repetitive regions
-in a final data set by excluding loci with more than N snps.
-The default is 20, 20. Setting lower values is likely only helpful
-for extra filtering of very messy data sets. For single end data only the first
-value is used, for paired data the first value affects R1s and the second
-value affects R2s.
-
+in a final data set by excluding loci with more than N snps. Setting lower
+values is likely only helpful for extra filtering of very messy data sets.
+The default is 0.2
 
 Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    20                  ## [22] allow max of 20 SNPs at a single-end locus.
-    20, 30              ## [22] allow max of 20 and 30 SNPs in paired locus.
+    0.2               ## [22] allow max of 20% SNPs per locus.
+    0.05              ## [22] allow max of 5% SNPs locus.
 
 
 .. _max_Indels_locus:
@@ -602,16 +593,13 @@ Affected steps = 7. Example entries to params.txt
 ---------------------
 The maximum number of Indels allowed in a final locus. This helps to filter
 out poor final alignments, particularly for paired-end data.
-The default is 8,8.
-For single end data only the first value is used,
-for paired data the first value affects R1s and the second value affects R2s.
+The default is 8.
 
 Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
-    5                ## [23] allow max of 5 indels at a single-end locus.
-    5, 10            ## [23] allow max of 5 and 10 indels in paired locus.
+    5                ## [23] allow max of 5 indels per locus.
 
 
 .. _max_shared_Hs_locus:
@@ -622,15 +610,12 @@ Maximum number (or proportion) of shared polymorphic sites in a locus.
 This option is used to detect potential paralogs, as a shared heterozygous
 site across many samples likely represents clustering of paralogs with a
 fixed difference rather than a true heterozygous site. Default is 0.5.
-For single end data only the first value is used, for paired data the first
-value affects R1s and the second value affects R2s.
 
 Affected steps = 7. Example entries to params.txt
 
 .. parsed-literal::
 
     0.25             ## [24] allow hetero site to occur across max of 25% of Samples
-    10               ## [24] allow hetero site to occur across max of 10 Samples
 
 
 .. _trim_reads:
