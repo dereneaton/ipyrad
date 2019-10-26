@@ -378,7 +378,7 @@ class Step6:
             if all(ready):
                 break
 
-        async2 = self.lbview.apply(count_seeds, uhandle)
+        async2 = self.lbview.apply(count_seeds, usort)
         while 1:
             ready = [async1.ready(), async2.ready()]
             self.data._progressbar(3, sum(ready), start, printstr)
@@ -1068,6 +1068,8 @@ def build_single_denovo_clusters(data, usort, nseeds, *args):
     # set optim to approximately 4 chunks per core. Smaller allows for a bit
     # cleaner looking progress bar. 40 cores will make 160 files.
     optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
+    #with open("/tmp/ipyrad_log.txt", 'w') as outfile:
+    #    outfile.write("{} {} {}".format(optim, nseeds, data.ncpus))
 
     # iterate through usort grabbing seeds and matches
     with open(usortfile, 'rt') as insort:
