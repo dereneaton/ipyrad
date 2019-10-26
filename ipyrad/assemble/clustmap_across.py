@@ -1067,9 +1067,9 @@ def build_single_denovo_clusters(data, usort, nseeds, *args):
 
     # set optim to approximately 4 chunks per core. Smaller allows for a bit
     # cleaner looking progress bar. 40 cores will make 160 files.
-    optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
-    #with open("/tmp/ipyrad_log.txt", 'w') as outfile:
-    #    outfile.write("{} {} {}".format(optim, nseeds, data.ncpus))
+    # This often does not work as intended. iao 10/26/19
+    # optim = ((nseeds // (data.ncpus * 4)) + (nseeds % (data.ncpus * 4)))
+    optim = np.ceil(nseeds / (data.ncpus * 4))
 
     # iterate through usort grabbing seeds and matches
     with open(usortfile, 'rt') as insort:
