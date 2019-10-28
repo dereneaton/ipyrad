@@ -8,8 +8,6 @@ import subprocess
 from ipyrad.assemble.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
-OPJ = os.path.join
-
 # template for standard tree inference
 NEX_TEMPLATE_1 = """\
 #NEXUS
@@ -124,6 +122,7 @@ class MrBayes(object):
             os.makedirs(workdir)
 
         # entered args
+        self.clock = clock
         self.name = name
         self.workdir = workdir
         self.data = os.path.abspath(os.path.expanduser(data))
@@ -162,15 +161,27 @@ class MrBayes(object):
         # results files        
         self.trees = Params()
         self.trees.constre = os.path.join(
-            self.workdir, "{}.con.tre".format(self.name))
+            self.workdir, "{}.nex.con.tre".format(self.name))
+        self.trees.posttre = os.path.join(
+            self.workdir, "{}.nex.t".format(self.name))
         self.trees.info = os.path.join(
-            self.workdir, "{}.lstat".format(self.name))
+            self.workdir, "{}.nex.lstat".format(self.name))
+        self._write_nexus_file()
 
-        # write a mrbayes block to a copy of the NEXUS file.
+        # check attribute for existing results at this name.
+        if self.result_files:
+            print(
+                "Existing results loaded for run [{}], see .trees attribute."
+                .format(len(self.result_files), self.name)
+            )
+
+
+    def _write_nexus_file(self, write=True):
+        "write a mrbayes block to a copy of the NEXUS file."
         cwargs = self.params.__dict__.copy()
         cwargs["nexus"] = self.data
         cwargs["outname"] = self.nexus
-        if clock:
+        if self.clock:
             self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
         else:
             self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
@@ -178,12 +189,13 @@ class MrBayes(object):
             out.write(self._nexstring)
 
 
-
     def print_command(self):
         print("{} {}".format(self.params.binary, self.nexus))
 
 
     def print_nexus_string(self):
+        "update nexus string and print"
+        self._write_nexus_file(write=False)
         print(self._nexstring)
 
 
@@ -191,9 +203,19 @@ class MrBayes(object):
     def command(self):
         return "{} {}".format(self.params.binary, self.nexus)
 
+
     @property
     def nexus_string(self):
+        "update nexus string and return"        
+        self._write_nexus_file(write=False)        
         return self._nexstring
+
+
+    @property
+    def result_files(self):
+        "returns a list of files that have finished structure"
+        resfiles = [i[1] for i in self.trees if os.path.exists(i[1])]
+        return resfiles
 
 
     def run(
@@ -223,6 +245,10 @@ class MrBayes(object):
             is running on a remote ipyclient.
         """
 
+        # check for input data file
+        if not os.path.exists(self.data):
+            raise IPyradError("data file not found {}".format(self.data))
+
         # stop before trying in mrbayes
         if force:
             for key, oldfile in self.trees:
@@ -233,11 +259,13 @@ class MrBayes(object):
                   .format(self.trees.info))
             return 
 
-        ## TODO: add a progress bar tracker here. It could even read it from
-        ## the info file that is being written. 
-        ## submit it
+        # rewrite nexus file in case params have been updated
+        self._write_nexus_file()
+
+        # submit it
         if not ipyclient:
             self.stdout = _call_mb([self.binary, self.nexus])
+
         else:
             # find all hosts and submit job to host with most available engines
             lbview = ipyclient.load_balanced_view()
@@ -248,6 +276,7 @@ class MrBayes(object):
         if not quiet:
             if not ipyclient:
                 print("job {} finished successfully".format(self.name))
+
             else:               
                 if block:
                     print("job {} running".format(self.name))
@@ -286,7 +315,8 @@ class MrBayes(object):
         # if none then raise error
         if not proc[0]:
             raise Exception(
-                "cannot find mb; run 'conda install mrbayes -c bioconda'")
+                "cannot find mb; "
+                "run 'conda install mrbayes -c bioconda -c conda-forge'")
 
 
 
