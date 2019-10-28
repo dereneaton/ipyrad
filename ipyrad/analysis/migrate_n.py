@@ -62,8 +62,6 @@ class Migrate(object):
         # if len(i) > 10 for i in         
 
 
-
-        
     def write_seqfile(self):
         """
         Write a migrate-n formatted sequence file with samples from imap
@@ -113,7 +111,7 @@ class Migrate(object):
                 # remove site that are all Ns
                 drop = np.all(arr == 78, axis=0)
                 arr = arr[:, ~drop]
-                
+
                 # count variants
                 nvars = np.invert(np.all(arr == arr[0], axis=0)).sum()
                 if nvars >= self.minsnps:
@@ -234,6 +232,3 @@ class Migrate(object):
 
     def _write_paramsfile(self):
         pass
-
-
-
