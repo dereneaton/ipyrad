@@ -192,8 +192,8 @@ class Structure(object):
                     for tax in val:
                         rdict[tax] = key
 
-        popdata = [""] * len(labels) # [rdict[i] for i in self.labels]
-        popflag = [""] * len(labels) # ["0"] * len(self.labels)
+        popdata = [""] * len(labels)  # [rdict[i] for i in self.labels]
+        popflag = [""] * len(labels)  # ["0"] * len(self.labels)
         locdata = [""] * len(labels)
         phenotype = [""] * len(labels)        
 
@@ -234,7 +234,7 @@ class Structure(object):
         ipyclient: (type=ipyparallel.Client); Default=None. 
             If you started an ipyclient manually then you can 
             connect to it and use it to distribute jobs here.
-        
+
         force: (type=bool); Default=False.
             Force overwrite of existing output with the same name.
 
