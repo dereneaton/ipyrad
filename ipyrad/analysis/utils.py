@@ -27,7 +27,7 @@ class ProgressBar(object):
         self.start = (start if start else time.time())
         self.message = message
         self.finished = 0
-        
+
     @property
     def progress(self):
         return 100 * (self.finished / float(self.njobs))
@@ -35,7 +35,7 @@ class ProgressBar(object):
     @property
     def elapsed(self):
         return datetime.timedelta(seconds=int(time.time() - self.start))
- 
+
     def update(self):
         # build the bar
         hashes = '#' * int(self.progress / 5.)
@@ -142,7 +142,8 @@ def progressbar(finished, total, start, message):
     hashes = '#' * int(progress / 5.)
     nohash = ' ' * int(20 - len(hashes))
     elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    print("\r[{}] {:>3}% {} | {:<12} "
+    print(
+        "\r[{}] {:>3}% {} | {:<12} "
         .format(hashes + nohash, int(progress), elapsed, message),
         end="")
     sys.stdout.flush()    
