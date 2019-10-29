@@ -238,6 +238,19 @@ class Step3:
                     args=(),
                 )
 
+            # DENOVO MINUS
+            elif self.data.params.assembly_method == "denovo-reference":
+                raise NotImplementedError(
+                    "denovo-reference no longer supported. "
+                    "see reference_as_filter parameter instead.")
+
+            elif self.data.params.assembly_method == "denovo+reference":
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not currently supported")
+
+            else:
+                raise NotImplementedError(
+                    "datatype + assembly_method combo not currently supported")
 
         # single-end methods ------------------------------------
         else:
@@ -2466,7 +2479,7 @@ def store_sample_stats(data, sample, maxlens, depths):
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-    clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.gz")
+    clusters = os.path.join(data.dirs.clusts, sample.name + ".clust.txt")
 
     for rfile in [derepfile, mergefile, uhandle, usort, hhandle, clusters]:
         if os.path.exists(rfile):

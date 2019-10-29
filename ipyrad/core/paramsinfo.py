@@ -295,7 +295,7 @@ pinfo = OrderedDict([
     data.set_params(19) = 1
     data.set_params("max_Ns_consens") = 1
     ----------------------------------------------------------------------
-    """, "Max N's (uncalled bases) in consensus (R1, R2)")
+    """, "Max N's (uncalled bases) in consensus")
 ),
 
 ("20", ("""
@@ -305,7 +305,7 @@ pinfo = OrderedDict([
     data.set_params(20) = 1
     data.set_params("max_Hs_consens") = 1
     ----------------------------------------------------------------------
-    """, "Max Hs (heterozygotes) in consensus (R1, R2)")
+    """, "Max Hs (heterozygotes) in consensus")
 ),
 
 ("21", ("""
@@ -330,7 +330,7 @@ pinfo = OrderedDict([
     data.set_params(22) = 1
     data.set_params("max_SNPs_locus") = 1
     ----------------------------------------------------------------------
-    """, "Max # SNPs per locus (R1, R2)")
+    """, "Max # SNPs per locus")
 ),
 
 ("23", ("""
@@ -340,7 +340,7 @@ pinfo = OrderedDict([
     data.set_params(23) = 1
     data.set_params("max_Indels_locus") = 1
     ----------------------------------------------------------------------
-    """, "Max # of indels per locus (R1, R2)")
+    """, "Max # of indels per locus")
 ),
 
 ("24", ("""
