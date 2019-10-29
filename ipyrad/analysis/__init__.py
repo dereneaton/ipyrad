@@ -41,6 +41,7 @@ from .clade_weights import CladeWeights as clade_weights
 from .digest_genome import DigestGenome as digest_genome
 from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
+from .fasttree import Fasttree as fasttree
 
 # from .fasttree import Fastree as fastree
 # from .baba import Baba as baba
