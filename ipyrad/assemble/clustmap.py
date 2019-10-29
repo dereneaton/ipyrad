@@ -54,8 +54,8 @@ class Step3:
            self.data.params.reference_as_filter):
             self.remote_index_refs()
 
-        # sample.files.edits is [(r1,r2),(r1,r2),(...)] for multiple fastq
-        # which goes to tmpdir/(r1,r2)_concatedit.fastq
+        # i: sample.files.edits is [(r1,r2),(r1,r2),(...)] for multiple fastq
+        # o: tmpdir/[r1,r2]_concatedit.fastq
         if any(len(sample.files.edits) > 1 for sample in self.samples):
             self.remote_run(
                 function=concat_multiple_edits,
@@ -257,6 +257,22 @@ class Step3:
             # DENOVO
             if self.data.params.assembly_method == "denovo":
 
+                # TODO: add support for refminus, needs testing still...
+                # if self.data.params.reference_as_filter:
+                #     # map reads to altref to get unmapped fastQ outputs
+                #     # i: tmpdir/{}_R[1,2]-tmp.fa
+                #     # o: tmpdir/{}-tmp-umap[1,2].FASTQ
+                #     self.remote_run(
+                #         function=mapping_reads,
+                #         printstr=("mapping minus reads ", "s3"),
+                #         args=(self.nthreads, 0,),
+                #         threaded=True,
+                #     )
+
+                # i: edits/{}_trimmed_R1.fastq    # trimmed 
+                # i: tmpdir/r1_concatedit.fastq   # concat trimmed 
+                # i: tmpdir/{}-tmp-umap1.fastq    # " + refminus
+                # o: tmpdir/{}_derep.fa
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
@@ -1739,7 +1755,7 @@ def mapping_reads(data, sample, nthreads, altref=False):
         data.dirs.refmapping,
         "{}-unmapped.fastq".format(sample.name))
 
-    # MODE 0 : paired (w or w/o refminus) 
+    # paired (w or w/o refminus) 
     # select (derep-declone or non-derep) non-merged readpairs
     if "pair" in data.params.datatype:
         read1s = [
@@ -1757,6 +1773,18 @@ def mapping_reads(data, sample, nthreads, altref=False):
         # the files for mapping        
         infiles = [read1s[index], read2s[index]]
 
+    # single (w/ or w/o refminus)
+    # select (derep-declone or non-derep) r1s
+    else:
+        read1s = [
+            # os.path.join(data.tmpdir, "{}_R1-tmp.fa".format(sample.name)),
+            os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+            sample.files.edits[0][0],
+        ]
+        index = min([i for i, j in enumerate(read1s) if os.path.exists(j)])
+        infiles = [read1s[index]]      
+
+    # select the appropriate reference file
     if altref:
         reference = data.params.reference_as_filter
     else:
