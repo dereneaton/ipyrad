@@ -74,7 +74,9 @@ class TreeSlider(object):
         scaffold_idxs=None,
         minsnps=1,
         mincov=0,
-        imap={},
+        imap=None,
+        minmap=None,
+        consensus_reduce=False,
         inference_method="raxml",
         inference_args={},
         quiet=False,
@@ -98,10 +100,13 @@ class TreeSlider(object):
         self.minsnps = minsnps
         self.imap = imap
         self.mincov = mincov
+        self.minmap = minmap
+        self.consensus_reduce = consensus_reduce
         self.inference_method = inference_method
         self.inference_args = inference_args
         self.quiet = quiet
         self.scaffold_minlen = scaffold_minlen
+        self._nexus = bool("raxml" not in self.inference_method)
 
         # use user name else create one
         if not self.name:
@@ -289,7 +294,7 @@ class TreeSlider(object):
             # get the length of this scaffold
             chromlen = (
                 self.scaffold_table.loc[scaffold, "scaffold_length"])
-            
+
             # get start positions
             if self.window_size:
                 starts = np.arange(0, chromlen - self.window_size, self.slide_size)
@@ -338,7 +343,7 @@ class TreeSlider(object):
                 data=io5["phymap"][mask, :],
                 columns=[i.decode() for i in colnames],
             )
-     
+
 
     def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
         """
@@ -349,7 +354,7 @@ class TreeSlider(object):
         ipyclient: (type=ipyparallel.Client); Default=None. 
             If you started an ipyclient manually then you can 
             connect to it and use it to distribute jobs here.
-        
+
         force: (type=bool); Default=False.
             Force overwrite of existing output with the same name.
 
@@ -388,15 +393,19 @@ class TreeSlider(object):
         if os.path.exists(self.tree_table_path):
             if not force:
                 print((
-        "Existing tree table loaded from {}; Use force to instead overwrite."
-        .format(self.tree_table_path)))
+                    "Existing tree table loaded from {}; "
+                    "Use force to instead overwrite.")
+                    .format(self.tree_table_path))
                 return
 
         # THREADING set to match between ipcluster and raxml 
-        if "T" in self.inference_args:
-            self.ipcluster["threads"] = max(2, int(self.inference_args["T"]))
-        self.inference_args["T"] = max(2, int(self.ipcluster["threads"]))
-        threads = self.inference_args["T"]
+        if self.inference_method == "raxml":
+            if "T" in self.inference_args:
+                self.ipcluster["threads"] = max(2, int(self.inference_args["T"]))
+            self.inference_args["T"] = max(2, int(self.ipcluster["threads"]))
+            threads = self.inference_args["T"]
+        else:
+            threads = 1           
 
         # load balance parallel jobs 2-threaded
         lbview = ipyclient.load_balanced_view(targets=ipyclient.ids[::threads])
@@ -422,15 +431,18 @@ class TreeSlider(object):
                 prog.finished += 1
                 continue
 
-            # extract the phylip alignment for this window
+            # extract the alignment for this window
             ext = window_extracter(
+                # name=str(np.random.randint(0, 1e15)),
                 data=self.data,
                 workdir=os.path.join(self.workdir, "tmpdir"),
-                scaffold_idx=self.tree_table.scaffold[idx],
+                scaffold_idx=int(self.tree_table.scaffold[idx]),
                 start=self.tree_table.start[idx],
                 end=self.tree_table.end[idx],
                 mincov=self.mincov,
                 imap=self.imap,
+                minmap=self.minmap,
+                consensus_reduce=self.consensus_reduce,
                 quiet=True,
             )
 
@@ -446,12 +458,22 @@ class TreeSlider(object):
                 prog.finished += 1
 
             else:
-                # write phylip file to the tmpdir
-                ext.run(force=True)
+                # write phylip (or nex) file to the tmpdir
+                ext.run(force=True, nexus=self._nexus)
 
-                # send remote tree inference job
+                # remote inference args
                 args = [ext.outfile, self.inference_args]
-                rasyncs[idx] = lbview.apply(remote_raxml, *args)
+
+                # send remote tree inference job that will clean up itself
+                if "raxml" in self.inference_method:
+                    rasyncs[idx] = lbview.apply(remote_raxml, *args)
+                elif "mb" in self.inference_method:
+                    rasyncs[idx] = lbview.apply(remote_mrbayes, *args)
+                else:
+                    raise IPyradError(
+                        "inference_method should be raxml or mb, you entered {}"
+                        .format(self.inference_method))
+
             prog.update()
 
         # wait for jobs to finish
@@ -471,6 +493,39 @@ class TreeSlider(object):
                 self._print("")
                 break
         shutil.rmtree(self.tmpdir)
+
+
+
+def remote_mrbayes(phyfile, inference_args):
+    """
+    Call mb on phy and returned parse tree result
+    """
+    # convert phyfile to tmp nexus seqfile
+
+
+    # call mb on the input phylip file with inference args
+    mb = mrbayes(
+        data=phyfile,
+        name="temp_" + str(os.getpid()),
+        workdir=tempfile.gettempdir(),
+        **inference_args
+    )
+    mb.run(force=True, quiet=True, block=True)
+
+    # get newick string from result
+    tree = toytree.tree(mb.trees.constre, tree_format=10).newick
+
+    # cleanup remote tree files
+    for tup in mb.trees:
+        tpath = tup[1]
+        if os.path.exists(tpath):
+            os.remove(tpath)
+    
+    # remove the TEMP phyfile in workdir/tmpdir
+    os.remove(phyfile)
+
+    # return results
+    return tree    
 
 
 
@@ -498,6 +553,9 @@ def remote_raxml(phyfile, inference_args):
         tpath = getattr(rax.trees, tfile)
         if os.path.exists(tpath):
             os.remove(tpath)
+
+    # remove the TEMP phyfile in workdir/tmpdir
+    os.remove(phyfile)    
 
     # return results
     return tree
@@ -590,7 +648,7 @@ def remote_tree_inference(
     return nsnps, nsamplecov, tree
 
 
-
+# DEPRECATED WITH REMOTE TREE INFERENCE
 def write_phydict_to_phy(phydict):
 
     # dress up as phylip format
@@ -607,6 +665,7 @@ def write_phydict_to_phy(phydict):
     return fname
 
 
+# DEPRECATED WITH REMOTE TREE INFERENCE
 def write_phydict_to_nex(phydict):
 
     # dress up as phylip format
@@ -615,11 +674,11 @@ def write_phydict_to_nex(phydict):
     matrix = ""
     for i in phydict.items():
         matrix += i[0] + i[1] + "\n"
-    
+
     # format into NEXUS data string
     nex_string = NEX_MATRIX.format(
         **{"ntax": ntax, "nchar": nchar, "matrix": matrix})
-    
+
     # write to temp file
     fname = os.path.join(
         tempfile.gettempdir(), str(os.getpid()) + ".tmp")
@@ -628,6 +687,7 @@ def write_phydict_to_nex(phydict):
     return fname
 
 
+# DEPRECATED WITH REMOTE TREE INFERENCE
 def parse_phydict(database, wmin, wmax):
     "Returns phy data as a dict with stats on sub matrix."
 
