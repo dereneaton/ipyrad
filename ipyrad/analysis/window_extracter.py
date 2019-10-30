@@ -17,11 +17,14 @@ import pandas as pd
 
 from .utils import count_snps
 from ipyrad.assemble.utils import GETCONS, IPyradError
-from ipyrad.assemble.write_outputs import reftrick
+from ipyrad.assemble.write_outputs import reftrick, NEXHEADER
 
 
 """
     TODO:
+
+    'format' argument in .run() to write nexus format.
+
     Select scaffold(s) by index number. If unsure, leave this
     empty when loading a file and then check the .scaffold_table to view
     the indices of scaffolds. 
@@ -94,7 +97,7 @@ class WindowExtracter(object):
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.scaffold_idx = scaffold_idx
+        self.scaffold_idx = scaffold_idx  # (int(scaffold_idx) if scaffold_idx else None)
         self.start = (start if start else 0)
         self.end = end
         self.exclude = (exclude if exclude else [])
@@ -130,8 +133,10 @@ class WindowExtracter(object):
         # set parameters as ints or floats
         self._set_filters_type()
 
-        # overwritten by run
+        # stats is overwritten if fillseqar runs
         self.stats = "No stats because no scaffolds selected."
+
+        # this will not do anything if no scaffolds selected.
         self._fill_seqarr()
 
 
@@ -232,7 +237,7 @@ class WindowExtracter(object):
                     self.end
                 )
             else:
-                self.name = "concat"
+                self.name = "r{}".format(np.random.randint(0, 1e9))
         else:
             self.name = name
 
@@ -273,7 +278,7 @@ class WindowExtracter(object):
         )
 
 
-    def run(self, force=False):
+    def run(self, force=False, nexus=False):
         """
         Write sequence alignment to a file 
         """
@@ -282,13 +287,21 @@ class WindowExtracter(object):
             return "No scaffold selected"
 
         # make outfile path name
-        self.outfile = os.path.join(
-            self.workdir, self.name + ".phy")
+        if nexus:           
+            self.outfile = os.path.join(
+                self.workdir, self.name + ".nex")
+        else:
+            self.outfile = os.path.join(
+                self.workdir, self.name + ".phy")
 
         # check for force/overwrite
         if force or (not os.path.exists(self.outfile)):
+
             # convert to file format
-            self.write_to_phy()
+            if nexus:
+                self._write_to_nex()
+            else:
+                self._write_to_phy()
             self._print("Wrote data to {}".format(self.outfile))
         else:
             raise IOError(
@@ -458,7 +471,7 @@ class WindowExtracter(object):
             )
 
 
-    def write_to_phy(self):
+    def _write_to_phy(self):
 
         # build phy
         phy = []
@@ -471,6 +484,36 @@ class WindowExtracter(object):
         with open(self.outfile, 'w') as out:
             out.write("{} {}\n".format(ntaxa, nsites))
             out.write("\n".join(phy))
+
+
+    def _write_to_nex(self):
+
+        # write the header
+        lines = []
+        lines.append(
+            NEXHEADER.format(self.seqarr.shape[0], self.seqarr.shape[1])
+        )
+
+        # grab a big block of data
+        sidx = 0
+        for block in range(0, self.seqarr.shape[1], 100):           
+            # store interleaved seqs 100 chars with longname+2 before
+            stop = min(block + 100, self.seqarr.shape[1])
+            for idx, name in enumerate(self._pnames):  
+
+                # py2/3 compat --> b"TGCGGG..."
+                seqdat = self.seqarr[idx, block:stop]
+                lines.append(
+                    "  {}{}\n".format(
+                        name,
+                        bytes(seqdat).decode()
+                        )
+                    )
+            lines.append("\n")
+        lines.append("  ;\nend;")
+        # print intermediate result and clear
+        with open(self.outfile, 'w') as out:
+            out.write("".join(lines))
 
 
     # def write_to_fasta(self):
