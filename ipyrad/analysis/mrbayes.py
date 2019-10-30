@@ -5,6 +5,7 @@
 import os
 import sys
 import subprocess
+import pandas as pd
 from ipyrad.assemble.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
@@ -142,7 +143,7 @@ class MrBayes(object):
             "extinctionpr": "beta(2, 200)",
             "treeagepr": "offsetexp(1, 5)",
             "ngen": 100000,
-            "nruns": "2",
+            "nruns": "1",
             "nchains": 4,
             "samplefreq": 1000,
         }
@@ -160,12 +161,13 @@ class MrBayes(object):
 
         # results files        
         self.trees = Params()
+        runs = ("" if int(self.params.nruns) < 2 else "run1.")
         self.trees.constre = os.path.join(
             self.workdir, "{}.nex.con.tre".format(self.name))
         self.trees.posttre = os.path.join(
-            self.workdir, "{}.nex.t".format(self.name))
-        self.trees.info = os.path.join(
-            self.workdir, "{}.nex.lstat".format(self.name))
+            self.workdir, "{}.nex.{}t".format(self.name, runs))
+        self.trees.pstat = os.path.join(
+            self.workdir, "{}.nex.pstat".format(self.name))
         self._write_nexus_file()
 
         # check attribute for existing results at this name.
@@ -218,6 +220,21 @@ class MrBayes(object):
         return resfiles
 
 
+    @property
+    def convergence_stats(self):
+        if not os.path.exists(self.trees.pstat):
+            print("no stats available")
+
+        else:
+            stats = pd.read_csv(
+                self.trees.pstat,
+                sep="\t", 
+                skiprows=1, 
+                index_col=0,
+            )
+            return stats
+
+
     def run(
         self, 
         ipyclient=None, 
@@ -254,9 +271,9 @@ class MrBayes(object):
             for key, oldfile in self.trees:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
-        if os.path.exists(self.trees.info):
+        if os.path.exists(self.trees.pstat):
             print("Error Files Exist: set a new name or use Force flag.\n{}"
-                  .format(self.trees.info))
+                  .format(self.trees.pstat))
             return 
 
         # rewrite nexus file in case params have been updated
