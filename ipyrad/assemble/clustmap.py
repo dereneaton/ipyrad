@@ -1035,6 +1035,8 @@ def muscle_chunker(data, sample):
         with iter(open(clustfile, 'rt')) as clustio:
             nloci = sum(1 for i in clustio if "//" in i) // 2
             optim = (nloci // 20) + (nloci % 20)
+            #io
+            #optim = int(nloci/10)
 
         ## write optim clusters to each tmp file
         clustio = open(clustfile, 'rt')
@@ -1046,6 +1048,10 @@ def muscle_chunker(data, sample):
             ## how big is this chunk?
             this = optim + (idx * inc)
             left = nloci - this
+            ## Distribute all loci equally among chunks
+            ## io
+            ##left = nloci - optim
+            ##this = optim
             if idx == 9:
                 ## grab everything left
                 grabchunk = list(islice(inclusts, int(1e9)))
