@@ -1248,6 +1248,8 @@ class Converter:
                                 seqdat.decode().upper()))
                         tmpout.append("\n")
 
+                    # TODO, double check end of matrix...
+
                     ## print intermediate result and clear
                     if any(tmpout):
                         out.write("".join(tmpout))

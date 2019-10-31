@@ -49,84 +49,189 @@ class Step3:
     def run(self):
         "Run the assembly functions for this step"
 
+        # index reference fa files if there are any (bwa and sam index)
+        if (self.data.params.reference_sequence or \
+           self.data.params.reference_as_filter):
+            self.remote_index_refs()
+
+        # i: sample.files.edits is [(r1,r2),(r1,r2),(...)] for multiple fastq
+        # o: tmpdir/[r1,r2]_concatedit.fastq
+        if any(len(sample.files.edits) > 1 for sample in self.samples):
+            self.remote_run(
+                function=concat_multiple_edits,
+                printstr=("concatenating       ", "s3"),
+                args=(),
+                threaded=True,  # needed?
+            )
+
         # paired-end data methods ------------------------------
         if "pair" in self.data.params.datatype:
 
-            # Filter out by mapping to alt reference
-            # if self.data.params.reference_as_filter:
-            #     self.remote_index_refs("alt")
-            #     self.remote_run(
-            #         function=map_alt_reference,
-            #         printstr=("filter map to alt ref", "s3"),
-            #         args=(),
-            #         threaded=True,
-            #     )
-
-            # DENOVO ----
+            # DENOVO (paired, denovo, optional refminus)
             if self.data.params.assembly_method == "denovo":
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                )
+
+                # vsearch merge read pairs back together based on overlap.
+                # i: edits/concatedits.fq.gz or sample.files.edits
+                # o: tmpdir/{}_merged.fastq, tmpdir/{}_nonmerged_R[1,2].fastq
                 self.remote_run(
                     function=merge_pairs_with_vsearch,
                     printstr=("join merged pairs   ", "s3"),
                     args=(True,),
                 )
+                # join non-merged reads with a spacer (nnnn)
+                # i: tmpdir/{}_nonmerged_R[1,2].fastq
+                # o: tmpdir/{}_merged.fastq (appended to)
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"),
                     args=(True, True,),
                 )
+
+                # [optional] tag for declone by moving i5 tag to sequence 5'
+                # i: tmpdir/{}_merged.fastq
+                # o: tmpdir/{}_declone.fastq
+                if self.data.hackersonly.declone_PCR_duplicates:
+                    self.remote_run(
+                        function=tag_for_decloning,
+                        printstr=("tag for decloning   ", "s3"),
+                        args=(),
+                    )
+
+                # dereplicate leaving pcr duplicates unreduced
+                # i: tmpdir/{}_declone.fastq
+                # o: tmpdir/{}_derep.fa
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
+
+                # [optional] move i5 tag from derepseq to header
+                # i: tmpdir/{}_derep.fa
+                # o: tmpdir/{}_tagged.fa
+                if self.data.hackersonly.declone_PCR_duplicates:
+                    self.remote_run(
+                        function=tag_to_header_for_decloning,
+                        printstr=("retag for decloning ", "s3"),
+                        args=(),
+                    )
+
+                # [optional] remove reads mapping to the alt reference
+                if self.data.params.reference_as_filter:
+
+                    # split reads back into fasta pairs for mapping. This had 
+                    # to be done here after tag-for-decloning.
+                    # i: tmpdir/{}_tagged.fa OR tmpdir/{}_derep.fa
+                    # o: tmpdir/{}_R[1,2]-tmp.fa
+                    self.remote_run(
+                        function=split_endtoend_reads,
+                        printstr=("splitting dereps    ", "s3"),
+                        args=(),
+                    )
+                    # map reads to altref to get unmapped fastQ outputs
+                    # i: tmpdir/{}_R[1,2]-tmp.fa
+                    # o: tmpdir/{}-tmp-umap[1,2].FASTQ
+                    self.remote_run(
+                        function=mapping_reads,
+                        printstr=("mapping minus reads ", "s3"),
+                        args=(self.nthreads, 0,),
+                        threaded=True,
+                    )
+                    # discard dir with successfully mapped reads
+                    shutil.rmtree(self.data.dirs.refmapping)
+
+                    # merge unmapped fastqs back into single end-to-end fa
+                    # i: tmpdir/{}-tmp-umap[1,2].fastq
+                    # o: tmpdir/{sample}_merged.fa
+                    self.remote_run(
+                        function=merge_end_to_end,
+                        printstr=("join unmerged pairs ", "s3"),
+                        args=(False, False, True,),
+                    )
+
+                # cluster and build clusters from vsearch outputs
+                # o: clustdir/{sample}_clust.gz
                 self.remote_run_cluster_build()
+
+                # TODO: bring back split aligning for pairs...
+                # o: clustdir/{sample}_clustS.gz                
                 self.remote_run_align_cleanup()
 
 
-            # REFERENCE ----
+            # REFERENCE (paired, reference, optional refminus)
             elif self.data.params.assembly_method == "reference":
-                self.remote_index_refs()
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                    threaded=True,
-                )
+
+                if self.data.params.reference_as_filter:
+                    # map reads to altref to get unmapped fastQ outputs
+                    # i: tmpdir/{}_R[1,2]-tmp.fa
+                    # o: tmpdir/{}-tmp-umap[1,2].FASTQ
+                    self.remote_run(
+                        function=mapping_reads,
+                        printstr=("mapping minus reads ", "s3"),
+                        args=(self.nthreads, 0,),
+                        threaded=True,
+                    )
+
+                # merge pairs for dereplicating (several input options, ranked)
+                # i: edits/{}_trimmed_R[1,2].fastq 
+                # i: tmpdir/{}-tmp-umap[1,2].fastq
+                # o: tmpdir/{}_merged.fastq
                 self.remote_run(
                     function=merge_end_to_end,
                     printstr=("join unmerged pairs ", "s3"),
                     args=(False, False,),
                     threaded=True,
                 )
+
+                # [optional] tag for declone by moving i5 tag to sequence 5'
+                # i: tmpdir/{}_merged.fastq
+                # o: tmpdir/{}_declone.fastq
                 if self.data.hackersonly.declone_PCR_duplicates:
                     self.remote_run(
-                        function=declone_3rad,
-                        printstr=("declone 3RAD        ", "s3"),
-                        args=(self.nthreads, self.force),
+                        function=tag_for_decloning,
+                        printstr=("tag for decloning   ", "s3"),
+                        args=(),
                     )
+
+                # i: tmpdir/{}_[merged,declone].fastq
+                # o: tmpdir/{}_derep.fa
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
+
+                # [optional] move i5 tag from derepseq to header
+                # i: tmpdir/{}_derep.fa
+                # o: tmpdir/{}_tagged.fa
+                if self.data.hackersonly.declone_PCR_duplicates:
+                    self.remote_run(
+                        function=tag_to_header_for_decloning,
+                        printstr=("retag for decloning ", "s3"),
+                        args=(),
+                    )
+
+                # i: tmpdir/{}_[derep,tagged].fa
+                # o: tmpdir/{}_R[1,2]-tmp.fa
                 self.remote_run(
                     function=split_endtoend_reads,
                     printstr=("splitting dereps    ", "s3"),
                     args=(),
                 )
+
+                # i: tmpdir/{}_R[1,2]-tmp.fa
+                # o: refmapping/{}.bam
                 self.remote_run(
                     function=mapping_reads,
                     printstr=("mapping reads       ", "s3"),
                     args=(self.nthreads,),
                     threaded=True,
                 )
+
+                # i: refmapping/{}.bam
+                # o: clustdir/{}.clustS.gz
                 self.remote_run(
                     function=build_clusters_from_cigars,
                     printstr=("building clusters   ", "s3"),
@@ -136,25 +241,38 @@ class Step3:
             # DENOVO MINUS
             elif self.data.params.assembly_method == "denovo-reference":
                 raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
+                    "denovo-reference no longer supported. "
+                    "see reference_as_filter parameter instead.")
 
             elif self.data.params.assembly_method == "denovo+reference":
                 raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
+                    "datatype + assembly_method combo not currently supported")
 
             else:
                 raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
+                    "datatype + assembly_method combo not currently supported")
 
-        ## single-end methods ------------------------------------
+        # single-end methods ------------------------------------
         else:
             # DENOVO
             if self.data.params.assembly_method == "denovo":
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                )
+
+                # TODO: add support for refminus, needs testing still...
+                # if self.data.params.reference_as_filter:
+                #     # map reads to altref to get unmapped fastQ outputs
+                #     # i: tmpdir/{}_R[1,2]-tmp.fa
+                #     # o: tmpdir/{}-tmp-umap[1,2].FASTQ
+                #     self.remote_run(
+                #         function=mapping_reads,
+                #         printstr=("mapping minus reads ", "s3"),
+                #         args=(self.nthreads, 0,),
+                #         threaded=True,
+                #     )
+
+                # i: edits/{}_trimmed_R1.fastq    # trimmed 
+                # i: tmpdir/r1_concatedit.fastq   # concat trimmed 
+                # i: tmpdir/{}-tmp-umap1.fastq    # " + refminus
+                # o: tmpdir/{}_derep.fa
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
@@ -164,14 +282,10 @@ class Step3:
                 self.remote_run_cluster_build()
                 self.remote_run_align_cleanup()
 
+
             # REFERENCE
             elif self.data.params.assembly_method == "reference":
-                self.remote_index_refs()
-                self.remote_run(
-                    function=concat_multiple_edits,
-                    printstr=("concatenating       ", "s3"),
-                    args=(),
-                )
+
                 self.remote_run(
                     function=dereplicate,
                     printstr=("dereplicating       ", "s3"),
@@ -190,18 +304,9 @@ class Step3:
                     args=(),
                 )
 
-            # DENOVO MINUS
-            elif self.data.params.assembly_method == "denovo-reference":
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-
-            elif self.data.params.assembly_method == "denovo+reference":
-                raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
-
             else:
                 raise NotImplementedError(
-                    "datatype + assembly_method combo not yet supported")
+                    "datatype + assembly_method combo not currently supported.")
 
         self.remote_run_sample_cleanup()
         self.cleanup()
@@ -230,8 +335,9 @@ class Step3:
 
         # tell user which samples are not ready for step 3
         if state1.any():
-            self.data._print("skipping samples not yet in state==2:\n{}"
-                  .format(state1.tolist()))
+            self.data._print(
+                "skipping samples not yet in state==2:\n{}"
+                .format(state1.tolist()))
 
         if self.force:
             # run all samples above state 1
@@ -241,8 +347,9 @@ class Step3:
         else:
             # tell user which samples have already cmopleted step 3
             if state3.any():
-                self.data._print("skipping samples already finished step 3:\n{}"
-                      .format(state3.tolist()))
+                self.data._print(
+                    "skipping samples already finished step 3:\n{}"
+                    .format(state3.tolist()))
 
             # run all samples in state 2
             subsamples = [self.data.samples[i] for i in state2]
@@ -285,7 +392,9 @@ class Step3:
             os.mkdir(self.data.tmpdir)
 
         # If ref mapping, init samples and make refmapping output directory
-        if self.data.params.assembly_method != "denovo":
+        ref1 = self.data.params.reference_sequence
+        ref2 = self.data.params.reference_as_filter
+        if (ref1 or ref2):
             self.data.dirs.refmapping = os.path.join(
                 pdir, "{}_refmapping".format(self.data.name))
             if not os.path.exists(self.data.dirs.refmapping):
@@ -343,7 +452,8 @@ class Step3:
                     'avg_depth_total': '{:.2f}'.format,
                     'sd_depth_stat': '{:.2f}'.format,
                     'sd_depth_mj': '{:.2f}'.format,
-                    'sd_depth_total': '{:.2f}'.format
+                    'sd_depth_total': '{:.2f}'.format,
+                    'prop_pcr_duplicates': '{:.2f}'.format                    
                 })
 
         # remove temporary alignment chunk and derep files
@@ -352,17 +462,29 @@ class Step3:
 
 
     def remote_index_refs(self):
-        "index the reference seq for bwa and samtools (pysam)"
+        """
+        index the reference seq for bwa and samtools (pysam). 
+        """
         start = time.time()
         printstr = ("indexing reference  ", "s3")
-        rasync1 = self.lbview.apply(
-            index_ref_with_bwa, self.data)
-        rasync2 = self.lbview.apply(
-            index_ref_with_sam, self.data)
+
+        jobs = []
+        if self.data.params.reference_sequence:
+            rasync1 = self.lbview.apply(index_ref_with_bwa, self.data)
+            rasync2 = self.lbview.apply(index_ref_with_sam, self.data)
+            jobs.append(rasync1)
+            jobs.append(rasync2)
+
+
+        if self.data.params.reference_as_filter:
+            rasync1 = self.lbview.apply(index_ref_with_bwa, self.data, alt=1)
+            rasync2 = self.lbview.apply(index_ref_with_sam, self.data, alt=1)
+            jobs.append(rasync1)
+            jobs.append(rasync2)
 
         # track job
         while 1:
-            ready = [rasync1.ready(), rasync2.ready()]
+            ready = [i.ready() for i in jobs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
             time.sleep(0.1)
             if len(ready) == sum(ready):
@@ -460,7 +582,8 @@ class Step3:
 
                 rasync = self.lbview.apply(
                     align_and_parse,
-                    *(handle, self.maxindels, self.gbs)
+                    *(handle, self.maxindels, self.gbs, 
+                        self.data.hackersonly.declone_PCR_duplicates)
                 )
                 aasyncs[sample.name].append(rasync)
 
@@ -503,6 +626,18 @@ class Step3:
         for job in basyncs:
             if not basyncs[job].successful():
                 basyncs[job].get()
+
+        # compile stats on highindel filteres, and duplicates
+        if self.data.hackersonly.declone_PCR_duplicates:
+            for sample in self.samples:
+                # list of 3-tuples
+                res = [i.get() for i in aasyncs[sample.name]]
+
+                # count proportio of reads that are PCR duplicates
+                nreads = [i[1] for i in res]
+                nwodups = [i[2] for i in res]
+                propdup = float(nwodups) / nreads
+                sample.stats_dfs.s3["prop_pcr_duplicates"] = propdup
 
 
     def remote_run_sample_cleanup(self):
@@ -572,19 +707,24 @@ def dereplicate(data, sample, nthreads):
     Dereplicates reads and sorts so reads that were highly replicated are at
     the top, and singletons at bottom, writes output to derep file. Paired
     reads are dereplicated as one concatenated read and later split again.
+
     Updated this function to take infile and outfile to support the double
     dereplication that we need for 3rad (5/29/15 iao).
     """
     # find input file with following precedence:
     # .trimmed.fastq.gz, .concatedit.fq.gz, ._merged.fastq, ._declone.fastq
     infiles = [
-        os.path.join(data.dirs.edits,
+        os.path.join(
+            data.dirs.edits,
             "{}.trimmed_R1_.fastq.gz".format(sample.name)),
-        os.path.join(data.dirs.edits, 
+        os.path.join(
+            data.dirs.edits, 
             "{}_R1_concatedit.fq.gz".format(sample.name)),
-        os.path.join(data.tmpdir, 
+        os.path.join(
+            data.tmpdir, 
             "{}_merged.fastq".format(sample.name)),
-        os.path.join(data.tmpdir, 
+        os.path.join(
+            data.tmpdir, 
             "{}_declone.fastq".format(sample.name)),
     ]
     infiles = [i for i in infiles if os.path.exists(i)]
@@ -600,8 +740,8 @@ def dereplicate(data, sample, nthreads):
         ip.bins.vsearch,
         "--derep_fulllength", infile,
         "--strand", strand,
-        "--output", os.path.join(data.tmpdir, sample.name + "_derep.fastq"),
-        "--threads", str(nthreads),
+        "--output", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
+        # "--threads", str(nthreads),
         "--fasta_width", str(0),
         "--sizeout", 
         "--relabel_md5",
@@ -630,6 +770,7 @@ def concat_multiple_edits(data, sample):
         data.dirs.edits,
         "{}_R2_concatedit.fq.gz".format(sample.name))
 
+    # check for files to concat
     if len(sample.files.edits) > 1:
         # cat all inputs; index 0 b/c files are in tuples for r1, r2
         cmd1 = ["cat"] + [i[0] for i in sample.files.edits]
@@ -642,7 +783,7 @@ def concat_multiple_edits(data, sample):
             if proc1.returncode:
                 raise IPyradError("error in: %s, %s", cmd1, res1)
 
-        ## Only set conc2 if R2 actually exists
+        # Only set conc2 if R2 actually exists
         if os.path.exists(str(sample.files.edits[0][1])):
             cmd2 = ["cat"] + [i[1] for i in sample.files.edits]
             with gzip.open(concat2, 'w') as cout2:
@@ -656,21 +797,20 @@ def concat_multiple_edits(data, sample):
 def merge_pairs_with_vsearch(data, sample, revcomp):
     "Merge PE reads using vsearch to find overlap."
 
-    # define input files
-    concat1 = os.path.join(
-        data.dirs.edits, 
-        "{}_R1_concatedit.fq.gz".format(sample.name))
-    concat2 = os.path.join(
-        data.dirs.edits, 
-        "{}_R2_concatedit.fq.gz".format(sample.name))
-    if os.path.exists(concat1):
-        infile1 = concat1
-    else:
-        infile1 = sample.files.edits[0][0]      
-    if os.path.exists(concat2):
-        infile2 = concat2
-    else:
-        infile2 = sample.files.edits[0][1]
+    # input files (select only the top one)
+    in1 = [
+        os.path.join(data.tmpdir, "{}-tmp-umap1.fastq".format(sample.name)),
+        os.path.join(data.dirs.edits, "{}_R1_concatedit.fq.gz".format(sample.name)),
+        sample.files.edits[0][0],        
+    ]
+    in2 = [
+        os.path.join(data.tmpdir, "{}-tmp-umap2.fastq".format(sample.name)),
+        os.path.join(data.dirs.edits, "{}_R2_concatedit.fq.gz".format(sample.name)),
+        sample.files.edits[0][1],
+    ]
+    index = min([i for i, j in enumerate(in1) if os.path.exists(j)])
+    infile1 = in1[index]
+    infile2 = in2[index]
 
     # define output files
     mergedfile = os.path.join(
@@ -683,7 +823,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         data.tmpdir,
         "{}_nonmerged_R2_.fastq".format(sample.name))
 
-    ## get the maxn and minlen values
+    # get the maxn and minlen values
     try:
         maxn = sum(data.params.max_low_qual_bases)
     except TypeError:
@@ -714,15 +854,40 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
-def merge_end_to_end(data, sample, revcomp, append):
+def merge_end_to_end(data, sample, revcomp, append, identical=False):
     """ 
     Combines read1 and read2 with a 'nnnn' separator. If the data are going 
     to be refmapped then do not revcomp the read2. 
+
+    Parameters:
+    ----------
+
+    identical (bool):
+        *only for paired denovo refminus*
+        It will split paired reads that have already been
+        merged by vsearch. In this case it does not split them, but just uses
+        the full seq as both R1 and R2. When joining them back we will join 
+        other reads with nnnn, but if R1 and R2 are identical then we keep 
+        just the R1 as the merged readpair. 
     """
+
     # input files; 
-    mergedfile = os.path.join(
-        data.tmpdir, 
-        "{}_merged.fastq".format(sample.name))
+    if identical:
+        mergedfile = os.path.join(
+            data.tmpdir, 
+            "{}_remerged.fa".format(sample.name))
+    else:
+        mergedfile = os.path.join(
+            data.tmpdir, 
+            "{}_merged.fastq".format(sample.name))
+
+    # input file options
+    altmapped1 = os.path.join(
+        data.tmpdir,
+        "{}-tmp-umap1.fastq".format(sample.name))
+    altmapped2 = os.path.join(
+        data.tmpdir,
+        "{}-tmp-umap2.fastq".format(sample.name))
     nonmerged1 = os.path.join(
         data.tmpdir, 
         "{}_nonmerged_R1_.fastq".format(sample.name))
@@ -743,8 +908,10 @@ def merge_end_to_end(data, sample, revcomp, append):
         "{}.trimmed_R2_.fastq.gz".format(sample.name))
 
     # file precedence
-    nonm1 = [i for i in (edits1, concat1, nonmerged1) if os.path.exists(i)][-1]
-    nonm2 = [i for i in (edits2, concat2, nonmerged2) if os.path.exists(i)][-1]
+    order1 = (edits1, concat1, nonmerged1, altmapped1)
+    order2 = (edits2, concat2, nonmerged2, altmapped2)    
+    nonm1 = [i for i in order1 if os.path.exists(i)][-1]
+    nonm2 = [i for i in order2 if os.path.exists(i)][-1]
 
     # Combine the unmerged pairs and append to the merge file
     if append:
@@ -766,35 +933,57 @@ def merge_end_to_end(data, sample, revcomp, append):
     quart2 = izip(*[iter(fr2)] * 4)
     quarts = izip(quart1, quart2)
 
-    ## a list to store until writing
+    # a list to store until writing
     writing = []
     counts = 0
 
-    ## iterate until done
+    # iterate until done
     while 1:
         try:
             read1s, read2s = next(quarts)
         except StopIteration:
             break
-        if revcomp:
-            writing.append(b"".join([
-                read1s[0],
-                read1s[1].strip() + b"nnnn" + (
-                    bcomp(read2s[1].strip()[::-1]) + b"\n"),
-                read1s[2],
-                read1s[3].strip() + b"nnnn" + (
-                    read2s[3].strip()[::-1] + b"\n"),
-                ]))
-        else:
-            writing.append(b"".join([
-                read1s[0],
-                read1s[1].strip() + b"nnnn" + (
-                    read2s[1]),
-                read1s[2],
-                read1s[3].strip() + b"nnnn" + (
-                    read2s[3]),
-                ]))
 
+        # [paired-denovo-refminus option] do not join truly merged reads
+        if identical:
+            # keep already merged r1 and the read, or combine with nnnn
+            if read1s[1] == read2s[1]:
+                newread = [
+                    b">" + read1s[0][1:],
+                    read1s[1],
+                ]
+            else:
+                newread = [
+                    b">" + read1s[0][1:],
+                    read1s[1].strip() + b"nnnn" + read2s[1].strip() + b"\n",
+                ]
+            writing.append(b"".join(newread))
+
+        # the standard pipeline
+        else:
+            # revcomp for denovo data
+            if revcomp:
+                writing.append(b"".join([
+                    read1s[0],
+                    read1s[1].strip() + b"nnnn" + (
+                        bcomp(read2s[1].strip()[::-1]) + b"\n"),
+                    read1s[2],
+                    read1s[3].strip() + b"nnnn" + (
+                        read2s[3].strip()[::-1] + b"\n"),
+                    ]))
+
+            # no revcomp for reference mapped data
+            else:
+                writing.append(b"".join([
+                    read1s[0],
+                    read1s[1].strip() + b"nnnn" + (
+                        read2s[1]),
+                    read1s[2],
+                    read1s[3].strip() + b"nnnn" + (
+                        read2s[3]),
+                    ]))
+
+        # keep count
         counts += 1
         if not counts % 5000:
             combout.write(b"".join(writing).decode())
@@ -803,7 +992,7 @@ def merge_end_to_end(data, sample, revcomp, append):
     if writing:
         combout.write(b"".join(writing).decode())
 
-    ## close handles
+    # close handles
     fr1.close()
     fr2.close()
     combout.close()
@@ -825,23 +1014,26 @@ def cluster(data, sample, nthreads, force):
     based on experience, but could be edited by users
     """
     # get dereplicated reads for denovo+reference or denovo-reference
-    derephandle = os.path.join(
-        data.tmpdir, "{}_derep.fastq".format(sample.name))
+    handles = [
+        os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+        os.path.join(data.tmpdir, "{}_remerged.fa".format(sample.name)),        
+    ]
+    derephandle = [i for i in handles if os.path.exists(i)][-1]
     assert os.path.exists(derephandle), "bad derep handle"
 
     # create handles for the outfiles
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     temphandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
-                       
-    ## datatype specific optimization
-    ## minsl: the percentage of the seed that must be matched
-    ##    smaller values for RAD/ddRAD where we might want to combine, say 50bp
-    ##    reads and 100bp reads in the same analysis.
-    ## query_cov: the percentage of the query sequence that must match seed
-    ##    smaller values are needed for gbs where only the tips might overlap
-    ##    larger values for pairgbs where they should overlap near completely
-    ##    small minsl and high query cov allows trimmed reads to match to untrim
-    ##    seed for rad/ddrad/pairddrad.
+
+    # datatype specific optimization
+    # minsl: the percentage of the seed that must be matched
+    #    smaller values for RAD/ddRAD where we might want to combine, say 50bp
+    #    reads and 100bp reads in the same analysis.
+    # query_cov: the percentage of the query sequence that must match seed
+    #    smaller values are needed for gbs where only the tips might overlap
+    #    larger values for pairgbs where they should overlap near completely
+    #    small minsl and high query cov allows trimmed reads to match to untrim
+    #    seed for rad/ddrad/pairddrad.
     strand = "plus"
     cov = 0.5
     minsl = 0.5
@@ -854,12 +1046,12 @@ def cluster(data, sample, nthreads, force):
         cov = 0.75
         minsl = 0.75
 
-    ## If this value is not null (which is the default) then override query cov
+    # If this value is not null (which is the default) then override query cov
     if data.hackersonly.query_cov:
         cov = str(data.hackersonly.query_cov)
         assert float(cov) <= 1, "query_cov must be <= 1.0"
 
-    ## get call string
+    # get call string
     cmd = [ip.bins.vsearch,
            "-cluster_smallmem", derephandle,
            "-strand", strand,
@@ -877,7 +1069,7 @@ def cluster(data, sample, nthreads, force):
            "-fulldp",
            "-usersort"]
 
-    ## run vsearch
+    # run vsearch
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res = proc.communicate()[0]
 
@@ -894,14 +1086,18 @@ def build_clusters(data, sample, maxindels):
     By default, we set maxindels=6 for this step (within-sample clustering).
     """
 
-    ## If reference assembly then here we're clustering the unmapped reads
-    if "reference" in data.params.assembly_method:
-        derepfile = os.path.join(
-            data.tmpdir, sample.name + "-refmap_derep.fastq")
-    else:
-        derepfile = os.path.join(data.tmpdir, sample.name + "_derep.fastq")
+    # If reference assembly then here we're clustering the unmapped reads
+    # if "reference" in data.params.assembly_method:
+    # derepfile = os.path.join(
+    # data.tmpdir, sample.name + "-refmap_derep.fa")
 
-    ## i/o vsearch files
+    infiles = [
+        os.path.join(data.tmpdir, sample.name + "_derep.fa"),
+        os.path.join(data.tmpdir, sample.name + "_remerged.fa"),
+    ]
+    derepfile = [i for i in infiles if os.path.exists(i)][-1]
+
+    # i/o vsearch files
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
     hhandle = os.path.join(data.dirs.clusts, sample.name + ".htemp")
@@ -911,13 +1107,13 @@ def build_clusters(data, sample, maxindels):
             "{}.clust.txt".format(sample.name)), 
         'w')
 
-    ## Sort the uhandle file so we can read through matches efficiently
+    # Sort the uhandle file so we can read through matches efficiently
     cmd = ["sort", "-k", "2", uhandle, "-o", usort]
     proc = sps.Popen(cmd, close_fds=True)
     proc.communicate()[0]
 
-    ## load ALL derep reads into a dictionary (this can be a few GB of RAM)
-    ## and is larger if names are larger. We are grabbing two lines at a time.
+    # load ALL derep reads into a dictionary (this can be a few GB of RAM)
+    # and is larger if names are larger. We are grabbing two lines at a time.
     alldereps = {}
     with open(derepfile, 'rt') as ioderep:
         dereps = izip(*[iter(ioderep)] * 2)
@@ -925,34 +1121,39 @@ def build_clusters(data, sample, maxindels):
             nnn, sss = [i.strip() for i in (namestr, seq)]  
             alldereps[nnn[1:]] = sss
 
-    ## store observed seeds (this could count up to >million in bad data sets)
+    # store observed seeds (this could count up to >million in bad data sets)
     seedsseen = set()
 
-    ## Iterate through the usort file grabbing matches to build clusters
+    # Iterate through the usort file grabbing matches to build clusters
     with open(usort, 'rt') as insort:
-        ## iterator, seed null, seqlist null
+        # iterator, seed null, seqlist null
         isort = iter(insort)
         lastseed = 0
         fseqs = []
         seqlist = []
         seqsize = 0
         while 1:
-            ## grab the next line
+
+            # grab the next line and parse the informative columns
             try:
                 hit, seed, _, ind, ori, _ = next(isort).strip().split()
             except StopIteration:
                 break
 
-            ## same seed, append match
+            # same seed, append match
             if seed != lastseed:
                 seedsseen.add(seed)
-                ## store the last cluster (fseq), count it, and clear fseq
+
+                # store the last cluster (fseq), count it, and clear fseq
                 if fseqs:
-                    ## sort fseqs by derep after pulling out the seed
-                    fseqs = [fseqs[0]] + sorted(fseqs[1:], 
-                        key=lambda x: 
-                            int(x.split(";size=")[-1].split("\n")[0][:-2]), 
-                        reverse=True)                    
+                    # sort hits by size, which is at the end of the header
+                    fsort = sorted(
+                        fseqs[1:], 
+                        key=(lambda x: int(x.split(";size=")[-1].split("\n")[0][:-2])),
+                        reverse=True,
+                    )
+                    # seed first then sorted hits
+                    fseqs = [fseqs[0]] + fsort
                     seqlist.append("\n".join(fseqs))
                     seqsize += 1
                     fseqs = []
@@ -962,15 +1163,15 @@ def build_clusters(data, sample, maxindels):
                     if seqlist:
                         clustsout.write(
                             "\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                        ## reset list and counter
+                        # reset list and counter
                         seqlist = []
 
-                ## store the new seed on top of fseq list
+                # store the new seed on top of fseq list
                 fseqs.append(">{};*\n{}".format(seed, alldereps[seed]))
                 lastseed = seed
 
-            ## add match to the seed
-            ## revcomp if orientation is reversed (comp preserves nnnn)
+            # add match to the seed
+            # revcomp if orientation is reversed (comp preserves nnnn)
             if ori == "-":
                 seq = comp(alldereps[hit])[::-1]
             else:
@@ -979,13 +1180,13 @@ def build_clusters(data, sample, maxindels):
             if int(ind) <= maxindels:
                 fseqs.append(">{};{}\n{}".format(hit, ori, seq))
 
-    ## write whatever is left over to the clusts file
+    # write whatever is left over to the clusts file
     if fseqs:
         seqlist.append("\n".join(fseqs))
     if seqlist:
         clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
 
-    ## now write the seeds that had no hits. Make dict from htemp
+    # now write the seeds that had no hits. Make dict from htemp
     with open(hhandle, 'rt') as iotemp:
         nohits = izip(*[iter(iotemp)] * 2)
         seqlist = []
@@ -996,23 +1197,23 @@ def build_clusters(data, sample, maxindels):
             except StopIteration:
                 break
 
-            ## occasionally write to file
+            # occasionally write to file
             if not seqsize % 10000:
                 if seqlist:
                     clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                    ## reset list and counter
+                    # reset list and counter
                     seqlist = []
 
-            ## append to list if new seed
+            # append to list if new seed
             if nnn[1:] not in seedsseen:
                 seqlist.append("{};*\n{}".format(nnn, alldereps[nnn[1:]]))
                 seqsize += 1
 
-    ## write whatever is left over to the clusts file
+    # write whatever is left over to the clusts file
     if seqlist:
         clustsout.write("\n//\n//\n".join(seqlist))
 
-    ## close the file handle
+    # close the file handle
     clustsout.close()
     del alldereps
 
@@ -1027,10 +1228,10 @@ def muscle_chunker(data, sample):
     reference then this step is just a placeholder and nothing happens. 
     """
 
-    ## only chunk up denovo data, refdata has its own chunking method which 
-    ## makes equal size chunks, instead of uneven chunks like in denovo
+    # only chunk up denovo data, refdata has its own chunking method which 
+    # makes equal size chunks, instead of uneven chunks like in denovo
     if data.params.assembly_method != "reference":
-        ## get the number of clusters
+        # get the number of clusters
         clustfile = os.path.join(data.dirs.clusts, sample.name + ".clust.txt")
         with iter(open(clustfile, 'rt')) as clustio:
             nloci = sum(1 for i in clustio if "//" in i) // 2
@@ -1038,14 +1239,14 @@ def muscle_chunker(data, sample):
             #io
             #optim = int(nloci/10)
 
-        ## write optim clusters to each tmp file
+        # write optim clusters to each tmp file
         clustio = open(clustfile, 'rt')
         inclusts = iter(clustio.read().strip().split("//\n//\n"))
-        
-        ## splitting loci so first file is smaller and last file is bigger
+
+        # splitting loci so first file is smaller and last file is bigger
         inc = optim // 10
         for idx in range(10):
-            ## how big is this chunk?
+            # how big is this chunk?
             this = optim + (idx * inc)
             left = nloci - this
             ## Distribute all loci equally among chunks
@@ -1053,14 +1254,14 @@ def muscle_chunker(data, sample):
             ##left = nloci - optim
             ##this = optim
             if idx == 9:
-                ## grab everything left
+                # grab everything left
                 grabchunk = list(islice(inclusts, int(1e9)))
             else:
-                ## grab next chunks-worth of data
+                # grab next chunks-worth of data
                 grabchunk = list(islice(inclusts, this))
                 nloci = left
 
-            ## write the chunk to file
+            # write the chunk to file
             tmpfile = os.path.join(
                 data.tmpdir, sample.name + "_chunk_{}.ali".format(idx))
             with open(tmpfile, 'wb') as out:
@@ -1068,10 +1269,88 @@ def muscle_chunker(data, sample):
         clustio.close()
 
 
-def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
+def declone_clusters(aligned):
+
+    # store new decloned sequence as list of strings
+    decloned = []
+    nwdups = 0
+    nwodups = 0
+
+    # iterate one locus at a time
+    for loc in aligned:
+
+        # the reads are ordered by depth, parse in order
+        headers = loc.split("\n")[::2]
+        seqs = loc.split("\n")[1::2]
+
+        # parse headers
+        bits = [i.split(";") for i in headers]
+        names = [i[0] for i in bits]
+        tags = [i[1] for i in bits]
+        sizes = [int(i[2][5:]) for i in bits]
+
+        # keep track of stats
+        nwdups += sum(sizes)
+        nwodups += len(set(tags))
+
+        # if not repeated tags then skip to next locus
+        if len(set(tags)) == len(tags):
+            decloned.append(loc)
+            continue
+
+        # else: declone-------------------------------
+        updated = {}
+
+        # dict mapping {tag: 12} sum of all molecules with tag
+        tagsize = {i: 0 for i in set(tags)}
+        for idx in range(len(names)):
+            tag = tags[idx]
+            size = sizes[idx]
+            tagsize[tag] += size
+
+        # dict mapping {tag: [(10, seq), (1, seq), (1, seq)]} count,seq tuples
+        tags2seqs = {}
+        for idx in range(len(names)):
+            if tag in tags2seqs:
+                tags2seqs[tag].append((sizes[idx], seqs[idx]))
+            else:
+                tags2seqs[tag] = [(sizes[idx], seqs[idx])]
+
+        # if one tag is most abundant then only keep it with its new depth.
+        for tag, dtups in tags2seqs.items():
+
+            # is one seq most abundant?
+            depths = [i[0] for i in dtups]
+            if depths[0] > depths[1]:
+                updated[tag] = dtups[0][1]
+
+            # most abundant tag is equal with one or more others
+            else:
+                # simple solution for now...
+                updated[tag] = dtups[0][1]
+                # get all equally abundant tags
+                # allseqs = [i[1] for i in dtups if i[0] == dtups[0][0]]
+                # mask conflicts and merge N-
+
+        # write back into original order 
+        seen = set()
+        loc = []
+        for idx in range(len(names)):
+            if tags[idx] not in seen:
+                header = "{};{};size={};".format(names[idx], tags[idx], tagsize[tags[idx]])
+                loc.append(header)
+                loc.append(seqs[idx])
+            seen.add(tags[idx])
+
+        # join into a string locus
+        decloned.append("\n".join(loc))
+    return decloned, nwdups, nwodups
+
+
+def align_and_parse(handle, max_internal_indels=5, is_gbs=False, declone=False):
     """ much faster implementation for aligning chunks """
 
-    # CHECK: data are already chunked, read in the whole thing. bail if no data.
+    # CHECK: data are already chunked, read in the whole thing. bail if no data
     clusts = []
     try:
         with open(handle, 'rb') as infile:
@@ -1087,16 +1366,18 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
     except IOError:
         return 0
 
-    ## count discarded clusters for printing to stats later
+    # count discarded clusters for printing to stats later
     highindels = 0
+    nwdups = 0
+    nwodups = 0
 
-    ## iterate over clusters sending each to muscle, splits and aligns pairs
+    # iterate over clusters sending each to muscle, splits and aligns pairs
     aligned = persistent_popen_align3(clusts, 200, is_gbs)
 
-    ## store good alignments to be written to file
+    # store good alignments to be written to file
     refined = []
 
-    ## filter and trim alignments
+    # filter and trim alignments
     for clust in aligned:
         # check for too many internal indels
         if not aligned_indel_filter(clust, max_internal_indels):
@@ -1104,7 +1385,11 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
         else:
             highindels += 1
 
-    ## write to file after
+    # declone reads based on i5 tags in the header
+    if declone:
+        drefined, nwdups, nwodups = declone_clusters(refined)
+
+    # write to file after
     if refined:
         outhandle = handle.rsplit(".", 1)[0] + ".aligned"
         with open(outhandle, 'wb') as outfile:
@@ -1112,24 +1397,26 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False):
                 outfile.write("\n//\n//\n".join(refined) + "\n")
             except TypeError:
                 outfile.write(("\n//\n//\n".join(refined) + "\n").encode())
+
+    # return nfiltered by indels, nreads in clusters, nreads after deduping
     return highindels
 
 
 def reconcat(data, sample):
     """ takes aligned chunks (usually 10) and concatenates them """
 
-    ## get chunks
-    chunks = glob.glob(os.path.join(data.tmpdir,
-             sample.name + "_chunk_[0-9].aligned"))
+    # get chunks
+    chunks = glob.glob(
+        os.path.join(data.tmpdir, sample.name + "_chunk_[0-9].aligned"))       
 
-    ## sort by chunk number, cuts off last 8 =(aligned)
+    # sort by chunk number, cuts off last 8 =(aligned)
     chunks.sort(key=lambda x: int(x.rsplit("_", 1)[-1][:-8]))
 
-    ## concatenate finished reads
+    # concatenate finished reads
     sample.files.clusters = os.path.join(
         data.dirs.clusts, sample.name + ".clustS.gz")
 
-    ## reconcats aligned clusters
+    # reconcats aligned clusters
     with gzip.open(sample.files.clusters, 'wb') as out:
         for fname in chunks:
             with open(fname) as infile:
@@ -1154,15 +1441,15 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
         bufsize=0,
     )
 
-    ## iterate over clusters in this file until finished
+    # iterate over clusters in this file until finished
     aligned = []
     for clust in clusts:
 
-        ## new alignment string for read1s and read2s
+        # new alignment string for read1s and read2s
         align1 = []
         align2 = []
 
-        ## don't bother aligning if only one seq
+        # don't bother aligning if only one seq
         if clust.count(">") == 1:
             aligned.append(clust.replace(">", "").strip())
         else:
@@ -1229,7 +1516,7 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
                         dalign1[key].replace("\n", "") + "nnnn" + \
                         dalign2[key].replace("\n", "")]))
 
-                ## append aligned cluster string
+                # append aligned cluster string
                 aligned.append("\n".join(alignpe).strip())
 
             # Malformed clust. Dictionary creation with only 1 element 
@@ -1240,7 +1527,7 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
             ## Either reads are SE, or at least some pairs are merged.
             except IndexError:
-                    
+
                 # limit the number of input seqs
                 # use lclust already built before checking pairs
                 lclust = "\n".join(clust.split()[:maxseqs * 2])
@@ -1293,10 +1580,10 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 def aligned_indel_filter(clust, max_internal_indels):
     """ checks for too many internal indels in muscle aligned clusters """
 
-    ## make into list
+    # make into list
     lclust = clust.split()
-    
-    ## paired or not
+
+    # paired or not
     try:
         seq1 = [i.split("nnnn")[0] for i in lclust[1::2]]
         seq2 = [i.split("nnnn")[1] for i in lclust[1::2]]
@@ -1323,7 +1610,7 @@ def gbs_trim(align1):
     No reads can go past the left of the seed, or right of the least extended
     reverse complement match. Example below. m is a match. u is an area where 
     lots of mismatches typically occur. The cut sites are shown.
-    
+
     Original locus*
     Seed           TGCAG************************************-----------------------
     Forward-match  TGCAGmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm-----------------------
@@ -1356,7 +1643,7 @@ def gbs_trim(align1):
         subright = 0
     rightmost = len(dd[seed]) - subright
 
-    ## if locus got clobbered then print place-holder NNN
+    # if locus got clobbered then print place-holder NNN
     names, seqs = zip(*[i.rsplit("\n", 1) for i in align1])
     if rightmost > leftmost:
         newalign1 = [n + "\n" + i[leftmost:rightmost] 
@@ -1366,16 +1653,31 @@ def gbs_trim(align1):
     return newalign1
 
 
-def index_ref_with_bwa(data):
+def index_ref_with_bwa(data, alt=False):
     "Index the reference sequence, unless it already exists"
-    # get ref file from params
-    refseq_file = data.params.reference_sequence
-    index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
+
+    # get ref file from params, alt ref is for subtraction
+    if not alt:
+        refseq_file = data.params.reference_sequence
+    else:
+        refseq_file = data.params.reference_as_filter
+
+    # check that ref file exists
     if not os.path.exists(refseq_file):
-        raise IPyradError(
-            REQUIRE_REFERENCE_PATH.format(data.params.assembly_method))
+        if not alt:
+            raise IPyradError((
+                "Assembly method {} requires that you enter a "
+                "reference_sequence_path. The path you entered was not "
+                "found: \n{}")
+                .format(data.params.assembly_method))
+        else:
+            raise IPyradError((
+                "reference_as_filter requires that you enter a reference "
+                "fasta file. The path you entered was not found: \n{}")
+                .format(data.params.assembly_method))
 
     # If reference sequence already exists then bail out of this func
+    index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
     if all([os.path.isfile(refseq_file + i) for i in index_files]):
         return
 
@@ -1392,13 +1694,28 @@ def index_ref_with_bwa(data):
             raise IPyradError(error)
 
 
-def index_ref_with_sam(data):
+def index_ref_with_sam(data, alt=False):
     "Index ref for building scaffolds w/ index numbers in steps 5-6"
-    # get ref file from params
-    refseq_file = data.params.reference_sequence
+
+    # get ref file from params, alt ref is for subtraction
+    if not alt:
+        refseq_file = data.params.reference_sequence
+    else:
+        refseq_file = data.params.reference_as_filter
+
+    # check whether it is already indexed
     if not os.path.exists(refseq_file):
-        raise IPyradError(
-            REQUIRE_REFERENCE_PATH.format(data.params.assembly_method))
+        if not alt:
+            raise IPyradError((
+                "Assembly method {} requires that you enter a "
+                "reference_sequence_path. The path you entered was not "
+                "found: \n{}")
+                .format(data.params.assembly_method))
+        else:
+            raise IPyradError((
+                "reference_as_filter requires that you enter a reference "
+                "fasta file. The path you entered was not found: \n{}")
+                .format(data.params.assembly_method))
 
     # If reference index exists then bail out unless force
     if os.path.exists(refseq_file + ".fai"):
@@ -1412,14 +1729,20 @@ def index_ref_with_sam(data):
     pysam.faidx(refseq_file)
 
 
-def mapping_reads(data, sample, nthreads):
+def mapping_reads(data, sample, nthreads, altref=False):
     """
     Map reads to reference sequence. This reads in the fasta files
     (samples.files.edits), and maps each read to the reference. Unmapped reads
     are dropped right back in the de novo pipeline.
     Mapped reads end up in a sam file.
-    """
 
+    Parameters
+    -----------
+    alt (bool): 
+        if True the alternate reference is mapped to for read removal.
+    umap (bool):
+        if True then unmapped reads from previous run are used for mapping.
+    """
     # outfiles
     samout = os.path.join(
         data.dirs.refmapping,
@@ -1429,6 +1752,7 @@ def mapping_reads(data, sample, nthreads):
         data.dirs.refmapping,
         "{}-mapped-sorted.bam".format(sample.name))
 
+    # keeping the unmapped reads (for filtering against a 'exclude' reference)
     ubamout = os.path.join(
         data.dirs.refmapping,
         "{}-unmapped.bam".format(sample.name))
@@ -1437,19 +1761,95 @@ def mapping_reads(data, sample, nthreads):
         data.dirs.refmapping,
         "{}-unmapped.fastq".format(sample.name))
 
-    # infiles: dereplicated read1 and read2 files
-    if "pair" not in data.params.datatype:
-        infiles = [
-            os.path.join(data.tmpdir, "{}_derep.fastq".format(sample.name))]
+    # paired (w or w/o refminus) 
+    # select (derep-declone or non-derep) non-merged readpairs
+    if "pair" in data.params.datatype:
+        read1s = [
+            os.path.join(data.tmpdir, "{}_R1-tmp.fa".format(sample.name)),
+            os.path.join(data.tmpdir, "{}_R1_concatedit.fq.gz".format(sample.name)),
+            sample.files.edits[0][0],
+        ]
+        read2s = [
+            os.path.join(data.tmpdir, "{}_R2-tmp.fa".format(sample.name)),
+            os.path.join(data.tmpdir, "{}_R2_concatedit.fq.gz".format(sample.name)),
+            sample.files.edits[0][1],
+        ]
+        index = min([i for i, j in enumerate(read1s) if os.path.exists(j)])
+
+        # the files for mapping        
+        infiles = [read1s[index], read2s[index]]
+
+    # single (w/ or w/o refminus)
+    # select (derep-declone or non-derep) r1s
     else:
-        inread1 = os.path.join(
-            data.tmpdir, "{}_R1-tmp.fastq".format(sample.name))
-        inread2 = os.path.join(
-            data.tmpdir, "{}_R2-tmp.fastq".format(sample.name))
-        infiles = []
-        for infile in [inread1, inread2]:
-            if os.path.exists(infile):
-                infiles.append(infile)
+        read1s = [
+            # os.path.join(data.tmpdir, "{}_R1-tmp.fa".format(sample.name)),
+            os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+            sample.files.edits[0][0],
+        ]
+        index = min([i for i, j in enumerate(read1s) if os.path.exists(j)])
+        infiles = [read1s[index]]      
+
+    # select the appropriate reference file
+    if altref:
+        reference = data.params.reference_as_filter
+    else:
+        reference = data.params.reference_sequence
+
+    # # MODE 2 (single denovo refminus) select non-derep non-merged read1 files
+    # elif mode == 2:
+    #     read1s = [
+    #         os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+    #         os.path.join(data.tmpdir, "{}_R1-tmp.fastq".format(sample.name)),
+    #     ]
+    #     index = min([i for i, j in enumerate(read1s) if os.path.exists(j)])
+    #     infiles = [read1s[index]]
+    #     reference = data.params.reference_as_filter
+
+    # # MODE 2 (single ref refminus) select non-derep non-merged read1 files
+    # elif mode == 3:
+
+
+    # # infiles: dereplicated read1 and read2 files
+    # if not umap:
+    #     if "pair" not in data.params.datatype:
+    #         # get the input file by selecting in order of priority
+    #         hierarch = [
+    #             os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+    #             os.path.join(data.tmpdir, "{}_R1-tmp.fastq".format(sample.name)),
+    #         ]
+    #         index = min([i for i, j in enumerate(hierarch) if os.path.exists(j)])
+    #         infile1 = hierarch[index]
+    #     else:
+    #         # get the input file by selecting in order of priority            
+    #         hierarch = [
+    #             os.path.join(data.tmpdir, "{}-tmp-umap1.fastq".format(sample.name)),
+    #             os.path.join(data.tmpdir, "{}_R1-tmp.fastq".format(sample.name)),
+    #         ]
+    #         index = min([i for i, j in enumerate(hierarch) if os.path.exists(j)])
+    #         infile1 = hierarch[index]
+    #         infile2 = infile1.replace("...", "TODO")
+
+    #     # append one or both depending on single or paired
+    #     infiles = []
+    #     for infile in [inread1, inread2]:
+    #         if os.path.exists(infile):
+    #             infiles.append(infile)
+
+    # # UMAP selects read files that already exclude the mapped reads
+    # else:
+    #     if "pair" not in data.params.datatype:
+    #         infiles = [
+    #             os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name))]
+    #     else:
+    #         inread1 = os.path.join(
+    #             data.tmpdir, "{}-tmp-umap1.fastq".format(sample.name))
+    #         inread2 = os.path.join(
+    #             data.tmpdir, "{}-tmp-umap2.fastq".format(sample.name))
+    #         infiles = []
+    #         for infile in [inread1, inread2]:
+    #             if os.path.exists(infile):
+    #                 infiles.append(infile)        
 
     # (cmd1) bwa mem [OPTIONS] <index_name> <file_name_A> [<file_name_B>]
     #  -t #         : Number of threads
@@ -1476,11 +1876,19 @@ def mapping_reads(data, sample, nthreads):
     # (cmd5) samtools bam2fq -v 45 [in.bam]
     #   -v45 set the default qscore arbirtrarily high
     #
+
+    # check files
+    if not os.path.exists(reference):
+        raise IPyradError("file not found: {}".format(reference))
+    if not infiles:
+        raise IPyradError("derep files not found")
+
+    # command string for mapping
     cmd1 = [
         ip.bins.bwa, "mem",
         "-t", str(max(1, nthreads)),
         "-M",
-        data.params.reference_sequence,
+        reference,
     ]
     cmd1 += infiles
 
@@ -1543,7 +1951,6 @@ def mapping_reads(data, sample, nthreads):
         cmd5.insert(2, ufastqout)
         cmd5.insert(2, "-0")
 
-
     # cmd2 writes to sname.unmapped.bam and fills pipe with mapped BAM data
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
 
@@ -1561,7 +1968,7 @@ def mapping_reads(data, sample, nthreads):
     if proc4.returncode:
         raise IPyradError(error4)
 
-    # Running cmd5 writes to either edits/sname-refmap_derep.fastq for SE
+    # Running cmd5 writes to either edits/sname-refmap_derep.fa for SE
     # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
     # will then need to be merged.
     proc5 = sps.Popen(cmd5, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -1744,11 +2151,11 @@ def build_clusters_from_cigars(data, sample):
                     seq = cigared(r1.seq, r1.cigar)
                     start = r1.reference_start - reg[1] 
                     arr1[start:start + len(seq)] = list(seq)
-                    
+
                     seq = cigared(r2.seq, r2.cigar)
                     start = r2.reference_start - reg[1] 
                     arr2[start:start + len(seq)] = list(seq)
-                    
+
                     arr3 = join_arrays(arr1, arr2)
                     pairseq = "".join(arr3)
 
@@ -1756,8 +2163,16 @@ def build_clusters_from_cigars(data, sample):
                     if r1.is_reverse:
                         ori = "-"
                     derep = r1.qname.split("=")[-1]
-                    rname = "{}:{}-{};size={};{}".format(
-                        reg[0], reg[1], reg[2], derep, ori)
+
+                    if data.hackersonly.declone_PCR_duplicates:
+                        tag = r1.qname.split(";")[-2]
+                        rname = "{}:{}-{};{};size={};{}".format(
+                            reg[0], reg[1], reg[2], tag, derep, ori,
+                        )
+                    else:
+                        rname = "{}:{}-{};size={};{}".format(
+                            reg[0], reg[1], reg[2], derep, ori,
+                        )
                     # *reg, derep, ori)
                     clust.append("{}\n{}".format(rname, pairseq))
 
@@ -1770,7 +2185,7 @@ def build_clusters_from_cigars(data, sample):
                 rdict[read.qname] = read
                 mstart = min(mstart, read.aend - read.alen)
                 mend = max(mend, read.aend)
-        
+
             # sort keys by derep number
             keys = sorted(
                 rdict.keys(),
@@ -1806,11 +2221,11 @@ def build_clusters_from_cigars(data, sample):
             idx += 1
 
         # if 1000 clusters stored then write to disk
-        if not idx % 10000:
+        if not idx % 1000:
             if clusters:
                 out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
                 clusters = []
- 
+
     # write final remaining clusters to disk
     if clusters:
         out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
@@ -1822,10 +2237,18 @@ def split_endtoend_reads(data, sample):
     Takes R1nnnnR2 derep reads from paired data and splits it back into
     separate R1 and R2 parts for read mapping.
     """
-    inp = os.path.join(data.tmpdir, "{}_derep.fastq".format(sample.name))
-    out1 = os.path.join(data.tmpdir, "{}_R1-tmp.fastq".format(sample.name))
-    out2 = os.path.join(data.tmpdir, "{}_R2-tmp.fastq".format(sample.name))
+    # select tagged if it exists else choose derep
+    inp = [
+        os.path.join(data.tmpdir, "{}_tagged.fa".format(sample.name)),
+        os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
+    ]
+    inp = [i for i in inp if os.path.exists(i)][0]
 
+    # output fasta names
+    out1 = os.path.join(data.tmpdir, "{}_R1-tmp.fa".format(sample.name))
+    out2 = os.path.join(data.tmpdir, "{}_R2-tmp.fa".format(sample.name))
+
+    # open files for writing
     splitderep1 = open(out1, 'w')
     splitderep2 = open(out2, 'w')
 
@@ -1833,39 +2256,48 @@ def split_endtoend_reads(data, sample):
         # Read in the infile two lines at a time: (seqname, sequence)
         duo = izip(*[iter(infile)] * 2)
 
-        ## lists for storing results until ready to write
+        # lists for storing results until ready to write
         split1s = []
         split2s = []
 
-        ## iterate over input splitting, saving, and writing.
+        # iterate over input splitting, saving, and writing.
         idx = 0
         while 1:
             try:
                 itera = next(duo)
             except StopIteration:
                 break
-            ## split the duo into separate parts and inc counter
-            part1, part2 = itera[1].split("nnnn")
-            idx += 1
 
-            ## R1 needs a newline, but R2 inherits it from the original file
-            ## store parts in lists until ready to write
+            # [possible] splitting denovo post-vsearch-merged pairs b/c 
+            # refminus mapping had to occur after 3rad tagging which required
+            # dereping as joined reads. Split in half or minimum of 32 bp.
+            try:
+                # split the duo into separate parts and inc counter
+                part1, part2 = itera[1].split("nnnn")
+                idx += 1
+
+            # later: use the fact they are identical to know they were merged.
+            except ValueError:
+                part1, part2 = itera[1].strip(), itera[1]
+
+            # R1 needs a newline, but R2 inherits it from the original file
+            # store parts in lists until ready to write
             split1s.append("{}{}\n".format(itera[0], part1))
             split2s.append("{}{}".format(itera[0], part2))
 
-            ## if large enough then write to file
+            # if large enough then write to file
             if not idx % 10000:
                 splitderep1.write("".join(split1s))
                 splitderep2.write("".join(split2s))
                 split1s = []
                 split2s = []
 
-    ## write final chunk if there is any
+    # write final chunk if there is any
     if any(split1s):
         splitderep1.write("".join(split1s))
         splitderep2.write("".join(split2s))
 
-    ## close handles
+    # close handles
     splitderep1.close()
     splitderep2.close()
 
@@ -2074,9 +2506,9 @@ def store_sample_stats(data, sample, maxlens, depths):
     # if loglevel==DEBUG
     # log_level = ip.logger.getEffectiveLevel()
     # if log_level != 10:
-        ## Clean up loose files only if not in DEBUG
-        ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
-    derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fastq")
+    ## Clean up loose files only if not in DEBUG
+    ##- edits/*derep, utemp, *utemp.sort, *htemp, *clust.gz
+    derepfile = os.path.join(data.dirs.edits, sample.name + "_derep.fa")
     mergefile = os.path.join(data.dirs.edits, sample.name + "_merged_.fastq")
     uhandle = os.path.join(data.dirs.clusts, sample.name + ".utemp")
     usort = os.path.join(data.dirs.clusts, sample.name + ".utemp.sort")
@@ -2088,8 +2520,85 @@ def store_sample_stats(data, sample, maxlens, depths):
             os.remove(rfile)
 
 
-def declone_3rad(data, sample):
+def tag_to_header_for_decloning(data, sample):
     """
+    Pull i5 tag from dereplicated sequence and append to (PE joined) 
+    dereped seq header.
+
+    # e.g.,      
+    0004a51ebbcd442afb6b6d02f5daf553;size=6;*
+    TATCGGTCATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
+
+    to 
+
+    0004a51ebbcd442afb6b6d02f5daf553;tag=TATCGGTC;size=6;*
+    ATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
+    """
+
+    # paired reads are merged or joined in the merged file
+    tmpin = os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name))
+
+    # we will write the modified version to this file
+    tmpout = os.path.join(data.tmpdir, "{}_tagged.fa".format(sample.name))
+
+    # Remove adapters from head of sequence and write out
+    # tmp_outfile is now the input file for the next step
+    # first vsearch derep discards the qscore so we iterate pairs
+    outfile = open(tmpout, 'w') 
+    with open(tmpin) as infile:
+
+        # iterate over 2 lines a time
+        duo = izip(*[iter(infile)] * 2)
+        writing = []
+        counts2 = 0
+
+        # a list to store until writing
+        while 1:
+            try:
+                read = next(duo)
+            except StopIteration:
+                break
+
+            # extract i5 if it exists else use empty string           
+            tag = read[1][:8]
+            name, size = read[0].split(";")
+
+            # add i5 to the 5' end of the sequence
+            newread = [
+                "{};tag={};{}".format(name, tag, size),
+                read[1][8:],
+            ]
+            writing.append("".join(newread))
+
+            # Write the data in chunks
+            counts2 += 1
+            if not counts2 % 1000:
+                outfile.write("".join(writing))
+                writing = []
+
+        if writing:
+            outfile.write("".join(writing))
+            outfile.close()
+
+
+def tag_for_decloning(data, sample):
+    """
+    Pull i5 tag from Illumina index and insert into the fastq name header
+    so we can use it later to declone even after the fastq indices are gone.
+
+    # e.g.,                                            i7       i5
+    @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    +
+    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+    to
+
+    @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
+    CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    +
+    FFFFFFFFBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
     3rad uses random adapters to identify pcr duplicates. We will
     remove pcr dupes here. Basically append the radom adapter to
     each sequence, do a regular old vsearch derep, then trim
@@ -2097,65 +2606,57 @@ def declone_3rad(data, sample):
     remove all identical seqs with identical random i5 adapters.
     """
 
-    # tmp_outfile = tempfile.NamedTemporaryFile(
-    #     mode='wb',
-    #     delete=False,
-    #     dir=data.dirs.edits,
-    #     suffix="_append_adapters_.fastq",
-    # )
+    # paired reads are merged or joined in the merged file
+    tmpin = os.path.join(data.tmpdir, "{}_merged.fastq".format(sample.name))
 
-    try:
-        ## Remove adapters from head of sequence and write out
-        ## tmp_outfile is now the input file for the next step
-        ## first vsearch derep discards the qscore so we iterate
-        ## by pairs
-        with open(tmp_outfile.name) as infile:
-            with open(os.path.join(
-                data.dirs.edits, 
-                sample.name + "_declone.fastq"), 'wb') as outfile:
-                duo = izip(*[iter(infile)] * 2)
+    # we will write the modified version to this file
+    tmpout = os.path.join(data.tmpdir, "{}_declone.fastq".format(sample.name))
 
-                ## a list to store until writing
+    # Remove adapters from head of sequence and write out
+    # tmp_outfile is now the input file for the next step
+    # first vsearch derep discards the qscore so we iterate pairs
+    outfile = open(tmpout, 'w') 
+    with open(tmpin) as infile:
+
+        # iterate over 2 lines a time
+        duo = izip(*[iter(infile)] * 4)
+        writing = []
+        counts2 = 0
+
+        # a list to store until writing
+        while 1:
+            try:
+                read = next(duo)
+            except StopIteration:
+                break
+
+            # extract i5 if it exists else use empty string           
+            try:
+                indices = read[0].split(":")[-1]
+                i5 = indices.split("+")[1].strip()
+                assert len(i5) == 8
+            except AssertionError:
+                i5 = ""
+            a5 = "B" * len(i5)
+
+            # add i5 to the 5' end of the sequence
+            newread = [
+                read[0],
+                i5 + read[1],
+                read[2],
+                a5 + read[3]
+            ]
+            writing.append("".join(newread))
+
+            # Write the data in chunks
+            counts2 += 1
+            if not counts2 % 1000:
+                outfile.write("".join(writing))
                 writing = []
-                counts2 = 0
 
-                while 1:
-                    try:
-                        read = next(duo)
-                    except StopIteration:
-                        break
-
-                    ## Peel off the adapters. There's probably a faster
-                    ## way of doing this.
-                    writing.append("\n".join([
-                        read[0].strip(),
-                        read[1].strip()[8:]]
-                    ))
-
-                    ## Write the data in chunks
-                    counts2 += 1
-                    if not counts2 % 1000:
-                        outfile.write("\n".join(writing) + "\n")
-                        writing = []
-                if writing:
-                    outfile.write("\n".join(writing))
-                    outfile.close()
-
-    except Exception as inst:
-        raise IPyradError(
-            "    Caught error while decloning 3rad data - {}".format(inst))
-
-    finally:
-        ## failed samples will cause tmp file removal to raise.
-        ## just ignore it.
-        try:
-            ## Clean up temp files
-            if os.path.exists(tmp_outfile.name):
-                os.remove(tmp_outfile.name)
-            if os.path.exists(tmp_outfile.name):
-                os.remove(tmp_outfile.name)
-        except Exception as inst:
-            pass
+        if writing:
+            outfile.write("".join(writing))
+            outfile.close()
 
 
 # globals
@@ -2163,7 +2664,7 @@ NO_ZIP_BINS = """
   Reference sequence must be de-compressed fasta or bgzip compressed,
   your file is probably gzip compressed. The simplest fix is to gunzip
   your reference sequence by running this command:
- 
+
       gunzip {}
 
   Then edit your params file to remove the `.gz` from the end of the

@@ -11,20 +11,27 @@ from __future__ import print_function
 # standard lib
 import os
 import h5py
+import itertools
 import numpy as np
 import pandas as pd
 
 from .utils import count_snps
 from ipyrad.assemble.utils import GETCONS, IPyradError
-from ipyrad.assemble.write_outputs import reftrick
+from ipyrad.assemble.write_outputs import reftrick, NEXHEADER
 
 
 """
     TODO:
+
+    'format' argument in .run() to write nexus format.
+
     Select scaffold(s) by index number. If unsure, leave this
     empty when loading a file and then check the .scaffold_table to view
-    the indices of scaffolds. To concatenate data from multiple scaffolds
+    the indices of scaffolds. 
+
+    To concatenate data from multiple scaffolds
     you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
+
     To concatenate data from multiple scaffolds
     you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
 """
@@ -57,12 +64,15 @@ class WindowExtracter(object):
         The minimum number of individuals that must have data at a site for it
         to be included in the concatenated alignment (default=4). 
     exclude (list):
-        A list of sample names to exclude from the data set. 
+        A list of sample names to exclude from the data set. Samples can also
+        be excluded by using an imap dictionary and not including them.
     imap (dict):
         A dictionary mapping group names (keys) to lists of samples names 
-        (values) to be included in the analysis. The samples in groups will 
-        be reduced to a consensus sequence which can be used to reduce missing
-        data overall in the alignments. 
+        (values) to be included in the analysis. 
+    consensus_reduce (bool):
+        The samples in imap groups will be reduced to a consensus sequence 
+        that randomly samples two alleles based on the frequency of alleles 
+        in the group. This can reduce overall missing data in alignments. 
     quiet (bool):
         Do not print progress information.
 
@@ -78,6 +88,8 @@ class WindowExtracter(object):
         mincov=4,
         exclude=None,
         imap=None,
+        minmap=None,
+        consensus_reduce=False,
         quiet=False,
         **kwargs
         ):
@@ -85,13 +97,14 @@ class WindowExtracter(object):
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.scaffold_idx = scaffold_idx
+        self.scaffold_idx = scaffold_idx  # (int(scaffold_idx) if scaffold_idx else None)
         self.start = (start if start else 0)
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
-        # self.minmap = minmap
+        self.minmap = minmap
         self.imap = imap
+        self.consensus_reduce = consensus_reduce
         self.quiet = quiet
 
         # file to write to
@@ -107,28 +120,78 @@ class WindowExtracter(object):
 
         # update end to scaff len if not entered
         if not self.end:
-
             # get length of this scaffold
             if isinstance(scaffold_idx, int):
                 self.end = int(self.scaffold_table.iloc[self.scaffold_idx, -1])
-
             # multiple scaffolds
             else:
                 self.end = None
 
-        # use provided name else auto gen a name (scaff-start-end)
-        if not name:
-            if isinstance(scaffold_idx, int):
-                self.name = "scaf{}-{}-{}".format(
-                    self.scaffold_idx,
-                    self.start,
-                    self.end
-                )
-            else:
-                self.name = "test"
-        else:
-            self.name = name
+        # output prefix name
+        self._get_name(name)
 
+        # set parameters as ints or floats
+        self._set_filters_type()
+
+        # stats is overwritten if fillseqar runs
+        self.stats = "No stats because no scaffolds selected."
+
+        # this will not do anything if no scaffolds selected.
+        self._fill_seqarr()
+
+
+    def _set_filters_type(self):
+        """
+        Set mincov and minmap to ints. This requires converting floats to ints
+        by multiplying by the number of samples, and/or by the number that will
+        remain after consensus reduction.
+        """
+        # consensus sampling changes the number of samples
+        nsamples = len(self.sidxs)
+        if self.consensus_reduce:
+            nsamples = len(self.imap)
+
+        # global filter can be int or float
+        self.mincov = (
+            self.mincov if isinstance(self.mincov, int) 
+            else int(self.mincov * nsamples)
+        )
+
+        # set population filter
+        if self.minmap:
+            for ikey, ivals in self.imap.items():
+                # get int value entered by user
+                mincov = self.minmap[ikey]
+
+                # get minmap as an int 
+                if self.consensus_reduce:
+                    self.minmap[ikey] = (
+                        mincov if isinstance(mincov, int) 
+                        else int(mincov * len(ivals))
+                    )
+                else:
+                    self.minmap[ikey] = (
+                        mincov if isinstance(mincov, int) 
+                        else int(mincov * 1.0)
+                    )                    
+
+        # warning checks for user
+        if self.consensus_reduce:
+            if self.mincov > nsamples:
+                raise IPyradError((
+                    "mincov ({}) cannot be greater than number of samples\n "
+                    "after consensus_reduce ({}). This will filter all data."
+                    ).format(self.mincov, nsamples)
+                )
+            if self.minmap:
+                if max(self.minmap.values()) > 1:
+                    raise IPyradError(
+                        "minmap int value cannot be >1 when using "
+                        "consensus_reduce or all data will be filtered."
+                    )
+
+
+    def _fill_seqarr(self):
         # allow user to init with None to get scaffold names.
         if self.scaffold_idx is not None:
 
@@ -144,24 +207,39 @@ class WindowExtracter(object):
             self._extract_seqarr()
             if not self.seqarr.size:
                 self._print("No data in selected window.")
+                return 
 
             # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
+            self._calc_initial_stats()
+            self._imap_consensus_reduce()
+            self._filter_seqarr()
+            if not self.seqarr.size:
+                self._print("No data in filtered window.")
             else:
-                self._calc_initial_stats()
-                self._imap_consensus_reduce()
-                self._filter_seqarr()
-                if not self.seqarr.size:
-                    self._print("No data in filtered window.")
-                else:
-                    self._calc_filtered_stats()
-
-        else:
-            self.stats = "No stats because no scaffolds selected."
+                self._calc_filtered_stats()
 
 
     def _print(self, message):
         if not self.quiet:
             print(message)
+
+
+    def _get_name(self, name):
+        """
+        sets output prefix name. If 
+        """
+        # use provided name else auto gen a name (scaff-start-end)
+        if not name:
+            if isinstance(self.scaffold_idx, int):
+                self.name = "scaf{}-{}-{}".format(
+                    self.scaffold_idx,
+                    self.start,
+                    self.end
+                )
+            else:
+                self.name = "r{}".format(np.random.randint(0, 1e9))
+        else:
+            self.name = name
 
 
     def _extract_phymap_df(self):
@@ -200,7 +278,7 @@ class WindowExtracter(object):
         )
 
 
-    def run(self, force=False):
+    def run(self, force=False, nexus=False):
         """
         Write sequence alignment to a file 
         """
@@ -209,13 +287,21 @@ class WindowExtracter(object):
             return "No scaffold selected"
 
         # make outfile path name
-        self.outfile = os.path.join(
-            self.workdir, self.name + ".phy")
+        if nexus:           
+            self.outfile = os.path.join(
+                self.workdir, self.name + ".nex")
+        else:
+            self.outfile = os.path.join(
+                self.workdir, self.name + ".phy")
 
         # check for force/overwrite
         if force or (not os.path.exists(self.outfile)):
+
             # convert to file format
-            self.write_to_phy()
+            if nexus:
+                self._write_to_nex()
+            else:
+                self._write_to_phy()
             self._print("Wrote data to {}".format(self.outfile))
         else:
             raise IOError(
@@ -241,7 +327,7 @@ class WindowExtracter(object):
         # extract array from window        
         with h5py.File(self.data) as io5:
             self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
-            
+
         # is there any data at all?
         if not self.seqarr.size:
             return
@@ -261,8 +347,8 @@ class WindowExtracter(object):
         Get consensus sequence for all samples in clade. 
         """
         # skip if no imap
-        if not self.imap:
-            return 
+        if (not self.imap) or (not self.consensus_reduce):
+            return
 
         # empty array of shape imap groups
         iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
@@ -295,13 +381,33 @@ class WindowExtracter(object):
 
     def _filter_seqarr(self):
         """
-        Apply filters to remove taxa.
+        Apply filters to remove sites from alignment and to drop taxa if 
+        they end up having all Ns.
         """
         # drop sites that are too many Ns given (global) mincov
-        keep = np.sum(self.seqarr != 78, axis=0) >= self.mincov
+        drop = np.sum(self.seqarr != 78, axis=0) < self.mincov
+
+        # drop sites that are too many Ns in minmap pops
+        if self.minmap:
+            for ikey, ivals in self.imap.items():
+
+                # imap drops sites if mincov is below nsamples in group
+                if not self.consensus_reduce:
+                    sidxs = [np.where(self.names == i)[0][0] for i in ivals]
+                    subarr = self.seqarr[sidxs, :]
+                    drop += np.sum(subarr != 78, axis=0) < self.minmap[ikey]
+
+                # imap could drop sites in consens if minmap is (1,0,1,1,0)
+                else:
+                    sidxs = np.where(self.names == ikey)[0][0]
+                    subarr = self.seqarr[sidxs, :]
+                    drop += np.sum(subarr != 78, axis=0) < self.minmap[ikey]
+
+        # apply site filter
+        keep = np.invert(drop)        
         self.seqarr = self.seqarr[:, keep]
 
-        # drop samples that are all Ns
+        # drop samples that are only Ns after removing lowcov sites
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
         self.names = self.names[keep]
@@ -334,6 +440,11 @@ class WindowExtracter(object):
             ])
             self.names = [i.strip() for i in self._pnames]
 
+            # auto-generate exclude from imap difference
+            if self.imap:
+                imapset = set(itertools.chain(*self.imap.values()))
+                self.exclude = set(self.names).difference(imapset)
+
             # filter to only the included samples
             self.sidxs = [
                 i for (i, j) in enumerate(self.names) if j not in self.exclude]
@@ -360,14 +471,14 @@ class WindowExtracter(object):
             )
 
 
-    def write_to_phy(self):
+    def _write_to_phy(self):
 
         # build phy
         phy = []
         for idx, name in enumerate(self._pnames):
             seq = bytes(self.seqarr[idx]).decode()
             phy.append("{} {}".format(name, seq))
-       
+
         # write to temp file
         ntaxa, nsites = self.seqarr.shape
         with open(self.outfile, 'w') as out:
@@ -375,12 +486,42 @@ class WindowExtracter(object):
             out.write("\n".join(phy))
 
 
+    def _write_to_nex(self):
+
+        # write the header
+        lines = []
+        lines.append(
+            NEXHEADER.format(self.seqarr.shape[0], self.seqarr.shape[1])
+        )
+
+        # grab a big block of data
+        sidx = 0
+        for block in range(0, self.seqarr.shape[1], 100):           
+            # store interleaved seqs 100 chars with longname+2 before
+            stop = min(block + 100, self.seqarr.shape[1])
+            for idx, name in enumerate(self._pnames):  
+
+                # py2/3 compat --> b"TGCGGG..."
+                seqdat = self.seqarr[idx, block:stop]
+                lines.append(
+                    "  {}{}\n".format(
+                        name,
+                        bytes(seqdat).decode()
+                        )
+                    )
+            lines.append("\n")
+        lines.append("  ;\nend;")
+        # print intermediate result and clear
+        with open(self.outfile, 'w') as out:
+            out.write("".join(lines))
+
+
     # def write_to_fasta(self):
     #     """
     #     Split into separate loci, only include samples in a locus if they are
     #     not empty, apply filters for locus inclusion. 
     #     """       
-        
+
     #     # make outfile path name
     #     self.outfile = os.path.join(
     #         self.workdir, self.name + ".fasta")

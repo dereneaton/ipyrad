@@ -78,8 +78,8 @@ class Structure(object):
         Submits independent replicate jobs to run on a cluster.
     get_clumpp_table(kpop):
         Returns a table of results for K=kpop permuted across all replicates.
-    
-    """    
+
+    """
     def __init__(
         self, 
         name, 
@@ -98,8 +98,11 @@ class Structure(object):
         # get path to saved files and load any existing files
         self.name = name
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
+
+        # check attribute for existing results at this name.
         if self.result_files:
-            self._print("{} previous results loaded for run [{}]"
+            self._print(
+                "{} previous results loaded for run [{}]"
                 .format(len(self.result_files), self.name))
 
         # the snps database file contains data and names, etc.
@@ -189,8 +192,8 @@ class Structure(object):
                     for tax in val:
                         rdict[tax] = key
 
-        popdata = [""] * len(labels) # [rdict[i] for i in self.labels]
-        popflag = [""] * len(labels) # ["0"] * len(self.labels)
+        popdata = [""] * len(labels)  # [rdict[i] for i in self.labels]
+        popflag = [""] * len(labels)  # ["0"] * len(self.labels)
         locdata = [""] * len(labels)
         phenotype = [""] * len(labels)        
 
@@ -231,7 +234,7 @@ class Structure(object):
         ipyclient: (type=ipyparallel.Client); Default=None. 
             If you started an ipyclient manually then you can 
             connect to it and use it to distribute jobs here.
-        
+
         force: (type=bool); Default=False.
             Force overwrite of existing output with the same name.
 
