@@ -6,6 +6,7 @@ from __future__ import print_function, division
 
 import os
 import sys
+import itertools
 import numpy as np
 import pandas as pd
 
@@ -110,7 +111,6 @@ class PCA(object):
         self.data = os.path.realpath(os.path.expanduser(data))
 
         # data attributes
-        #self.ncomponents = ncomponents
         self.impute_method = impute_method
         self.mincov = mincov        
         self.imap = (imap if imap else {})
@@ -118,13 +118,9 @@ class PCA(object):
         self.topcov = topcov
         self.niters = niters
 
-        # get names from imap else we'll fill this later with all
-        # self.names = []
-        # for key, val in self.imap.items():
-        #     if isinstance(val, (list, tuple)):
-        #         self.names.extend(val)
-        #     elif isinstance(val, str):
-        #         self.names.append(val)
+        # where the resulting data are stored.
+        self.pcaxes = "No results, you must first call .run()"
+        self.variances = "No results, you must first call .run()"
 
         # to be filled
         self.snps = np.array([])
@@ -260,136 +256,110 @@ class PCA(object):
             self._print("")
 
 
-    def run(self, seed=None, subsample=True, quiet=False):  # , model="pca"):
+    def _run(self, seed, subsample, quiet):
         """
-        Decompose genotype array (.snps) into n_components axes. 
-
-        Parameters:
-        -----------
-        seed: (int)
-            Random number seed used if/when subsampling SNPs.
-        subsample: (bool)
-            Subsample one SNP per RAD locus to reduce effect of linkage.
-        quiet: (bool)
-            Print statements
-
-        Returns:
-        --------
-        A tuple with two numpy arrays. The first is the new data decomposed
-        into principal coordinate space; the second is an array with the 
-        variance explained by each PC axis. 
+        Called inside .run(). A single iteration. 
         """
-
-        # override quiet
-        oldquiet = self.quiet
-        if quiet:
-            self.quiet = quiet
-
-        # update seed. Numba seed cannot be None, so get random int if None
-        if seed:
-            self.seed = seed
-        else:
-            self.seed = self._seed()
-
         # sample one SNP per locus
         if subsample:
-            data = self.snps[:, jsubsample_snps(self.snpsmap, self.seed)]
-            self._print(
-                "Subsampling SNPs: {}/{}"
-                .format(data.shape[1], self.snps.shape[1])
-            )
+            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
+            if not quiet:
+                print(
+                    "Subsampling SNPs: {}/{}"
+                    .format(data.shape[1], self.snps.shape[1])
+                )
         else:
             data = self.snps
 
         # decompose pca call
-        # if model == "pca":
         model = decomposition.PCA(None)  # self.ncomponents)
         model.fit(data)
         newdata = model.transform(data)
         variance = model.explained_variance_ratio_
-        # elif model in ("tSNE", "t-SNE", "TSNE", "T-SNE"):
-        #     model = TSNE(
-        #         init="pca", perplexity=data.shape[0] / 2., n_iter=100000)
-        #     newdata = model.fit_transform(data)
-        #     variance = "", ""
-
-        # return object to quiet state
-        self.quiet = oldquiet
 
         # return tuple with new coordinates and variance explained
         return newdata, variance
 
 
-    def run_and_plot_2D(
-        self, 
-        ax0=0, 
-        ax1=1, 
-        seed=None, 
-        subsample=True, 
-        nreplicates=None,
-        # model="pca",
-        ):
+    def run(self, nreplicates=1, seed=None, subsample=True, quiet=None):
         """
-        A convenience function for plotting 2D scatterplot of PCA results.
+        Decompose genotype array (.snps) into n_components axes. 
+
+        Parameters:
+        -----------
+        nreplicates: (int)
+            Number of replicate subsampled analyses to run. This is useful
+            for exploring variation over replicate samples of unlinked SNPs.
+            The .draw() function will show variation over replicates runs.
+        seed: (int)
+            Random number seed used if/when subsampling SNPs.
+        subsample: (bool)
+            Subsample one SNP per RAD locus to reduce effect of linkage.
+        quiet: (bool)
+            Print statements           
+
+        Returns:
+        --------      
+        Two dctionaries are stored to the pca object in .pcaxes and .variances. 
+        The first is the new data decomposed into principal coordinate space; 
+        the second is an array with the variance explained by each PC axis. 
         """
-        if not nreplicates:
-            nreplicates = 1
+        # default to 1 rep
+        nreplicates = (nreplicates if nreplicates else 1)
+
+        # option to override self.quiet for this run
+        quiet = (quiet if quiet else self.quiet)
+
+        # update seed. Numba seed cannot be None, so get random int if None
+        seed = (seed if seed else self._seed())
+        rng = np.random.RandomState(seed)
 
         # get data points for all replicate runs
         datas = {}
         vexps = {}
-        datas[0], vexps[0] = self.run(subsample=subsample, seed=seed)        
-        for i in range(1, nreplicates):
-            datas[i], vexps[i] = self.run(subsample=subsample, quiet=True)
-
-        # color map
-        colors = toyplot.color.broadcast(
-            toyplot.color.brewer.map("Spectral"), shape=len(self.imap),
+        datas[0], vexps[0] = self._run(
+            subsample=subsample, 
+            seed=rng.randint(0, 1e15), 
+            quiet=quiet,
         )
 
-        # make reverse imap dictionary
-        irev = {}
-        for pop, vals in self.imap.items():
-            for val in vals:
-                irev[val] = pop
+        for idx in range(1, nreplicates):
+            datas[idx], vexps[idx] = self._run(
+                subsample=subsample, 
+                seed=rng.randint(0, 1e15),
+                quiet=True)
 
-        # assign styles to populations and to legend markers (not replicate)
-        pstyles = {}
-        lstyles = {}
-        for idx, pop in enumerate(self.imap):
-            pstyles[pop] = toyplot.marker.create(
-                size=10, 
-                shape="o",
-                mstyle={
-                    "fill": toyplot.color.to_css(colors[idx]),
-                    "stroke": "#262626",
-                    "stroke-width": 0.75 / nreplicates,
-                    "fill-opacity": 0.75 / nreplicates,
-                },
-            )
-            lstyles[pop] = toyplot.marker.create(
-                size=10, 
-                shape="o",
-                mstyle={
-                    "fill": toyplot.color.to_css(colors[idx]),
-                    "stroke": "#262626",
-                    "stroke-width": 0.75,
-                    "fill-opacity": 0.75,
-                },
-            )
+        # store results to object
+        self.pcaxes = datas
+        self.variances = vexps
 
 
-        # assign styled markers to data points
-        marks = []
-        for name in self.names:
-            pop = irev[name]
-            mark = pstyles[pop]
-            marks.append(mark)
+    def draw(
+        self, 
+        ax0=0,
+        ax1=1,
+        cycle=8,
+        colors=None,
+        shapes=None,
+        size=10,
+        legend=True,
+        ):
+        """
+        Draw a scatterplot for data along two PC axes. 
+        """
+        # check for replicates in the data
+        datas = self.pcaxes
+        nreplicates = len(datas)
+        variance = np.array([i for i in self.variances.values()]).mean(axis=0)
+
+        # check that requested axes exist
+        assert max(ax0, ax1) < self.pcaxes[0].shape[1], (
+            "data set only has {} axes.".format(self.pcaxes[0].shape[1]))
 
         # test reversions of replicate axes (clumpp like) so that all plot
         # in the same orientation as replicate 0.
         model = LinearRegression()
-        for i in range(1, nreplicates):
+        for i in range(1, len(datas)):
             for ax in [ax0, ax1]:
                 orig = datas[0][:, ax].reshape(-1, 1)
                 new = datas[i][:, ax].reshape(-1, 1)
@@ -405,12 +375,86 @@ class PCA(object):
                 if c1 > c0:
                     datas[i][:, ax] = datas[i][:, ax] * -1
 
+        # make reverse imap dictionary
+        irev = {}
+        for pop, vals in self.imap.items():
+            for val in vals:
+                irev[val] = pop
+
+        # the max number of pops until color cycle repeats
+        cycle = min(cycle, len(self.imap))
+
+        # get color list repeating in cycles of cycle
+        colors = itertools.cycle(
+            toyplot.color.broadcast(
+                toyplot.color.brewer.map("Spectral"), shape=cycle,
+            )
+        )
+
+        # get shapes list repeating in cycles of cycle up to 5 * cycle
+        shapes = itertools.cycle(np.concatenate([
+            np.tile("o", cycle),
+            np.tile("s", cycle),
+            np.tile("^", cycle),
+            np.tile("d", cycle),
+            np.tile("v", cycle),
+            np.tile("<", cycle),
+            np.tile("x", cycle),            
+        ]))
+
+        # assign styles to populations and to legend markers (no replicates)
+        pstyles = {}
+        rstyles = {}
+        for idx, pop in enumerate(self.imap):
+
+            color = next(colors)
+            shape = next(shapes)
+
+
+            pstyles[pop] = toyplot.marker.create(
+                size=size, 
+                shape=shape,
+                mstyle={
+                    "fill": toyplot.color.to_css(color),
+                    "stroke": "#262626",
+                    "stroke-width": 1.0,
+                    "fill-opacity": 0.75,
+                },
+            )
+            rstyles[pop] = toyplot.marker.create(
+                size=size, 
+                shape=shape,
+                mstyle={
+                    "fill": toyplot.color.to_css(color),
+                    "stroke": "none",
+                    "fill-opacity": 0.9 / nreplicates,
+                },
+            )            
+
+        # assign styled markers to data points
+        pmarks = []
+        rmarks = []
+        for name in self.names:
+            pop = irev[name]
+            pmark = pstyles[pop]
+            pmarks.append(pmark)
+            rmark = rstyles[pop]
+            rmarks.append(rmark)
+
+        # get axis labels for PCA or TSNE plot
+        if variance[ax0] >= 0.0:
+            xlab = "PC{} ({:.1f}%) explained".format(ax0, variance[ax0] * 100)
+            ylab = "PC{} ({:.1f}%) explained".format(ax1, variance[ax1] * 100)
+        else:
+            xlab = "TNSE component 1"
+            ylab = "TNSE component 2"            
+
         # plot points with colors x population
         canvas = toyplot.Canvas(400, 300)
         axes = canvas.cartesian(
             grid=(1, 5, 0, 1, 0, 4),
-            xlabel="PC{} ({:.1f}%) explained".format(ax0, vexps[0][ax0] * 100),
-            ylabel="PC{} ({:.1f}%) explained".format(ax1, vexps[0][ax1] * 100),
+            xlabel=xlab,
+            ylabel=ylab,
         )
 
         # if not replicates then just plot the points
@@ -418,20 +462,19 @@ class PCA(object):
             mark = axes.scatterplot(
                 datas[0][:, ax0],
                 datas[0][:, ax1],
-                marker=marks,
+                marker=pmarks,
                 title=self.names,
             )
 
         # replicates show clouds plus centroids
         else:
-
             # add the replicates cloud points       
             for i in range(nreplicates):
                 # get transformed coordinates and variances
                 mark = axes.scatterplot(
                     datas[i][:, ax0],
                     datas[i][:, ax1],
-                    marker=marks,
+                    marker=rmarks,
                 )
 
             # compute centroids
@@ -450,16 +493,62 @@ class PCA(object):
                 clf.centroids_[:, 0],
                 clf.centroids_[:, 1],
                 title=self.names,
-                size=6,
-                mstyle={"stroke-width": 1, "stroke": "white", "fill": "black"},
+                marker=pmarks,
             )
 
         # add a legend
-        if len(self.imap) > 1:
-            marks = [(pop, marker) for pop, marker in lstyles.items()]
-            canvas.legend(
-                marks, 
-                corner=("right", 35, 100, min(250, len(lstyles) * 25))
-            )
-
+        if legend:
+            if len(self.imap) > 1:
+                marks = [(pop, marker) for pop, marker in pstyles.items()]
+                canvas.legend(
+                    marks, 
+                    corner=("right", 35, 100, min(250, len(pstyles) * 25))
+                )
         return canvas, axes, mark
+
+
+    def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None):
+        """
+        Calls TSNE model from scikit-learn on 
+        """
+        seed = (seed if seed else self._seed())
+        if subsample:
+            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
+            print(
+                "Subsampling SNPs: {}/{}"
+                .format(data.shape[1], self.snps.shape[1])
+            )
+        else:
+            data = self.snps
+
+        # init TSNE model object with params (sensitive)
+        tsne_model = TSNE(
+            perplexity=perplexity,
+            init='pca', 
+            n_iter=int(n_iter), 
+            random_state=seed,
+        )
+
+        # fit the model
+        tsne_data = tsne_model.fit_transform(data)
+        self.pcaxes = {0: tsne_data}
+        self.variances = {0: [-1.0, -2.0]}
+
+
+
+    # def run_and_plot_2D(
+    #     self, 
+    #     ax0=0, 
+    #     ax1=1, 
+    #     seed=None, 
+    #     subsample=True, 
+    #     nreplicates=None,
+    #     # model="pca",
+    #     ):
+    #     """
+    #     A convenience function for plotting 2D scatterplot of PCA results.
+    #     """
+
+    #     # plot canvas
+    #     canvas, axes, mark = self.plot_2D(ax0, ax1, datas, vexps)
+    #     return canvas, axes, mark
