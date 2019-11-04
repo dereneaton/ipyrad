@@ -711,7 +711,7 @@ class Params(object):
     the directory where you're running ipyrad (./data/my_popfile.txt)
     You entered: {}\n""".format(fullpath))
             self._pop_assign_file = fullpath
-            self._link_populations()
+            self._data._link_populations()
 
         else:
             # Don't forget to possibly blank the populations dictionary
