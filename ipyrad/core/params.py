@@ -417,6 +417,15 @@ class Params(object):
         # returns string values as a tuple ("", "") or ("",)
         value = tuplecheck(value, str)
         
+        # Fix a weird bug which only shows up in step 7 during edge trim
+        # The call to tuplecheck returns different values if you have one
+        # overhang sequence and you do or don't include a comma after it.
+        # This makes it so that whether you have a comma after the sequence
+        # the values are the same. This is super hax, but I didn't want to
+        # monkey with the tuplecheck code because it's used all over the place.
+        if len(value) == 1:
+            value = (value[0], '')
+
         # expand GBS for user if they set only one cutter 
         if (self.datatype == "GBS") & (len(value) == 1):
             value = (value[0], value[0])
@@ -430,6 +439,13 @@ class Params(object):
                     self._data._link_barcodes()
                 except IPyradError:
                     pass
+
+        # Check for lowercase and raise
+        for cut in value:
+            if any(map(str.islower, str(cut))):
+                raise IPyradError(
+                    "restriction_overhang parameter may not include "
+                    "lowercase characters. You put: {}".format(value))
 
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
@@ -711,7 +727,7 @@ class Params(object):
     the directory where you're running ipyrad (./data/my_popfile.txt)
     You entered: {}\n""".format(fullpath))
             self._pop_assign_file = fullpath
-            self._link_populations()
+            self._data._link_populations()
 
         else:
             # Don't forget to possibly blank the populations dictionary

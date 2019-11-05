@@ -379,7 +379,8 @@ class Assembly(object):
                     popfile, header=None,
                     delim_whitespace=1,
                     names=["inds", "pops"], 
-                    comment="#")
+                    comment="#",
+                    dtype=str)
 
                 popdict = {
                     key: group.inds.values.tolist() for key, group in
