@@ -431,6 +431,13 @@ class Params(object):
                 except IPyradError:
                     pass
 
+        # Check for lowercase and raise
+        for cut in value:
+            if any(map(str.islower, cut)):
+                raise IPyradError(
+                    "restriction_overhang parameter may not include "
+                    "lowercase characters. You put: {}".format(value))
+
         assert len(value) <= 4, """
     most datasets require 1 or 2 cut sites, e.g., (TGCAG, '') or (TGCAG, CCGG).
     For 3rad/seqcap may be up to 4 cut sites."""
