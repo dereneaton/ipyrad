@@ -442,7 +442,7 @@ class Params(object):
 
         # Check for lowercase and raise
         for cut in value:
-            if any(map(str.islower, cut)):
+            if any(map(str.islower, str(cut))):
                 raise IPyradError(
                     "restriction_overhang parameter may not include "
                     "lowercase characters. You put: {}".format(value))
