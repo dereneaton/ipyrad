@@ -800,6 +800,14 @@ def concat_catgs(data, sample, isref):
     with h5py.File(tmpcats[0], 'r') as io5:
         _, maxlen, _ = io5['cats'].shape
 
+    # Check values of nrows and maxlen are > 0
+    # This literally shouldn't happen, but it does, or has at least twice.
+    # Related to issue #369
+    if not all([nrows, maxlen]):
+        raise IPyradError(
+            "Error in concat_catgs both nrows and maxlen must be positive. You "
+            "have:\n  nrows: {}\tmaxlen: {}".format(nrows, maxlen))
+
     # fill in the chunk array
     with h5py.File(sample.files.database, 'w') as ioh5:
         dcat = ioh5.create_dataset(
