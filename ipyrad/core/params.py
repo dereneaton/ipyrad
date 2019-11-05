@@ -417,6 +417,15 @@ class Params(object):
         # returns string values as a tuple ("", "") or ("",)
         value = tuplecheck(value, str)
         
+        # Fix a weird bug which only shows up in step 7 during edge trim
+        # The call to tuplecheck returns different values if you have one
+        # overhang sequence and you do or don't include a comma after it.
+        # This makes it so that whether you have a comma after the sequence
+        # the values are the same. This is super hax, but I didn't want to
+        # monkey with the tuplecheck code because it's used all over the place.
+        if len(value) == 1:
+            value = (value[0], '')
+
         # expand GBS for user if they set only one cutter 
         if (self.datatype == "GBS") & (len(value) == 1):
             value = (value[0], value[0])
