@@ -281,6 +281,19 @@ class PCA(object):
         return newdata, variance
 
 
+    def run_and_plot_2D(self, ax0, ax1, seed=None, nreplicates1, subsample=True, quiet=None):
+        """
+        Call .run() and .draw() in one single call. This is for simplicity. 
+        In generaly you will probably want to call .run() and then .draw()
+        as two separate calls. This way you can generate the results with .run()
+        and then plot the stored results in many different ways using .draw().
+        """
+        # combine run and draw into one call for simplicity
+        self.run(nreplicates=nreplicates, seed=seed, subsample=subsample, quiet=quiet)
+        c, a, m = self.draw(ax0=ax0, ax1=ax1)
+        return c, a, m
+
+
     def run(self, nreplicates=1, seed=None, subsample=True, quiet=None):
         """
         Decompose genotype array (.snps) into n_components axes. 
@@ -343,7 +356,9 @@ class PCA(object):
         shapes=None,
         size=10,
         legend=True,
-        ):
+        width=400, 
+        height=300,
+        **kwargs):
         """
         Draw a scatterplot for data along two PC axes. 
         """
@@ -385,22 +400,31 @@ class PCA(object):
         cycle = min(cycle, len(self.imap))
 
         # get color list repeating in cycles of cycle
-        colors = itertools.cycle(
-            toyplot.color.broadcast(
-                toyplot.color.brewer.map("Spectral"), shape=cycle,
+        if not colors:
+            colors = itertools.cycle(
+                toyplot.color.broadcast(
+                    toyplot.color.brewer.map("Spectral"), shape=cycle,
+                )
             )
-        )
+        else:
+            colors = iter(colors)
+            # assert len(colors) == len(imap), "len colors must match len imap"
 
         # get shapes list repeating in cycles of cycle up to 5 * cycle
-        shapes = itertools.cycle(np.concatenate([
-            np.tile("o", cycle),
-            np.tile("s", cycle),
-            np.tile("^", cycle),
-            np.tile("d", cycle),
-            np.tile("v", cycle),
-            np.tile("<", cycle),
-            np.tile("x", cycle),            
-        ]))
+        if not shapes:
+            shapes = itertools.cycle(np.concatenate([
+                np.tile("o", cycle),
+                np.tile("s", cycle),
+                np.tile("^", cycle),
+                np.tile("d", cycle),
+                np.tile("v", cycle),
+                np.tile("<", cycle),
+                np.tile("x", cycle),            
+            ]))
+        else:
+            shapes = iter(shapes)
+        # else:
+            # assert len(shapes) == len(imap), "len colors must match len imap"            
 
         # assign styles to populations and to legend markers (no replicates)
         pstyles = {}
@@ -409,7 +433,6 @@ class PCA(object):
 
             color = next(colors)
             shape = next(shapes)
-
 
             pstyles[pop] = toyplot.marker.create(
                 size=size, 
@@ -450,7 +473,7 @@ class PCA(object):
             ylab = "TNSE component 2"            
 
         # plot points with colors x population
-        canvas = toyplot.Canvas(400, 300)
+        canvas = toyplot.Canvas(width, height)  # 400, 300)
         axes = canvas.cartesian(
             grid=(1, 5, 0, 1, 0, 4),
             xlabel=xlab,
