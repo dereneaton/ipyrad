@@ -281,7 +281,7 @@ class PCA(object):
         return newdata, variance
 
 
-    def run_and_plot_2D(self, ax0, ax1, seed=None, nreplicates1, subsample=True, quiet=None):
+    def run_and_plot_2D(self, ax0, ax1, seed=None, nreplicates=1, subsample=True, quiet=None):
         """
         Call .run() and .draw() in one single call. This is for simplicity. 
         In generaly you will probably want to call .run() and then .draw()
