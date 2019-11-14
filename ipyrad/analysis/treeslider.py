@@ -535,7 +535,7 @@ def remote_mrbayes(nexfile, inference_args):
             os.remove(tpath)
 
     # remove the TEMP phyfile in workdir/tmpdir
-    os.remove(phyfile)
+    os.remove(nexfile)
 
     # return results
     return tree    
