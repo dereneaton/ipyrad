@@ -22,6 +22,7 @@ from .mrbayes import MrBayes as mrbayes
 from .window_extracter import WindowExtracter as window_extracter
 from .utils import ProgressBar
 from ..core.Parallel import Parallel
+from ..assemble.utils import IPyradError
 
 # suppress the terrible h5 warning
 import warnings
@@ -171,36 +172,48 @@ class TreeSlider(object):
 
 
     def show_inference_command(self, show_full=False):
-        # show a warning if user entered threads
-        # if "T" in self.inference_args:
-        # print("\n".join([
-        # "threads argument (T) must be set in ipcluster. ",
-        # "e.g., tet.ipcluster['threads'] = 4"
-        # ]))
+        """
+        Shows the inference command (and args if show_full=True).
+        """
 
-        # debug inference args
-        threads = {"T": max(1, self.ipcluster["threads"])}
-        self.inference_args.update(threads)
-        rax = raxml(
-            data=self.data, 
-            name=self.name,
-            workdir=tempfile.gettempdir(),
-            **self.inference_args
-        )
+        # show raxml command and args
+        if self.inference_method == "raxml":
+            # debug inference args
+            threads = {"T": max(1, self.ipcluster["threads"])}
+            self.inference_args.update(threads)
+            rax = raxml(
+                data=self.data, 
+                name=self.name,
+                workdir=tempfile.gettempdir(),
+                **self.inference_args
+            )
 
-        # return it
-        if show_full:
-            print(rax.command)
+            # return it
+            if show_full:
+                print(rax.command)
 
-        # pretty print it
-        else:
-            printkwargs = {
-                "s": "...", 
-                "w": "...", 
-                "n": "...",        
-            }
-            rax.params.update(printkwargs)
-            print(rax.command)
+            # pretty print it
+            else:
+                printkwargs = {
+                    "s": "...", 
+                    "w": "...", 
+                    "n": "...",        
+                }
+                rax.params.update(printkwargs)
+                print(rax.command)
+
+        # show mrbayes command and args
+        elif self.inference_method == "mb":
+
+            mb = mrbayes(
+                data=self.data + ".nex",
+                name="temp_" + str(os.getpid()),
+                workdir=tempfile.gettempdir(),
+                **self.inference_args
+            )
+            mb.print_command()
+            if show_full:
+                mb.print_nexus_string()
 
 
     def _parameter_check(self):
@@ -496,7 +509,7 @@ class TreeSlider(object):
 
 
 
-def remote_mrbayes(phyfile, inference_args):
+def remote_mrbayes(nexfile, inference_args):
     """
     Call mb on phy and returned parse tree result
     """
@@ -505,7 +518,7 @@ def remote_mrbayes(phyfile, inference_args):
 
     # call mb on the input phylip file with inference args
     mb = mrbayes(
-        data=phyfile,
+        data=nexfile,
         name="temp_" + str(os.getpid()),
         workdir=tempfile.gettempdir(),
         **inference_args
@@ -520,7 +533,7 @@ def remote_mrbayes(phyfile, inference_args):
         tpath = tup[1]
         if os.path.exists(tpath):
             os.remove(tpath)
-    
+
     # remove the TEMP phyfile in workdir/tmpdir
     os.remove(phyfile)
 
@@ -559,163 +572,6 @@ def remote_raxml(phyfile, inference_args):
 
     # return results
     return tree
-
-
-# DEPRECATED 
-def remote_tree_inference(
-    database, 
-    wmin, 
-    wmax, 
-    minsnps, 
-    threads=2, 
-    mincov=4,
-    inference_method="raxml",
-    inference_args={},
-    ):
-    "remote job to run phylogenetic inference."
-
-    # get seqarr for phy indices    
-    nsnps = np.nan
-    tree = np.nan
-    nsamplecov = np.nan
-
-    # parse phylip string if there is sequence in this window
-    if wmax > wmin:
-
-        # PARSE hdf5 window into a dictionary {name+spacer: seq} and info
-        nsnps, nsamplecov, phydict = parse_phydict(database, wmin, wmax)
-
-        # infer a tree if there is variation in this window
-        if (nsamplecov >= mincov) and (nsnps >= minsnps):
-
-            # RAxML ML inference
-            if inference_method == "raxml":
-
-                # write a temporary phylip file
-                fname = write_phydict_to_phy(phydict)
-
-                # init raxml object and run with blocking
-                initkwargs = {
-                    "T": max(1, threads),
-                }
-                initkwargs.update(inference_args)
-                rax = raxml(
-                    data=fname,
-                    name="temp_" + str(os.getpid()),
-                    workdir=tempfile.gettempdir(),
-                    **initkwargs
-                )
-
-                # run command
-                rax.run(force=True, quiet=True, block=True)
-
-                # get tree file result
-                if os.path.exists(rax.trees.bipartitions):
-                    tree = toytree.tree(rax.trees.bipartitions).newick
-                else:
-                    tree = toytree.tree(rax.trees.bestTree).newick
-
-            else:
-                # write a temporary NEXUS file
-                fname = write_phydict_to_nex(phydict)
-
-                # init raxml object and run with blocking
-                mb = mrbayes(
-                    data=fname,
-                    name="temp_" + str(os.getpid()),
-                    workdir=tempfile.gettempdir(),
-                    clock_model={
-                        "clockratepr": "lognorm(-7,0.6)",
-                        "clockvarpr": "tk02",
-                        "tk02varpr": "exp(1.0)",
-                        "brlenspr": "clock:birthdeath",
-                        "samplestrat": "diversity",
-                        "sampleprob": "0.1",
-                        "speciationpr": "exp(10)",
-                        "extinctionpr": "beta(2, 200)",
-                        "treeagepr": "offsetexp(1, 5)",
-                        "ngen": "1000000",
-                        "nruns": "2",
-                        "nchains": "4",
-                        "samplefreq": "1000",
-                    },                   
-                )
-                mb.run(force=True, quiet=True, block=True)
-
-                # get tree file result
-                tree = toytree.tree(mb.trees.constre)
-
-    return nsnps, nsamplecov, tree
-
-
-# DEPRECATED WITH REMOTE TREE INFERENCE
-def write_phydict_to_phy(phydict):
-
-    # dress up as phylip format
-    phylip = ["{} {}".format(len(phydict), len(next(iter(phydict.values()))))]
-    for name, seq in phydict.items():
-        phylip.append("{} {}".format(name, seq))
-    phystring = ("\n".join(phylip))
-
-    # write to temp file
-    fname = os.path.join(
-        tempfile.gettempdir(), str(os.getpid()) + ".tmp")
-    with open(fname, 'w') as temp:
-        temp.write(phystring)
-    return fname
-
-
-# DEPRECATED WITH REMOTE TREE INFERENCE
-def write_phydict_to_nex(phydict):
-
-    # dress up as phylip format
-    ntax = len(phydict)
-    nchar = len(next(iter(phydict.values())))
-    matrix = ""
-    for i in phydict.items():
-        matrix += i[0] + i[1] + "\n"
-
-    # format into NEXUS data string
-    nex_string = NEX_MATRIX.format(
-        **{"ntax": ntax, "nchar": nchar, "matrix": matrix})
-
-    # write to temp file
-    fname = os.path.join(
-        tempfile.gettempdir(), str(os.getpid()) + ".tmp")
-    with open(fname, 'w') as temp:
-        temp.write(nex_string)
-    return fname
-
-
-# DEPRECATED WITH REMOTE TREE INFERENCE
-def parse_phydict(database, wmin, wmax):
-    "Returns phy data as a dict with stats on sub matrix."
-
-    with h5py.File(database, 'r') as io5:
-
-        # select all sequence data in window range
-        seqarr = io5["phy"][:, wmin:wmax]  # cmap[:, 1].min():cmap[:, 2].max()]
-        pnames = np.array([
-            i.decode() for i in io5["phymap"].attrs["phynames"]
-        ])
-        longname = 1 + max([len(i) for i in pnames])
-
-    # calculate stats on seqarr
-    all_ns = np.all(seqarr == 78, axis=1)
-    nsamplecov = seqarr.shape[0] - all_ns.sum()
-    nsnps = count_snps(seqarr)
-
-    # drop all N samples(?)
-    pnames = pnames[~all_ns]
-    pseqs = seqarr[~all_ns, :]
-
-    # return dictionary
-    phydict = {}
-    for name, seq in zip(pnames, pseqs):
-        name = name + " " * (longname - len(name))
-        seq = b"".join(seq.view("S1")).decode()
-        phydict[name] = seq
-    return nsnps, nsamplecov, phydict
 
 
 
