@@ -192,7 +192,7 @@ class MrBayes(object):
 
 
     def print_command(self):
-        print("{} {}".format(self.params.binary, self.nexus))
+        print("{} {}".format(self.binary, self.nexus))
 
 
     def print_nexus_string(self):
@@ -203,7 +203,7 @@ class MrBayes(object):
 
     @property 
     def command(self):
-        return "{} {}".format(self.params.binary, self.nexus)
+        return "{} {}".format(self.binary, self.nexus)
 
 
     @property
