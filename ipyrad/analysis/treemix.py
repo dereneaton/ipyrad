@@ -36,10 +36,10 @@ conda install toytree -c eaton-lab
 """)
 
 _MISSING_TREEMIX = ImportError("""
-This ipyrad tool requires the progam TREEMIX. 
-You can install it with the following command in a terminal.
+This ipyrad tool requires the progam TREEMIX. See recommended installation 
+instructions here:
 
-conda install treemix -c bioconda
+https://ipyrad.readthedocs.io/en/latest/API-analysis/cookbook-treemix.html
 """)
 
 
@@ -104,6 +104,7 @@ class Treemix(object):
         seed=None,
         quiet=False,
         raise_root_error=False,
+        binary=None,
         *args, 
         **kwargs):
 
@@ -116,7 +117,8 @@ class Treemix(object):
         self.imap = imap
 
         # others
-        self.binary = "treemix"
+        self.binary = os.path.join(sys.prefix, "bin", "treemix")
+        self.binary = (binary if binary else self.binary)
         self.raise_root_error = raise_root_error
         self._find_binary()
 
