@@ -2342,7 +2342,7 @@ def build_vcf(data, chunksize=1000):
                 ]
 
                 # change 9's into missing
-                genostrs = ["." if i == "9/9" else i for i in genostrs]
+                genostrs = ["./." if i == "9/9" else i for i in genostrs]
 
                 # genostrs = [
                 # b"/".join(i).replace(b"9", b".").decode()
