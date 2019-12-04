@@ -471,7 +471,8 @@ class Processor:
             fai = pd.read_csv(
                 self.data.params.reference_sequence + ".fai",
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
-                sep="\t")
+                sep="\t",
+                dtype=object)
             self.faidict = {j: i for i, j in enumerate(fai.scaffold)}
             self.revdict = {j: i for i, j in self.faidict.items()}
 
