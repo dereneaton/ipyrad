@@ -11,6 +11,7 @@ import time
 import json
 import string
 import datetime
+import itertools
 import numpy as np
 import pandas as pd
 import ipyrad as ip
@@ -409,18 +410,20 @@ class Assembly(object):
             if not popmins:
                 popmins = {i: 1 for i in popdict}
 
-        ## check popdict. Filter for bad samples
-        ## Warn user but don't bail out, could be setting the pops file
-        ## on a new assembly w/o any linked samples.
-        # badsamples = [
-            # i for i in itertools.chain(*popdict.values())
-            # if i not in self.samples.keys()]
+        # Validate sample names in popdict with respect to actual sample names
+        # in the assembly. If no self.samples this means we're in state 1, so
+        # just ignore for now.
+        if len(self.samples.keys()):
+            popdict_not_in_samples = [
+                i for i in itertools.chain(*popdict.values())
+                if i not in self.samples.keys()]
 
-        # if any(badsamples):
-        #     ip.logger.warn(
-        #         "Some names from population input do not match Sample "\
-        #       + "names: ".format(", ".join(badsamples)))
-        #     ip.logger.warn("If this is a new assembly this is normal.")
+            samples_not_in_popdict = [
+                i for i in self.samples.keys()
+                if i not in itertools.chain(*popdict.values())]
+            raise IPyradError(POPDICT_SAMPLES_MISSPECIFIED.format(\
+                                                    popdict_not_in_samples,
+                                                    samples_not_in_popdict))
 
         ## If popmins not set, just assume all mins are zero
         if not popmins:
@@ -899,7 +902,6 @@ IPYRAD_EXCEPTION = """\
 
 """
 
-
 MISSING_PAIRFILE_ERROR = """\
     Paired file names must be identical except for _R1_ and _R2_. 
     Example, there are not matching files for samples: \n{}
@@ -917,7 +919,6 @@ REF_NOT_FOUND = """\
     {}
     """
 
-
 SORTED_NOT_FOUND = """\
     Error: fastq sequence files in sorted_fastq_path could not be found.
     Please check that the location was entered correctly and that a wild
@@ -932,9 +933,6 @@ SORTED_ISDIR = """\
     Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
     You entered: {}
     """
-
-
-
 
 CANNOT_CHANGE_ASSEMBLY_NAME = """\
     Warning: Assembly name is set at Assembly creation time and is an immutable
@@ -954,9 +952,11 @@ REQUIRE_ASSEMBLY_NAME = """\
     string with no special characters, i.e., not a path (no \"/\" characters).
     If you need a suggestion, name it after the organism you're working on.
     """
+
 REQUIRE_REFERENCE_PATH = """\
     Assembly method '{}' requires a 'reference_sequence' in parameter settings.
     """
+
 BAD_ASSEMBLY_NAME = """\
     No spaces or special characters of any kind are allowed in the assembly 
     name. Special characters include all punctuation except dash '-' and 
@@ -966,11 +966,30 @@ BAD_ASSEMBLY_NAME = """\
     Here's what you put:
     {}
     """
+
 BAD_BARCODE = """\
     One or more barcodes contain invalid IUPAC nucleotide code characters.
     Barcodes must contain only characters from this list "RKSYWMCATG".
     Doublecheck your barcodes file is properly formatted.
     """
+
+POPDICT_SAMPLES_MISSPECIFIED = """\n\
+    The sample names in the assembly disagree with sample names in the
+    pop_assign_file. Sample names in the pop_assign_file must exactly match
+    sample names in the assembly, and you must specify a population for each
+    sample in the assembly.
+
+    Names in the pop_assign_file that do not appear in the assembly:
+        {}
+
+    Samples in the assembly that are not specified in the pop_assign_file:
+        {}
+
+    NB: If you recently branched and removed samples you need to create a _new_
+    pop_assign_file which contains only the samples you retained in the new
+    branch (see https://github.com/dereneaton/ipyrad/issues/375).
+    """
+
 MIN_SAMPLES_PER_POP_MALFORMED = """\n\
     Population assignment file must include a line indicating the minimum
     number of samples per population. This line should come at the end
@@ -984,14 +1003,17 @@ BAD_PARAMETER = """\
     {}
     You entered: {}
     """
+
 PARAMS_EXISTS = """
     Error: Params file already exists: {}
     Use force argument to overwrite.
     """
+
 EDITS_EXIST = """\
     Skipping: All {} selected Samples already edited.
     (can overwrite with force argument)\
     """
+
 CLUSTERS_EXIST = """\
     Skipping: All {} selected Samples already clustered.
     (can overwrite with force argument)\
@@ -1000,14 +1022,17 @@ JOINTS_EXIST = """\
     Skipping: All {} selected Samples already joint estimated
     (can overwrite with force argument)\
     """
+
 CONSENS_EXIST = """\
     Skipping: All {} selected Samples already consensus called
     (can overwrite with force argument)\
     """
+
 DATABASE_EXISTS = """\
     Skipping: All {} selected Samples already clustered.
     (can overwrite with force argument)\
     """
+
 NOT_CLUSTERED_YET = """\
     The following Samples do not appear to have been clustered in step6
     (i.e., they are not in {}).
@@ -1016,31 +1041,37 @@ NOT_CLUSTERED_YET = """\
 
     Missing: {}
     """
+
 OUTPUT_EXISTS = """\
     Output files already created for this Assembly in:
     {}
     To overwrite, rerun using the force argument. 
     """
+
 FIRST_RUN_1 = """\
     No Samples found. First run step 1 to load raw or demultiplexed fastq
     files from the raw_fastq_path or sorted_fastq_path, respectively.
     """
+
 FIRST_RUN_2 = """\
     No Samples ready to be clustered. First run step 2.
     """
+
 FIRST_RUN_3 = """\
     No Samples ready for estimation. First run step 3.
     """
+
 FIRST_RUN_4 = """\
     No Samples ready for consensus calling. First run step 4.
     """
+
 FIRST_RUN_5 = """\
     No Samples ready for clustering. First run step 5.
 """
+
 FIRST_RUN_6 = """\
     Database file {} not found. First run step 6.
 """
-
 
 ########################################################
 
