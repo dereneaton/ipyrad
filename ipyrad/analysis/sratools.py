@@ -27,7 +27,7 @@ MISSING_IMPORTS = """
 To use the ipa.sratools module you must install the sra-tools
 software, which you can do with the following conda command. 
 
-  conda install bioconda::sra-tools
+  conda install sra-tools -c bioconda 
 """
 
 ACCESSION_ID = """
@@ -85,7 +85,7 @@ class SRA(object):
 
     def check_binaries(self):
         # check imports
-        for binary in ['fastq-dump', 'fasterq-dump']:
+        for binary in ['fastq-dump']:
             proc = sps.Popen(['which', binary], stdout=sps.PIPE)
             comm = proc.communicate()[0]
             if not comm:
