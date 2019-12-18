@@ -42,9 +42,9 @@ from .digest_genome import DigestGenome as digest_genome
 from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
 from .fasttree import Fasttree as fasttree
+from .baba import Baba as baba
 
 # from .fasttree import Fastree as fastree
-# from .baba import Baba as baba
 # from .momi import Momi as momi
 # from .eems import Eems as eems
 # from .popgen import Popgen as popgen
