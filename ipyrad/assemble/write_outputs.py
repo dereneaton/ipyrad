@@ -1408,35 +1408,21 @@ class Converter:
                 else:
                     rstart = 0                
 
-                if self.data.params.max_alleles_consens > 1:
-                    for idx in range(rstart, len(self.data.snames)):
-                        # get sample name
-                        name = self.data.pnames[self.data.snames[idx]]
-                        # get row of data
-                        snps = snparr[idx, :].view("S1")
-                        # expand for ambiguous bases
-                        snps = [BTS[i.upper()] for i in snps]
-                        # convert to numbers and write row for each resolution
-                        sequence = "\t".join([STRDICT[i[0]] for i in snps])
-                        out.write(
-                            "{}\t\t\t\t\t{}\n"
-                            .format(name, sequence))
+                for idx in range(rstart, len(self.data.snames)):
+                    # get sample name
+                    name = self.data.pnames[self.data.snames[idx]]
+                    # get row of data
+                    snps = snparr[idx, :].view("S1")
+                    # expand for ambiguous bases
+                    snps = [BTS[i.upper()] for i in snps]
+                    # convert to numbers and write row for each resolution
+                    sequence = "\t".join([STRDICT[i[0]] for i in snps])
+                    out.write(
+                        "{}\t\t\t\t\t{}\n"
+                        .format(name, sequence))
+                    ## Write out the second allele if it exists
+                    if self.data.params.max_alleles_consens > 1:
                         sequence = "\t".join([STRDICT[i[1]] for i in snps])                            
-                        out.write(
-                            "{}\t\t\t\t\t{}\n"
-                            .format(name, sequence))
-
-                else:
-                    for idx in range(rstart, len(self.data.snames)):
-                        # get sample name
-                        name = self.data.pnames[self.data.snames[idx]]
-                        # get row of array data
-                        snps = snparr[idx, :].view("S1")
-                        # expand for ambiguous bases
-                        snps = [BTS[i.upper()] for i in snps]
-                        # convert to numbers and write row for each resolution
-                        sequence = "\t".join([STRDICT[i[0]] for i in snps])
-                        # write to file
                         out.write(
                             "{}\t\t\t\t\t{}\n"
                             .format(name, sequence))
