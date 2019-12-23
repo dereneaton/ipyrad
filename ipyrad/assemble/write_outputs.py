@@ -1343,7 +1343,39 @@ class Converter:
                             b"".join(seq).decode().upper() + "\n",
                         )
                     )
-        
+
+                ## Write the other unlinked formats
+                self.write_ustr(snparr[:, subs])
+
+
+    def write_ustr(self, snparr):
+        with open(self.data.outfiles.ustr, 'w') as out:
+                # option to skip ref
+                if self.exclude_ref:
+                    rstart = 1
+                else:
+                    rstart = 0
+                for idx in range(rstart, snparr.shape[0]):
+                    # get all SNPS from this sample
+                    seq = snparr[idx, :].view("S1")
+                    # get sample name
+                    name = self.data.pnames[self.data.snames[idx]]
+                    # get row of data
+                    snps = snparr[idx, :].view("S1")
+                    # expand for ambiguous bases
+                    snps = [BTS[i.upper()] for i in snps]
+                    # convert to numbers and write row for each resolution
+                    sequence = "\t".join([STRDICT[i[0]] for i in snps])
+                    out.write(
+                        "{}\t\t\t\t\t{}\n"
+                        .format(name, sequence))
+                    ## Write out the second allele if it exists
+                    if self.data.params.max_alleles_consens > 1:
+                        sequence = "\t".join([STRDICT[i[1]] for i in snps])
+                        out.write(
+                            "{}\t\t\t\t\t{}\n"
+                            .format(name, sequence))
+
 
     def write_snps_map(self):
         "write a map file with linkage information for SNPs file"
@@ -2625,7 +2657,7 @@ OUT_SUFFIX = {
     'a': ('.alleles',),
     'g': ('.geno',),
     'G': ('.gphocs',),
-    'u': ('.usnps',),
+    'u': ('.usnps', '.ustr'),
     'v': ('.vcf',),
     't': ('.treemix',),
     'm': ('.migrate',),
