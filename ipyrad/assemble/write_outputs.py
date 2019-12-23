@@ -1346,6 +1346,8 @@ class Converter:
 
                 ## Write the other unlinked formats
                 self.write_ustr(snparr[:, subs])
+                genos = io5['genos'][:]
+                self.write_ugeno(genos[subs, :])
 
 
     def write_ustr(self, snparr):
@@ -1375,6 +1377,31 @@ class Converter:
                         out.write(
                             "{}\t\t\t\t\t{}\n"
                             .format(name, sequence))
+
+
+    def write_ugeno(self, genos):
+        with open(self.data.outfiles.ugeno, 'w') as out:
+            # option to skip ref
+            if self.exclude_ref:
+                rstart = 1
+            else:
+                rstart = 0
+
+            genos = genos[:, rstart:]
+            snpgenos = np.zeros(genos.shape[:2], dtype=np.uint8)
+            snpgenos.fill(9)
+
+            # fill (0, 0)
+            snpgenos[np.all(genos == 0, axis=2)] = 2
+
+            # fill (0, 1) and (1, 0)
+            snpgenos[np.sum(genos, axis=2) == 1] = 1
+
+            # fill (1, 1)
+            snpgenos[np.all(genos == 1, axis=2)] = 0
+
+            # write to file
+            np.savetxt(out, snpgenos, delimiter="", fmt="%d")
 
 
     def write_snps_map(self):
@@ -2657,7 +2684,7 @@ OUT_SUFFIX = {
     'a': ('.alleles',),
     'g': ('.geno',),
     'G': ('.gphocs',),
-    'u': ('.usnps', '.ustr'),
+    'u': ('.usnps', '.ustr', '.ugeno'),
     'v': ('.vcf',),
     't': ('.treemix',),
     'm': ('.migrate',),
