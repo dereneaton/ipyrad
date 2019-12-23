@@ -21,8 +21,10 @@ import numba
 import h5py
 
 ## ipyrad tools
-from ipyrad.analysis.utils import Params, progressbar, IPyradError
+from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.write_outputs import reftrick
+from ipyrad.assemble.utils import IPyradError
+
 
 # import tested at init
 try:

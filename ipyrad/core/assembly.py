@@ -421,9 +421,10 @@ class Assembly(object):
             samples_not_in_popdict = [
                 i for i in self.samples.keys()
                 if i not in itertools.chain(*popdict.values())]
-            raise IPyradError(POPDICT_SAMPLES_MISSPECIFIED.format(\
-                                                    popdict_not_in_samples,
-                                                    samples_not_in_popdict))
+            if len(popdict_not_in_samples) or len(samples_not_in_popdict):
+                raise IPyradError(POPDICT_SAMPLES_MISSPECIFIED.format(\
+                                                        popdict_not_in_samples,
+                                                        samples_not_in_popdict))
 
         ## If popmins not set, just assume all mins are zero
         if not popmins:
