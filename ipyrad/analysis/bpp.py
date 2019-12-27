@@ -321,7 +321,7 @@ class Bpp(object):
         draw a subsequent random seeds after that. An ipyclient connection 
         is required. Asynchronous result objects are stored in the bpp 
         object submitting the jobs. 
-        
+
         Parameters:
         -----------
         nreps (int):
@@ -490,7 +490,7 @@ class Bpp(object):
                     fillrow = 2 * row
                     arr[fillrow] = [DUCT[i][0] for i in seqs[row]]
                     arr[fillrow+1] = [DUCT[i][1] for i in seqs[row]]
-                    
+
                 for col in range(arr.shape[1]):
                     bases = arr[:, col]
                     bases = bases[bases != "N"]
