@@ -12,8 +12,40 @@ class DigestGenome(object):
     """
     Digest a fasta genome file with one or two restriction enzymes to create
     pseudo-fastq files to treat as samples in a RAD assembly. 
-    
-    # Example:
+
+    Parameters
+    ----------
+    fasta (str):
+        Path to a fasta genome file (optionally gzipped).
+
+    workdir (str):
+        Directory in which to write output fastq files. Will be created if 
+        it does not yet exist.
+
+    name (str):
+        Name prefix for output files.
+
+    readlen (int):
+        The length of the sequenced read extending from the cut site when 
+        creating fastq reads from the digested fragments.
+
+    re1 (str):
+        First restriction enzyme recognition site.
+
+    re2 (str):
+        Second restriction enzyme recognition site.
+
+    ncopies (int):
+        The number of copies to make for every digested copy to write to as
+        fastq reads in the output files.
+
+    nscaffolds (int, None):
+        Only the first N scaffolds (sorted in order from longest to shortest)
+        will be digested. If None then all scaffolds are digested.
+
+
+    Example:
+    --------
     dg = ipa.digest_genome(
         fasta="genome.fa", 
         workdir="digested_genomes",
@@ -25,7 +57,6 @@ class DigestGenome(object):
         paired=True,        
         )
     dg.run()
-
     """
     def __init__(
         self, 
@@ -39,6 +70,7 @@ class DigestGenome(object):
         paired=True, 
         min_size=None, 
         max_size=None,
+        nscaffolds=None,
         ):
 
         self.fasta = fasta
@@ -51,6 +83,7 @@ class DigestGenome(object):
         self.paired = paired
         self.min_size = min_size
         self.max_size = max_size
+        self.nscaffolds = nscaffolds
 
         # use readlen as min_size if not entered
         if not self.min_size:
@@ -60,6 +93,10 @@ class DigestGenome(object):
 
 
     def run(self):
+        """
+        Parses the genome into scaffolds list and then cuts each into digested
+        chunks and saves as fastq.
+        """
 
         # counter
         iloc = 0
@@ -76,14 +113,16 @@ class DigestGenome(object):
         # load genome file
         if self.fasta.endswith(".gz"):
             fio = gzip.open(self.fasta)
+            scaffolds = fio.read().decode().split(">")[1:]
         else:
             fio = open(self.fasta)
+            scaffolds = fio.read().split(">")[1:]           
 
-        # read in genome and parse scaffolds
-        scaffolds = fio.read().decode().split(">")[1:]
+        # sort scaffolds by length
+        scaffolds = sorted(scaffolds, key=lambda x: len(x), reverse=True)
 
         # iterate over scaffolds
-        for scaff in scaffolds:
+        for scaff in scaffolds[:self.nscaffolds]:
             name, seq = scaff.split("\n", 1)
             seq = seq.replace("\n", "").upper()
 
