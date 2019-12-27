@@ -136,7 +136,7 @@ class Step6:
         if self.data.populations:
             self.cgroups = {}
             for idx, val in enumerate(self.data.populations.values()):
-                self.cgroups[idx] = val[1]
+                self.cgroups[idx] = [self.data.samples[x] for x in val[1]]
 
         # by default let's split taxa into groups of 20-50 samples at a time
         else:
@@ -272,6 +272,8 @@ class Step6:
         rasyncs = {}
         for jobid, group in self.cgroups.items():
             # should we use sample objects or sample names in cgroups?
+            # Well you gotta choose one! W/o pops file it uses sample objects
+            # so I made it use sample objects if pop_assign_file is set iao
             samples = [i for i in self.samples if i in group]
             args = (self.data, jobid, samples, self.randomseed)
             rasyncs[jobid] = self.lbview.apply(build_concat_files, *args)

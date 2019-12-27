@@ -2064,7 +2064,10 @@ def bedtools_merge(data, sample):
     # the same cutsite. Passing a negative number to `merge -d` gets this done.
     # +++ scrath the above, we now deal with step ladder data
     if 'pair' in data.params.datatype:
-        check_insert_size(data, sample)
+
+        # estimates and updates hackers_only max inner value
+        if not data.hackersonly.max_inner_mate_distance:
+            check_insert_size(data, sample)
         cmd2.insert(2, str(data.hackersonly.max_inner_mate_distance))
         cmd2.insert(2, "-d")
     #else:
@@ -2374,7 +2377,9 @@ def cigared(sequence, cigartups):
 
 
 def get_quick_depths(data, sample):
-    "iterate over clustS files to get data"
+    """
+    iterate over clustS files to get data returns maxlen and depths arrays
+    """
 
     ## use existing sample cluster path if it exists, since this
     ## func can be used in step 4 and that can occur after merging
@@ -2425,10 +2430,12 @@ def get_quick_depths(data, sample):
 
 
 def store_sample_stats(data, sample, maxlens, depths):
-    "stats, cleanup, and link to samples"
+    """
+    stats, cleanup, and link to samples
+    """
 
     # Test if depths is non-empty, but just full of zeros.
-    if not depths.max():
+    if not depths.size:
         print("    no clusters found for {}".format(sample.name))
         return
 

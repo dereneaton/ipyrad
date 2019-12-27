@@ -75,7 +75,7 @@ class VCFtoHDF5(object):
         self.build_chunked_matrix()
 
         # report on new database
-        with h5py.File(self.database) as io5:
+        with h5py.File(self.database, 'r') as io5:
             self.nscaffolds = io5["snpsmap"][-1, 0]
             # self.nlinkagegroups = io5["snpsmap"][-1, 3]
 
@@ -487,9 +487,9 @@ def get_genos(gstr):
 def return_g(gstr, i):
     "returns the genotype str from vcf at one position (0/1) -> 0"
     gen = gstr.split(":")[0]
-    if gen != ".":
-        return int(gstr[i])
-    else:
+    try:
+        return int(gen[i])
+    except:
         return 9
 
 
