@@ -749,7 +749,8 @@ def dereplicate(data, sample, nthreads):
         #"--fastq_qmax", "1000",        
     ]
 
-    # decompress argument
+    # decompress argument (IF ZLIB is missing this will not work!!) 
+    # zlib is part of the conda installation.
     if infile.endswith(".gz"):
         cmd.append("--gzip_decompress")
 
