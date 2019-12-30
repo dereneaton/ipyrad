@@ -15,7 +15,6 @@ import time
 import subprocess as sps
 
 # third party
-import h5py
 import numpy as np
 import pandas as pd
 
@@ -366,13 +365,19 @@ class Structure(object):
 
         # track jobs
         njobs = len(jobs)
-        finished = []
         printstr = "running {} structure jobs".format(njobs)
         prog = ProgressBar(njobs, None, printstr)
+
+        # bail out now if all jobs are completed
+        if not jobs:
+            print("{} finished jobs. No further jobs to run.".format(len(res)))
+            return
+
+        # print initial progress bar
         prog.finished = 0
         prog.update()
-        rasyncs = {}
 
+        # submit jobs to queue
         for job in jobs:
             # sample random seed for this rep
             self.extraparams.seed = np.random.randint(0, 1e9, 1)[0]
