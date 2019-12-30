@@ -123,11 +123,18 @@ class DigestGenome(object):
 
         # iterate over scaffolds
         for scaff in scaffolds[:self.nscaffolds]:
+
+            # get name 
             name, seq = scaff.split("\n", 1)
+
+            # no funny characters in names plz
+            name = name.replace(" ", "_").strip()
+
+            # makes seqs nice plz
             seq = seq.replace("\n", "").upper()
 
             # digest scaffold into fragments and discard scaff ends
-            bits = ["1{}1".format(i) for i in seq.split(self.re1)[1:-1]]
+            bits = ["1{}1".format(i) for i in seq.split(self.re1)]
 
             # digest each fragment into second cut fragment
             if self.re2:
@@ -139,14 +146,14 @@ class DigestGenome(object):
                         if fbit:
 
                             # only keep bit if it has both cut sites
-                            if (fbit[0] + fbits[-1]).count("1") == 1:
+                            if (fbit[0] + fbit[-1]).count("1") == 1:
                                 bits.append(fbit.strip("1"))
 
             # filter fragments
             filtered_bits = []
             for bit in bits:
                 blen = len(bit)
-                if (blen >= self.min_size) & (blen <= self.max_size):
+                if (blen >= self.min_size) and (blen <= self.max_size):
                     filtered_bits.append(bit)
 
             # turn fragments into (paired) reads
@@ -170,7 +177,7 @@ class DigestGenome(object):
                 for copy in range(self.ncopies):
                     fastq = "@{name}_loc{loc}_rep{copy} 1:N:0:\n{read}\n+\n{qual}"
                     fastq = fastq.format(**{
-                        'name': self.name,
+                        'name': name,
                         'loc': iloc, 
                         'copy': copy,
                         'read': read1, 
@@ -183,7 +190,7 @@ class DigestGenome(object):
                     for copy in range(self.ncopies):
                         fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
-                            'name': self.name,
+                            'name': name,
                             'loc': iloc, 
                             'copy': copy,
                             'read': read2,
@@ -204,3 +211,5 @@ class DigestGenome(object):
         if self.paired:
             out2.close()
 
+        # report stats
+        print("extracted {} reads".format(iloc))
