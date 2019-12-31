@@ -71,7 +71,7 @@ class Step3:
             if self.data.params.assembly_method == "denovo":
 
                 # vsearch merge read pairs back together based on overlap.
-                # i: edits/concatedits.fq.gz or sample.files.edits
+                # i: tmpdir/concatedits.fq.gz or sample.files.edits
                 # o: tmpdir/{}_merged.fastq, tmpdir/{}_nonmerged_R[1,2].fastq
                 self.remote_run(
                     function=merge_pairs_with_vsearch,
@@ -718,7 +718,7 @@ def dereplicate(data, sample, nthreads):
             data.dirs.edits,
             "{}.trimmed_R1_.fastq.gz".format(sample.name)),
         os.path.join(
-            data.dirs.edits, 
+            data.tmpdir,
             "{}_R1_concatedit.fq.gz".format(sample.name)),
         os.path.join(
             data.tmpdir, 
@@ -765,10 +765,10 @@ def concat_multiple_edits(data, sample):
 
     # define output files
     concat1 = os.path.join(
-        data.dirs.edits,
+        data.tmpdir,
         "{}_R1_concatedit.fq.gz".format(sample.name))
     concat2 = os.path.join(
-        data.dirs.edits,
+        data.tmpdir,
         "{}_R2_concatedit.fq.gz".format(sample.name))
 
     # check for files to concat
@@ -801,12 +801,12 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
     # input files (select only the top one)
     in1 = [
         os.path.join(data.tmpdir, "{}-tmp-umap1.fastq".format(sample.name)),
-        os.path.join(data.dirs.edits, "{}_R1_concatedit.fq.gz".format(sample.name)),
+        os.path.join(data.tmpdir, "{}_R1_concatedit.fq.gz".format(sample.name)),
         sample.files.edits[0][0],        
     ]
     in2 = [
         os.path.join(data.tmpdir, "{}-tmp-umap2.fastq".format(sample.name)),
-        os.path.join(data.dirs.edits, "{}_R2_concatedit.fq.gz".format(sample.name)),
+        os.path.join(data.tmpdir, "{}_R2_concatedit.fq.gz".format(sample.name)),
         sample.files.edits[0][1],
     ]
     index = min([i for i, j in enumerate(in1) if os.path.exists(j)])
@@ -901,16 +901,15 @@ def merge_end_to_end(data, sample, revcomp, append, identical=False):
     concat2 = os.path.join(
         data.tmpdir, 
         "{}_R2_concatedit.fq.gz".format(sample.name))
-    edits1 = os.path.join(
-        data.dirs.edits,
-        "{}.trimmed_R1_.fastq.gz".format(sample.name))
-    edits2 = os.path.join(
-        data.dirs.edits, 
-        "{}.trimmed_R2_.fastq.gz".format(sample.name))
+    # data.dirs.edits doesn't exist if you merge after step 2, so
+    # here we access the edits files through the sample object.
+    # Sorry it makes the code less harmonious. iao 12/31/19.
+    edits1 = sample.files.edits[0][0]
+    edits2 = sample.files.edits[0][1]
 
     # file precedence
     order1 = (edits1, concat1, nonmerged1, altmapped1)
-    order2 = (edits2, concat2, nonmerged2, altmapped2)    
+    order2 = (edits2, concat2, nonmerged2, altmapped2)
     nonm1 = [i for i in order1 if os.path.exists(i)][-1]
     nonm2 = [i for i in order2 if os.path.exists(i)][-1]
 
@@ -2097,8 +2096,15 @@ def build_clusters_from_cigars(data, sample):
     """
     # get all regions with reads. Generator to yield (str, int, int)
     fullregions = bedtools_merge(data, sample).strip().split("\n")
-    regions = (i.split("\t") for i in fullregions)
-    regions = ((i, int(j), int(k)) for (i, j, k) in regions)
+    # If no reads map to reference the fullregions will be [''], so
+    # we test for it and handle it properly. If you don't do this the regions
+    # genrator will be empty and this will raise a ValueError. This will just
+    # pass through samples without any mapped reads with a 0 length clustS file
+    if len(fullregions[0]):
+        regions = (i.split("\t") for i in fullregions)
+        regions = ((i, int(j), int(k)) for (i, j, k) in regions)
+    else:
+        regions = []
 
     # access reads from bam file using pysam
     bamfile = pysam.AlignmentFile(
