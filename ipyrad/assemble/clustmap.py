@@ -732,7 +732,7 @@ def dereplicate(data, sample, nthreads):
 
     # datatypes options
     strand = "plus"
-    if data.params.datatype is ('gbs' or '2brad'):
+    if data.params.datatype in ['gbs', '2brad']:
         strand = "both"
 
     # do dereplication with vsearch
@@ -743,6 +743,7 @@ def dereplicate(data, sample, nthreads):
         "--output", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
         # "--threads", str(nthreads),
         "--fasta_width", str(0),
+        "--minseqlength",  str(data.params.filter_min_trim_len),
         "--sizeout", 
         "--relabel_md5",
         "--quiet",
@@ -1065,6 +1066,7 @@ def cluster(data, sample, nthreads, force):
            "-threads", str(nthreads),
            "-notmatched", temphandle,
            "-fasta_width", "0",
+           "--minseqlength",  str(data.params.filter_min_trim_len),
            # "-fastq_qmax", "100",
            "-fulldp",
            "-usersort"]
