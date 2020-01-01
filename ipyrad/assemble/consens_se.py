@@ -641,7 +641,7 @@ class Processor:
 
     def filter_maxN_minLen(self):
         "Return 1 if it PASSED the filter, else 0"        
-        if self.consens.size >= 32:
+        if self.consens.size >= self.data.params.filter_min_trim_len:
             nns = self.consens[self.consens == b"N"].size
             if nns > (len(self.consens) * self.maxn):
                 self.filters['maxn'] += 1
