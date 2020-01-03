@@ -6,6 +6,7 @@ In silico digest of a fasta genome file to fastq format data files.
 
 import os
 import gzip
+from ..assemble.utils import comp
 
 
 class DigestGenome(object):
@@ -134,67 +135,65 @@ class DigestGenome(object):
             seq = seq.replace("\n", "").upper()
 
             # digest scaffold into fragments and discard scaff ends
-            bits = ["1{}1".format(i) for i in seq.split(self.re1)]
+            bits = ["1{}1".format(i) for i in seq.split(self.re1)][1:-1]
 
             # digest each fragment into second cut fragment
-            if self.re2:
+            if not self.re2:
+                bits = [(i, seq.index(i), len(i)) for i in bits]
+
+            else:
                 bits1 = bits
                 bits = []
+                pos = 0
                 for fragment in bits1:
                     fbits = fragment.split(self.re2)
-                    for fbit in fbits:
-                        if fbit:
+                    if len(fbits) > 1:
+                        # remove the 1
+                        fbit = fbits[0][1:]       # 1----2
+                        rbit = fbits[1][:-1]      # 2----1
 
-                            # only keep bit if it has both cut sites
-                            if (fbit[0] + fbit[-1]).count("1") == 1:
-                                bits.append(fbit.strip("1"))
+                        lef = len(fbit)
+                        if (lef > self.min_size) and (lef <= self.max_size):
+                            #pos = seq.index(fbit)
+                            bits.append((fbit, pos, lef))
 
-            # filter fragments
-            filtered_bits = []
-            for bit in bits:
-                blen = len(bit)
-                if (blen >= self.min_size) and (blen <= self.max_size):
-                    filtered_bits.append(bit)
+                        lef = len(rbit)
+                        if (lef > self.min_size) and (lef <= self.max_size):
+                            res = comp(rbit)[::-1]
+                            #pos = seq.index(res)
+                            bits.append((res, pos, lef))
 
             # turn fragments into (paired) reads
-            read1s = []
-            read2s = []
-            for fragment in filtered_bits:
-                r1 = fragment[:self.readlen]
-                r2 = fragment[-self.readlen:]
-                if self.paired:
-                    read1s.append(r1)
-                    read2s.append(r2)
-                else:
-                    read1s.append(r1)
-                    read1s.append(r2)
-
-            # write reads to a file
             fastq_r1s = []
             fastq_r2s = []            
-            for ridx in range(len(read1s)):
-                read1 = read1s[ridx]
+
+            for fragment in bits:
+                fragment, pos, end = fragment
+                r1 = fragment[:self.readlen]
+                r2 = comp(fragment[-self.readlen:])[::-1]
+
+                # write reads to a file
                 for copy in range(self.ncopies):
                     fastq = "@{name}_loc{loc}_rep{copy} 1:N:0:\n{read}\n+\n{qual}"
                     fastq = fastq.format(**{
                         'name': name,
-                        'loc': iloc, 
+                        'loc': iloc,
+                        # 'pos': pos,
+                        # 'end': end,
                         'copy': copy,
-                        'read': read1, 
-                        'qual': "B" * len(read1),
+                        'read': r1, 
+                        'qual': "b" * len(r1),
                     })
                     fastq_r1s.append(fastq)
 
-                if self.paired:
-                    read2 = read2s[ridx]
-                    for copy in range(self.ncopies):
+                    if self.paired:                   
                         fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
                             'name': name,
                             'loc': iloc, 
                             'copy': copy,
-                            'read': read2,
-                            'qual': "B" * len(read2),
+                            'read': r2,
+                            'qual': "b" * len(r2),
                         })
                         fastq_r2s.append(fastq)
                 iloc += 1
