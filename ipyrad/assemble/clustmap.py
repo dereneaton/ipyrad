@@ -1978,6 +1978,7 @@ def mapping_reads(data, sample, nthreads, altref=False):
         raise IPyradError(error5)
 
 
+
 def check_insert_size(data, sample):
     """
     check mean insert size for this sample and update 
@@ -2067,7 +2068,9 @@ def bedtools_merge(data, sample):
 
         # estimates and updates hackers_only max inner value
         if not data.hackersonly.max_inner_mate_distance:
-            check_insert_size(data, sample)
+            check_insert_size(data, sample)       
+        #cmd2.insert(2, "1000")
+        #cmd2.insert(2, "-d")
         cmd2.insert(2, str(data.hackersonly.max_inner_mate_distance))
         cmd2.insert(2, "-d")
     #else:
