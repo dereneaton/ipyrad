@@ -978,6 +978,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
            "-maxaccepts", "1",
            "-maxrejects", "0",
            "-fasta_width", "0",
+           "--minseqlength",  str(data.params.filter_min_trim_len),
            "-threads", str(nthreads),  # "0",
            "-fulldp",
            "-usersort",
