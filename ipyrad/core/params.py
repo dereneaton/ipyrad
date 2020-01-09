@@ -42,7 +42,7 @@ class Hackers(object):
             ("demultiplex_on_i7_tags", False),
             ("declone_PCR_duplicates", False),
             ("merge_technical_replicates", True),
-            ("exclude_reference", False),
+            ("exclude_reference", True),
             ("trim_loci_min_sites", 4),
         ])
 
