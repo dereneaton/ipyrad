@@ -89,9 +89,9 @@ Mac install instructions for *conda*
     # Install miniconda into $HOME/miniconda3
     bash Miniconda3-latest-MacOSX-x86_64.sh -b 
 
-    # Make it so miniconda is always in your PATH when you open a terminal.
-    echo 'PATH=$HOME/miniconda3/bin/:$PATH' >> ~/.bash_profile
-    source ~/.bash_profile
+    # Initialize and activate your conda install
+    conda init bash
+    bash
 
     # test that conda is installed. Will print info about your conda install.
     conda info
@@ -108,9 +108,9 @@ Linux install instructions for conda
     # Install miniconda into $HOME/miniconda3
     bash Miniconda3-latest-Linux-x86_64.sh -b 
 
-    # Make it so miniconda is always in your PATH when you open a terminal.
-    echo 'PATH=$HOME/miniconda3/bin/:$PATH' >> ~/.bashrc
-    source ~/.bashrc
+    # Initialize and activate your conda install
+    conda init bash
+    bash
 
     # test that conda is installed. Will print info about your conda install.
     conda info
