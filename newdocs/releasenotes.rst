@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.27
+------
+** January 12, 2020
+
+- Fix releasenotes
+
 0.9.26
 ------
 **January 01, 2020**
