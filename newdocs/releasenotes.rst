@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.28
+------
+**January 12, 2020**
+
+- Fix versioner.py to actually record releasenotes
+- Fix releasenotes in versioner script
+- Fix releasenotes
+
 0.9.27
 ------
 ** January 12, 2020
