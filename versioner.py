@@ -52,13 +52,15 @@ for line in fileinput.input(release_file, inplace=1):
         line += "**" + time.strftime("%B %d, %Y") + "**\n\n"
         for commit in commit_lines:
             try:
+                ## Convert binary result from git call to ascii
+                commit = commit[1].decode("ascii")
                 # Squash merge commits from the releasenotes cuz it annoying
                 # Also any cosmetic commits
-                if commit[1] == checkfor:
+                if commit == checkfor:
                     continue
-                if "cosmetic" in commit[1]:
+                if "cosmetic" in commit:
                     continue
-                line += "- " + commit[1] + "\n"
+                line += "- " + commit + "\n"
             except:
                 pass
     print(line.strip("\n"))
@@ -69,7 +71,6 @@ for line in fileinput.input(initfile, inplace=1):
     if line.strip().startswith("__version__"):
         line = "__version__ = \""+version_git+"\""
     print(line.strip("\n"))
-
 
 try:
     subprocess.call(["git", "add", release_file])
