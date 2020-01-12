@@ -9,49 +9,181 @@ Release Notes
 ------
 **January 01, 2020**
 
+- During steps 5 & 6 honor the filter_min_trim_len parameter, which is useful in some cases (2brad).
+- In step 3, force vsearch to honor the filter_min_trim_len param, otherwise it defaults to --minseqlength 32, which can be undesirable in some cases.
+
 0.9.25
 ------
 **December 31, 2019**
+
+- concatedits files now write to the tmpdir, rather than edits (#378), also handle refmap samples with no reads that map to the reference, also change where edits files are pulling from during PE merging to allow for assembly merging after step 2. phew.
+- digested genome bugfix - check each fbit 0 and -1
+- digest genomes nscaffolds arg support
+- docs cookbook updates
+- new consens sampling function and support for window extracter to concatenate
+- comment about zlib
 
 0.9.24
 ------
 **December 24, 2019**
 
+- Fix IPyradError import
+
 0.9.23
 ------
 **December 24, 2019**
+
+- Regress baba.py
 
 0.9.22
 ------
 **December 23, 2019**
 
+- Add support for .ugeno file
+- Add support for .ustr format
+- Remove duplication of code in write_str()
+- Fix docs for output formats
+- Add back output formats documentation
+
 0.9.21
 ------
 **December 23, 2019**
+
+- Fix stupid bug introduced by fe8c2dfc282e177a7c18f6e2e23ef84d284a9e3f
 
 0.9.20
 ------
 **December 18, 2019**
 
+- Expose analysis.baba for testing
+- fasterq-dump seems to be only avail on linux
+- Fix bug in handling sample names in the pops file. re: #375.
+- Allow faidict scaffold names to be int (cast to dtype=object)
+
 0.9.19
 ------
 **December 03, 2019**
+
+- Fix step 6 with pop_assign_file
+- fix for empty samples after align
+- list missing as ./. in VCF (like we used to)
 
 0.9.18
 ------
 **November 23, 2019**
 
+- Fix oops handling missing data in vcf to hdf5
+- mb binary path bugfix
+- treeslider mb bugfix
+- treeslider mb working
+- treemix support for conda env installations
+- additional drawing options for pca
+- raxml cookbook update
+- tetrad notebook updated
+- Fix oops in params.py checking for lowercase overhangs seqs
+- Fix a nasty stupid bug setting the overhang sequence
+- Add back the docs about merging
+- Error checking in step 5.
+- Forbid lowercase in overhang sequence
+
 0.9.17
 ------
 **November 04, 2019**
+
+- Ooops. Allow popsfile w/o crashing, and allow populations to be integer values
+- cookbooks added link to nb
+- pca stores results as attr instead or returning
 
 0.9.16
 ------
 **October 31, 2019**
 
+- commented fix of optim chunksize calc
+- treeslider now working with mb
+- toggle to write in nexus
+- mb saves convergence stats as df
+- single-end mapping infiles bugfix
+- pca cookbook update
+- added fasttree tool
+- update cookbooks index
+- cookbooks updated headers
+- warning about denovo-ref to use new param
+- clustmap keeps i5s and can do ref minus
+- window extracter updated
+- mb load existing results and bugfix result paths
+- update treemix and mb docs
+- Fix calculation of optim during step 6 aligning. 3-4x speedup on this medium sized simulated data i'm working on.
+- Fix oops in how optim was being counted. Was counting using _unsorted_ seed handle, I switched it to use sorted and now it works more like expected
+- Clean up clust.txt files after step 3 finishes
+- Update docs and parameter descriptions to reflect new reality of several params
+- Add handlers for denovo +/- reference.
+- vcf tool docs
+- tools docs update
+- enable vcf_to_hdf5
+- pca reps legend looks nice
+- added replicate clouds to pca
+- vcf to hdf5 converter tested empirically
+- Add hils.py from the hotfix branch
+- Pull from the correct repo inside meta.yaml
+- VCF 9's fixed to be .
+- Add back tetrad docs
+- default hackers set to  yes merge tech reps, and cleanup
+- behavior for duplicates in barcodes file
+- bugfix: error reporting for barcodes within n
+- find binary from env or user entered
+- find ipcluster from conda env bin
+- bugfix: allow demux i7s even if datatype=pair3rad
+- add the notebook tunnel docs back
+- pedicularis cli tutorial updated
+- df index needed sorting
+- Allow sample names to be integers. wtf, how did this never come up before?
+- Add the McCartney-Melstad ref to the faq
+- fix typo in bpp cookbook
+- Fix bpp Params import
+- docs nav bar cleanup
+- testing binder w/o treemix
+- Add advanced tutorial back (?), maybe as a placeholder.
+- Remove references to smalt and replace with bwa. That's some old-ass junk!
+- Fixed the versioner.py script and added the faq.rst to the newdocs
+
 0.9.14
 ------
 **October 05, 2019**
+
+- binder update
+- docs update
+- add bpp docs
+- indentation in docs
+- add i7 demux cookbook
+- mroe analysis cookbooks
+- analysis cookbooks
+- merged clustmap
+- Fix a nasty bug with stats for assemblies where chunks end up empty after filtering
+- Fix step 3 to allow some tmpchunks to be empty without raising an error during chunk aligning
+- Fix a bug in bpp.py
+- Fix a nasty error in jointestimate.stackarray() where some long reads were slipping in over the maxlen length and causing a broadcast error
+
+0.9.13
+------
+
+- py2 bug: print missing as float
+- py2 bug fix: database ordering
+- allow iterable params object for py2 and 3
+- Fix an edge case to protect against empty chunks post-filtering during step 7
+- install docs update
+- Fix CLI so merge works
+- Fix the max_shared_Hs param description to agree with only having one value, rather than 1 value perper R1/R2
+- Ooops. checked in a pdb.set_trace in write outfiles. sorry\!
+- add deps to newdocs
+- bug fix for a rare trim that leaves >=1 all-N rows. Filter it.
+- documenting a hard coded backward compatibility in write_output.Processor()
+- hdf5 formatting for window slider in both denovo and ref
+- sratools up to date with CLI working too
+- Don't pester about mpi4py if you're not actually using MPI (CLI mode)
+- Allow for user to not input overhang sequences and jointestimate will just proceed with the edges included.
+- chunked downloads bug fix
+
+**<sunspots cause discontinuity in version history>**
 
 0.7.30
 ------
