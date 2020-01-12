@@ -36,6 +36,10 @@ License
 -------
 GPLv3
 
+Cite the Manuscript
+-------------------
+Eaton DAR & Overcast I. "ipyrad: Interactive assembly and analysis of RADseq datasets." Bioinformatics (2020).
+
 Contributors
 ------------
 + `Deren Eaton <deren.eaton@yale.edu>`_.  
