@@ -3,6 +3,8 @@
 """ wrapper to use fasttree v.1"""
 #caml aug-2019
 
+from __future__ import print_function
+
 import os
 import glob
 import subprocess
