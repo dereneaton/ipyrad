@@ -101,8 +101,7 @@ Linux install instructions for conda
 
 .. code-block:: bash
 
-    # The curl command is used to download the installer from the web. Take note
-    # that the -O flag is a capital o not a zero.
+    # Fetch the miniconda installer with wget
     wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
     # Install miniconda into $HOME/miniconda3
