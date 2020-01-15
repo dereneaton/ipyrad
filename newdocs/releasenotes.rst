@@ -4,6 +4,16 @@
 Release Notes
 =============
 
+0.9.29
+------
+**January 15, 2020**
+
+- Fix bucky progressbar calls.
+- Fixed progressbar calls in bucky.py
+- Conda install instructions were wrong.
+- add future print import to fasttree.py
+- Add releasenotes to the TOC
+
 0.9.28
 ------
 **January 12, 2020**
