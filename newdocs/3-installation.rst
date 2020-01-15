@@ -87,10 +87,12 @@ Mac install instructions for *conda*
     curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 
     # Install miniconda into $HOME/miniconda3
-    bash Miniconda3-latest-MacOSX-x86_64.sh -b 
+    #  * Type 'yes' to agree to the license
+    #  * Press Enter to use the default install directory
+    #  * Type 'yes' to initialize the conda install
+    bash Miniconda3-latest-Linux-x86_64.sh
 
-    # Initialize and activate your conda install
-    conda init bash
+    # Refresh your terminal session to see conda
     bash
 
     # test that conda is installed. Will print info about your conda install.
@@ -104,11 +106,14 @@ Linux install instructions for conda
     # Fetch the miniconda installer with wget
     wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
-    # Install miniconda into $HOME/miniconda3
-    bash Miniconda3-latest-Linux-x86_64.sh -b 
 
-    # Initialize and activate your conda install
-    conda init bash
+    # Install miniconda into $HOME/miniconda3
+    #  * Type 'yes' to agree to the license
+    #  * Press Enter to use the default install directory
+    #  * Type 'yes' to initialize the conda install
+    bash Miniconda3-latest-Linux-x86_64.sh
+
+    # Refresh your terminal session to see conda
     bash
 
     # test that conda is installed. Will print info about your conda install.
