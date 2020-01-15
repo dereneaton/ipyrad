@@ -399,7 +399,7 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("sum replicate runs", "mbsum")
+        printstr = "sum replicate runs"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
@@ -446,7 +446,7 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("infer gene-tree posteriors", 'mb')
+        printstr = "infer gene-tree posteriors"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
