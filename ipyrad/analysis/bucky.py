@@ -403,7 +403,7 @@ class Bucky(object):
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), start, printstr)
+                progressbar(sum(ready), len(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -450,7 +450,7 @@ class Bucky(object):
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), start, printstr)
+                progressbar(sum(ready), len(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
