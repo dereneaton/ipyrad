@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.30
+------
+**January 16, 2020**
+
+- Fix whoops with bucky progressbars
+
 0.9.29
 ------
 **January 15, 2020**
