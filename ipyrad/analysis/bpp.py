@@ -153,7 +153,7 @@ class Bpp(object):
     def __init__(
         self,
         name,
-        data=None,
+        data,
         workdir="analysis-bpp", 
         guidetree=None, 
         imap=None, 
