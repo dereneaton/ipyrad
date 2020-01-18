@@ -385,10 +385,13 @@ class PCA(object):
         """
         Draw a scatterplot for data along two PC axes. 
         """
-        # check for replicates in the data
-        datas = self.pcaxes
-        nreplicates = len(datas)
-        variance = np.array([i for i in self.variances.values()]).mean(axis=0)
+        try:
+            # check for replicates in the data
+            datas = self.pcaxes
+            nreplicates = len(datas)
+            variance = np.array([i for i in self.variances.values()]).mean(axis=0)
+        except AttributeError:
+            raise IPyradError("You must first call run() before calling draw().")
 
         # check that requested axes exist
         assert max(ax0, ax1) < self.pcaxes[0].shape[1], (
@@ -580,6 +583,13 @@ class PCA(object):
         self.pcaxes = {0: tsne_data}
         self.variances = {0: [-1.0, -2.0]}
 
+
+    def pcs(self, rep=0):
+        try:
+            df = pd.DataFrame(self.pcaxes[rep], index=self.names)
+        except ValueError:
+            raise IPyradError("You must call run() before accessing the pcs.")
+        return df
 
 
     # def run_and_plot_2D(
