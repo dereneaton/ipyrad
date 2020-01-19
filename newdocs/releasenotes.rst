@@ -4,6 +4,16 @@
 Release Notes
 =============
 
+0.9.31
+------
+**January 19, 2020**
+
+- Fix error in bucky (progressbar hell).
+- Add error handling in a couple cases if run() hasn't been called, e.g. before draw, and also add the pcs() function as a convenience.
+- Removed support for legacy argument format from bpp.py and updated the docs.
+- Allow PCA() to import data as vcf.
+- Add support for importing VCF into PCA
+
 0.9.30
 ------
 **January 16, 2020**
