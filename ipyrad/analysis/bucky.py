@@ -520,7 +520,7 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("infer CF posteriors", "bucky")
+        printstr = "infer CF posteriors"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
