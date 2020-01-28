@@ -318,7 +318,7 @@ class WindowExtracter(object):
         This extracts the phymap DataFrame.
         scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
         """
-        with h5py.File(self.data) as io5:
+        with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
 
             # mask to select this scaff
@@ -396,7 +396,7 @@ class WindowExtracter(object):
         wmax = cmap[:, 2].max()
 
         # extract array from window        
-        with h5py.File(self.data) as io5:
+        with h5py.File(self.data, 'r') as io5:
             self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
 
         # is there any data at all?
@@ -508,7 +508,7 @@ class WindowExtracter(object):
 
     def _parse_scaffolds(self):
         "get chromosome lengths from the database"
-        with h5py.File(self.data) as io5:
+        with h5py.File(self.data, 'r') as io5:
 
             # get sample names
             self._pnames = np.array([
