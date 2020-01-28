@@ -34,7 +34,7 @@ try:
     from sklearn.cluster import KMeans
     from sklearn.manifold import TSNE
     from sklearn.linear_model import LinearRegression
-    from sklearn.neighbors.nearest_centroid import NearestCentroid   
+    from sklearn.neighbors import NearestCentroid   
 except ImportError:
     pass
 
