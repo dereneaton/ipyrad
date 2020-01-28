@@ -28,4 +28,8 @@ Documentation
    API-assembly/index.rst
    API-analysis/index.rst
 
+   releasenotes.rst
 
+Citation
+--------
+Eaton DAR & Overcast I. "ipyrad: Interactive assembly and analysis of RADseq datasets." Bioinformatics (2020).

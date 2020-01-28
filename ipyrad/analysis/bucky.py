@@ -16,7 +16,7 @@ from ipyrad.assemble.utils import IPyradError
 
 
 MISSING_IMPORTS = """
-To use the ipa.structure module you must install two additional 
+To use the ipa.bucky module you must install two additional 
 libraries which can be done with the following conda command. 
 
 conda install -c ipyrad bucky
@@ -399,11 +399,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("sum replicate runs", "mbsum")
+        printstr = "sum replicate runs"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), start, printstr)
+                progressbar(sum(ready), len(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -446,11 +446,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("infer gene-tree posteriors", 'mb')
+        printstr = "infer gene-tree posteriors"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), start, printstr)
+                progressbar(sum(ready), len(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
@@ -520,11 +520,11 @@ class Bucky(object):
 
         ## track progress
         start = time.time()
-        printstr = ("infer CF posteriors", "bucky")
+        printstr = "infer CF posteriors"
         while 1:
             ready = [i.ready() for i in asyncs]
             if not quiet:            
-                progressbar(len(ready), sum(ready), start, printstr)
+                progressbar(sum(ready), len(ready), start, printstr)
             if len(ready) == sum(ready):
                 if not quiet:
                     print("")
