@@ -115,17 +115,24 @@ class WindowExtracter(object):
             raise IPyradError(
                 "consensus_reduce option requires an imap dictionary")
 
-        # parse scaffold info
-        self._scaffold_idx = None
+        # global values
         self._name = name
         self.scaffold_table = None
         self.names = []
+        self.pnames = []
+        self._filters_checked = False
+
+        # per scaff values that are updated each time.
+        self._scaffold_idx = None
+        self._names = []
+        self._pnames = []
 
         # single prep
         if (scaffold_idx is None) or isinstance(scaffold_idx, (int, str)):
             self._scaffold_idx = self.scaffold_idx
             self._single_prep()
 
+        # TODO: parallelize the single_prep() calls in this section.
         # run for each scaffold in list
         elif isinstance(scaffold_idx, (list, tuple, np.ndarray, range)):
             # suppress messages
@@ -137,6 +144,7 @@ class WindowExtracter(object):
             # store chunks
             blocks = []
             names = []
+            pnames = []
             stats = []
 
             for scaff in self.scaffold_idx:
@@ -144,17 +152,19 @@ class WindowExtracter(object):
                 self._single_prep()
                 if self.seqarr.size:
                     blocks.append(self.seqarr)
-                    names.append(self.names)
+                    names.append(self._names)
+                    pnames.append(self._pnames)
                     stats.append(self.stats)
 
             # if no data passed filtering for any loci then bail out
-            if not stats.size:
+            if not stats:
                 print("no data passed filtering")
                 return 
 
             # concat chunks and stats
             self._stats = pd.concat(stats)
             self.names = sorted(set(itertools.chain(*names)))
+            self.pnames = sorted(set(itertools.chain(*pnames)))            
 
             # fill concat seqarr allowing for missing taxa in each block
             nsites = self._stats.sites.postfilter.sum()
@@ -184,44 +194,12 @@ class WindowExtracter(object):
                 "snps": [self._stats.snps.postfilter.sum()],
                 "missing": [missing],
                 "samples": [len(self.names)],
-                })
+            })
             self.stats = totals
             self.quiet = quiet
 
         else:
             raise IPyradError("scaffold_idx entry not recognized.")
-
-
-    def _single_prep(self):
-        """
-        Applies to a single scaffold/locus.
-        """
-        # gets names, pnames, scaffold_table, ...
-        self._parse_scaffolds()
-
-        # update end to scaff len if not entered
-        if not self.end:
-            # get length of this scaffold
-            if isinstance(self._scaffold_idx, int):
-                self.end = int(self.scaffold_table.iloc[self._scaffold_idx, -1])
-            elif isinstance(self._scaffold_idx, str):
-                self.end = int(self.scaffold_table.loc[self._scaffold_idx, -1])
-            else:
-                self.end = None
-
-        # output prefix name
-        self._get_name(self._name)
-
-        # set parameters as ints or floats
-        self._set_filters_type()
-
-        # stats is overwritten if fillseqar runs
-        self.stats = "No stats because no scaffolds selected."
-
-        # this will not do anything if no scaffolds selected.
-        if self._scaffold_idx is not None:
-            self._fill_seqarr()
-            self.end = None
 
 
     def _set_filters_type(self):
@@ -277,32 +255,8 @@ class WindowExtracter(object):
                     self._minmap[ikey] = (
                         imincov if isinstance(imincov, int) 
                         else int(imincov * 1.0)
-                    )                    
-
-
-    def _fill_seqarr(self):
-        # check requested window is in scaff
-        # self._check_window()
-
-        # pull the sequence from the database
-        self.phymap = None
-        self._extract_phymap_df()
-        self._init_stats()
-
-        # get seqs
-        self._extract_seqarr()
-        if not self.seqarr.size:
-            self._print("No data in selected window.")
-            return 
-
-        # report stats on window (ntaxa missing; nsnps, ntrimmed sites)
-        self._calc_initial_stats()
-        self._imap_consensus_reduce()
-        self._filter_seqarr()
-        if not self.seqarr.size:
-            self._print("No data in filtered window.")
-        else:
-            self._calc_filtered_stats()
+                    )
+        self._filters_checked = True
 
 
     def _print(self, message):
@@ -391,10 +345,84 @@ class WindowExtracter(object):
                 "Output file already exists. Use force to overwrite.")
 
 
+    def _single_prep(self):
+        """
+        This load the full data for all samples from the database and stores
+        to .names, .pnames, .scaffold_table. 
+
+        Then it subselects ._scaffold_idx and 
+        Applies to a single scaffold/locus.
+        """
+        # gets .names, .pnames, .scaffold_table from the database file. 
+        # If this has already been run then it is skipped.
+        if self.scaffold_table is None:
+            self._parse_scaffolds()
+
+        # update end to scaff len if not entered
+        if not self.end:
+            # get length of THIS scaffold (._scaffold_idx)
+            if isinstance(self._scaffold_idx, int):
+                self.end = int(self.scaffold_table.iloc[self._scaffold_idx, -1])
+            elif isinstance(self._scaffold_idx, str):
+                self.end = int(self.scaffold_table.loc[self._scaffold_idx, -1])
+            else:
+                self.end = None
+
+        # output prefix name
+        self._get_name(self._name)
+
+        # set parameters as ints or floats (only needs to be done once.)
+        if not self._filters_checked:
+            self._set_filters_type()
+
+        # stats is overwritten if fillseqar runs
+        self.stats = "No stats because no scaffolds selected."
+
+        # this will not do anything if no scaffolds selected. 
+        if self._scaffold_idx is not None:
+            # fills .seqarr and ._names and ._pnames for this scaff.
+            self._fill_seqarr()
+            self.end = None
+
+
+    def _fill_seqarr(self):
+        """
+        This function is called at the end of _single_prep().
+        """
+        # check requested window is in scaff
+        # self._check_window()
+
+        # pull the region meta-data from the database
+        self.phymap = None
+        self._extract_phymap_df()
+        self._init_stats()
+
+        # get seqs in the selected region and for all taxa in imap
+        self._extract_seqarr()
+        if not self.seqarr.size:
+            self._print("No data in selected window.")
+            return 
+
+        # get stats on window (ntaxa missing; nsnps, ntrimmed sites)
+        self._calc_initial_stats()
+
+        # apply optional consensus reduction
+        self._imap_consensus_reduce()
+
+        # apply filters to seqarr, updates names, pnames, etc.
+        self._filter_seqarr()
+
+        # recalculate stats
+        if not self.seqarr.size:
+            self._print("No data in filtered window.")
+        else:
+            self._calc_filtered_stats()
+
+
     def _extract_seqarr(self):
         """
         Extracts seqarr of the full selected window and computes stats on
-        the window.
+        the window. This initially includes all taxa in the imap.
         """
         # get mask to select window array region
         self.seqarr = np.zeros((len(self.names), 0))
@@ -425,7 +453,6 @@ class WindowExtracter(object):
         self.stats.loc["prefilter", "samples"] = self.seqarr.shape[0]
 
 
-
     def _imap_consensus_reduce(self):
         """
         Get consensus sequence for all samples in clade. 
@@ -443,11 +470,11 @@ class WindowExtracter(object):
         for ikey, ivals in self.imap.items():
 
             # get subarray for this group
-            sidxs = [np.where(self.names == i)[0][0] for i in ivals]
+            match = [np.where(self.names == i)[0] for i in ivals]
+            sidxs = [i[0] for i in match if i.size]        
             subarr = self.seqarr[sidxs, :]
 
             # get consensus sequence
-            # cons = reftrick(subarr, GETCONS)[:, 0]
             cons = consens_sample(subarr, GETCONS)
 
             # insert to iarr
@@ -459,11 +486,10 @@ class WindowExtracter(object):
         self.seqarr = iarr
         self.names = inames
         self._longname = 1 + max([len(i) for i in self.names])
-        self._pnames = np.array([
+        self.pnames = np.array([
             "{}{}".format(name, " " * (self._longname - len(name)))
             for name in self.names
         ])               
-
 
 
     def _filter_seqarr(self):
@@ -480,7 +506,8 @@ class WindowExtracter(object):
 
                 # imap drops sites if mincov is below nsamples in group
                 if not self.consensus_reduce:
-                    sidxs = [np.where(self.names == i)[0][0] for i in ivals]
+                    match = [np.where(self.names == i)[0] for i in ivals]
+                    sidxs = [i[0] for i in match if i.size]
                     subarr = self.seqarr[sidxs, :]
                     drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
@@ -497,9 +524,8 @@ class WindowExtracter(object):
         # drop samples that are only Ns after removing lowcov sites
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
-        self.names = self.names[keep]
-        self._pnames = self._pnames[keep]
-
+        self._names = self.names[keep]
+        self._pnames = self.pnames[keep]
 
 
     def _calc_filtered_stats(self):
@@ -519,14 +545,17 @@ class WindowExtracter(object):
 
 
     def _parse_scaffolds(self):
-        "get chromosome lengths from the database"
+        """
+        Called at the beginning of ._single_prep()
+        Get chromosome lengths for All from the database and get names.
+        """
         with h5py.File(self.data, 'r') as io5:
 
             # get sample names
-            self._pnames = np.array([
+            self.pnames = np.array([
                 i.decode() for i in io5["phymap"].attrs["phynames"]
             ])
-            self.allnames = [i.strip() for i in self._pnames]
+            self.allnames = [i.strip() for i in self.pnames]
 
             # auto-generate exclude from imap difference
             if self.imap:
@@ -538,13 +567,13 @@ class WindowExtracter(object):
                 i for (i, j) in enumerate(self.allnames) if j not in self.exclude]
             self.names = np.array([
                 j for (i, j) in enumerate(self.allnames) if i in self.sidxs])
-            self._pnames = self._pnames[self.sidxs]
+            self.pnames = self.pnames[self.sidxs]
 
             # format names to include spacer for phylip, etc.
-            self._longname = 1 + max([len(i) for i in self._pnames])
-            self._pnames = np.array([
+            self._longname = 1 + max([len(i) for i in self.pnames])
+            self.pnames = np.array([
                 "{}{}".format(name, " " * (self._longname - len(name)))
-                for name in self._pnames
+                for name in self.pnames
             ])               
 
             # parse scaf names and lengths from db
@@ -565,7 +594,7 @@ class WindowExtracter(object):
         """
         # build phy
         phy = []
-        for idx, name in enumerate(self._pnames):
+        for idx, name in enumerate(self.pnames):
             seq = bytes(self.seqarr[idx]).decode()
             phy.append("{} {}".format(name, seq))
 
@@ -589,7 +618,7 @@ class WindowExtracter(object):
         for block in range(0, self.seqarr.shape[1], 100):           
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
-            for idx, name in enumerate(self._pnames):  
+            for idx, name in enumerate(self.pnames):  
 
                 # py2/3 compat --> b"TGCGGG..."
                 seqdat = self.seqarr[idx, block:stop]
