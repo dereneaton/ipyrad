@@ -147,18 +147,27 @@ class WindowExtracter(object):
                     names.append(self.names)
                     stats.append(self.stats)
 
+            # if no data passed filtering for any loci then bail out
+            if not stats.size:
+                print("no data passed filtering")
+                return 
+
             # concat chunks and stats
             self._stats = pd.concat(stats)
             self.names = sorted(set(itertools.chain(*names)))
 
-            # fill seqarr allowing for missing taxa in each block
+            # fill concat seqarr allowing for missing taxa in each block
             nsites = self._stats.sites.postfilter.sum()
             self.seqarr = np.zeros((len(self.names), nsites), dtype=np.uint8)
-            idx = 0
+            idx = 0           
             for (inames, iblock) in zip(names, blocks):
+                # get index of each name in this block
                 for pdx in range(len(inames)):
+                    # get string name for index in this block
                     iname = inames[pdx]
+                    # get index of this string in concat name list order
                     nidx = self.names.index(iname)
+                    # fill concat seqarr at this index
                     self.seqarr[nidx, idx:idx + iblock.shape[1]] = iblock[pdx]
                 idx += iblock.shape[1]
 
@@ -179,8 +188,14 @@ class WindowExtracter(object):
             self.stats = totals
             self.quiet = quiet
 
+        else:
+            raise IPyradError("scaffold_idx entry not recognized.")
+
 
     def _single_prep(self):
+        """
+        Applies to a single scaffold/locus.
+        """
         # gets names, pnames, scaffold_table, ...
         self._parse_scaffolds()
 
@@ -322,9 +337,6 @@ class WindowExtracter(object):
             colnames = io5["phymap"].attrs["columns"]
 
             # mask to select this scaff
-            #mask = np.zeros(io5["phymap"].shape[0], dtype=np.bool_)
-            #for scaff in self.scaffold_idx:
-            #    mask += io5["phymap"][:, 0] == scaff + 1
             mask = io5["phymap"][:, 0] == self._scaffold_idx + 1
 
             # load dataframe of this scaffold
@@ -548,7 +560,9 @@ class WindowExtracter(object):
 
 
     def _write_to_phy(self):
-
+        """
+        Writes the .seqarr matrix as a string to .outfile.
+        """
         # build phy
         phy = []
         for idx, name in enumerate(self._pnames):
