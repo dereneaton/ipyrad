@@ -183,14 +183,29 @@ class Step2(object):
                 break
 
         # collect results, report failures, store stats. async = sample.name
+        faildict = {}
         for rasync in rawedits:
-            res = rawedits[rasync].get()
-            if "pair" not in self.data.params.datatype:
-                parse_single_results(
-                    self.data, self.data.samples[rasync], res)
-            else:
-                parse_pair_results(
-                    self.data, self.data.samples[rasync], res)
+            try:
+                res = rawedits[rasync].get()
+                if "pair" not in self.data.params.datatype:
+                    parse_single_results(
+                        self.data, self.data.samples[rasync], res)
+                else:
+                    parse_pair_results(
+                        self.data, self.data.samples[rasync], res)
+            except Exception as inst:
+                faildict[self.data.samples[rasync]] = inst
+
+        if faildict:
+            s2_fail_log = os.path.join(
+                self.data.dirs.edits,
+                's2_error_log.txt')
+            with open(s2_fail_log, 'w') as logfile:
+                for samp, err in faildict.items():
+                    logfile.write("{} {}\n".format(samp, err))
+            print("  {} Samples failed step 2. See {} for details.".format(\
+                                                                    len(faildict),\
+                                                                    s2_fail_log))
 
 
     def assembly_cleanup(self):
