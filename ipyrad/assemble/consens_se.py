@@ -182,7 +182,7 @@ class Step5:
             print("Exception in step 5: {}".format(inst))
             raise
         finally:
-            shutil.rmtree(self.data.tmpdir)
+            #shutil.rmtree(self.data.tmpdir)
             self.data.save()
 
 
@@ -331,9 +331,18 @@ class Step5:
                 break
 
         # check for failures:
+        # Don't die if only one or a couple samples fail
+        failjobs = []
         for job in alljobs:
             if not job.successful():
-                job.get()
+                try:
+                    job.get()
+                except Exception as inst:
+                    failjobs.append(inst)
+        if len(failjobs) == len(alljobs):
+            raise IPyradError("All failed:\n{}".format("\n".join(failjobs)))
+        else:
+            print("{} failed step 5\n{}".format("\n".join(failjobs)))
 
 
     def data_store(self, statsdicts):
@@ -783,7 +792,6 @@ class Processor:
         del self.storeseq
 
 
-
 def concat_catgs(data, sample, isref):
     "concat catgs into a single sample catg and remove tmp files"
 
@@ -806,8 +814,10 @@ def concat_catgs(data, sample, isref):
     # Related to issue #369
     if not all([nrows, maxlen]):
         raise IPyradError(
-            "Error in concat_catgs both nrows and maxlen must be positive. You "
-            "have:\n  nrows: {}\tmaxlen: {}".format(nrows, maxlen))
+            "Error in concat_catgs both nrows and maxlen must be positive."
+            "\nsample: {}\tnrows: {}\tmaxlen: {}".format(sample.name,
+                                                         nrows,
+                                                         maxlen))
 
     # fill in the chunk array
     with h5py.File(sample.files.database, 'w') as ioh5:
