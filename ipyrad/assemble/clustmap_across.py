@@ -338,6 +338,7 @@ class Step6:
     def remote_cluster_tiers(self, jobid):
         start = time.time()
         printstr = ("clustering across   ", "s6")
+        # nthreads=0 defaults to using all cores
         args = (self.data, jobid, 0, True)
         rasync = self.thview.apply(cluster, *args)
 
