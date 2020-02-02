@@ -5,6 +5,7 @@ from __future__ import print_function
 
 # standar lib
 import os
+import sys
 import gzip
 import subprocess
 
@@ -177,7 +178,7 @@ class Treemix(object):
         self.results.admixture = []
         self.results.cov = []
         self.results.llik = None
- 
+
 
     @property
     def _command_list(self):
@@ -212,7 +213,7 @@ class Treemix(object):
     def command(self):
         """ returns command as a string """
         return " ".join(self._command_list)
-    
+
 
     def write_input_file(self, quiet=False):
         """
@@ -262,7 +263,7 @@ class Treemix(object):
         """
         # create a toytree object from the treemix tree result
         tre = toytree.tree(newick=self.results.tree)
-        
+
         # draw on axes or create new ones
         if axes:
             canvas = None
@@ -284,7 +285,7 @@ class Treemix(object):
 
         # get coords 
         for admix in self.results.admixture:
-            ## parse admix event
+            # parse admix event
             pidx, pdist, cidx, cdist, weight = admix
             a = _get_admix_point(tre, pidx, pdist)
             b = _get_admix_point(tre, cidx, cdist)

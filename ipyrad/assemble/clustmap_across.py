@@ -277,7 +277,7 @@ class Step6:
             samples = [i for i in self.samples if i in group]
             args = (self.data, jobid, samples, self.randomseed)
             rasyncs[jobid] = self.lbview.apply(build_concat_files, *args)
-        
+
         while 1:
             ready = [rasyncs[i].ready() for i in rasyncs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
@@ -300,7 +300,7 @@ class Step6:
         for jobid in self.cgroups:
             args = (self.data, jobid, self.nthreads)
             rasyncs[jobid] = self.thview.apply(cluster, *args)
-        
+
         while 1:
             ready = [rasyncs[i].ready() for i in rasyncs]
             self.data._progressbar(len(ready), sum(ready), start, printstr)
@@ -979,7 +979,7 @@ def cluster(data, jobid, nthreads, print_progress=False):
            "-maxaccepts", "1",
            "-maxrejects", "0",
            "-fasta_width", "0",
-           "--minseqlength",  str(data.params.filter_min_trim_len),
+           "--minseqlength", str(data.params.filter_min_trim_len),
            "-threads", str(nthreads),  # "0",
            "-fulldp",
            "-usersort",

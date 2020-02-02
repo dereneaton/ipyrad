@@ -41,6 +41,9 @@ You can install it with the following command:
 """
 
 
+# NOTES: check tree rooting effect, make new docs, missing names or typos, 
+
+
 
 class CladeWeights(object):
     """
@@ -86,7 +89,7 @@ class CladeWeights(object):
         # fill clades dictionary with tests
         self.clades = {}
         for key, value in imap.items():
-            
+
             # make sure all clades values are lists or tuples of strings
             if isinstance(value, str):
                 raise TypeError("clades values should be lists or tuples")
@@ -96,7 +99,7 @@ class CladeWeights(object):
 
             elif isinstance(value, tuple):
                 self.imap[key] = value
-            
+
             else:
                 raise TypeError("clades argument is malformed.")
 
@@ -132,7 +135,7 @@ class CladeWeights(object):
         ipyclient: (type=ipyparallel.Client); Default=None. 
             If you started an ipyclient manually then you can 
             connect to it and use it to distribute jobs here.
-        
+
         force: (type=bool); Default=False.
             Force overwrite of existing output with the same name.
 
@@ -249,6 +252,7 @@ def clade_weights(treelist, clades, idx=0):
 
             # union test support for grouping of two clades
             if isinstance(clade, tuple):
+
                 # reduce clades to sampled tips
                 tree = toytree.tree(tree)
                 tips = set(tree.get_tip_labels())
@@ -259,7 +263,7 @@ def clade_weights(treelist, clades, idx=0):
 
                 # get pair samplers
                 osamp = itertools.combinations(oclade, 2)
-               
+
                 # iterate over quartets
                 for c1 in clade[0]:
                     for c2 in clade[1]:
