@@ -202,6 +202,9 @@ def chroms2ints(data, intkeys):
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )
+    # Allow CHROM to take integer values, here cast them to str
+    fai["scaffold"] = fai["scaffold"].astype(str)
+
     faidict = {j: i for i, j in enumerate(fai.scaffold)}
     if intkeys:
         revdict = {j: i for i, j in faidict.items()}
