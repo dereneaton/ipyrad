@@ -4,6 +4,21 @@
 Release Notes
 =============
 
+0.9.32
+------
+**February 04, 2020**
+
+- #392 allow scaffold names to be int
+- Add sensible error handling if only a few samples fail step 5.
+- add docs to clustmap_across
+- fix for name re-ordering in window-extracter with multiple regions selected
+- added comments
+- added comments
+- added sys
+- Actually handle failed samples in step 2.
+- fix for new h5py warning
+- fix for new sklearn warning
+
 0.9.31
 ------
 **January 19, 2020**
