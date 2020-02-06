@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.33
+------
+**February 06, 2020**
+
+- Fix major oops in consens_se which failed step 5 every time. Bad!
+- In step 6 use the sample.files.consens info, rather than data.dirs to allow for merging assemblies after step 5 where data.dirs is invalid/empty.
+
 0.9.32
 ------
 **February 04, 2020**
