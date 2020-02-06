@@ -339,10 +339,13 @@ class Step5:
                     job.get()
                 except Exception as inst:
                     failjobs.append(inst)
+
         if len(failjobs) == len(alljobs):
             raise IPyradError("All failed:\n{}".format("\n".join(failjobs)))
+        elif len(failjobs) > 1:
+            print("{} failed step 5\n{}".format(len(failjobs), "\n".join(failjobs)))
         else:
-            print("{} failed step 5\n{}".format("\n".join(failjobs)))
+            pass
 
 
     def data_store(self, statsdicts):
