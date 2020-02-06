@@ -106,8 +106,8 @@ class Step6:
             if state6.any():
                 raise IPyradError(
                     "Some samples are already in state==6. If you wish to \n" \
-                  + "create a new database for across sample comparisons \n" \
-                  + "use the force=True (-f) argument.")
+                  + "  create a new database for across sample comparisons \n" \
+                  + "  use the force=True (-f) argument.")
             # run all samples in state 5
             subsamples = [self.data.samples[i] for i in state5]
 
