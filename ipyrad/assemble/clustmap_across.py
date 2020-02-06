@@ -503,12 +503,12 @@ class Step6:
             "-f", 
             catbam,
         ]
+
+        # Use the sample.files.consens info, rather than data.dirs to allow
+        # for merging assemblies after step 5 where data.dirs is invalid/empty.
         for sample in self.samples:
-            cmd1.append(
-                os.path.join(
-                    self.data.dirs.consens, 
-                    "{}.consens.bam".format(sample.name))
-            )
+            cmd1.append(sample.files.consens)
+
         proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
 
         # progress bar
