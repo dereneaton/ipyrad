@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.34
+------
+**February 09, 2020**
+
+- Roll back baba code to 0.7 version which doesn't use the current analysis format, but which still works. Saved ongoing baba code as baba.v0.9.py
+
 0.9.33
 ------
 **February 06, 2020**
