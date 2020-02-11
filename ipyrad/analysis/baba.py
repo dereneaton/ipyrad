@@ -585,7 +585,8 @@ def _loci_to_arr(loci, taxdict, mindict):
             try:
                 arr[loc, -1, :iseq.shape[1]] = iseq 
             except:
-                import pdb; pdb.set_trace()
+                raise IPyradError("Error in getting outgroup sequences.")
+    
             ## enter 4-taxon freqs
             if len(taxdict) == 4:
                 for tidx, key in enumerate(keys[:-1]):
