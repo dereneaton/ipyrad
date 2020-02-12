@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.35
+------
+**February 12, 2020**
+
+- Fix a bug in step 5 handling of RemoteError during indexing alleles.
+- Report debug traceback for all crashes, not just API. This is essentially making the debug flag useless in v.0.9
+
 0.9.34
 ------
 **February 09, 2020**
