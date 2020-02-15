@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.38
+------
+**February 15, 2020**
+
+- commented out the import of the baba_plot plotting function and the baba.plot() method as these are broken rn, and also the plotting/baba_plotting routine tries to access toyplot in a way that breaks the conda build since toyplot isn't a strict requirement. We could fix this in the future, but i'm tring to get the bioconda package to build successfully rn.
+
 0.9.37
 ------
 **February 15, 2020**
