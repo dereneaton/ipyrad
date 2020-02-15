@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.36
+------
+**February 15, 2020**
+
+- Handle external imports in the baba module in the same way as the other analysis tools to fix the broken bioconda build.
+- Add a pops file to the ipsimdata.tar.gz because it's always useful.
+-  "Updating ipyrad/__init__.py to version - 0.9.35
+
 0.9.35
 ------
 **February 12, 2020**
