@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.37
+------
+**February 15, 2020**
+
+- fix import checking for baba_panel_plot.py
+
 0.9.36
 ------
 **February 15, 2020**
