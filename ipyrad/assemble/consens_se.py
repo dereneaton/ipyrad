@@ -568,7 +568,6 @@ class Processor:
         return 0
 
 
-
     def build_consens_and_array(self):
         """
         Makes base calls and converts - to N and trims terminal Ns. Setting 
@@ -663,6 +662,10 @@ class Processor:
 
 
     def get_alleles(self):
+        """
+        denovo only.
+        Infer the number of alleles from haplotypes.
+        """
         # if less than two Hs then there is only one allele
         if len(self.hidx) < 2:
             self.nalleles = 1
@@ -713,7 +716,7 @@ class Processor:
         self.counters["nconsens"] += 1
         self.counters["heteros"] += self.nheteros
 
-    # ----------------------------------------------
+
     def write_chunk(self):
         """
         Writes chunk of consens reads to disk, stores depths, alleles, and 
@@ -1221,9 +1224,6 @@ def get_binom(base1, base2, estE, estH):
     if hetprob > homoa:
         return True, bestprob
     return False, bestprob
-
-
-
 
 
 
