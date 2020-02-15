@@ -13,8 +13,8 @@ from __future__ import print_function, division
 ## ipyrad tools
 from ipyrad.assemble.write_outputs import reftrick
 from ipyrad.assemble.utils import IPyradError, GETCONS, Params
-from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 from ipyrad.analysis.utils import progressbar
+#from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 #import scipy.stats as st  ## used for dfoil
 import pandas as pd
@@ -221,7 +221,7 @@ class Baba(object):
             print("{} tests generated from tree".format(len(tests)))
         self.tests = tests
 
-
+'''
     def plot(self, 
         show_test_labels=True, 
         use_edge_lengths=True,         
@@ -307,6 +307,7 @@ class Baba(object):
             *args, 
             **kwargs)
         return canvas, axes, panel
+'''
 
 
     def copy(self):
