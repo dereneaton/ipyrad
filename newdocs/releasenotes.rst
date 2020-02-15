@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.39
+------
+**February 15, 2020**
+
+- Why can't i figure out how to comment out this plotting code right? wtf!
+
 0.9.38
 ------
 **February 15, 2020**
