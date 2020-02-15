@@ -27,21 +27,38 @@ import copy
 import time
 import os
 
-## non-standard imports
+# import tested at init
 try: 
     import msprime as ms
 except ImportError:
     pass
+_MSPRIME_IMPORT= """
+This ipyrad analysis tool requires 
+You can install it with the following command:
+
+   conda install toytree -c eaton-lab
+"""
 
 try:
     import toytree
 except ImportError:
-    print("""
-        toytree not installed, some functions are not available
-        such as .generate_tests_from_tree() and .plot().
-        Install toytree with 'conda install toytree -c eaton-lab'.
-        """)
+    pass
+_TOYTREE_IMPORT = """
+This ipyrad analysis tool requires 
+You can install it with the following command:
 
+   conda install toytree -c eaton-lab
+"""
+try:
+    import toyplot
+except ImportError:
+    pass
+_TOYPLOT_IMPORT = """
+This ipyrad analysis tool requires the toyplot package.
+You can install it with the following command:
+
+   conda install toyplot -c eaton-lab
+"""
 
 ## set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
@@ -86,6 +103,14 @@ class Baba(object):
             ...
 
         """
+        # check external imports
+        if not sys.modules.get("toytree"):
+            raise ImportError(_TOYTREE_IMPORT)
+        if not sys.modules.get("toyplot"):
+            raise ImportError(_TOYPLOT_IMPORT)
+        if not sys.modules.get("msprime"):
+            raise ImportError(_MSPRIME_IMPORT)
+
         ## parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
             self.data = os.path.realpath(data)
