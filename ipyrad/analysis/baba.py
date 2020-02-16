@@ -13,8 +13,8 @@ from __future__ import print_function, division
 ## ipyrad tools
 from ipyrad.assemble.write_outputs import reftrick
 from ipyrad.assemble.utils import IPyradError, GETCONS, Params
-from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 from ipyrad.analysis.utils import progressbar
+#from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
 #import scipy.stats as st  ## used for dfoil
 import pandas as pd
@@ -27,21 +27,38 @@ import copy
 import time
 import os
 
-## non-standard imports
+# import tested at init
 try: 
     import msprime as ms
 except ImportError:
     pass
+_MSPRIME_IMPORT= """
+This ipyrad analysis tool requires 
+You can install it with the following command:
+
+   conda install toytree -c eaton-lab
+"""
 
 try:
     import toytree
 except ImportError:
-    print("""
-        toytree not installed, some functions are not available
-        such as .generate_tests_from_tree() and .plot().
-        Install toytree with 'conda install toytree -c eaton-lab'.
-        """)
+    pass
+_TOYTREE_IMPORT = """
+This ipyrad analysis tool requires 
+You can install it with the following command:
 
+   conda install toytree -c eaton-lab
+"""
+try:
+    import toyplot
+except ImportError:
+    pass
+_TOYPLOT_IMPORT = """
+This ipyrad analysis tool requires the toyplot package.
+You can install it with the following command:
+
+   conda install toyplot -c eaton-lab
+"""
 
 ## set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
@@ -86,6 +103,14 @@ class Baba(object):
             ...
 
         """
+        # check external imports
+        if not sys.modules.get("toytree"):
+            raise ImportError(_TOYTREE_IMPORT)
+        if not sys.modules.get("toyplot"):
+            raise ImportError(_TOYPLOT_IMPORT)
+        if not sys.modules.get("msprime"):
+            raise ImportError(_MSPRIME_IMPORT)
+
         ## parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
             self.data = os.path.realpath(data)
@@ -197,16 +222,16 @@ class Baba(object):
         self.tests = tests
 
 
-    def plot(self, 
-        show_test_labels=True, 
-        use_edge_lengths=True,         
-        collapse_outgroup=False, 
-        pct_tree_x=0.5, 
-        pct_tree_y=0.2,
-        subset_tests=None,
-        #toytree_kwargs=None,
-        *args, 
-        **kwargs):
+#    def plot(self, 
+#        show_test_labels=True, 
+#        use_edge_lengths=True,         
+#        collapse_outgroup=False, 
+#        pct_tree_x=0.5, 
+#        pct_tree_y=0.2,
+#        subset_tests=None,
+#        #toytree_kwargs=None,
+#        *args, 
+#        **kwargs):
 
         """ 
         Draw a multi-panel figure with tree, tests, and results 
@@ -240,7 +265,8 @@ class Baba(object):
         ...
 
         """
-        print("Plotting baba results is not implemented in v.0.9.")
+""" 
+       print("Plotting baba results is not implemented in v.0.9.")
         return
 
         ## check for attributes
@@ -282,6 +308,7 @@ class Baba(object):
             *args, 
             **kwargs)
         return canvas, axes, panel
+"""
 
 
     def copy(self):
@@ -585,7 +612,8 @@ def _loci_to_arr(loci, taxdict, mindict):
             try:
                 arr[loc, -1, :iseq.shape[1]] = iseq 
             except:
-                import pdb; pdb.set_trace()
+                raise IPyradError("Error in getting outgroup sequences.")
+    
             ## enter 4-taxon freqs
             if len(taxdict) == 4:
                 for tidx, key in enumerate(keys[:-1]):

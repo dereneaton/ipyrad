@@ -338,7 +338,8 @@ class Step5:
                 try:
                     job.get()
                 except Exception as inst:
-                    failjobs.append(inst)
+                    # inst here is RemoteError, so unpack the content
+                    failjobs.append(inst.evalue)
 
         if len(failjobs) == len(alljobs):
             raise IPyradError("All failed:\n{}".format("\n".join(failjobs)))

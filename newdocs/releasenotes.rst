@@ -4,6 +4,43 @@
 Release Notes
 =============
 
+0.9.39
+------
+**February 15, 2020**
+
+- Why can't i figure out how to comment out this plotting code right? wtf!
+
+0.9.38
+------
+**February 15, 2020**
+
+- commented out the import of the baba_plot plotting function and the baba.plot() method as these are broken rn, and also the plotting/baba_plotting routine tries to access toyplot in a way that breaks the conda build since toyplot isn't a strict requirement. We could fix this in the future, but i'm tring to get the bioconda package to build successfully rn.
+
+0.9.37
+------
+**February 15, 2020**
+
+- fix import checking for baba_panel_plot.py
+
+0.9.36
+------
+**February 15, 2020**
+
+- Handle external imports in the baba module in the same way as the other analysis tools to fix the broken bioconda build.
+- Add a pops file to the ipsimdata.tar.gz because it's always useful.
+-  "Updating ipyrad/__init__.py to version - 0.9.35
+
+0.9.35
+------
+**February 12, 2020**
+
+0.9.35
+------
+**February 12, 2020**
+
+- Fix a bug in step 5 handling of RemoteError during indexing alleles.
+- Report debug traceback for all crashes, not just API. This is essentially making the debug flag useless in v.0.9
+
 0.9.34
 ------
 **February 09, 2020**
