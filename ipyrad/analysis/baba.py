@@ -222,16 +222,16 @@ class Baba(object):
         self.tests = tests
 
 
-#    def plot(self, 
-#        show_test_labels=True, 
-#        use_edge_lengths=True,         
-#        collapse_outgroup=False, 
-#        pct_tree_x=0.5, 
-#        pct_tree_y=0.2,
-#        subset_tests=None,
-#        #toytree_kwargs=None,
-#        *args, 
-#        **kwargs):
+    def plot(self, 
+        show_test_labels=True, 
+        use_edge_lengths=True,         
+        collapse_outgroup=False, 
+        pct_tree_x=0.5, 
+        pct_tree_y=0.2,
+        subset_tests=None,
+        #toytree_kwargs=None,
+        *args, 
+        **kwargs):
 
         """ 
         Draw a multi-panel figure with tree, tests, and results 
@@ -265,8 +265,7 @@ class Baba(object):
         ...
 
         """
-""" 
-       print("Plotting baba results is not implemented in v.0.9.")
+        print("Plotting baba results is not implemented in v.0.9.")
         return
 
         ## check for attributes
@@ -296,19 +295,18 @@ class Baba(object):
             boots = self.results_boots
 
         ## make the plot
-        canvas, axes, panel = baba_panel_plot(
-            ttree=ttree,
-            tests=tests, 
-            boots=boots, 
-            show_test_labels=show_test_labels, 
-            use_edge_lengths=use_edge_lengths, 
-            collapse_outgroup=collapse_outgroup, 
-            pct_tree_x=pct_tree_x,
-            pct_tree_y=pct_tree_y,
-            *args, 
-            **kwargs)
-        return canvas, axes, panel
-"""
+        #canvas, axes, panel = baba_panel_plot(
+        #    ttree=ttree,
+        #    tests=tests, 
+        #    boots=boots, 
+        #    show_test_labels=show_test_labels, 
+        #    use_edge_lengths=use_edge_lengths, 
+        #    collapse_outgroup=collapse_outgroup, 
+        #    pct_tree_x=pct_tree_x,
+        #    pct_tree_y=pct_tree_y,
+        #    *args, 
+        #    **kwargs)
+        #return canvas, axes, panel
 
 
     def copy(self):
