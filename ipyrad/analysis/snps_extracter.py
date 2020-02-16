@@ -206,48 +206,31 @@ class SNPsExtracter(object):
         # .snpsmap is ready to subsample .snps to 1-per-locus 
 
 
-    # def parse_genos_from_vcf(self):
-    #     """
-    #     Parse genotype calls from input VCF data file. This will be 
-    #     0/1/2 or 9 for missing. In other words, it's the geno file 
-    #     format. 
-    #     """
-
-    #     raise NotImplementedError("VCF parsing NOT IMPLEMENTED YET")
-
-    #     # to match hdf5 function this needs to parse a genotype matrix (.snps)
-    #     # and build a .snpsmap from CHROM, POS.
-
-    #     # for now, trying to avoid scikit-allel usage.
-
-    #     # get column names from header line
-    #     with open(self.data) as indata:
-    #         while 1:
-    #             data = indata.readline().strip().split()
-    #             if data[0].upper() == "#CHROM":
-    #                 columns = [data[0][1:]] + data[1:]
-    #                 break
-
-    #     # parse as a dataframe
-    #     df = pd.read_csv(
-    #         self.data, 
-    #         comment="#",
-    #         sep="\t",
-    #         names=columns,
-    #     )
-
-    #     # replace INFO column with depth
-    #     df["DEPTH"] 
-
-    #     # drop unneeded columns
-    #     df = df.drop(columns=["CHROM", "REF", "ALT", "QUAL"])
-
-
     def subsample_snps(self, random_seed=None, quiet=False):
-        "Calls jitted subsample SNPs function to sample snps using snpsmap."
+        """
+        Calls jitted functions to subsample 1 SNP per locus/linkage-block
+        using snpsmap.
+        """
         if not random_seed:
             random_seed = np.random.randint(0, 1e9)
         subarr = self.snps[:, jsubsample_snps(self.snpsmap, random_seed)]
         if not quiet:
             self._print("subsampled {} unlinked SNPs".format(subarr.shape[1]))
+        return subarr
+
+
+    def subsample_loci(self, random_seed=None, quiet=False):
+        """
+        Calls jitted functions to subsample loci/linkage-blocks with
+        replacement to the same number as the original assembly. This does
+        not subsample unlinked SNPs per locus.
+        """
+        raise NotImplementedError("TODO")
+        if not random_seed:
+            random_seed = np.random.randint(0, 1e9)
+        subarr = self.snps[:, jsubsample_snps(self.snpsmap, random_seed)]
+        if not quiet:
+            self._print(
+                "subsampled {} loci w/ replacement"
+                .format(subarr.shape[1]))
         return subarr

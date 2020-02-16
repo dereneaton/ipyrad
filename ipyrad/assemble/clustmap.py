@@ -154,7 +154,6 @@ class Step3:
                 # o: clustdir/{sample}_clust.gz
                 self.remote_run_cluster_build()
 
-                # TODO: bring back split aligning for pairs...
                 # o: clustdir/{sample}_clustS.gz                
                 self.remote_run_align_cleanup()
 
@@ -846,7 +845,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
         "--fastq_minovlen", "20",
         "--fastq_maxdiffs", "4",
         "--label_suffix", "_m1",
-        #"--fastq_qmax", "100",
+        "--fastq_qmax", "41",     # <- vsearch tells you to use this value
         "--threads", "2",
         "--fastq_allowmergestagger",
     ]
@@ -1066,7 +1065,7 @@ def cluster(data, sample, nthreads, force):
            "-threads", str(nthreads),
            "-notmatched", temphandle,
            "-fasta_width", "0",
-           "--minseqlength",  str(data.params.filter_min_trim_len),
+           "--minseqlength", str(data.params.filter_min_trim_len),
            # "-fastq_qmax", "100",
            "-fulldp",
            "-usersort"]

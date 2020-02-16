@@ -129,7 +129,7 @@ class Step7:
             _outdir = os.path.join(
                 self.data.params.project_dir,
                 "{}_outfiles".format(self.data.name),
-                )
+            )
             _outdir = os.path.realpath(_outdir)
             if os.path.exists(os.path.join(_outdir, 
                 "{}.loci".format(self.data.name),
@@ -162,7 +162,7 @@ class Step7:
         self.data.dirs.outfiles = os.path.join(
             self.data.params.project_dir,
             "{}_outfiles".format(self.data.name),
-            )
+        )
         self.data.dirs.outfiles = os.path.realpath(self.data.dirs.outfiles)
         if os.path.exists(self.data.dirs.outfiles):
             shutil.rmtree(self.data.dirs.outfiles)
@@ -181,7 +181,7 @@ class Step7:
         self.data.tmpdir = os.path.join(
             self.data.dirs.outfiles, 
             "tmpdir",
-            )
+        )
         if os.path.exists(self.data.tmpdir):
             shutil.rmtree(self.data.tmpdir)
         if not os.path.exists(self.data.tmpdir):
@@ -191,11 +191,11 @@ class Step7:
         self.data.seqs_database = os.path.join(
             self.data.dirs.outfiles,
             self.data.name + ".seqs.hdf5",
-            )
+        )
         self.data.snps_database = os.path.join(
             self.data.dirs.outfiles,
             self.data.name + ".snps.hdf5",
-            )
+        )
         for dbase in [self.data.snps_database, self.data.seqs_database]:
             if os.path.exists(dbase):
                 os.remove(dbase)
@@ -654,7 +654,7 @@ class Processor(object):
             'maxvar', 
             'maxshared',
             'minsamp', 
-            )
+        )
         # (R1>, <R1, R2>, <R2)
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
@@ -708,6 +708,7 @@ class Processor(object):
         self.aseqs = []
         self.useqs = []
 
+        # advance locus to next, parse names and seqs
         self.iloc, lines = next(self.loci)
         lines = lines.decode().strip().split("\n")
         for line in lines:
@@ -723,10 +724,11 @@ class Processor(object):
         mask = [i in self.data.snames for i in self.names]
         self.names = np.array(self.names)[mask].tolist()
 
-        # [ref] store consens read start position as mapped to ref
-        self.nidxs = np.array(self.nidxs)[mask].tolist()
-        self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
-        self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
+        if not self.filter_dups():
+            # [ref] store consens read start position as mapped to ref
+            self.nidxs = np.array(self.nidxs)[mask].tolist()
+            self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
+            self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
 
 
     def run(self):
@@ -738,13 +740,14 @@ class Processor(object):
             except StopIteration:
                 break
 
+            # fill filter 0
+            if self.filter_dups():
+                continue
+
             # apply filters 
             edges = Edges(self.data, self.useqs)
             edges.get_edges()
             self.edges[self.iloc] = edges.edges
-
-            # fill filter 0
-            self.filter_dups()
 
             # fill filter 4
             self.filter_minsamp_pops()
@@ -897,7 +900,7 @@ class Processor(object):
                 "{}{}".format(
                     self.data.pnames[name],
                     block[idx, :].tostring().decode())
-                )
+            )
         locus.append("{}{}|{}|".format(
             self.data.snppad, snpstring, nidxstring))
         return "\n".join(locus)
@@ -906,7 +909,8 @@ class Processor(object):
     def filter_dups(self):
         if len(set(self.names)) < len(self.names):
             self.filters[self.iloc, 0] = 1
-        # return False
+            return True
+        return False
 
 
     def filter_minsamp_pops(self):
