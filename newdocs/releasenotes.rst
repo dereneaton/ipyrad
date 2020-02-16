@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.40
+------
+**February 16, 2020**
+
+- subsample loci func added
+- counts rm duplicates in denovo and works with step6 skipping alignment of loci w/ dups
+- denovo paired aligned separately again
+- fastq qmax error in merge denovo fixed
+
 0.9.39
 ------
 **February 15, 2020**
