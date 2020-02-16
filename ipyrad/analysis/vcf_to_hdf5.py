@@ -84,8 +84,8 @@ class VCFtoHDF5(object):
             .format(
                 self.nsnps,
                 self.nscaffolds,
-                )
             )
+        )
         self._print(
             "SNP database written to {}"
             .format(self.database)
@@ -378,8 +378,9 @@ class VCFtoHDF5(object):
 
             # print warning that we're not ussng ld_block_size
             if self.ld_block_size:
-                self._print("\nThis appears to be a denovo assembly, "
-                      		"ld_block_size arg is being ignored.")
+                self._print(
+                    "\nThis appears to be a denovo assembly, "
+                    "ld_block_size arg is being ignored.")
 
             # get locus index
             snpsmap[:, 0] = (
