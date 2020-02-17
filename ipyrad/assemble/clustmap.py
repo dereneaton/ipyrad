@@ -2503,7 +2503,8 @@ def store_sample_stats(data, sample, maxlens, depths):
     # If PE, samtools reports the _actual_ number of reads mapped, both
     # R1 and R2, so here if PE divide the results by 2 to stay consistent
     # with how we've been reporting R1 and R2 as one "read pair"
-    if "pair" in data.params.datatype:
+    # TODO: how to report denovo - reference mapped.
+    if ("pair" in data.params.datatype) and ("denovo" not in data.params.assembly_method):
         sample.stats["refseq_mapped_reads"] = sum(depths)
         sample.stats["refseq_unmapped_reads"] = int(
             sample.stats.reads_passed_filter - \
