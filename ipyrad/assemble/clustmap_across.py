@@ -39,11 +39,20 @@ class Step6:
         self.samples = self.get_subsamples()
         self.setup_dirs(force)
 
-        # groups/threading information
-        self.cgroups = {}
-        self.assign_groups()
-        self.hostd = {}
-        self.tune_hierarchical_threading()
+        # groups/threading information for hierarchical clustering
+        # ----- DISABLED FOR NOW -------------
+        # self.cgroups = {}
+        # self.assign_groups()
+        # self.hostd = {}
+        # self.tune_hierarchical_threading()
+
+        # NEW CODE TO OVERRIDE HIERARCH CLUSTERING
+        self.cgroups = {
+            0: self.samples,
+        }
+        self.nthreads = len(self.ipyclient.ids)
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()
 
 
     def print_headers(self):
