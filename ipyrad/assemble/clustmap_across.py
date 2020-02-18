@@ -50,6 +50,7 @@ class Step6:
         self.cgroups = {
             0: self.samples,
         }
+        self.data.ncpus = len(self.ipyclient.ids)
         self.nthreads = len(self.ipyclient.ids)
         self.lbview = self.ipyclient.load_balanced_view()
         self.thview = self.ipyclient.load_balanced_view()
