@@ -21,12 +21,14 @@ on your parameter settings to filter and trim data based on quality scores and/o
 
 
 .. _file_names:
+
 Fastq Data Files and File Names
 --------------------------------
 Depending how and where your sequence data were generated you may receive data as one giant file, or in many smaller files. The files may contain data from all of your individuals mixed together, or as separate files for each Sample. If they are mixed up then the data need to be demultiplexed based on barcodes or indices. Step 1 of ipyrad can take data of either format, and will either demultiplex the reads or simply count/load the pre-demultiplexed data. See the Demultiplexing section for details.
 lessq
 
 .. _data_types:
+
 Supported data types
 --------------------
 There is increasingly a large variety of ways to generate reduced representation genomic data sets using either restriction digestion or primer sets, and ipyrad aims to be flexible enough to handle all of these types. Because it is difficult to keep up with all of the names, we use our own terminology, described below, to group together data types that can be analyzed using the same bioinformatic methods. If you have a data type that is not described below and you're not sure if it can be analyzed in ipyrad_ :ref:`let us know here<gitter>`. 

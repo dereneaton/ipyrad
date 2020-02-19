@@ -182,7 +182,7 @@ class DigestGenome(object):
                         # 'end': end,
                         'copy': copy,
                         'read': r1, 
-                        'qual': "b" * len(r1),
+                        'qual': "B" * len(r1),
                     })
                     fastq_r1s.append(fastq)
 
@@ -193,7 +193,7 @@ class DigestGenome(object):
                             'loc': iloc, 
                             'copy': copy,
                             'read': r2,
-                            'qual': "b" * len(r2),
+                            'qual': "B" * len(r2),
                         })
                         fastq_r2s.append(fastq)
                 iloc += 1

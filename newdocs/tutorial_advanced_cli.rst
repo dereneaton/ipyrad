@@ -15,6 +15,7 @@ and the second is ``reference mapping``, which is a way to leverage information
 from reference genomic data (e.g., full genome, transcriptome, 
 plastome, etc) during assembly. 
 
+.. _branching_workflow:
 
 Branching Assemblies
 ~~~~~~~~~~~~~~~~~~~~

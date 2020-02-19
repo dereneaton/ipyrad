@@ -39,11 +39,21 @@ class Step6:
         self.samples = self.get_subsamples()
         self.setup_dirs(force)
 
-        # groups/threading information
-        self.cgroups = {}
-        self.assign_groups()
-        self.hostd = {}
-        self.tune_hierarchical_threading()
+        # groups/threading information for hierarchical clustering
+        # ----- DISABLED FOR NOW -------------
+        # self.cgroups = {}
+        # self.assign_groups()
+        # self.hostd = {}
+        # self.tune_hierarchical_threading()
+
+        # NEW CODE TO OVERRIDE HIERARCH CLUSTERING
+        self.cgroups = {
+            0: self.samples,
+        }
+        self.data.ncpus = len(self.ipyclient.ids)
+        self.nthreads = len(self.ipyclient.ids)
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()
 
 
     def print_headers(self):
@@ -132,6 +142,10 @@ class Step6:
     def assign_groups(self):
         "assign samples to groups if not user provided for hierarchical clust"
 
+        # to hold group ints mapping to list of sample objects
+        # {0: [a, b, c], 1: [d, e, f]}
+        self.cgroups = {}
+
         # use population info to split samples into groups; or assign random
         if self.data.populations:
             self.cgroups = {}
@@ -148,11 +162,15 @@ class Step6:
             else:
                 groupsize = 100
 
+            # split samples evenly into groups
             alls = self.samples
-            self.cgroups = {}
+            nalls = len(self.samples)
+            ngroups = int(np.ceil(nalls / groupsize))
+            gsize = int(np.ceil(nalls / ngroups))
+
             idx = 0
-            for samps in range(0, len(alls), groupsize):
-                self.cgroups[idx] = alls[samps: samps + groupsize]
+            for samps in range(0, nalls, gsize):
+                self.cgroups[idx] = alls[samps: samps + gsize]
                 idx += 1
 
 
@@ -202,7 +220,8 @@ class Step6:
         #    self.nthreads = int(self.data.ipcluster["threads"])
         self.nthreads = 2
         if self.data.ncpus > 4:
-            self.nthreads = 4
+            self.nthreads = int(np.floor(
+                self.data.ncpus) / len(self.cgroups))
         eids = self.ipyclient.ids[::self.nthreads]
 
         # create load-balancers
@@ -1251,7 +1270,8 @@ def build_hierarchical_denovo_clusters(data, usort, nseeds, jobids):
         seqsize += 1
         loci += seqsize
     if seqlist:
-        pathname = os.path.join(data.tmpdir, 
+        pathname = os.path.join(
+            data.tmpdir, 
             data.name + ".chunk_{}".format(loci))
         with open(pathname, 'wt') as clustsout:
             clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")

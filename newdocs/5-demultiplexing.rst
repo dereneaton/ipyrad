@@ -1,8 +1,6 @@
 
 .. include:: global.rst  
 
-.. _files:
-
 
 Getting Started: Demultiplexing
 ================================
@@ -24,6 +22,7 @@ the :ref:`barcodes files<barcodes_file>`, whereas if your data are already demul
 
 
 .. _file_names:
+
 Sample Names
 -------------
 When demultiplexing Sample names will be extracted from
@@ -39,6 +38,7 @@ See the example data for an example.
 
 
 .. _barcodes_file:
+
 Barcodes file
 --------------
 The barcodes file is a simple table linking barcodes to samples. 

@@ -18,8 +18,9 @@ Detailed instructions are available through the tutorials below.
 
 
 .. _introductory_tutorial:
+
 Introductory tutorials
----------------------
+----------------------
 Start here to learn the basics. We run through an example simulated single-end 
 RAD-seq data set and give detailed descriptions of files and statistics 
 produced by each step of an assembly. Next, try some advanced methods, 
@@ -35,7 +36,7 @@ and assemble data with respect to a reference genome.
 .. _empirical_example:
 
 Empirical examples
------------------
+------------------
 The following tutorials demonstrate assemblies of publicly available 
 empirical data sets representing different data types. The first analysis 
 (Eaton and Ree, 2013) can be assembled very quickly, and is re-used in our 

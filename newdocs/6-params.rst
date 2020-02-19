@@ -17,6 +17,7 @@ that it effects, and example entries for the parameter into a params.txt file.
 
 
 .. _params_file:
+
 Parameters (Params File)
 ------------------------
 The parameter input file, which typically includes ``params.txt`` in its name, 
@@ -132,7 +133,7 @@ Example entries into params.txt:
 
 3. Barcodes path
 ----------------
-This is a path to the location of a barcodes_file_. This is used in step1
+This is a path to the location of a barcodes file. This is used in step1
 for demuliplexing, and can also be used in step2 to improve the detection of
 adapter/primer sequences that should be filtered out. If your data are already
 demultiplexed the barcodes path can be left blank.
@@ -392,6 +393,7 @@ Affected steps = 4, 5. Example entries to params.txt:
 
 
 .. _maxdepth:
+
 13. maxdepth
 -------------
 Sequencing coverage is often highly uneven among due to differences in the
@@ -432,7 +434,7 @@ Affected steps = 3, 6. Example entries to params.txt:
 .. _max_barcodes_mismatch:
 
 15. max_barcodes_mismatch
----------------
+-------------------------
 The maximum number of allowed mismatches between the barcodes in the barcodes
 file and those found in the sequenced reads. Default is 0. Barcodes usually differ
 by a minimum of 2 bases, so I would not generally recommend using a value >2.

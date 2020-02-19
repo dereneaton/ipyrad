@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.41
+------
+**February 18, 2020**
+
+- Set s6.data.ncpus value when routing around hierarchical clustering for ref based assemblies.
+- disable hierarchical clustering until further testing
+- split samples evenly among cgroups for hierarch clust
+- digest genomes uses qual score B instead of b
+
 0.9.40
 ------
 **February 16, 2020**

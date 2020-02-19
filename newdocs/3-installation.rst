@@ -70,9 +70,9 @@ We put significant effort into making the installation process for ipyrad as eas
 The easiest way to install ipyrad and all of its dependencies is with conda, a command line program for installing Python packages. Follow
 these instructions to first install conda for Python 2 or 3 on your system (the code below is for Python3 since this is now recommended).
 
-Conda comes in two flavors, anaconda_ and miniconda_. The only difference between the two is that anaconda_ installs a large suite of commonly used Python packages along with the base installer, whereas miniconda_ installs only a bare bones version that includes just the framework for installing new packages. I recommend miniconda, and that's what we'll use here. 
+Conda comes in two flavors, anaconda and miniconda. The only difference between the two is that anaconda installs a large suite of commonly used Python packages along with the base installer, whereas miniconda installs only a bare bones version that includes just the framework for installing new packages. I recommend miniconda, and that's what we'll use here. 
 
-The code below includes a line that will download the conda_ installer. **Make sure you follow either the Linux or Mac instructions**, whichever is appropriate for your system. If you are working on an HPC cluster it is almost certainly Linux.
+The code below includes a line that will download the conda installer. **Make sure you follow either the Linux or Mac instructions**, whichever is appropriate for your system. If you are working on an HPC cluster it is almost certainly Linux.
 
 While conda is installing it will ask you to answer **yes** to a few questions. This includes whether it can append the newly created miniconda/ (or anaconda/) directory to your $PATH, say **yes**. What this does is add a line to your **~/.bashrc** (or **~/.bash_profile on Mac**) file so that the software in your conda directory can be automatically found by the systems whenever you login. 
 
