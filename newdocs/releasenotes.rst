@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.42
+------
+**February 19, 2020**
+
+- Fix oops in step 6 which was leaving bad sample names hanging after alignment.
+
 0.9.41
 ------
 **February 18, 2020**
