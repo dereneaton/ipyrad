@@ -1294,9 +1294,6 @@ def align_to_array(data, samples, chunk):
             continue
 
         # else locus looks good, align it.
-        # append counter to names because muscle doesn't retain order
-        nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
-
         # is there a paired-insert in any samples in the locus?
         try:
 
@@ -1305,8 +1302,8 @@ def align_to_array(data, samples, chunk):
             right = [i.split("nnnn")[1] for i in seqs]
 
             # align separately
-            istack1 = muscle_it(proc, nnames, left)
-            istack2 = muscle_it(proc, nnames, right)
+            istack1 = muscle_it(proc, names, left)
+            istack2 = muscle_it(proc, names, right)
 
             # combine in order
             for sdx in range(len(istack1)):
@@ -1316,7 +1313,7 @@ def align_to_array(data, samples, chunk):
 
         # no insert just align a single locus
         except IndexError:
-            istack = muscle_it(proc, nnames, seqs)
+            istack = muscle_it(proc, names, seqs)
             
         # store the locus
         if istack:
@@ -1342,9 +1339,12 @@ def muscle_it(proc, names, seqs):
     Align with muscle, ensure name order, and return as string
     """  
     istack = []
+
+    # append counter to names because muscle doesn't retain order
+    nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
     
     # make back into strings
-    cl1 = "\n".join(["\n".join(i) for i in zip(names, seqs)])
+    cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])
 
     # store allele (lowercase) info, returns mask with lowercases
     amask, abool = store_alleles(seqs)
