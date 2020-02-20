@@ -424,9 +424,13 @@ class WindowExtracter(object):
         Extracts seqarr of the full selected window and computes stats on
         the window. This initially includes all taxa in the imap.
         """
-        # get mask to select window array region
+
+        # get mask to select window array region. No mask for denovo
         self.seqarr = np.zeros((len(self.names), 0))
-        mask = (self.phymap.pos0 > self.start) & (self.phymap.pos1 < self.end)
+        if self.end:           
+            mask = (self.phymap.pos0 >= self.start) & (self.phymap.pos1 <= self.end)
+        else:
+            mask = [True]
         cmap = self.phymap.values[mask, :]
 
         # is there any data at all?
