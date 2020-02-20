@@ -67,9 +67,8 @@ number. Example:
     //               *      -        -               -   *                  -   -                   --|1|
 
 For paired-end data the two linked loci are shown separated by a 'nnnn' separator, any merged reads
-will of course not contain the 'nnnn'.
+will of course not contain the 'nnnn'::
 
-.. parsed-literal::
     1A0     GATAGCGGACGAAGCTTCCTGGATCAACATATCCGTTTGACAGTTTATATGTCAACAAGTAAGGAGCTGGACTGGGAGGTGCTATTAnnnnACTCTAAGATACCAAACCCTGTCCCAGCATTACGTCCCTGTATCCGACCT
     1B0     GATAGCGGACGAAGCTTCCTGGATCAACATATCCGTTTGACAGTTTATATGTCAACAAGTAAGGAGCTGGACTGGGAGGTGCTATTAnnnnACTCTAAGATACCAAACCCTGTCCCAGCATTACGTCCCTGTATCCGACCT
     1C0     GATAGCGGACGAAGCTTCCTGGATCAACATATCCGTTTGACAGTTTATATGTCAACAAGAAAGGAGCTGGACTGGGAGGTGCTATTGnnnnACTCTAAGATACCAAACCCTGTCCCAGCATTACGTCCCTGTATCCGACCT
@@ -135,8 +134,8 @@ bases per sample. The output below is truncated for clarity.
     1B_0     GAAASRCATACTCAAACACCCTKGATACGGACAACGAAATTGCACTCATCAGACAAAGAAATTACAGAGGAACCCAAGAGAGACCGCCTTCAATA...
 
 
-MAP/PARTITION (*.snps.map)
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+MAP/PARTITION (\*.snps.map)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Because the concatenated SNPs file does not include information about which
 SNPs come from which locus we provide a _map_ file with this information. 
 This is used by the program _tetrad_ to randomly sample single SNPs 

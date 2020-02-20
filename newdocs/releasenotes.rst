@@ -422,15 +422,7 @@ Release Notes
 ------
 **February 21, 2018**
 
-- mergefix
-- merge fix
 - some releasenotes fixes
-
-=======
-0.7.23
-------
-**February 21, 2018**
-
 - Fix filter_min_trim_len not honoring the setting in the params file.
 
 

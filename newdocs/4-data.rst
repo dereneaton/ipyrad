@@ -31,7 +31,7 @@ lessq
 
 Supported data types
 --------------------
-There is increasingly a large variety of ways to generate reduced representation genomic data sets using either restriction digestion or primer sets, and ipyrad aims to be flexible enough to handle all of these types. Because it is difficult to keep up with all of the names, we use our own terminology, described below, to group together data types that can be analyzed using the same bioinformatic methods. If you have a data type that is not described below and you're not sure if it can be analyzed in ipyrad_ :ref:`let us know here<gitter>`. 
+There is increasingly a large variety of ways to generate reduced representation genomic data sets using either restriction digestion or primer sets, and ipyrad aims to be flexible enough to handle all of these types. Because it is difficult to keep up with all of the names, we use our own terminology, described below, to group together data types that can be analyzed using the same bioinformatic methods. If you have a data type that is not described below and you're not sure if it can be analyzed in ipyrad_ :ref:`let us know here<https://gitter.im/dereneaton/ipyrad>`. 
 
 
 **rad** -- This category includes data types which use a single cutter to generate 

@@ -130,7 +130,7 @@ the Assembly object, ``set_params()`` and ``get_params()``.
     1   project_dir                 ./pedicularis                                
     2   raw_fastq_path                                                           
     3   barcodes_path                                                            
-    4   sorted_fastq_path           ./example_empirical_rad/*.gz                 
+    4   sorted_fastq_path           ./example_empirical_rad/\*.gz                 
     5   assembly_method             denovo                                       
     6   reference_sequence                                                       
     7   datatype                    rad                                          
@@ -819,7 +819,7 @@ steps 6 and 7.
 
     Assembly: base
     [force] overwriting fastq files previously created by ipyrad.
-    This _does not_ affect your original/raw data files.
+    This _does not\_ affect your original/raw data files.
     [####################] 100%  sorting reads         | 0:00:03 | s1 | 
     [####################] 100%  writing/compressing   | 0:00:01 | s1 | 
     [####################] 100%  processing reads      | 0:00:03 | s2 | 

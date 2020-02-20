@@ -21,12 +21,12 @@ the :ref:`barcodes files<barcodes_file>`, whereas if your data are already demul
     Pay careful attention to file names at the very beginning of an analysis since these names, and any included typos, will be perpetuated through all the resulting data files. Do not include spaces in file names.
 
 
-.. _file_names:
+.. _sample_names:
 
 Sample Names
 -------------
 When demultiplexing Sample names will be extracted from
-the :ref:`barcodes files<barcodes_file>` whereas if your data are lready demultiplexed then Sample names are extracted from file names 
+the :ref:`barcodes files<barcodes_file>` whereas if your data are already demultiplexed then Sample names are extracted from file names 
 directly. Do not include spaces in file names. For paired-end data we need to be able to identify which R1 and R2 files go together, and so we require that every read1 file name contains the string ``_R1_`` (*with underscores before and after*), and every R2 file name must match exactly the R1 file except that it has ``_R2_`` in place of ``_R1_``. 
 See the example data for an example. 
 

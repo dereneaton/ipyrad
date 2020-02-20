@@ -1,5 +1,6 @@
 
 .. _faq:  
+
 Frequenty Asked Questions
 =========================
 
@@ -218,7 +219,7 @@ Easiest way to do this is a conda local build and install. Using `bpp` as the ex
     conda build ipyrad/conda.recipe/bpp/
     conda install --use-local bpp
 
-How do I interpret the `distribution of SNPs (var and pis) per locus` in the *_stats.txt output file
+How do I interpret the `distribution of SNPs (var and pis) per locus` in the _stats.txt output file
 ----------------------------------------------------------------------------------------------------
 Here is an example of the first few lines of this block in the stats file:
 
@@ -255,6 +256,7 @@ Why am I getting the 'empty varcounts' error during step 7?
 Occasionally during step 7 you will see this error:
 
 .. code-block::
+
     Exception: empty varcounts array. This could be because no samples                                                                                                    
     passed filtering, or it could be because you have overzealous filtering.                                                                                              
     Check the values for `trim_loci` and make sure you are not trimming the                                                                                               
@@ -295,12 +297,14 @@ then install the old version of llvmlite (and optionally the old versions of pyz
 and finally reinstall ipyrad:
 
 .. code-block:: bash
+
     conda install -c ipyrad ipyrad
     conda install toytree -c eaton-lab
 
 optional:
 
 .. code-block:: bash
+
     conda clean --all
 
 Why am i getting the 'ERROR   R1 and R2 files are not the same length.' during step 1?
@@ -330,6 +334,7 @@ See the previous FAQ answer. It's typical for HPC cluster systems to be configur
 VERY IMPORTANT: This environment variable needs to be set in both .bashrc and .profile so that it is picked up when you run ipyparallel in either the head node of the cluster or on compute nodes.
 
 .. code-block:: bash
+
     $ echo "# Prevent ipyparallel engines from dying in a headless environment" >> ~/.bashrc
     $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.bashrc
     $ echo "export QT_QPA_PLATFORM=offscreen" >> ~/.profile
@@ -373,3 +378,4 @@ results below.
 * McCartney‐Melstad et ak 2019 - `An empirical pipeline for choosing the optimal clustering
 threshold in RADseq studies <https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13029>`__
     Similar in spirit to the Mastretta‐Yanes et al. (2015) paper that everyone currently cites.
+

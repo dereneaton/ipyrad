@@ -40,9 +40,7 @@ already exist. The compressed file size is approximately 1.1GB.
   >>> ipyrad --download SRP021469 example_empirical_data/
 
 
-The `--download` function will print the following output:
-
-.. code:: parsed-literal
+The `--download` function will print the following output::
 
   Fetching project data...
              Run    spots  mates                ScientificName              SampleName
@@ -76,9 +74,7 @@ indicate taxa being assembled.
 
   >>> ipyrad -n pedicularis
 
-This will print the message:
-
-.. code:: parsed-literal
+This will print the message::
 
   New file 'params-pedicularis.txt' created in /home/deren/Documents/ipyrad/sandbox
 
@@ -93,9 +89,8 @@ grouping all our results into a single directory. For this we'll use name
 the project directory "analysis-ipyrad". If this folder doesn't exist then 
 ipyrad will create it. Take note when entering the values below into your 
 params file that they properly correspond to parameters 1 and 4, respectively.
-Use any text editor to edit the params file.
+Use any text editor to edit the params file::
 
-.. code:: parsed-literal
     # Use your text editor to enter the following values:
     # The wildcard (*) tells ipyrad to select all files ending in .gz
     analysis-ipyrad                    ## [1] [project_dir] ...
@@ -103,9 +98,8 @@ Use any text editor to edit the params file.
 
 We'll add a few additional options as well to: filter for adapters (param 16); 
 trim the 3' edge of R1 aligned loci by 5bp (param 26; this is optional, but helps 
-to remove poorly aligned 3' edges); and produce all output formats (param 27).
+to remove poorly aligned 3' edges); and produce all output formats (param 27)::
 
-.. code:: parsed-literal
     # enter the following params as well
     2                                ## [16] [filter_adapters] ...
     0, 5, 0, 0                       ## [26] [trim_loci] ...
@@ -128,8 +122,7 @@ pass it the `-r` argument so that it will print a results summary when finished.
 
     >>> ipyrad -p params-pedicularis.txt -s 1 -r
 
-
-.. code:: parsed-literal
+Shows the current state of the assembly::
 
  -------------------------------------------------------------
   ipyrad [v.0.9.14]
@@ -186,7 +179,7 @@ of the stats values.
     >>> ipyrad -p params-pedicularis.txt -s 234567 -r
 
 
-.. code:: parsed-literal
+Which produces abundant progress messages::
 
  -------------------------------------------------------------
   ipyrad [v.0.9.14]
@@ -263,7 +256,6 @@ of the stats values.
   step 7: ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
 
 
-
 Take a look at the stats summary 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Each assembly that finishes step 7 will create a stats.txt output summary
@@ -276,7 +268,7 @@ sites are in the assembled data.
 
     >>> cat ./analysis-ipyrad/pedicularis_outfiles/pedicularis_stats.txt
 
-.. code:: parsed-literal
+Shows the contents of the stats file::
 
   ## The number of loci caught by each filter.
   ## ipyrad API location: [assembly].stats_dfs.s7_filters
@@ -443,9 +435,6 @@ or more total loci.
   41954_cyathophylloides_SRR1754721     AAAACAGGATGAGTGCATATCTCTCGTTTTAACTACTGCAATGCTAGGTAAATAAAATAGAGACTAAAA
   //                                                               **                              *         |4|
 
-
-
-
 peek at the .phy files
 ~~~~~~~~~~~~~~~~~~~~~~
 This is the concatenated sequence file of all loci in the data set. It is typically
@@ -458,8 +447,7 @@ used in phylogenetic analyses, like in the program *raxml*. This super matrix is
   ## cut -c 1-80 prints only the first 80 characters of the file
   >>> cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.phy
 
-
-.. code:: parsed-literal
+Shows a small piece of the data::
 
   13 2840602
   29154_superba_SRR1754715              TAGGGTGGGTCTCGTTCAAGGTATTCGAACAACAGGGTACCC
@@ -478,7 +466,7 @@ used in phylogenetic analyses, like in the program *raxml*. This super matrix is
 
 
 peek at the .snps.phy file
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 This is similar to the phylip file format, but only variable site columns are 
 included. All SNPs are in the file, in contrast to the .u.snps.phy file, which 
 randomly selects only a single SNP per locus. 
@@ -489,8 +477,7 @@ randomly selects only a single SNP per locus.
     ## cut -c 1-80 prints only the first 80 characters of the file
     >>> cut -c 1-80 analysis-ipyrad/pedicularis_outfiles/pedicularis.snps.phy
 
-
-.. code:: parsed-literal
+Just the snps::
 
   13 203898
   29154_superba_SRR1754715              TCGTGCGTCATYTTSNTTATCCGAYYACTGTGTAAGCCGGGG
@@ -509,7 +496,7 @@ randomly selects only a single SNP per locus.
 
 
 peek at the .vcf.gz file
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
 The VCF output for ipyrad contains the full sequence information for all samples
 as well as the sequencing depth information for all base calls that were made. 
 This file should be easily parsable if users want to extract information or 

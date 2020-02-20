@@ -666,7 +666,7 @@ Affected steps = 7. Example entries to params.txt
 Disk space is cheap, and these are quick to make, so by default we make all
 formats. More are coming (alleles, treemix, migrate-n, finestructure). 
 The short list of available options is below but see 
-:ref:`output formats<full_output_formats>` section for full descriptions of 
+:ref:`output formats<output_formats>` section for full descriptions of 
 the available formats. 
 
 .. code-block:: python

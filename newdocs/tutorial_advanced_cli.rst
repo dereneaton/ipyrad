@@ -15,7 +15,7 @@ and the second is ``reference mapping``, which is a way to leverage information
 from reference genomic data (e.g., full genome, transcriptome, 
 plastome, etc) during assembly. 
 
-.. _branching_workflow:
+.. _branching_assemblies:
 
 Branching Assemblies
 ~~~~~~~~~~~~~~~~~~~~
@@ -120,9 +120,8 @@ open the params file ``params-data1.txt`` and enter the values
 below for parameters 1, 2, and 3. All other parameters can be left at their 
 default values for now. This tells ipyrad that we are going to use the name
 ``iptutorial`` as our project_dir (where output files will be created), and 
-that the input data and barcodes file are located in ``ipsimdata/``.
+that the input data and barcodes file are located in ``ipsimdata/``::
 
-.. code:: parsed-literal
     ## enter these lines into the params-data1.txt file
     ./iptutorial                             ## [1] [project_dir] ...
     ./ipsimdata/rad_example_R1_.fastq.gz     ## [2] [raw_fastq_path] ...
@@ -138,7 +137,7 @@ files in the ``iptutorial/`` directory.
     >>> ipyrad -p params-data1.txt -s 12
 
 
-.. code:: parsed-literal
+.. parsed-literal::
 
  -------------------------------------------------------------
   ipyrad [v.0.9.14]
@@ -167,7 +166,8 @@ since editing it by hand could cause errors in your assembly.
 
     >>> ls ./iptutorial
 
-.. code:: parsed-literal
+.. parsed-literal::
+
     data1_edits/   data1_fastqs/   data1.json
 
 
@@ -195,7 +195,8 @@ and add the reference sequence file.
 
 Then make the following edits to ``params-data2.txt``:
 
-.. code:: parsed-literal
+.. parsed-literal::
+
     reference                                   ## [5] [assembly_method] ...
     ./ipsimdata/rad_example_genome.fa           ## [6] [reference_sequence] ...
 
@@ -383,7 +384,7 @@ including only the 4 samples listed.
     >>> ipyrad -p params-data1.txt -b subdata 1A_0 1B_0 1C_0 1D_0
 
 
-.. code:: parsed-literal
+.. parsed-literal::
 
   loading Assembly: data1
   from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
@@ -398,9 +399,8 @@ If you want to select more than a handful of samples it might be easier
 to instead provide a text file with sample names listed one per line.
 So we made it so you can do that. The format of the file for listing
 sample names is literally just a text file with one sample name per line.
-Here is an example sample names file ``samples_to_keep.txt``
+Here is an example sample names file ``samples_to_keep.txt``::
 
-.. code:: parsed_literal
     1A_0
     1B_0
     1C_0
@@ -412,7 +412,7 @@ And the command to do the branching:
     ## Branch subset of Samples by passing in a file with sample names
     >>> ipyrad -p params-data1.txt -b subdata samples_to_keep.txt
 
-.. code:: parsed-literal
+.. parsed-literal::
 
   loading Assembly: data1
   from saved path: ~/Documents/ipyrad/tests/iptutorial/data1.json
