@@ -310,6 +310,7 @@ invoking the ``-r`` flag.
 
 
 Which produces::
+
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
