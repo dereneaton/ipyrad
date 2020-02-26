@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.43
+------
+**February 26, 2020**
+
+- Fix off by 2 error in minsamp when using reference sequence
+- window extacter working for denovo loci
+- Cleaning up a TON of sphinx warnings from the docs and fixing a bunch of docs issues.
+- fix oops in baba.py (import sys)
+
 0.9.42
 ------
 **February 19, 2020**
