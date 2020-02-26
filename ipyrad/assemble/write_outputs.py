@@ -641,10 +641,15 @@ class Processor(object):
         self.ispair = self.data.ispair
         self.minsamp = self.data.params.min_samples_locus
 
-        # if ref build and excluding ref that -1 to minsamp
+        # Minsamp is calculated _before_ the reference sequence is removed
+        # and so if we want the minsamp param to be honored as it is written
+        # in the params file we need to _add_ 1 to the value, so that when
+        # the ref is excluded the minsamp value will be accurate.
+        # If the ref is _included_ then it counts toward minsample and no
+        # adjustment is necessary.
         if self.isref:
             if self.data.hackersonly.exclude_reference:
-                self.minsamp -= 1
+                self.minsamp += 1
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
