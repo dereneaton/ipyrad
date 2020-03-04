@@ -87,7 +87,7 @@ missing data, but to perform the analysis in such a way as to take the most care
 it. Embrace the uncertainty!
 
 For example, look at what we do with missing data in the PCA analysis tutorial:
-https://ipyrad.readthedocs.io/en/latest/API-analysis/cookbook-pca.html#No-imputation-(None).
+`PCA Imputing Missing Data <https://ipyrad.readthedocs.io/en/latest/API-analysis/cookbook-pca.html#No-imputation-(None)>`__.
 This is the only principled way to deal with missing data. Think about it this way, only
 retaining sites with high sample coverage is BIASING toward conserved regions, this is
 going to be highly detrimental to downstream analysis.
