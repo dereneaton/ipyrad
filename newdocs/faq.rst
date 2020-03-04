@@ -78,6 +78,22 @@ Don't forget to stop the ipcluster when you are done.
 
     ipcluster stop
 
+"What do I do about all this missing data?"
+-------------------------------------------
+Here's what **not** to do: Don't try to treat RADSeq data as if it were a really big
+Sanger dataset. This is a LOW-THROUGHPUT mindset. You have to be bigger than the
+missing data. Rise above it. The best thing is not to freak out and try to remove all
+missing data, but to perform the analysis in such a way as to take the most care with
+it. Embrace the uncertainty!
+
+For example, look at what we do with missing data in the PCA analysis tutorial:
+`PCA Imputing Missing Data <https://ipyrad.readthedocs.io/en/latest/API-analysis/cookbook-pca.html#No-imputation-(None)>`__.
+This is the only principled way to deal with missing data. Think about it this way, only
+retaining sites with high sample coverage is BIASING toward conserved regions, this is
+going to be highly detrimental to downstream analysis.
+
+Overfiltering on `min_samples_locus` is a crime against your data!
+
 Running ipyrad on HPC that restricts write-access to /home on compute nodes
 ---------------------------------------------------------------------------
 
