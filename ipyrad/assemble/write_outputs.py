@@ -238,9 +238,18 @@ class Step7:
         for outf in testformats:
 
             # if it requires a pop file and they don't have one then skip
-            # and print a warning:
+            # and write the warning to the expected file, to prevent an
+            # annoying message every time if you don't have a pops file, but
+            # still to be transparent about skipping some files. This caused
+            # me some real amount of pain, like "why isnt' the treemix file
+            # being created, fudkckkk!!!1" And then like 10 minutes later, oh
+            # yeah, no pops file, fml. 3/2020 iao.
             if (outf in ("t", "m")) and (not self.data.populations):
-                # print(POPULATION_REQUIRED.format(outf), file=sys.stderr)
+                outfile = os.path.join(
+                            self.data.dirs.outfiles,
+                            self.data.name + OUT_SUFFIX[outf][0])
+                with open(outfile, 'w') as out:
+                    out.write(POPULATION_REQUIRED.format(outf))
 
                 # remove format from the set
                 self.formats.discard(outf)
@@ -532,7 +541,12 @@ class Step7:
         # write stats
         for job in rasyncs:
             if not rasyncs[job].successful():
-                rasyncs[job].get()
+                try:
+                    rasyncs[job].get()
+                except Exception as inst:
+                    # Allow one file to fail without breaking all step 7
+                    # but print out the error and some info
+                    print(inst)
 
 
     def remote_fill_depths(self):
@@ -1134,8 +1148,14 @@ def locus_right_trim(seqs, minsamp, mincovs):
 ###############################################################
 
 def convert_outputs(data, oformat):
-    Converter(data).run(oformat)
-
+    try:
+        Converter(data).run(oformat)
+    except Exception as inst:
+        # Allow one file to fail without breaking all step 7
+        raise IPyradError("Error creating outfile: {}\n{}\t{}".format(
+                                                            OUT_SUFFIX[oformat],
+                                                            type(inst).__name__),
+                                                            inst)
 
 ###############################################################
 
@@ -1180,6 +1200,9 @@ class Converter:
 
         if oformat == "g":
             self.write_geno()
+
+        if oformat == "t":
+            self.write_treemix()
 
 
     def write_phy(self):
@@ -1569,18 +1592,23 @@ class Converter:
 
 
     def write_treemix(self):
-        tmx = ipyrad.analysis.treemix(
+        # We pass in 'binary="ls"' here to trick the constructor into not
+        # raising an error if treemix isn't installed. HAX!
+        import ipyrad.analysis as ipa
+        tmx = ipa.treemix(
             data=self.data.snps_database,
             name=self.data.name,
-            workdir=self.data.outfiles,
+            workdir=self.data.dirs.outfiles,
             imap={i: j[1] for (i, j) in self.data.populations.items()},
             minmap={i: j[0] for (i, j) in self.data.populations.items()},
+            binary="ls",
             )
         tmx.write_treemix_file()
 
 
     def write_migrate(self):
-        mig = ipyrad.analysis.migrate_n(
+        import ipyrad.analysis as ipa
+        mig = ipa.migrate_n(
             data=self.data.outfiles.loci,
             name=self.data.name,
             workdir=self.data.dirs.outfiles,
@@ -2675,6 +2703,7 @@ following sample names are in the pop assignments but not in this Assembly:
 """
 POPULATION_REQUIRED = """\
 Warning: Skipping output format '{}'. Requires population assignments.\
+
 """
 NEXHEADER = """#nexus
 begin data;
