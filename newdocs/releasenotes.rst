@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.44
+------
+**March 04, 2020**
+
+- Fix the treemix output so it actually generates. Took WAYYYY longer than I thought it would.
+- Update faq.rst
+- Update faq.rst
+
 0.9.43
 ------
 **February 26, 2020**
