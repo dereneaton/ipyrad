@@ -139,7 +139,7 @@ class WindowExtracter(object):
             self.quiet = True
 
             # set generic name
-            self.name = (name if name else "concatenated")
+            self.name = 'concat'  # (name if name else "concatenated")
 
             # store chunks
             blocks = []
@@ -150,11 +150,17 @@ class WindowExtracter(object):
             for scaff in self.scaffold_idx:
                 self._scaffold_idx = scaff
                 self._single_prep()
+
+                # collect data from this scaff/loc
                 if self.seqarr.size:
                     blocks.append(self.seqarr)
                     names.append(self._names)
                     pnames.append(self._pnames)
                     stats.append(self.stats)
+
+                # debugging
+                else:
+                    print("skipping {}".format(scaff))
 
             # if no data passed filtering for any loci then bail out
             if not stats:
@@ -165,6 +171,9 @@ class WindowExtracter(object):
             self._stats = pd.concat(stats)
             self.names = sorted(set(itertools.chain(*names)))
             self.pnames = sorted(set(itertools.chain(*pnames)))            
+
+            # TODO: print warning if some samples were dropped from imap.
+            # ...
 
             # fill concat seqarr allowing for missing taxa in each block
             nsites = self._stats.sites.postfilter.sum()
@@ -196,7 +205,7 @@ class WindowExtracter(object):
                 "samples": [len(self.names)],
             })
             self.stats = totals
-            self.quiet = quiet
+            self.quiet = 0  # quiet
 
         else:
             raise IPyradError("scaffold_idx entry not recognized.")
@@ -282,24 +291,6 @@ class WindowExtracter(object):
             self.name = name
 
 
-    def _extract_phymap_df(self):
-        """
-        This extracts the phymap DataFrame.
-        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
-        """
-        with h5py.File(self.data, 'r') as io5:
-            colnames = io5["phymap"].attrs["columns"]
-
-            # mask to select this scaff
-            mask = io5["phymap"][:, 0] == self._scaffold_idx + 1
-
-            # load dataframe of this scaffold
-            self.phymap = pd.DataFrame(
-                data=io5["phymap"][:][mask],
-                columns=[i.decode() for i in colnames],
-            )
-
-
     def _init_stats(self):
         # stats table
         scaf = self.scaffold_table.loc[self._scaffold_idx, "scaffold_name"]
@@ -371,9 +362,10 @@ class WindowExtracter(object):
         # output prefix name
         self._get_name(self._name)
 
-        # set parameters as ints or floats (only needs to be done once.)
-        if not self._filters_checked:
-            self._set_filters_type()
+        # set parameters as ints or floats 
+        # only needs to be done once unless consensus reduce, then always.
+        if self.consensus_reduce or (not self._filters_checked):
+            self._set_filters_type()           
 
         # stats is overwritten if fillseqar runs
         self.stats = "No stats because no scaffolds selected."
@@ -419,6 +411,24 @@ class WindowExtracter(object):
             self._calc_filtered_stats()
 
 
+    def _extract_phymap_df(self):
+        """
+        This extracts the phymap DataFrame.
+        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
+        """
+        with h5py.File(self.data, 'r') as io5:
+            colnames = io5["phymap"].attrs["columns"]
+
+            # mask to select this scaff
+            mask = io5["phymap"][:, 0] == self._scaffold_idx + 1
+
+            # load dataframe of this scaffold
+            self.phymap = pd.DataFrame(
+                data=io5["phymap"][:][mask],
+                columns=[i.decode() for i in colnames],
+            )
+
+
     def _extract_seqarr(self):
         """
         Extracts seqarr of the full selected window and computes stats on
@@ -443,9 +453,9 @@ class WindowExtracter(object):
         with h5py.File(self.data, 'r') as io5:
             self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
 
-        # is there any data at all?
-        if not self.seqarr.size:
-            return
+        # # is there any data at all?
+        # if not self.seqarr.size:
+        #     return
 
 
     def _calc_initial_stats(self):
@@ -464,6 +474,8 @@ class WindowExtracter(object):
         """
         # skip if no imap
         if (not self.imap) or (not self.consensus_reduce):
+            self.wnames = self.names
+            self.wpnames = self.pnames
             return
 
         # empty array of shape imap groups
@@ -485,15 +497,15 @@ class WindowExtracter(object):
             iidx = np.where(inames == ikey)[0][0]
             iarr[iidx] = cons
 
-        # save as new data
+        # save as new data --------- (TODO HERE) -------------
         iarr[iarr == 0] = 78
         self.seqarr = iarr
-        self.names = inames
-        self._longname = 1 + max([len(i) for i in self.names])
-        self.pnames = np.array([
+        self.wnames = inames
+        self._longname = 1 + max([len(i) for i in self.wnames])
+        self.wpnames = np.array([
             "{}{}".format(name, " " * (self._longname - len(name)))
-            for name in self.names
-        ])               
+            for name in self.wnames
+        ])
 
 
     def _filter_seqarr(self):
@@ -517,7 +529,7 @@ class WindowExtracter(object):
 
                 # imap could drop sites in consens if minmap is (1,0,1,1,0)
                 else:
-                    sidxs = np.where(self.names == ikey)[0][0]
+                    sidxs = np.where(self.wnames == ikey)[0][0]
                     subarr = self.seqarr[sidxs, :]
                     drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
@@ -528,8 +540,8 @@ class WindowExtracter(object):
         # drop samples that are only Ns after removing lowcov sites
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
-        self._names = self.names[keep]
-        self._pnames = self.pnames[keep]
+        self._names = self.wnames[keep]
+        self._pnames = self.wpnames[keep]
 
 
     def _calc_filtered_stats(self):
