@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.45
+------
+**March 08, 2020**
+
+- Allow more flexibility in sorted fastqs directory (DO NOT DELETE if it points to projectdir + _fastqs)
+- window extracter fix for multiple loci w/ reduce
+
 0.9.44
 ------
 **March 04, 2020**
