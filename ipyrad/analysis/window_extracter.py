@@ -27,6 +27,8 @@ from ipyrad.assemble.write_outputs import NEXHEADER
     'format' argument in .run() to write nexus format.
     To concatenate data from multiple scaffolds
     you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
+
+    - If imap but no minmap do sites with all Ns still get filtered?
 """
 
 
@@ -101,8 +103,8 @@ class WindowExtracter(object):
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
-        self.minmap = minmap
         self.imap = imap
+        self.minmap = (minmap if minmap else {i: 1 for i in imap})
         self.consensus_reduce = consensus_reduce
         self.quiet = quiet
 
@@ -251,6 +253,7 @@ class WindowExtracter(object):
         # re-set population filters as integers
         if self.minmap and self.imap:
             for ikey, ivals in self.imap.items():
+                
                 # get int value entered by user
                 imincov = self.minmap[ikey]
 
@@ -485,6 +488,8 @@ class WindowExtracter(object):
         # iterate over imap groups
         for ikey, ivals in self.imap.items():
 
+            # TODO: SHOULD MINMAP FILTER APPLY HERE??
+
             # get subarray for this group
             match = [np.where(self.names == i)[0] for i in ivals]
             sidxs = [i[0] for i in match if i.size]        
@@ -513,10 +518,10 @@ class WindowExtracter(object):
         Apply filters to remove sites from alignment and to drop taxa if 
         they end up having all Ns.
         """
-        # drop sites that are too many Ns given (global) mincov
+        # drop SITES that are too many Ns given (global) mincov
         drop = np.sum(self.seqarr != 78, axis=0) < self._mincov
 
-        # drop sites that are too many Ns in minmap pops
+        # drop SITES that are too many Ns in minmap pops
         if self._minmap and self.imap:
             for ikey, ivals in self.imap.items():
 
@@ -537,7 +542,7 @@ class WindowExtracter(object):
         keep = np.invert(drop)        
         self.seqarr = self.seqarr[:, keep]
 
-        # drop samples that are only Ns after removing lowcov sites
+        # drop SAMPLES that are only Ns after removing lowcov sites
         keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
         self._names = self.wnames[keep]
@@ -610,7 +615,7 @@ class WindowExtracter(object):
         """
         # build phy
         phy = []
-        for idx, name in enumerate(self.pnames):
+        for idx, name in enumerate(self._pnames):
             seq = bytes(self.seqarr[idx]).decode()
             phy.append("{} {}".format(name, seq))
 
@@ -634,7 +639,7 @@ class WindowExtracter(object):
         for block in range(0, self.seqarr.shape[1], 100):           
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
-            for idx, name in enumerate(self.pnames):  
+            for idx, name in enumerate(self._pnames):  
 
                 # py2/3 compat --> b"TGCGGG..."
                 seqdat = self.seqarr[idx, block:stop]
