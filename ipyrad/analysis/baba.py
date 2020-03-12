@@ -28,16 +28,16 @@ import time
 import sys
 import os
 
-# import tested at init
+# import tested at Sim.__init__
 try: 
     import msprime as ms
 except ImportError:
     pass
 _MSPRIME_IMPORT= """
-This ipyrad analysis tool requires 
+The baba.SIM() function requires `msprime`.
 You can install it with the following command:
 
-   conda install toytree -c eaton-lab
+   conda install msprime -c conda-forge
 """
 
 try:
@@ -109,8 +109,6 @@ class Baba(object):
             raise ImportError(_TOYTREE_IMPORT)
         if not sys.modules.get("toyplot"):
             raise ImportError(_TOYPLOT_IMPORT)
-        if not sys.modules.get("msprime"):
-            raise ImportError(_MSPRIME_IMPORT)
 
         ## parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
@@ -916,6 +914,8 @@ def _get_signif_5(arr, nboots):
 
 class Sim(object):
     def __init__(self, names, sims, nreps, debug):
+        if not sys.modules.get("msprime"):
+            raise ImportError(_MSPRIME_IMPORT)
         self.names = names
         self.sims = sims
         self.nreps = nreps
