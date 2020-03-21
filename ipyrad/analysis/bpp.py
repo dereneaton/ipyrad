@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from .utils import Params
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.utils import IPyradError, DUCT
 
 try:
     import toytree
@@ -35,6 +35,7 @@ conda install toytree -c eaton-lab
 # TODO: REPLACE DUCT
 # TODO: REPLACE TOYTREE USAGE
 # 
+
 
 MISSING_IMPORTS = """
 You are missing required packages to use ipa.bpp().
@@ -189,8 +190,8 @@ class Bpp(object):
             "burnin": 1000,
             "nsample": 10000,
             "sampfreq": 2,
-            "thetaprior": (2, 2000),
-            "tauprior": (2, 2000, 1),
+            "thetaprior": (3, 0.002, 1),
+            "tauprior": (3, 0.002),
             "usedata": 1,
             "cleandata": 0,
             "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
@@ -405,49 +406,64 @@ class Bpp(object):
             whether to print info to stderr when finished.
         """
 
-        ## remove any old jobs with this same job name
+        # remove any old jobs with this same job name
         self._name = self.name
-        oldjobs = glob.glob(os.path.join(self.workdir, self._name+"*.ctl.txt"))
+        oldjobs = glob.glob(
+            os.path.join(self.workdir, self._name + "*.ctl.txt"))
+
         for job in oldjobs:
             os.remove(job)
 
-        ## check params types
-        ## ...
+        # check params types
+        # ...
 
-        ## write tmp files for the job
+        # write tmp files for the job
         self._write_seqfile(randomize_order=randomize_order)
-        self._write_mapfile()#name=True)
+        self._write_mapfile()  # name=True)
         self._write_ctlfile()
 
+        # report to user
         if not quiet:
-            sys.stderr.write("input files created for job {} ({} loci)\n"\
-                             .format(self._name, self._nloci))
+            sys.stderr.write(
+                "input files created for job {} ({} loci)\n"
+                .format(self._name, self._nloci)
+            )
 
 
     def _write_mapfile(self):
-        ## write the imap file:
         self.mapfile = os.path.realpath(
-            os.path.join(self.workdir, self._name+".imapfile.txt"))
+            os.path.join(
+                self.workdir, self._name + ".imapfile.txt"
+            )
+        )
         with open(self.mapfile, 'w') as mapfile:
-            data = ["{:<30} {}".format(val, key) for key \
-                    in sorted(self.imap) for val in self.imap[key]]
+            data = [
+                "{:<30} {}".format(val, key) for key in 
+                sorted(self.imap) for val in self.imap[key]
+            ]
             mapfile.write("\n".join(data))
 
 
-
     def _write_seqfile(self, randomize_order=False):
+        """
 
-        ## handles
+        """
+        # set path to output seq data file
         self.seqfile = os.path.realpath(
-            os.path.join(self.workdir, self._name+".seqfile.txt"))
+            os.path.join(
+                self.workdir, self._name + ".seqfile.txt"
+            )
+        )
         seqfile = open(self.seqfile, 'w')
-        with open(self.data) as infile:
+
+        # read the .loci file and parse sequences into a random list
+        with open(self.data, 'r') as infile:
             loci = infile.read().strip().split("|\n")
             nloci = len(loci)
             if randomize_order:
                 np.random.shuffle(loci)
 
-        ## all samples
+        # get all samples from the imap
         samples = []
         for mapl in self.imap.values():
             if isinstance(mapl, list):
@@ -455,42 +471,49 @@ class Bpp(object):
             else:
                 samples.append(mapl)
 
-        ## iterate over loci, printing to outfile
+        # iterate over loci, printing to outfile
         nkept = 0
         for iloc in range(nloci):
             lines = loci[iloc].split("//")[0].split()
             names = lines[::2]
-            names = ["^"+i for i in names]
+            names = ["^" + i for i in names]
             seqs = [list(i) for i in lines[1::2]]
             seqlen = len(seqs[0])
-            ## whether to skip this locus based on filters below
+            # whether to skip this locus based on filters below
             skip = 0
 
-            ## if minmap filter for sample coverage
+            # if minmap filter for sample coverage
             if self.filters.minmap:
                 covd = {}
                 for group, vals in self.imap.items():
-                    covd[group] = sum(["^"+i in names for i in vals])
-                ## check that coverage is good enough
-                if not all([covd[group] >= self.filters.minmap[group] for group \
-                            in self.filters.minmap]):
+                    covd[group] = sum(["^" + i in names for i in vals])
+
+                # check that coverage is good enough
+                if not all(
+                    [covd[group] >= self.filters.minmap[group] for 
+                     group in self.filters.minmap]
+                    ):
                     skip = 1
 
-            ## too many loci?
+            # too many loci?
             if (not skip) and (self.filters.maxloci):
                 if nkept >= self.filters.maxloci:
                     skip = 1
 
-            ## if minsnps filter for snps
+            # if minsnps then count nsnps and filter loci
             if (not skip) and (self.filters.minsnps):
                 npis = 0
                 arr = np.array(seqs)
-                arr = np.zeros((arr.shape[0]*2, arr.shape[1]), dtype="S1")
+                arr = np.zeros((arr.shape[0] * 2, arr.shape[1]), dtype="S1")
+
+                # expand ambiguities
                 for row in range(len(seqs)):
                     fillrow = 2 * row
                     arr[fillrow] = [DUCT[i][0] for i in seqs[row]]
-                    arr[fillrow+1] = [DUCT[i][1] for i in seqs[row]]
+                    arr[fillrow + 1] = [DUCT[i][1] for i in seqs[row]]
 
+                # count SNPs
+                arr = arr.astype(str)
                 for col in range(arr.shape[1]):
                     bases = arr[:, col]
                     bases = bases[bases != "N"]
@@ -503,32 +526,36 @@ class Bpp(object):
                 if npis < self.filters.minsnps:
                     skip = 1
 
-            ## build locus as a string
+            # build locus as a string
             if not skip:
-                ## convert to phylip with caret starter and replace - with N.
-                data = ["{:<30} {}".format(i, "".join(k).replace("-", "N")) for \
-                    (i, k) in zip(names, seqs) if i[1:] in samples]
 
-                ## if not empty, write to the file
+                # convert to phylip with caret starter and replace - with N.
+                data = [
+                    "{:<30} {}".format(i, "".join(k).replace("-", "N")) for
+                    (i, k) in zip(names, seqs) if i[1:] in samples
+                ]
+
+                # if not empty, write to the file
                 if data:
-                    seqfile.write("{} {}\n\n{}\n\n"\
-                               .format(len(data), seqlen, "\n".join(data)))
+                    seqfile.write(
+                        "{} {}\n\n{}\n\n"
+                        .format(len(data), seqlen, "\n".join(data))
+                    )
                     nkept += 1
 
-        ## close up shop
+        # close up shop
         self._nloci = nkept
         del loci
         seqfile.close()    
 
 
-
     def _write_ctlfile(self):
         """ write outfile with any args in argdict """
 
-        ## A string to store ctl info
+        # A string to store ctl info
         ctl = []
 
-        ## write the top header info
+        # write the top header info
         ctl.append("seed = {}".format(self.params.seed))
         ctl.append("seqfile = {}".format(self.seqfile))
         ctl.append("Imapfile = {}".format(self.mapfile))
@@ -544,46 +571,59 @@ class Bpp(object):
         ctl.append("mcmcfile = {}".format(mcmcfile))
         ctl.append("outfile = {}".format(outfile))
 
-        ## number of loci (checks that seq file exists and parses from there)
+        # number of loci (checks that seq file exists and parses from there)
         ctl.append("nloci = {}".format(self._nloci))
         ctl.append("usedata = {}".format(self.params.usedata))
         ctl.append("cleandata = {}".format(self.params.cleandata))
 
-        ## infer species tree
+        # infer species tree
         if self.params.infer_sptree:
-            ctl.append("speciestree = 1 0.4 0.2 0.1")
+            ctl.append("speciestree = 1")  # 0.4 0.2 0.1")
         else:
             ctl.append("speciestree = 0")
 
-        ## infer delimitation (with algorithm 1 by default)
-        ctl.append("speciesdelimitation = {} {} {}"\
-                   .format(self.params.infer_delimit, 
-                           self.params.delimit_alg[0],
-                           " ".join([str(i) for i in self.params.delimit_alg[1:]]) 
-                           )
-                   )
-        ## get tree values
+        # infer delimitation (with algorithm 1 by default)
+        ctl.append(
+            "speciesdelimitation = {} {} {}"
+            .format(
+                self.params.infer_delimit, 
+                self.params.delimit_alg[0],
+                " ".join([str(i) for i in self.params.delimit_alg[1:]]) 
+            )
+        )
+
+        # get tree values
         nspecies = str(len(self.imap))
         species = " ".join(sorted(self.imap))
         ninds = " ".join([str(len(self.imap[i])) for i in sorted(self.imap)])
-        # self.tree.write(format=9)
-        ctl.append(SPECIESTREE.format(nspecies, species, ninds, self.tree.write(None, 9)))
 
-        ## priors
-        ctl.append("thetaprior = {} {}".format(*self.params.thetaprior))
-        ctl.append("tauprior = {} {} {}".format(*self.params.tauprior))
+        # species&tree = 3 1 2 3 \n 4 4 4 \n (3 (1, 2));
+        ctl.append(
+            SPECIESTREE.format(
+                nspecies, species, ninds, self.tree.write(None, 9))
+        )
 
-        ## other values, fixed for now
-        ctl.append("finetune = 1: {}".format(" ".join([str(i) for i in self.params.finetune])))
-        #CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
+        # thetaprior = 3 0.002 E
+        ctl.append("thetaprior = {} {} E".format(*self.params.thetaprior))
+
+        # tauprio = 3 0.002
+        ctl.append("tauprior = {} {}".format(*self.params.tauprior))
+
+        # other values, fixed for now
+        ctl.append(
+            "finetune = 1: {}"
+            .format(" ".join([str(i) for i in self.params.finetune]))
+        )
+
+        # CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
         ctl.append("print = 1 0 0 0")
         ctl.append("burnin = {}".format(self.params.burnin))
         ctl.append("sampfreq = {}".format(self.params.sampfreq))
         ctl.append("nsample = {}".format(self.params.nsample))
 
-        ## write out the ctl file
+        # write out the ctl file
         ctlhandle = os.path.realpath(
-                "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
+            "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
         # if isinstance(rep, int):
         #     ctlhandle = os.path.realpath(
         #         "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep))
@@ -602,7 +642,7 @@ class Bpp(object):
         Returns a copy of the bpp object with the same parameter settings
         but with the files.mcmcfiles and files.outfiles attributes cleared, 
         and with a new 'name' attribute. 
-        
+
         Parameters
         ----------
         name (str):
@@ -611,31 +651,32 @@ class Bpp(object):
 
         """
 
-        ## make deepcopy of self.__dict__ but do not copy async objects
+        # make deepcopy of self.__dict__ but do not copy async objects
         subdict = {i: j for i, j in self.__dict__.items() if i != "asyncs"}
         newdict = copy.deepcopy(subdict)
 
-        ## make back into a bpp object
+        # make back into a bpp object
         if name == self.name:
             raise Exception(
                 "new object must have a different 'name' than its parent")
+
         newobj = Bpp(
             name=name,
             data=newdict["files"].data,
             workdir=newdict["workdir"],
             guidetree=newdict["tree"].write(),
-            imap={i:j for i, j in newdict["imap"].items()},
+            imap={i: j for i, j in newdict["imap"].items()},
             copied=True,
             load_existing_results=load_existing_results,
             )
 
-        ## update special dict attributes but not files
+        # update special dict attributes but not files
         for key, val in newobj.params.__dict__.items():
             newobj.params.__setattr__(key, self.params.__getattribute__(key))
         for key, val in newobj.filters.__dict__.items():
             newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
 
-        ## new object must have a different name than it's parent
+        # new object must have a different name than it's parent
         return newobj
 
 
@@ -683,7 +724,8 @@ def _call_bpp(binary, ctlfile, is_alg00):
     # when the job finishes so other reps won't write over it.
     # Kludge due to bpp writing forcing the file to $HOME.
     if is_alg00:
-        default_figtree_path = os.path.join(os.path.expanduser("~"), "FigTree.tre")
+        default_figtree_path = os.path.join(
+            os.path.expanduser("~"), "FigTree.tre")
         new_figtree_path = ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre"
         try:
             if os.path.exists(default_figtree_path):

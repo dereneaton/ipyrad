@@ -14,13 +14,13 @@ import types
 import itertools
 from collections import OrderedDict
 
-#import scipy.stats as st  ## used for dfoil
+# import scipy.stats as st  ## used for dfoil
 import pandas as pd
 import numpy as np
 import numba
 import h5py
 
-## ipyrad tools
+# ipyrad tools
 from ipyrad.analysis.utils import Params, progressbar
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.write_outputs import reftrick
@@ -564,7 +564,6 @@ def batch(baba, ipyclient=None):
 
     # store instead of return...
     self.results_table, self.results_boots
-
 
 
 
