@@ -92,9 +92,6 @@ command-line program ``sed`` here to substitute in the new values.
     sed -i '/\[3] /c\ipsimdata/rad_example_barcodes.txt  ## [3] ' params-demux1.txt
 
 
-.. parsed-literal::
-
-    
 
 .. code:: python
 
@@ -201,9 +198,6 @@ for each Sample in step 2.
     sed -i '/\[3] /c\ipsimdata/rad_example_barcodes.txt  ## [3] ' params-lane2raws.txt
 
 
-.. parsed-literal::
-
-    
 
 .. code:: python
 

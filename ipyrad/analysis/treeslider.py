@@ -261,7 +261,7 @@ class TreeSlider(object):
 
     def _init_scaffold_table(self):
         "get chromosome lengths from the database"
-        with h5py.File(self.data) as io5:
+        with h5py.File(self.data, 'r') as io5:
 
             # parse formatting from db
             self._pnames = np.array([
@@ -345,7 +345,7 @@ class TreeSlider(object):
 
     def _parse_scaffold_phymap(self, scaffold_idx):
         "scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table"
-        with h5py.File(self.data) as io5:
+        with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
 
             # mask to select this scaff

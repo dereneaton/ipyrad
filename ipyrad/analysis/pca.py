@@ -142,14 +142,15 @@ class PCA(object):
         if self.data.endswith((".vcf", ".vcf.gz")):
             if not ld_block_size:
                 self.ld_block_size = 20000
-                if not self.quiet: print(_IMPORT_VCF_INFO.format(self.ld_block_size))
+                if not self.quiet: 
+                    print(_IMPORT_VCF_INFO.format(self.ld_block_size))
 
             converter = vcf_to_hdf5(
                 name=data.split("/")[-1].split(".vcf")[0],
                 data=self.data,
                 ld_block_size=self.ld_block_size,
-		quiet=True,
-           )
+                quiet=True,
+            )
             # run the converter
             converter.run()
             # Set data to the new hdf5 file
@@ -423,7 +424,13 @@ class PCA(object):
                 irev[val] = pop
 
         # the max number of pops until color cycle repeats
-        cycle = min(cycle, len(self.imap))
+        # If the passed in number of colors is big enough to cover
+        # the number of pops then set cycle to len(colors)
+        # If colors == None this first `if` falls through (lazy evaluation)
+        if colors and len(colors) >= len(self.imap):
+            cycle = len(colors)
+        else:
+            cycle = min(cycle, len(self.imap))
 
         # get color list repeating in cycles of cycle
         if not colors:

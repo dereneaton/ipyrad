@@ -326,12 +326,12 @@ class Params(object):
             # allow fuzzy name match
             fullbar = glob.glob(os.path.realpath(os.path.expanduser(value)))
             if not fullbar:
-                raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
+                raise IPyradError(BARCODE_NOT_FOUND.format(value))
 
             # file must exist
             fullbar = fullbar[0]
             if not os.path.exists(fullbar):
-                raise IPyradError(BARCODE_NOT_FOUND.format(fullbar))
+                raise IPyradError(BARCODE_NOT_FOUND.format(value))
 
             # barcodes need to be re-parsed if hackers merge option changes
             self._barcodes_path = fullbar
@@ -826,7 +826,9 @@ You entered: {}
 BARCODE_NOT_FOUND = """\
 Error: barcodes file not found. This must be an absolute path
 (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory
-where you're running ipyrad (./data/data_barcodes.txt). You entered:
+where you're running ipyrad (./data/data_barcodes.txt). The file you entered
+doesn't exist, check your path:
+
 {}
 """
 

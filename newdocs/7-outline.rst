@@ -216,7 +216,7 @@ Step7 applies filters to the final alignments and saves the final data in a
 number of possible :ref:`output formats<full_output_formats>`. This step is most 
 often repeated at several different settings for the parameter 
 :ref:`min_samples_locus` to create different assemblies with different 
-proportions of missing data (see branching_workflow_). 
+proportions of missing data (see :ref:`branching_workflow`). 
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step7:   

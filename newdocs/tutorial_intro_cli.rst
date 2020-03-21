@@ -45,7 +45,8 @@ it contains many different files representing different test data sets.
     >>> ls ipsimdata/
 
 
-.. parsed-literal::
+Which will show::
+
     gbs_example_barcodes.txt               pairgbs_example_barcodes.txt
     gbs_example_genome.fa                  pairgbs_example_R1_.fastq.gz
     gbs_example_R1_.fastq.gz               pairgbs_example_R2_.fastq.gz
@@ -308,7 +309,8 @@ invoking the ``-r`` flag.
     >>> ipyrad -p params-iptest.txt -r
 
 
-.. parsed-literal::
+Which produces::
+
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw
@@ -386,7 +388,8 @@ handy stats tracked for this assembly.
     ## View the output of step 2
     >>> ls iptest_edits/
 
-.. parsed-literal::                                                                                                                                  
+Will show these files::                                                                                                                                  
+
     1A_0_R1_.fastq       1C_0_R1_.fastq       2E_0_R1_.fastq       2G_0_R1_.fastq       3I_0_R1_.fastq       3K_0_R1_.fastq       s2_rawedit_stats.txt
     1B_0_R1_.fastq       1D_0_R1_.fastq       2F_0_R1_.fastq       2H_0_R1_.fastq       3J_0_R1_.fastq       3L_0_R1_.fastq
 
@@ -396,7 +399,8 @@ handy stats tracked for this assembly.
     ## after filtering.
     >>> ipyrad -p params-iptest.txt -r
 
-.. parsed-literal::
+Shows the current state of the assembly::
+
     Summary stats of Assembly iptest
     ------------------------------------------------
           state  reads_raw  reads_passed_filter
@@ -875,6 +879,7 @@ per sample, how many loci were shared among some number of samples, and how
 much variation is present in the data. Check out the results file.
 
 .. code-block:: bash
+
     ## The `less` command lets you easily view large files
     ## in the terminal. The stats output is quite long, so if
     ## you used `cat` here instead of less the results would
@@ -968,7 +973,8 @@ for more information.
 
     >>> less iptest_outfiles/iptest.loci
 
-.. parsed-literal::
+::
+
   1A_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
   1B_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATCCCCGGTAGACATC
   1C_0     GGTGGGCAGTAGTCTCGCGGATGATCTAGAAACTTCATACGTTGTATAAGTGGAACGGAGGATACCCTGGGCATACCCGGTAGACATC

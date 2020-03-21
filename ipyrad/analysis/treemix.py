@@ -143,9 +143,10 @@ class Treemix(object):
         self.snps = ext.subsample_snps(seed)
         self.names = ext.names
         self.nsites = self.snps.shape[1]
+        self.pops = self.imap.keys()
         self.sidxs = {
-            i: [self.names.index(i) for i in self.imap[i]] 
-            for i in self.imap
+            pop: [self.names.index(i) for i in self.imap[pop]]
+            for pop in self.pops
         }
 
         # make workdir if it does not exist
@@ -215,7 +216,7 @@ class Treemix(object):
         return " ".join(self._command_list)
 
 
-    def write_input_file(self, quiet=False):
+    def write_treemix_file(self, quiet=False):
         """
         Write genos to treemix gzipped format:
         A   B   C   D
@@ -337,7 +338,7 @@ class Treemix(object):
     def run(self, quiet=True):
 
         # call command
-        self.write_input_file(quiet=True)
+        self.write_treemix_file(quiet=True)
 
         # call treemix and catch root errors
         try:

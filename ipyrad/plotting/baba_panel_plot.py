@@ -8,11 +8,31 @@ a panel plot function for baba results
 from __future__ import print_function
 
 import numpy as np
-import toyplot
-import toytree 
 import itertools
 
 # pylint: disable=W0212
+
+# import tested at call time
+try:
+    import toytree
+except ImportError:
+    pass
+_TOYTREE_IMPORT = """
+This ipyrad analysis tool requires 
+You can install it with the following command:
+
+   conda install toytree -c eaton-lab
+"""
+try:
+    import toyplot
+except ImportError:
+    pass
+_TOYPLOT_IMPORT = """
+This ipyrad analysis tool requires the toyplot package.
+You can install it with the following command:
+
+   conda install toyplot -c eaton-lab
+"""
 
 ## color palette
 COLORS = {
@@ -21,7 +41,6 @@ COLORS = {
     "p3": toyplot.color.near_black, 
     "p4": toyplot.color.Palette()[-1],
 }
-
 
 
 ## the main function.
@@ -41,6 +60,11 @@ def baba_panel_plot(
     """
     signature...
     """
+    # check external imports
+    if not sys.modules.get("toytree"):
+        raise ImportError(_TOYTREE_IMPORT)
+    if not sys.modules.get("toyplot"):
+        raise ImportError(_TOYPLOT_IMPORT)
 
     ## create Panel plot object and set height & width
     bootsarr = np.array(boots)
@@ -66,8 +90,6 @@ def baba_panel_plot(
     if isinstance(boots, np.ndarray):
         panel.panel_results(axes)
     return canvas, axes, panel
-
-
 
 
 class Panel(object):

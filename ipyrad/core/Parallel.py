@@ -324,11 +324,6 @@ class Parallel(object):
                 "{}Message: {}: {}".format(
                     self.spacer, inst.args[0], inst.args[1])
             ]
-            if not ip.__interactive__:
-                msg.append(
-                    "{}Use debug flag (-d) for full code traceback."
-                    .format(self.spacer)
-                )
             print("\n" + "\n".join(msg))
             iptrace = inst.traceback
 

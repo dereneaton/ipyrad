@@ -375,7 +375,7 @@ matter how you re-root the tree.
 
     The code below should be run in R to produce a tree plot
 
-.. code:: python
+.. code::
     
     ## load ape
     > library(ape)

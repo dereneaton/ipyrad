@@ -129,7 +129,7 @@ class Step7:
             _outdir = os.path.join(
                 self.data.params.project_dir,
                 "{}_outfiles".format(self.data.name),
-                )
+            )
             _outdir = os.path.realpath(_outdir)
             if os.path.exists(os.path.join(_outdir, 
                 "{}.loci".format(self.data.name),
@@ -162,7 +162,7 @@ class Step7:
         self.data.dirs.outfiles = os.path.join(
             self.data.params.project_dir,
             "{}_outfiles".format(self.data.name),
-            )
+        )
         self.data.dirs.outfiles = os.path.realpath(self.data.dirs.outfiles)
         if os.path.exists(self.data.dirs.outfiles):
             shutil.rmtree(self.data.dirs.outfiles)
@@ -181,7 +181,7 @@ class Step7:
         self.data.tmpdir = os.path.join(
             self.data.dirs.outfiles, 
             "tmpdir",
-            )
+        )
         if os.path.exists(self.data.tmpdir):
             shutil.rmtree(self.data.tmpdir)
         if not os.path.exists(self.data.tmpdir):
@@ -191,11 +191,11 @@ class Step7:
         self.data.seqs_database = os.path.join(
             self.data.dirs.outfiles,
             self.data.name + ".seqs.hdf5",
-            )
+        )
         self.data.snps_database = os.path.join(
             self.data.dirs.outfiles,
             self.data.name + ".snps.hdf5",
-            )
+        )
         for dbase in [self.data.snps_database, self.data.seqs_database]:
             if os.path.exists(dbase):
                 os.remove(dbase)
@@ -238,9 +238,18 @@ class Step7:
         for outf in testformats:
 
             # if it requires a pop file and they don't have one then skip
-            # and print a warning:
+            # and write the warning to the expected file, to prevent an
+            # annoying message every time if you don't have a pops file, but
+            # still to be transparent about skipping some files. This caused
+            # me some real amount of pain, like "why isnt' the treemix file
+            # being created, fudkckkk!!!1" And then like 10 minutes later, oh
+            # yeah, no pops file, fml. 3/2020 iao.
             if (outf in ("t", "m")) and (not self.data.populations):
-                # print(POPULATION_REQUIRED.format(outf), file=sys.stderr)
+                outfile = os.path.join(
+                            self.data.dirs.outfiles,
+                            self.data.name + OUT_SUFFIX[outf][0])
+                with open(outfile, 'w') as out:
+                    out.write(POPULATION_REQUIRED.format(outf))
 
                 # remove format from the set
                 self.formats.discard(outf)
@@ -532,7 +541,12 @@ class Step7:
         # write stats
         for job in rasyncs:
             if not rasyncs[job].successful():
-                rasyncs[job].get()
+                try:
+                    rasyncs[job].get()
+                except Exception as inst:
+                    # Allow one file to fail without breaking all step 7
+                    # but print out the error and some info
+                    print(inst)
 
 
     def remote_fill_depths(self):
@@ -641,10 +655,15 @@ class Processor(object):
         self.ispair = self.data.ispair
         self.minsamp = self.data.params.min_samples_locus
 
-        # if ref build and excluding ref that -1 to minsamp
+        # Minsamp is calculated _before_ the reference sequence is removed
+        # and so if we want the minsamp param to be honored as it is written
+        # in the params file we need to _add_ 1 to the value, so that when
+        # the ref is excluded the minsamp value will be accurate.
+        # If the ref is _included_ then it counts toward minsample and no
+        # adjustment is necessary.
         if self.isref:
             if self.data.hackersonly.exclude_reference:
-                self.minsamp -= 1
+                self.minsamp += 1
 
         # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
         self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
@@ -654,7 +673,7 @@ class Processor(object):
             'maxvar', 
             'maxshared',
             'minsamp', 
-            )
+        )
         # (R1>, <R1, R2>, <R2)
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
@@ -708,6 +727,7 @@ class Processor(object):
         self.aseqs = []
         self.useqs = []
 
+        # advance locus to next, parse names and seqs
         self.iloc, lines = next(self.loci)
         lines = lines.decode().strip().split("\n")
         for line in lines:
@@ -723,10 +743,11 @@ class Processor(object):
         mask = [i in self.data.snames for i in self.names]
         self.names = np.array(self.names)[mask].tolist()
 
-        # [ref] store consens read start position as mapped to ref
-        self.nidxs = np.array(self.nidxs)[mask].tolist()
-        self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
-        self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
+        if not self.filter_dups():
+            # [ref] store consens read start position as mapped to ref
+            self.nidxs = np.array(self.nidxs)[mask].tolist()
+            self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
+            self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
 
 
     def run(self):
@@ -738,13 +759,14 @@ class Processor(object):
             except StopIteration:
                 break
 
+            # fill filter 0
+            if self.filter_dups():
+                continue
+
             # apply filters 
             edges = Edges(self.data, self.useqs)
             edges.get_edges()
             self.edges[self.iloc] = edges.edges
-
-            # fill filter 0
-            self.filter_dups()
 
             # fill filter 4
             self.filter_minsamp_pops()
@@ -897,7 +919,7 @@ class Processor(object):
                 "{}{}".format(
                     self.data.pnames[name],
                     block[idx, :].tostring().decode())
-                )
+            )
         locus.append("{}{}|{}|".format(
             self.data.snppad, snpstring, nidxstring))
         return "\n".join(locus)
@@ -906,7 +928,8 @@ class Processor(object):
     def filter_dups(self):
         if len(set(self.names)) < len(self.names):
             self.filters[self.iloc, 0] = 1
-        # return False
+            return True
+        return False
 
 
     def filter_minsamp_pops(self):
@@ -1125,8 +1148,14 @@ def locus_right_trim(seqs, minsamp, mincovs):
 ###############################################################
 
 def convert_outputs(data, oformat):
-    Converter(data).run(oformat)
-
+    try:
+        Converter(data).run(oformat)
+    except Exception as inst:
+        # Allow one file to fail without breaking all step 7
+        raise IPyradError("Error creating outfile: {}\n{}\t{}".format(
+                                                            OUT_SUFFIX[oformat],
+                                                            type(inst).__name__),
+                                                            inst)
 
 ###############################################################
 
@@ -1171,6 +1200,9 @@ class Converter:
 
         if oformat == "g":
             self.write_geno()
+
+        if oformat == "t":
+            self.write_treemix()
 
 
     def write_phy(self):
@@ -1560,18 +1592,23 @@ class Converter:
 
 
     def write_treemix(self):
-        tmx = ipyrad.analysis.treemix(
+        # We pass in 'binary="ls"' here to trick the constructor into not
+        # raising an error if treemix isn't installed. HAX!
+        import ipyrad.analysis as ipa
+        tmx = ipa.treemix(
             data=self.data.snps_database,
             name=self.data.name,
-            workdir=self.data.outfiles,
+            workdir=self.data.dirs.outfiles,
             imap={i: j[1] for (i, j) in self.data.populations.items()},
             minmap={i: j[0] for (i, j) in self.data.populations.items()},
+            binary="ls",
             )
         tmx.write_treemix_file()
 
 
     def write_migrate(self):
-        mig = ipyrad.analysis.migrate_n(
+        import ipyrad.analysis as ipa
+        mig = ipa.migrate_n(
             data=self.data.outfiles.loci,
             name=self.data.name,
             workdir=self.data.dirs.outfiles,
@@ -2653,9 +2690,10 @@ The distribution of SNPs (var and pis) per locus.
 """
 MISSING_SAMPLE_IN_DB = """
 There are samples in this assembly that were not present in step 6. This is 
-likely due to branching or merging. The following samples are not in the step6
-database:
+likely due to failed samples retained in the assembly from prior to step 5, or
+branching/merging. The following samples are not in the step6 database:
 {}
+Simplest solution is to branch and remove these from the assembly.
 """
 BADPOP_SAMPLES = """
 There are sample names in the populations assignments that are not present in 
@@ -2665,6 +2703,7 @@ following sample names are in the pop assignments but not in this Assembly:
 """
 POPULATION_REQUIRED = """\
 Warning: Skipping output format '{}'. Requires population assignments.\
+
 """
 NEXHEADER = """#nexus
 begin data;

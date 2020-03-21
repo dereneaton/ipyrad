@@ -39,11 +39,21 @@ class Step6:
         self.samples = self.get_subsamples()
         self.setup_dirs(force)
 
-        # groups/threading information
-        self.cgroups = {}
-        self.assign_groups()
-        self.hostd = {}
-        self.tune_hierarchical_threading()
+        # groups/threading information for hierarchical clustering
+        # ----- DISABLED FOR NOW -------------
+        # self.cgroups = {}
+        # self.assign_groups()
+        # self.hostd = {}
+        # self.tune_hierarchical_threading()
+
+        # NEW CODE TO OVERRIDE HIERARCH CLUSTERING
+        self.cgroups = {
+            0: self.samples,
+        }
+        self.data.ncpus = len(self.ipyclient.ids)
+        self.nthreads = len(self.ipyclient.ids)
+        self.lbview = self.ipyclient.load_balanced_view()
+        self.thview = self.ipyclient.load_balanced_view()
 
 
     def print_headers(self):
@@ -106,8 +116,8 @@ class Step6:
             if state6.any():
                 raise IPyradError(
                     "Some samples are already in state==6. If you wish to \n" \
-                  + "create a new database for across sample comparisons \n" \
-                  + "use the force=True (-f) argument.")
+                  + "  create a new database for across sample comparisons \n" \
+                  + "  use the force=True (-f) argument.")
             # run all samples in state 5
             subsamples = [self.data.samples[i] for i in state5]
 
@@ -132,6 +142,10 @@ class Step6:
     def assign_groups(self):
         "assign samples to groups if not user provided for hierarchical clust"
 
+        # to hold group ints mapping to list of sample objects
+        # {0: [a, b, c], 1: [d, e, f]}
+        self.cgroups = {}
+
         # use population info to split samples into groups; or assign random
         if self.data.populations:
             self.cgroups = {}
@@ -148,11 +162,15 @@ class Step6:
             else:
                 groupsize = 100
 
+            # split samples evenly into groups
             alls = self.samples
-            self.cgroups = {}
+            nalls = len(self.samples)
+            ngroups = int(np.ceil(nalls / groupsize))
+            gsize = int(np.ceil(nalls / ngroups))
+
             idx = 0
-            for samps in range(0, len(alls), groupsize):
-                self.cgroups[idx] = alls[samps: samps + groupsize]
+            for samps in range(0, nalls, gsize):
+                self.cgroups[idx] = alls[samps: samps + gsize]
                 idx += 1
 
 
@@ -202,7 +220,8 @@ class Step6:
         #    self.nthreads = int(self.data.ipcluster["threads"])
         self.nthreads = 2
         if self.data.ncpus > 4:
-            self.nthreads = 4
+            self.nthreads = int(np.floor(
+                self.data.ncpus) / len(self.cgroups))
         eids = self.ipyclient.ids[::self.nthreads]
 
         # create load-balancers
@@ -338,6 +357,7 @@ class Step6:
     def remote_cluster_tiers(self, jobid):
         start = time.time()
         printstr = ("clustering across   ", "s6")
+        # nthreads=0 defaults to using all cores
         args = (self.data, jobid, 0, True)
         rasync = self.thview.apply(cluster, *args)
 
@@ -407,7 +427,9 @@ class Step6:
 
 
     def remote_align_denovo_clusters(self):
-        "align denovo clusters built from vsearch clustering"
+        """
+        Distributes parallel jobs to align_to_array() function. 
+        """
         # get files
         globpath = os.path.join(self.data.tmpdir, self.data.name + ".chunk_*")
         clustbits = glob.glob(globpath)
@@ -452,7 +474,7 @@ class Step6:
         clustbits = sorted(
             globlist,
             key=lambda x: int(x.rsplit("_", 1)[1].split(".")[0]),
-            )
+        )
 
         # store path to clust database 
         self.data.clust_database = os.path.join(
@@ -484,6 +506,8 @@ class Step6:
 
 
     ## REFERENCE BASED FUNCTIONS ---------------------------------
+
+
     def remote_concat_bams(self):
         "merge bam files into a single large sorted indexed bam"
 
@@ -493,7 +517,7 @@ class Step6:
         catbam = os.path.join(
             self.data.dirs.across, 
             "{}.cat.bam".format(self.data.name)
-            )
+        )
 
         # concatenate consens bamfiles for all samples in this assembly
         cmd1 = [
@@ -502,12 +526,12 @@ class Step6:
             "-f", 
             catbam,
         ]
+
+        # Use the sample.files.consens info, rather than data.dirs to allow
+        # for merging assemblies after step 5 where data.dirs is invalid/empty.
         for sample in self.samples:
-            cmd1.append(
-                os.path.join(
-                    self.data.dirs.consens, 
-                    "{}.consens.bam".format(sample.name))
-            )
+            cmd1.append(sample.files.consens)
+
         proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
 
         # progress bar
@@ -531,7 +555,7 @@ class Step6:
             os.path.join(
                 self.data.dirs.across, 
                 "{}.cat.sorted.bam".format(self.data.name)
-                ),
+            ),
             catbam,
         ]
         proc = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -683,7 +707,7 @@ def build_ref_regions(data):
         os.path.join(
             data.dirs.across,
             "{}.cat.sorted.bam".format(data.name)
-            )
+        )
     ]
 
     cmd2 = [
@@ -694,10 +718,12 @@ def build_ref_regions(data):
     ]
 
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd2, 
+    proc2 = sps.Popen(
+        cmd2, 
         stdin=proc1.stdout,
         stderr=sps.STDOUT,
-        stdout=sps.PIPE)
+        stdout=sps.PIPE,
+    )
     result = proc2.communicate()[0].decode()
     if proc2.returncode:
         raise IPyradError(
@@ -818,35 +844,22 @@ def build_ref_clusters(data, idx, iregion):
             outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
 
 
-# DEPRECATED TO USE PYSAM INSTEAD
-# # maybe pysam does this faster?
-# def get_ref_region(reference, contig, rstart, rend):
-#     "returns the reference sequence over a given region"
-#     cmd = [
-#         ipyrad.bins.samtools, 'faidx',
-#         reference,
-#         "{}:{}-{}".format(contig, rstart + 1, rend),
-#     ]
-#     stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
-#     name, seq = stdout.decode().split("\n", 1)
-#     listseq = [name, seq.replace("\n", "")]
-#     return listseq
-
-
 def build_concat_two(data, jobids, randomseed):
     seeds = [
         os.path.join(
             data.dirs.across, 
             "{}-{}.htemp".format(data.name, jobid)) for jobid in jobids
-        ]
+    ]
     allseeds = os.path.join(
         data.dirs.across, 
         "{}-x-catshuf.fa".format(data.name))
     cmd1 = ['cat'] + seeds
-    cmd2 = [ipyrad.bins.vsearch, 
+    cmd2 = [
+        ipyrad.bins.vsearch, 
         '--sortbylength', '-', 
         '--fasta_width', '0',
-        '--output', allseeds]
+        '--output', allseeds,
+    ]
     proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
     proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
     proc2.communicate()
@@ -1257,7 +1270,8 @@ def build_hierarchical_denovo_clusters(data, usort, nseeds, jobids):
         seqsize += 1
         loci += seqsize
     if seqlist:
-        pathname = os.path.join(data.tmpdir, 
+        pathname = os.path.join(
+            data.tmpdir, 
             data.name + ".chunk_{}".format(loci))
         with open(pathname, 'wt') as clustsout:
             clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
@@ -1267,7 +1281,9 @@ def build_hierarchical_denovo_clusters(data, usort, nseeds, jobids):
 
 
 def align_to_array(data, samples, chunk):
-
+    """
+    Opens a tmp clust chunk and iterates over align jobs.
+    """
     # data are already chunked, read in the whole thing
     with open(chunk, 'rt') as infile:
         clusts = infile.read().split("//\n//\n")[:-1]    
@@ -1285,61 +1301,41 @@ def align_to_array(data, samples, chunk):
         lines = clusts[ldx].strip().split("\n")
         names = lines[::2]
         seqs = lines[1::2]
-        align1 = []
         
-        # find duplicates and skip aligning but keep it for downstream.
-        #unames = set([i.rsplit("_", 1)[0] for i in names])
-        #if len(unames) < len(names):
-        #    istack = ["{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
-        #else:
-    
-        # append counter to names because muscle doesn't retain order
-        nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+        # skip aligning and continue if duplicates present (locus too big)
+        # but reshape locs to be same lengths by adding --- to end, this 
+        # simplifies handling them in step7 (they're still always filtered)
+        unames = set([i.rsplit("_", 1)[0] for i in names])
+        if len(unames) < len(names):
+            longname = max([len(i) for i in seqs])
+            seqs = [i.ljust(longname, "-") for i in seqs]
+            istack = [">{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
+            allstack.append("\n".join(istack))
+            continue
 
-        # make back into strings
-        cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])                
+        # else locus looks good, align it.
+        # is there a paired-insert in any samples in the locus?
+        try:
 
-        # store allele (lowercase) info, returns mask with lowercases
-        amask, abool = store_alleles(seqs)
+            # try to split cluster list at nnnn separator for each read
+            left = [i.split("nnnn")[0] for i in seqs]
+            right = [i.split("nnnn")[1] for i in seqs]
 
-        # send align1 to the bash shell (TODO: check for pipe-overflow)
-        cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
-                .format(cl1, ipyrad.bins.muscle, "//\n"))
-        proc.stdin.write(cmd1.encode())
+            # align separately
+            istack1 = muscle_it(proc, names, left)
+            istack2 = muscle_it(proc, names, right)
 
-        # read the stdout by line until splitter is reached
-        for line in iter(proc.stdout.readline, b'//\n'):
-            align1.append(line.decode())
+            # combine in order
+            for sdx in range(len(istack1)):
+                n1, s1 = istack1[sdx].split("\n")
+                s2 = istack2[sdx].split("\n")[-1]
+                istack.append(n1 + "\n" + s1 + "nnnn" + s2)
 
-        # reorder b/c muscle doesn't keep order
-        lines = "".join(align1)[1:].split("\n>")
-        dalign1 = dict([i.split("\n", 1) for i in lines])
-        keys = sorted(
-            dalign1.keys(), 
-            key=lambda x: int(x.rsplit("*")[-1])
-        )
-        seqarr = np.zeros(
-            (len(nnames), len(dalign1[keys[0]].replace("\n", ""))),
-            dtype='S1',
-            )
-        for kidx, key in enumerate(keys):
-            concatseq = dalign1[key].replace("\n", "")
-            seqarr[kidx] = list(concatseq)
-
-        # get alleles back using fast jit'd function.
-        if np.sum(amask):
-            intarr = seqarr.view(np.uint8)
-            iamask = retrieve_alleles_after_aligning(intarr, amask)
-            seqarr[iamask] = np.char.lower(seqarr[iamask])
-
-        # sort in sname (alphanumeric) order. 
-        wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
-        for widx in wkeys:
-            wname = names[widx]
-            istack.append(
-                "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
-
-        # store the stack (only for visually checking alignments)
+        # no insert just align a single locus
+        except IndexError:
+            istack = muscle_it(proc, names, seqs)
+            
+        # store the locus
         if istack:
             allstack.append("\n".join(istack))
 
@@ -1357,12 +1353,80 @@ def align_to_array(data, samples, chunk):
         outfile.write("\n//\n//\n".join(allstack) + "\n//\n//\n")
 
 
+
+def muscle_it(proc, names, seqs):
+    """
+    Align with muscle, ensure name order, and return as string
+    """  
+    istack = []
+
+    # append counter to names because muscle doesn't retain order
+    nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+    
+    # make back into strings
+    cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])
+
+    # store allele (lowercase) info, returns mask with lowercases
+    amask, abool = store_alleles(seqs)
+
+    # send align1 to the bash shell (TODO: check for pipe-overflow)
+    cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
+            .format(cl1, ipyrad.bins.muscle, "//\n"))
+    proc.stdin.write(cmd1.encode())
+
+    # read the stdout by line until splitter is reached
+    align1 = []
+    for line in iter(proc.stdout.readline, b'//\n'):
+        align1.append(line.decode())
+
+    # reorder b/c muscle doesn't keep order
+    lines = "".join(align1)[1:].split("\n>")
+    dalign1 = dict([i.split("\n", 1) for i in lines])
+    keys = sorted(
+        dalign1.keys(), 
+        key=lambda x: int(x.rsplit("*")[-1])
+    )
+    seqarr = np.zeros(
+        (len(names), len(dalign1[keys[0]].replace("\n", ""))),
+        dtype='S1',
+    )
+    for kidx, key in enumerate(keys):
+        concatseq = dalign1[key].replace("\n", "")
+        seqarr[kidx] = list(concatseq)
+
+    # get alleles back using fast jit'd function.
+    if np.sum(amask):
+        intarr = seqarr.view(np.uint8)
+        iamask = retrieve_alleles_after_aligning(intarr, amask)
+        seqarr[iamask] = np.char.lower(seqarr[iamask])
+
+    # sort in sname (alphanumeric) order. 
+    istack = []    
+    wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
+    for widx in wkeys:
+        wname = names[widx]
+        istack.append(
+            "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
+    return istack
+
+
 def store_alleles(seqs):
+    """
+    Returns a mask selecting columns with lower case calls, and 
+    a boolean of whether or not any exist. This is used to put them 
+    back into alignments after muscle destroys all this info during
+    alignment.
+    """
+    # get shape of the array and new empty array
     shape = (len(seqs), max([len(i) for i in seqs]))
     arrseqs = np.zeros(shape, dtype=np.bytes_)
+
+    # iterate over rows 
     for row in range(arrseqs.shape[0]):
         seqsrow = seqs[row]
         arrseqs[row, :len(seqsrow)] = list(seqsrow)
+
+    # mask the lo...
     amask = np.char.islower(arrseqs)
     if np.any(amask):
         return amask, True
@@ -1371,6 +1435,10 @@ def store_alleles(seqs):
 
 
 def retrieve_alleles_after_aligning(intarr, amask):
+    """
+    Imputes lower case allele calls back into alignments 
+    while taking account for spacing caused by insertions.
+    """
     newmask = np.zeros(intarr.shape, dtype=np.bool_)
     
     for ridx in range(intarr.shape[0]):

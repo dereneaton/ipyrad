@@ -4,6 +4,119 @@
 Release Notes
 =============
 
+0.9.45
+------
+**March 08, 2020**
+
+- Allow more flexibility in sorted fastqs directory (DO NOT DELETE if it points to projectdir + _fastqs)
+- window extracter fix for multiple loci w/ reduce
+
+0.9.44
+------
+**March 04, 2020**
+
+- Fix the treemix output so it actually generates. Took WAYYYY longer than I thought it would.
+- Update faq.rst
+- Update faq.rst
+
+0.9.43
+------
+**February 26, 2020**
+
+- Fix off by 2 error in minsamp when using reference sequence
+- window extacter working for denovo loci
+- Cleaning up a TON of sphinx warnings from the docs and fixing a bunch of docs issues.
+- fix oops in baba.py (import sys)
+
+0.9.42
+------
+**February 19, 2020**
+
+- Fix oops in step 6 which was leaving bad sample names hanging after alignment.
+
+0.9.41
+------
+**February 18, 2020**
+
+- Set s6.data.ncpus value when routing around hierarchical clustering for ref based assemblies.
+- disable hierarchical clustering until further testing
+- split samples evenly among cgroups for hierarch clust
+- digest genomes uses qual score B instead of b
+
+0.9.40
+------
+**February 16, 2020**
+
+- subsample loci func added
+- counts rm duplicates in denovo and works with step6 skipping alignment of loci w/ dups
+- denovo paired aligned separately again
+- fastq qmax error in merge denovo fixed
+
+0.9.39
+------
+**February 15, 2020**
+
+- Why can't i figure out how to comment out this plotting code right? wtf!
+
+0.9.38
+------
+**February 15, 2020**
+
+- commented out the import of the baba_plot plotting function and the baba.plot() method as these are broken rn, and also the plotting/baba_plotting routine tries to access toyplot in a way that breaks the conda build since toyplot isn't a strict requirement. We could fix this in the future, but i'm tring to get the bioconda package to build successfully rn.
+
+0.9.37
+------
+**February 15, 2020**
+
+- fix import checking for baba_panel_plot.py
+
+0.9.36
+------
+**February 15, 2020**
+
+- Handle external imports in the baba module in the same way as the other analysis tools to fix the broken bioconda build.
+- Add a pops file to the ipsimdata.tar.gz because it's always useful.
+-  "Updating ipyrad/__init__.py to version - 0.9.35
+
+0.9.35
+------
+**February 12, 2020**
+
+0.9.35
+------
+**February 12, 2020**
+
+- Fix a bug in step 5 handling of RemoteError during indexing alleles.
+- Report debug traceback for all crashes, not just API. This is essentially making the debug flag useless in v.0.9
+
+0.9.34
+------
+**February 09, 2020**
+
+- Roll back baba code to 0.7 version which doesn't use the current analysis format, but which still works. Saved ongoing baba code as baba.v0.9.py
+
+0.9.33
+------
+**February 06, 2020**
+
+- Fix major oops in consens_se which failed step 5 every time. Bad!
+- In step 6 use the sample.files.consens info, rather than data.dirs to allow for merging assemblies after step 5 where data.dirs is invalid/empty.
+
+0.9.32
+------
+**February 04, 2020**
+
+- #392 allow scaffold names to be int
+- Add sensible error handling if only a few samples fail step 5.
+- add docs to clustmap_across
+- fix for name re-ordering in window-extracter with multiple regions selected
+- added comments
+- added comments
+- added sys
+- Actually handle failed samples in step 2.
+- fix for new h5py warning
+- fix for new sklearn warning
+
 0.9.31
 ------
 **January 19, 2020**
@@ -333,15 +446,7 @@ Release Notes
 ------
 **February 21, 2018**
 
-- mergefix
-- merge fix
 - some releasenotes fixes
-
-=======
-0.7.23
-------
-**February 21, 2018**
-
 - Fix filter_min_trim_len not honoring the setting in the params file.
 
 

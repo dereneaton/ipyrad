@@ -213,7 +213,7 @@ You could similarly provide all of the typical qsub arguments with this command:
 
 
 Optional: Controlling ipcluster by hand
-------------------------------------
+---------------------------------------
 ipyrad uses a program called *ipcluster* (from the ipyparallel Python module)
 to control parallelization, most of which occurs behind the scenes for the user.
 However, it is possible to gain more fine-tuned control of the connection to 

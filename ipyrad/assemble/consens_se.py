@@ -182,7 +182,7 @@ class Step5:
             print("Exception in step 5: {}".format(inst))
             raise
         finally:
-            shutil.rmtree(self.data.tmpdir)
+            #shutil.rmtree(self.data.tmpdir)
             self.data.save()
 
 
@@ -331,9 +331,22 @@ class Step5:
                 break
 
         # check for failures:
+        # Don't die if only one or a couple samples fail
+        failjobs = []
         for job in alljobs:
             if not job.successful():
-                job.get()
+                try:
+                    job.get()
+                except Exception as inst:
+                    # inst here is RemoteError, so unpack the content
+                    failjobs.append(inst.evalue)
+
+        if len(failjobs) == len(alljobs):
+            raise IPyradError("All failed:\n{}".format("\n".join(failjobs)))
+        elif len(failjobs) > 1:
+            print("{} failed step 5\n{}".format(len(failjobs), "\n".join(failjobs)))
+        else:
+            pass
 
 
     def data_store(self, statsdicts):
@@ -556,7 +569,6 @@ class Processor:
         return 0
 
 
-
     def build_consens_and_array(self):
         """
         Makes base calls and converts - to N and trims terminal Ns. Setting 
@@ -651,6 +663,10 @@ class Processor:
 
 
     def get_alleles(self):
+        """
+        denovo only.
+        Infer the number of alleles from haplotypes.
+        """
         # if less than two Hs then there is only one allele
         if len(self.hidx) < 2:
             self.nalleles = 1
@@ -701,7 +717,7 @@ class Processor:
         self.counters["nconsens"] += 1
         self.counters["heteros"] += self.nheteros
 
-    # ----------------------------------------------
+
     def write_chunk(self):
         """
         Writes chunk of consens reads to disk, stores depths, alleles, and 
@@ -783,7 +799,6 @@ class Processor:
         del self.storeseq
 
 
-
 def concat_catgs(data, sample, isref):
     "concat catgs into a single sample catg and remove tmp files"
 
@@ -806,8 +821,10 @@ def concat_catgs(data, sample, isref):
     # Related to issue #369
     if not all([nrows, maxlen]):
         raise IPyradError(
-            "Error in concat_catgs both nrows and maxlen must be positive. You "
-            "have:\n  nrows: {}\tmaxlen: {}".format(nrows, maxlen))
+            "Error in concat_catgs both nrows and maxlen must be positive."
+            "\nsample: {}\tnrows: {}\tmaxlen: {}".format(sample.name,
+                                                         nrows,
+                                                         maxlen))
 
     # fill in the chunk array
     with h5py.File(sample.files.database, 'w') as ioh5:
@@ -1208,9 +1225,6 @@ def get_binom(base1, base2, estE, estH):
     if hetprob > homoa:
         return True, bestprob
     return False, bestprob
-
-
-
 
 
 

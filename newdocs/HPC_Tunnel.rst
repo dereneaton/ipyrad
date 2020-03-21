@@ -1,7 +1,7 @@
 
 .. include:: global.rst
 
-.. _HPCscript:
+.. _HPCTunnel:
 
 
 Jupyter and the ipyrad API
@@ -110,7 +110,7 @@ notebook is being served on.
 
 
 Starting jupyter through a batch script:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 tldr; short video tutorial.
 

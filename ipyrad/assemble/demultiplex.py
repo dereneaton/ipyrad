@@ -62,8 +62,12 @@ class Step1:
             self.data.name + "_fastqs")       
         self.data.dirs.fastqs = os.path.realpath(self.data.dirs.fastqs)
 
+        # Do NOT delete any directory if you're just linking sorted fastqs
+        # This allows you to reuse _fastqs from previous assemblies.
+        if self.method == "link_fastqs":
+            pass
         # remove existing if force flag.
-        if self.force:
+        elif self.force:
             if os.path.exists(self.data.dirs.fastqs):
                 shutil.rmtree(self.data.dirs.fastqs)
 
@@ -79,8 +83,10 @@ class Step1:
         if not os.path.exists(self.data.params.project_dir):
             os.mkdir(self.data.params.project_dir)
 
-        # ensure fastq dir exists
-        if not os.path.exists(self.data.dirs.fastqs):
+        # ensure fastq dir exists, but don't make the directory if linking
+        # because it's empty and unused
+        if not os.path.exists(self.data.dirs.fastqs) and\
+            not self.method == "link_fastqs":
             os.mkdir(self.data.dirs.fastqs)
 
 
@@ -991,6 +997,12 @@ def get_name_from_file(fname, splitnames, fields):
     base = base.replace("_R1_.", ".")\
                .replace("_R1_", "")\
                .replace("_R1.", ".")
+
+    # To test running pe data as concatenated SE
+    # 3/8/20 iao
+    #base = base.replace("_R2_.", ".")\
+    #           .replace("_R2_", "")\
+    #           .replace("_R2.", ".")
 
     # remove extensions, retains '.' in file names.
     while 1:
