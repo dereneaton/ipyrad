@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.47
+------
+**March 24, 2020**
+
+- Fix snpstring length oops in .alleles outputs so they line up right.
+
 0.9.46
 ------
 **March 24, 2020**
