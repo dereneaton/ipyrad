@@ -415,7 +415,7 @@ def batch(
                     
                     ## store D4 results
                     if _res.shape[0] == 1:
-                        resarr[job] = _res.T.as_matrix()[:, 0]
+                        resarr[job] = _res.T.values[:, 0]
                         bootsarr[job] = _bot
                     
                     ## or store D5 results                        
@@ -488,7 +488,7 @@ def batch(
             np.array(['p3', 'p4', 'shared'] * ntests),
         ]
         resarr = pd.DataFrame(
-            data=pd.concat(listres).as_matrix(), 
+            data=pd.concat(listres).values, 
             index=multi_index,
             columns=listres[0].columns,
             )
