@@ -115,9 +115,18 @@ class WindowExtracter(object):
             os.makedirs(self.workdir)
 
         # require imap for consensus
-        if consensus_reduce and (imap is None):
-            raise IPyradError(
-                "consensus_reduce option requires an imap dictionary")
+        if self.consensus_reduce:
+
+            # must tell it how to reduce samples
+            if self.imap is None:
+                raise IPyradError(
+                    "consensus_reduce option requires an imap dictionary")
+
+            # can condensed samples be missing? minmap must be [0-1].
+            if self.minmap is None:
+                assert max(self.minmap.values) <= 1, (
+                    "minmap values cannot be >1 with consensus_reduce")
+                self.minmap = {i: 1 for i in self.imap}
 
         # global values
         self._name = name
