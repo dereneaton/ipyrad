@@ -96,8 +96,8 @@ class TreeSlider(object):
 
         # work
         self.scaffold_idxs = scaffold_idxs
-        self.window_size = window_size
-        self.slide_size = slide_size
+        self.window_size = (int(window_size) if window_size else None)
+        self.slide_size = (int(slide_size) if slide_size else None)
         self.minsnps = minsnps
         self.imap = imap
         self.mincov = mincov
