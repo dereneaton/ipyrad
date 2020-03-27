@@ -1699,11 +1699,13 @@ def write_loci_and_alleles(data):
 
                     all1, all2 = splitalleles(seq)
                     aname, spacer = name.split(" ", 1)
-                    achunk.append(aname + "_0 " + spacer + all1)
-                    achunk.append(aname + "_1 " + spacer + all2)
+                    # adjust seqnames for proper buffering of the snpstring
+                    achunk.append(aname + "_0 " + spacer[2:] + all1)
+                    achunk.append(aname + "_1 " + spacer[2:] + all2)
                 else:
                     snpstring, nidxs = line.rsplit("|", 2)[:2]
-                    asnpstring = "//    " + snpstring[2:]
+                    # adjust length of snpstring so it lines up for refseq
+                    asnpstring = "//" + snpstring[2:]
                     if data.params.assembly_method == 'reference':
                         refpos = nidxs.split(",")[0]
 

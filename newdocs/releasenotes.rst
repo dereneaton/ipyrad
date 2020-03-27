@@ -4,6 +4,22 @@
 Release Notes
 =============
 
+0.9.47
+------
+**March 24, 2020**
+
+- Fix snpstring length oops in .alleles outputs so they line up right.
+
+0.9.46
+------
+**March 24, 2020**
+
+- Fix pd.as_matrix() call which is deprecated.
+- Force pca.draw() to honor the length of the color list if it is sufficiently long to color all samples in the imap, or at least use the length of the color list to set the value of the  variable.
+- Fix oops in baba.py for importing msprime. Pushed it to Sim.__init__, since if you want to do baba, and don't care about sims, then you shouldn't have to install msprime.
+- h5py warning fix
+- use _pnames to use filtered names in run()
+
 0.9.45
 ------
 **March 08, 2020**
