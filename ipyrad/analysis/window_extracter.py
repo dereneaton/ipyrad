@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-Extract, filter and format a locus from a scaff, start, end tuple for 
-refmapped assembly data.
+Extract, filter and format a locus from a scaffold, start, and end 
+tuple. Intended for extracting concatenated sequence windows.
 """
 
 # py2/3 compat
@@ -25,9 +25,6 @@ from ipyrad.assemble.write_outputs import NEXHEADER
 """
     TODO:
     'format' argument in .run() to write nexus format.
-    To concatenate data from multiple scaffolds
-    you can enter a list or slice, e.g., [0, 1, 2] or [0:10]. Default=all.
-
     - If imap but no minmap do sites with all Ns still get filtered?
 """
 
@@ -87,6 +84,7 @@ class WindowExtracter(object):
         start=None, 
         end=None, 
         mincov=4,
+        rmincov=0,
         exclude=None,
         imap=None,
         minmap=None,
@@ -103,10 +101,14 @@ class WindowExtracter(object):
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
+        self.rmincov = float(rmincov if rmincov else 0.0)
         self.imap = imap
-        self.minmap = (minmap if minmap else {i: 1 for i in imap})
+        self.minmap = minmap  # (minmap if minmap else {i: 1 for i in imap})
         self.consensus_reduce = consensus_reduce
         self.quiet = quiet
+
+        # rmincov must be float
+        assert rmincov < 1.0, "rmincov must be a float between 0 and 1."
 
         # file to write to
         if not os.path.exists(self.workdir):
@@ -128,11 +130,14 @@ class WindowExtracter(object):
         self._scaffold_idx = None
         self._names = []
         self._pnames = []
+        self.phymap = []
 
         # single prep
         if (scaffold_idx is None) or isinstance(scaffold_idx, (int, str)):
             self._scaffold_idx = self.scaffold_idx
             self._single_prep()
+            if scaffold_idx is not None:
+                self.phymap = self._phymap
 
         # TODO: parallelize the single_prep() calls in this section.
         # run for each scaffold in list
@@ -148,6 +153,7 @@ class WindowExtracter(object):
             names = []
             pnames = []
             stats = []
+            phymaps = []
 
             for scaff in self.scaffold_idx:
                 self._scaffold_idx = scaff
@@ -159,6 +165,7 @@ class WindowExtracter(object):
                     names.append(self._names)
                     pnames.append(self._pnames)
                     stats.append(self.stats)
+                    phymaps.append(self._phymap)
 
                 # debugging
                 else:
@@ -170,6 +177,7 @@ class WindowExtracter(object):
                 return 
 
             # concat chunks and stats
+            self.phymap = pd.concat(phymaps, ignore_index=True)
             self._stats = pd.concat(stats)
             self.names = sorted(set(itertools.chain(*names)))
             self.pnames = sorted(set(itertools.chain(*pnames)))            
@@ -253,7 +261,7 @@ class WindowExtracter(object):
         # re-set population filters as integers
         if self.minmap and self.imap:
             for ikey, ivals in self.imap.items():
-                
+
                 # get int value entered by user
                 imincov = self.minmap[ikey]
 
@@ -285,8 +293,8 @@ class WindowExtracter(object):
             if isinstance(self._scaffold_idx, int):
                 self.name = "scaf{}-{}-{}".format(
                     self._scaffold_idx,
-                    self.start,
-                    self.end
+                    int(self.start),
+                    int(self.end)
                 )
             else:
                 self.name = "r{}".format(np.random.randint(0, 1e9))
@@ -388,7 +396,7 @@ class WindowExtracter(object):
         # self._check_window()
 
         # pull the region meta-data from the database
-        self.phymap = None
+        self._phymap = None
         self._extract_phymap_df()
         self._init_stats()
 
@@ -426,7 +434,7 @@ class WindowExtracter(object):
             mask = io5["phymap"][:, 0] == self._scaffold_idx + 1
 
             # load dataframe of this scaffold
-            self.phymap = pd.DataFrame(
+            self._phymap = pd.DataFrame(
                 data=io5["phymap"][:][mask],
                 columns=[i.decode() for i in colnames],
             )
@@ -441,10 +449,10 @@ class WindowExtracter(object):
         # get mask to select window array region. No mask for denovo
         self.seqarr = np.zeros((len(self.names), 0))
         if self.end:           
-            mask = (self.phymap.pos0 >= self.start) & (self.phymap.pos1 <= self.end)
+            mask = (self._phymap.pos0 >= self.start) & (self._phymap.pos1 <= self.end)
         else:
             mask = [True]
-        cmap = self.phymap.values[mask, :]
+        cmap = self._phymap.values[mask, :]
 
         # is there any data at all?
         if not cmap.size:
@@ -542,8 +550,13 @@ class WindowExtracter(object):
         keep = np.invert(drop)        
         self.seqarr = self.seqarr[:, keep]
 
+        # convert dash (-) to Ns
+        self.seqarr[self.seqarr == 45] = 78
+
         # drop SAMPLES that are only Ns after removing lowcov sites
-        keep = np.invert(np.all(self.seqarr == 78, axis=1))
+        rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
+        keep = rcovp >= self.rmincov
+        # keep = np.invert(np.all(self.seqarr == 78, axis=1))
         self.seqarr = self.seqarr[keep, :]
         self._names = self.wnames[keep]
         self._pnames = self.wpnames[keep]
@@ -635,7 +648,7 @@ class WindowExtracter(object):
         )
 
         # grab a big block of data
-        sidx = 0
+        # sidx = 0
         for block in range(0, self.seqarr.shape[1], 100):           
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
