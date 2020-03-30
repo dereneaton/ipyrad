@@ -2504,7 +2504,13 @@ def store_sample_stats(data, sample, maxlens, depths):
     # R1 and R2, so here if PE divide the results by 2 to stay consistent
     # with how we've been reporting R1 and R2 as one "read pair"
     # TODO: how to report denovo - reference mapped.
-    if ("pair" in data.params.datatype) and ("denovo" not in data.params.assembly_method):
+    if ("pair" in data.params.datatype):
+        # actually implement something. Apparently I am not super
+        # worried about this ;p
+        pass
+
+    # Record refseq mapping stats for PE and SE
+    if ("denovo" not in data.params.assembly_method):
         sample.stats["refseq_mapped_reads"] = sum(depths)
         sample.stats["refseq_unmapped_reads"] = int(
             sample.stats.reads_passed_filter - \
