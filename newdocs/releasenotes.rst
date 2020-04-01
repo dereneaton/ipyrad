@@ -4,6 +4,18 @@
 Release Notes
 =============
 
+0.9.48
+------
+**April 01, 2020**
+
+- Record refseq mapped/unmapped for both SE & PE
+- wextract minmap+consred minmap default added
+- treeslider default args typed
+- tested working wextracter
+- baba merge
+- new dict for translation
+- updating bpp for 4.0
+
 0.9.47
 ------
 **March 24, 2020**
