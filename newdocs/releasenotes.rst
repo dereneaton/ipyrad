@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.49
+------
+**April 02, 2020**
+
+- Allow high fastq_qmax in pair merging to allow FASTQ+64 data
+
 0.9.48
 ------
 **April 01, 2020**
