@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.50
+------
+**April 05, 2020**
+
+- Actually fix FASTQ+64 problem. Max fastq_qmax is 126, so this is set to 93 now (93+33=126)
+
 0.9.49
 ------
 **April 02, 2020**
