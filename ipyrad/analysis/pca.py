@@ -424,7 +424,13 @@ class PCA(object):
                 irev[val] = pop
 
         # the max number of pops until color cycle repeats
-        cycle = min(cycle, len(self.imap))
+        # If the passed in number of colors is big enough to cover
+        # the number of pops then set cycle to len(colors)
+        # If colors == None this first `if` falls through (lazy evaluation)
+        if colors and len(colors) >= len(self.imap):
+            cycle = len(colors)
+        else:
+            cycle = min(cycle, len(self.imap))
 
         # get color list repeating in cycles of cycle
         if not colors:

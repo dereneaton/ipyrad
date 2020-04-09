@@ -10,13 +10,12 @@
 
 from __future__ import print_function, division
 
-## ipyrad tools
 from ipyrad.assemble.write_outputs import reftrick
 from ipyrad.assemble.utils import IPyradError, GETCONS, Params
 from ipyrad.analysis.utils import progressbar
-#from ipyrad.plotting.baba_panel_plot import baba_panel_plot
+# from ipyrad.plotting.baba_panel_plot import baba_panel_plot
 
-#import scipy.stats as st  ## used for dfoil
+# import scipy.stats as st  ## used for dfoil
 import pandas as pd
 import numpy as np
 import numba
@@ -28,17 +27,10 @@ import time
 import sys
 import os
 
-# import tested at init
-try: 
-    import msprime as ms
-except ImportError:
-    pass
-_MSPRIME_IMPORT= """
-This ipyrad analysis tool requires 
-You can install it with the following command:
-
-   conda install toytree -c eaton-lab
-"""
+# ipyrad tools
+from ipyrad.analysis.utils import Params, progressbar
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.write_outputs import reftrick
 
 try:
     import toytree
@@ -50,24 +42,25 @@ You can install it with the following command:
 
    conda install toytree -c eaton-lab
 """
-try:
-    import toyplot
-except ImportError:
-    pass
-_TOYPLOT_IMPORT = """
-This ipyrad analysis tool requires the toyplot package.
-You can install it with the following command:
+# try:
+#     import toyplot
+# except ImportError:
+#     pass
+# _TOYPLOT_IMPORT = """
+# This ipyrad analysis tool requires the toyplot package.
+# You can install it with the following command:
 
-   conda install toyplot -c eaton-lab
-"""
+#    conda install toyplot -c eaton-lab
+# """
 
-## set floating point precision in data frames to 3 for prettier printing
+# set floating point precision in data frames to 3 for prettier printing
 pd.set_option('precision', 3)
 
 
 class Baba(object):
     "new baba class object"
-    def __init__(self, 
+    def __init__(
+        self, 
         data=None, 
         tests=None, 
         newick=None, 
@@ -109,8 +102,6 @@ class Baba(object):
             raise ImportError(_TOYTREE_IMPORT)
         if not sys.modules.get("toyplot"):
             raise ImportError(_TOYPLOT_IMPORT)
-        if not sys.modules.get("msprime"):
-            raise ImportError(_MSPRIME_IMPORT)
 
         ## parse data as (1) path to data file, or (2) ndarray
         if isinstance(data, str):
@@ -417,7 +408,7 @@ def batch(
                     
                     ## store D4 results
                     if _res.shape[0] == 1:
-                        resarr[job] = _res.T.as_matrix()[:, 0]
+                        resarr[job] = _res.T.values[:, 0]
                         bootsarr[job] = _bot
                     
                     ## or store D5 results                        
@@ -490,13 +481,12 @@ def batch(
             np.array(['p3', 'p4', 'shared'] * ntests),
         ]
         resarr = pd.DataFrame(
-            data=pd.concat(listres).as_matrix(), 
+            data=pd.concat(listres).values, 
             index=multi_index,
             columns=listres[0].columns,
             )
         return resarr, None
         #return listres, None  #_res.T, _bot
-
 
 
 def dstat(inarr, taxdict, mindict=1, nboots=1000, name=0):
@@ -916,6 +906,8 @@ def _get_signif_5(arr, nboots):
 
 class Sim(object):
     def __init__(self, names, sims, nreps, debug):
+        if not sys.modules.get("msprime"):
+            raise ImportError(_MSPRIME_IMPORT)
         self.names = names
         self.sims = sims
         self.nreps = nreps
