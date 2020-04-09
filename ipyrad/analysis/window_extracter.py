@@ -490,6 +490,7 @@ class WindowExtracter(object):
 
             # TODO: SHOULD MINMAP FILTER APPLY HERE??
 
+
             # get subarray for this group
             match = [np.where(self.names == i)[0] for i in ivals]
             sidxs = [i[0] for i in match if i.size]        
@@ -502,7 +503,7 @@ class WindowExtracter(object):
             iidx = np.where(inames == ikey)[0][0]
             iarr[iidx] = cons
 
-        # save as new data --------- (TODO HERE) -------------
+        # save as new data ---------------------
         iarr[iarr == 0] = 78
         self.seqarr = iarr
         self.wnames = inames
@@ -532,6 +533,7 @@ class WindowExtracter(object):
                     subarr = self.seqarr[sidxs, :]
                     drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
+                # TODO: MOVE THIS TO THE TODO ABOVE...
                 # imap could drop sites in consens if minmap is (1,0,1,1,0)
                 else:
                     sidxs = np.where(self.wnames == ikey)[0][0]
