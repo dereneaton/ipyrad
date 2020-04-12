@@ -82,6 +82,7 @@ class TreeSlider(object):
         inference_args={},
         quiet=False,
         scaffold_minlen=0,
+        keep_all_files=False,
         ):
 
         # check installations
@@ -93,6 +94,7 @@ class TreeSlider(object):
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.data = os.path.realpath(os.path.expanduser(data))
         self.tmpdir = os.path.join(self.workdir, "tmpdir")
+        self.keep_all_files = keep_all_files
 
         # work
         self.scaffold_idxs = scaffold_idxs
@@ -444,7 +446,7 @@ class TreeSlider(object):
                 prog.finished += 1
                 continue
 
-            # extract the alignment for this window
+            # extract the alignment for this window (auto-generate name)
             ext = window_extracter(
                 # name=str(np.random.randint(0, 1e15)),
                 data=self.data,
@@ -475,7 +477,7 @@ class TreeSlider(object):
                 ext.run(force=True, nexus=self._nexus)
 
                 # remote inference args
-                args = [ext.outfile, self.inference_args]
+                args = [ext.outfile, self.inference_args, self.keep_all_files]
 
                 # send remote tree inference job that will clean up itself
                 if "raxml" in self.inference_method:
@@ -542,15 +544,21 @@ def remote_mrbayes(nexfile, inference_args):
 
 
 
-def remote_raxml(phyfile, inference_args):
+def remote_raxml(phyfile, inference_args, keep_all_files=False):
     """
     Call raxml on phy and returned parse tree result
     """
+    # if keep_all_files then use workdir as the workdir instead of tmp
+    if keep_all_files:
+        workdir = os.path.dirname(phyfile)
+    else:
+        workdir = tempfile.gettempdir()
+
     # call raxml on the input phylip file with inference args
     rax = raxml(
         data=phyfile,
-        name="temp_" + str(os.getpid()),
-        workdir=tempfile.gettempdir(),
+        name=phyfile.rsplit(".phy")[0],  # "temp_" + str(os.getpid()),
+        workdir=workdir,
         **inference_args
     )
     rax.run(force=True, quiet=True, block=True)
@@ -562,10 +570,11 @@ def remote_raxml(phyfile, inference_args):
         tree = toytree.tree(rax.trees.bestTree).newick
 
     # remote tree files
-    for tfile in rax.trees:
-        tpath = getattr(rax.trees, tfile)
-        if os.path.exists(tpath):
-            os.remove(tpath)
+    if not keep_all_files:
+        for tfile in rax.trees:
+            tpath = getattr(rax.trees, tfile)
+            if os.path.exists(tpath):
+                os.remove(tpath)
 
     # remove the TEMP phyfile in workdir/tmpdir
     os.remove(phyfile)    
