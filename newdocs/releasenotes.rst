@@ -4,6 +4,30 @@
 Release Notes
 =============
 
+0.9.50
+------
+**April 05, 2020**
+
+- Actually fix FASTQ+64 problem. Max fastq_qmax is 126, so this is set to 93 now (93+33=126)
+
+0.9.49
+------
+**April 02, 2020**
+
+- Allow high fastq_qmax in pair merging to allow FASTQ+64 data
+
+0.9.48
+------
+**April 01, 2020**
+
+- Record refseq mapped/unmapped for both SE & PE
+- wextract minmap+consred minmap default added
+- treeslider default args typed
+- tested working wextracter
+- baba merge
+- new dict for translation
+- updating bpp for 4.0
+
 0.9.47
 ------
 **March 24, 2020**
