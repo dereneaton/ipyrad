@@ -77,6 +77,7 @@ class TreeSlider(object):
         mincov=0,
         imap=None,
         minmap=None,
+        rmincov=0.0,
         consensus_reduce=False,
         inference_method="raxml",
         inference_args={},
@@ -104,6 +105,7 @@ class TreeSlider(object):
         self.imap = imap
         self.mincov = mincov
         self.minmap = minmap
+        self.rmincov = float(rmincov if rmincov else 0.0)
         self.consensus_reduce = consensus_reduce
         self.inference_method = inference_method
         self.inference_args = inference_args
@@ -458,6 +460,7 @@ class TreeSlider(object):
                 imap=self.imap,
                 minmap=self.minmap,
                 consensus_reduce=self.consensus_reduce,
+                rmincov=self.rmincov,
                 quiet=True,
             )
 
