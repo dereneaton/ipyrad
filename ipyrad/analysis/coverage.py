@@ -175,7 +175,7 @@ class Coverage:
             )
 
             axes.text(
-                scafmarkers.pos0.iloc[-1] + nudge,
+                scaffold_table.scaffold_length[scaff] + nudge,
                 baseline - 0.5,
                 scaffold_table.scaffold_name[scaff],
                 style={"text-anchor": "start"},
