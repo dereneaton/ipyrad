@@ -550,14 +550,14 @@ def remote_raxml(phyfile, inference_args, keep_all_files=False):
     """
     # if keep_all_files then use workdir as the workdir instead of tmp
     if keep_all_files:
-        workdir = os.path.dirname(phyfile)
+        workdir = os.path.dirname(os.path.dirname(phyfile))
     else:
-        workdir = tempfile.gettempdir()
+        workdir = os.path.dirname(phyfile)
 
     # call raxml on the input phylip file with inference args
     rax = raxml(
         data=phyfile,
-        name=phyfile.rsplit(".phy")[0],  # "temp_" + str(os.getpid()),
+        name=os.path.basename(phyfile).rsplit(".phy")[0],  # "temp_" + str(os.getpid()),
         workdir=workdir,
         **inference_args
     )
