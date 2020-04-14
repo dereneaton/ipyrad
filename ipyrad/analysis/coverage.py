@@ -18,7 +18,7 @@ class Coverage:
     def __init__(
         self, 
         data,
-        scaffold_idxs=None,
+        # scaffold_idxs=None,
         imap=None, 
         minmap=None, 
         mincov=4, 
@@ -44,9 +44,9 @@ class Coverage:
         self.mincov = mincov
         self.exclude = exclude
 
-        self.scaffold_idxs = scaffold_idxs
-        if self.scaffold_idxs is None:
-            self.scaffold_idxs = range(12)
+        # self.scaffold_idxs = scaffold_idxs
+        # if self.scaffold_idxs is None:
+        #     self.scaffold_idxs = range(12)
 
         # to be filled
         self.phymap = None
