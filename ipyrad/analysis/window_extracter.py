@@ -548,53 +548,53 @@ class WindowExtracter(object):
         ])
 
 
-    def _imap_consensus_reduce(self):
-        """
-        Get consensus sequence for all samples in clade. 
-        And resets .names, ._pnames as alphanumeric imap keys for writing.
-        """
-        # skip if no imap
-        if (not self.imap) or (not self.consensus_reduce):
-            self.wnames = self.names
-            self.wpnames = self.pnames
-            return
+    # def _imap_consensus_reduce(self):
+    #     """
+    #     Get consensus sequence for all samples in clade. 
+    #     And resets .names, ._pnames as alphanumeric imap keys for writing.
+    #     """
+    #     # skip if no imap
+    #     if (not self.imap) or (not self.consensus_reduce):
+    #         self.wnames = self.names
+    #         self.wpnames = self.pnames
+    #         return
 
-        # empty array of shape imap groups
-        iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
-        inames = np.array(sorted(self.imap.keys()))
+    #     # empty array of shape imap groups
+    #     iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
+    #     inames = np.array(sorted(self.imap.keys()))
 
-        # iterate over imap groups
-        for ikey, ivals in self.imap.items():
+    #     # iterate over imap groups
+    #     for ikey, ivals in self.imap.items():
 
-            # TODO: SHOULD MINMAP FILTER APPLY HERE??
+    #         # TODO: SHOULD MINMAP FILTER APPLY HERE??
 
-            # get subarray for this group
-            match = [np.where(self.names == i)[0] for i in ivals]
-            sidxs = [i[0] for i in match if i.size]        
-            subarr = self.seqarr[sidxs, :]
+    #         # get subarray for this group
+    #         match = [np.where(self.names == i)[0] for i in ivals]
+    #         sidxs = [i[0] for i in match if i.size]        
+    #         subarr = self.seqarr[sidxs, :]
 
-            # get consensus sequence
-            cons = consens_sample(subarr, GETCONS)
+    #         # get consensus sequence
+    #         cons = consens_sample(subarr, GETCONS)
 
-            # insert to iarr
-            iidx = np.where(inames == ikey)[0][0]
-            iarr[iidx] = cons
+    #         # insert to iarr
+    #         iidx = np.where(inames == ikey)[0][0]
+    #         iarr[iidx] = cons
 
-        # save as new data --------- (TODO HERE) -------------
-        iarr[iarr == 0] = 78
-        self.seqarr = iarr
-        self.wnames = inames
-        self._longname = 1 + max([len(i) for i in self.wnames])
-        self.wpnames = np.array([
-            "{}{}".format(name, " " * (self._longname - len(name)))
-            for name in self.wnames
-        ])
+    #     # save as new data --------- (TODO HERE) -------------
+    #     iarr[iarr == 0] = 78
+    #     self.seqarr = iarr
+    #     self.wnames = inames
+    #     self._longname = 1 + max([len(i) for i in self.wnames])
+    #     self.wpnames = np.array([
+    #         "{}{}".format(name, " " * (self._longname - len(name)))
+    #         for name in self.wnames
+    #     ])
 
 
     def _new_filter_seqarr(self):
 
-        # drop SITES that are too many Ns given (global) mincov
-        drop = np.sum(self.seqarr != 78, axis=0) < self._mincov
+        # convert dash (-) to Ns
+        self.seqarr[self.seqarr == 45] = 78
 
         # drop SITES that are too many Ns in minmap pops
         if self.imap:
@@ -604,7 +604,7 @@ class WindowExtracter(object):
                 match = [np.where(self.names == i)[0] for i in ivals]
                 sidxs = [i[0] for i in match if i.size]
                 subarr = self.seqarr[sidxs, :]
-                drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+                imapdrop = np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
         # replace data with consensus reduced to apply filters
         if self.consensus_reduce:
@@ -615,12 +615,12 @@ class WindowExtracter(object):
             self.wnames = self.names.copy()
             self.wpnames = self.pnames.copy()
 
-        # apply site filter
-        keep = np.invert(drop)        
-        self.seqarr = self.seqarr[:, keep]
+        # drop SITES that don't meet imap/minmap filter
+        self.seqarr = self.seqarr[:, np.invert(imapdrop)]
 
-        # convert dash (-) to Ns
-        self.seqarr[self.seqarr == 45] = 78
+        # drop SITES that don't meet mincov filter (applied after cons_reduc)
+        mincovdrop = np.sum(self.seqarr != 78, axis=0) < self._mincov
+        self.seqarr = self.seqarr[:, np.invert(mincovdrop)]
 
         # drop SAMPLES that are only Ns after removing lowcov sites
         rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
@@ -630,45 +630,45 @@ class WindowExtracter(object):
         self._pnames = self.wpnames[keep]
 
 
-    def _filter_seqarr(self):
-        """
-        Apply filters to remove sites from alignment and to drop taxa if 
-        they end up having all Ns.
-        """
-        # drop SITES that are too many Ns given (global) mincov
-        drop = np.sum(self.seqarr != 78, axis=0) < self._mincov
+    # def _filter_seqarr(self):
+    #     """
+    #     Apply filters to remove sites from alignment and to drop taxa if 
+    #     they end up having all Ns.
+    #     """
+    #     # drop SITES that are too many Ns given (global) mincov
+    #     drop = np.sum(self.seqarr != 78, axis=0) < self._mincov
 
-        # drop SITES that are too many Ns in minmap pops
-        if self._minmap and self.imap:
-            for ikey, ivals in self.imap.items():
+    #     # drop SITES that are too many Ns in minmap pops
+    #     if self._minmap and self.imap:
+    #         for ikey, ivals in self.imap.items():
 
-                # imap drops sites if mincov is below nsamples in group
-                if not self.consensus_reduce:
-                    match = [np.where(self.names == i)[0] for i in ivals]
-                    sidxs = [i[0] for i in match if i.size]
-                    subarr = self.seqarr[sidxs, :]
-                    drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+    #             # imap drops sites if mincov is below nsamples in group
+    #             if not self.consensus_reduce:
+    #                 match = [np.where(self.names == i)[0] for i in ivals]
+    #                 sidxs = [i[0] for i in match if i.size]
+    #                 subarr = self.seqarr[sidxs, :]
+    #                 drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
-                # imap could drop sites in consens if minmap is (1,0,1,1,0)
-                else:
-                    sidxs = np.where(self.wnames == ikey)[0][0]
-                    subarr = self.seqarr[sidxs, :]
-                    drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+    #             # imap could drop sites in consens if minmap is (1,0,1,1,0)
+    #             else:
+    #                 sidxs = np.where(self.wnames == ikey)[0][0]
+    #                 subarr = self.seqarr[sidxs, :]
+    #                 drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
-        # apply site filter
-        keep = np.invert(drop)        
-        self.seqarr = self.seqarr[:, keep]
+    #     # apply site filter
+    #     keep = np.invert(drop)        
+    #     self.seqarr = self.seqarr[:, keep]
 
-        # convert dash (-) to Ns
-        self.seqarr[self.seqarr == 45] = 78
+    #     # convert dash (-) to Ns
+    #     self.seqarr[self.seqarr == 45] = 78
 
-        # drop SAMPLES that are only Ns after removing lowcov sites
-        rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
-        keep = rcovp >= self.rmincov
-        # keep = np.invert(np.all(self.seqarr == 78, axis=1))
-        self.seqarr = self.seqarr[keep, :]
-        self._names = self.wnames[keep]
-        self._pnames = self.wpnames[keep]
+    #     # drop SAMPLES that are only Ns after removing lowcov sites
+    #     rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
+    #     keep = rcovp >= self.rmincov
+    #     # keep = np.invert(np.all(self.seqarr == 78, axis=1))
+    #     self.seqarr = self.seqarr[keep, :]
+    #     self._names = self.wnames[keep]
+    #     self._pnames = self.wpnames[keep]
 
 
 
