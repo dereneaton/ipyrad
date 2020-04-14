@@ -616,7 +616,8 @@ class WindowExtracter(object):
             self.wpnames = self.pnames.copy()
 
         # drop SITES that don't meet imap/minmap filter
-        self.seqarr = self.seqarr[:, np.invert(imapdrop)]
+        if self.imap:
+            self.seqarr = self.seqarr[:, np.invert(imapdrop)]
 
         # drop SITES that don't meet mincov filter (applied after cons_reduc)
         mincovdrop = np.sum(self.seqarr != 78, axis=0) < self._mincov
