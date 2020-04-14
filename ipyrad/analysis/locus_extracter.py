@@ -79,7 +79,6 @@ class LocusExtracter(object):
         data, 
         name=None,
         workdir="analysis-locus_extracter",
-        # scaffold_idx=None, 
         mincov=4,
         exclude=None,
         imap=None,
@@ -103,6 +102,9 @@ class LocusExtracter(object):
         self.consensus_reduce = consensus_reduce
         self.maxmissing = maxmissing
         self.quiet = quiet
+
+        # hardcoded in locus extracter
+        self.rmincov = 0.1
 
         # file to write to
         if not os.path.exists(self.workdir):
@@ -138,9 +140,6 @@ class LocusExtracter(object):
         self._names = []
         self._pnames = []
 
-        # records idx, len, nsnps, nsites for each kept locus.
-        # self._init_stats()
-
         # get sample names, sidxs, and scaf names        
         self._parse_scaffolds_meta()
 
@@ -150,7 +149,8 @@ class LocusExtracter(object):
         # set minmap and mincov to ints based on nsamples/imap
         self._set_filters_type()
 
-        # get ordered names 
+        # records idx, len, nsnps, nsites for each kept locus.
+        self._init_stats()
 
 
 
@@ -209,8 +209,7 @@ class LocusExtracter(object):
 
             # submit job
             args = (self, block)
-            rasync = lbview.apply(remote_filter_loci, *args)
-            rasyncs[lidx] = rasync
+            rasyncs[lidx] = lbview.apply(remote_filter_loci, *args)
 
         # wait for jobs to finish
         ipyclient.wait()
@@ -218,8 +217,9 @@ class LocusExtracter(object):
         # collect results as an ordered list
         chunk = 0
         self.loci = []
+        self.smask = []
         for lidx in sorted(rasyncs.keys()):
-            loci, filters, farr = rasyncs[lidx].get()
+            loci, filters, farr, smask = rasyncs[lidx].get()
 
             # store loci
             self.loci.extend(loci)
@@ -231,7 +231,15 @@ class LocusExtracter(object):
             for key in self.filters:
                 self.filters[key] += filters[key]
 
+            # store retrieval mask
+            self.smask.append(smask)
+
+            # advance counter
             chunk += chunksize
+
+        # update stats from smask
+        self.smask = np.concatenate(self.smask)
+        self.sample_stats.loci = self.smask.sum(axis=0)
 
         # print results
         print("{} loci passed filtering".format(len(self.loci)))
@@ -309,7 +317,12 @@ class LocusExtracter(object):
 
 
     def _init_stats(self):
-        pass
+
+        self.sample_stats = pd.DataFrame(
+            data=[0] * len(self.names),
+            index=self.names, 
+            columns=["loci"],
+        )
         # stats table
         # scaf = self.scaffold_table.loc[self._scaffold_idx, "scaffold_name"]
         # self.stats = pd.DataFrame({
@@ -331,17 +344,18 @@ class LocusExtracter(object):
     #         np.sum(self.seqarr == 78) / self.seqarr.size, 2)
     #     self.stats.loc["prefilter", "samples"] = self.seqarr.shape[0]
 
-    # CALLED ON REMOTE
+
+
+
     def _imap_consensus_reduce(self):
         """
+        Called on REMOTE.
         Get consensus sequence for all samples in clade. 
         And resets .names, ._pnames as alphanumeric imap keys for writing.
         """
         # skip if no imap
-        if (not self.imap) or (not self.consensus_reduce):
-            # self.wnames = self.names
-            # self.wpnames = self.pnames
-            return
+        if not self.consensus_reduce:
+            return 
 
         # empty array of shape imap groups
         iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
@@ -364,11 +378,13 @@ class LocusExtracter(object):
 
         # save as new data --------- (TODO HERE) -------------
         iarr[iarr == 0] = 78
-        self.seqarr = iarr
+        self.con_seqarr = iarr
 
-    # CALLED ON REMOTE
+
+
     def _filter_seqarr(self):
         """
+        Called on REMOTE.
         Apply filters to remove sites from alignment and to drop taxa if 
         they end up having all Ns.
         """
@@ -378,29 +394,28 @@ class LocusExtracter(object):
         # convert dash (-) to Ns
         self.seqarr[self.seqarr == 45] = 78
 
-        # drop SITES that are too many Ns given (global) mincov
-        drop = np.sum(self.seqarr != 78, axis=0) < self._mincov
-
         # drop SITES that are too many Ns in minmap pops
-        if self._minmap and self.imap:
+        if self.imap:
             for ikey, ivals in self.imap.items():
 
                 # imap drops sites if mincov is below nsamples in group
-                if not self.consensus_reduce:
-                    match = [np.where(self.names == i)[0] for i in ivals]
-                    sidxs = [i[0] for i in match if i.size]
-                    subarr = self.seqarr[sidxs, :]
-                    drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+                match = [np.where(self.names == i)[0] for i in ivals]
+                sidxs = [i[0] for i in match if i.size]
+                subarr = self.seqarr[sidxs, :]
+                imapdrop = np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
-                # imap could drop sites in consens if minmap is (1,0,1,1,0)
-                else:
-                    sidxs = np.where(self.wnames == ikey)[0][0]
-                    subarr = self.seqarr[sidxs, :]
-                    drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+        # replace data with consensus reduced to apply filters
+        if self.consensus_reduce:
+            self.seqarr = self.con_seqarr
 
-        # apply site filter
-        keep = np.invert(drop)
-        self.seqarr = self.seqarr[:, keep]
+        # drop SITES that don't meet imap/minmap filter
+        self.seqarr = self.seqarr[:, np.invert(imapdrop)]
+
+        # drop SITES that don't meet mincov filter (applied after cons_reduc)
+        mincovdrop = np.sum(self.seqarr != 78, axis=0) < self._mincov
+        self.seqarr = self.seqarr[:, np.invert(mincovdrop)]
+
+        # all sites were filtered?
         if not self.seqarr.size:
             filters["mincov"] = 1
 
@@ -413,7 +428,15 @@ class LocusExtracter(object):
         nsnps = count_snps(self.seqarr)
         if nsnps < self.minsnps:
             filters["minsnps"] = 1
-        return filters
+
+        # mark SAMPLES that are only Ns after removing lowcov sites
+        # for masking by filling the sample_filter array.
+        rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
+        keep = rcovp >= self.rmincov
+        self.seqarr = self.seqarr[keep, :]
+
+        # return filters dictionary and keep array
+        return filters, keep
 
 
     # def _calc_filtered_stats(self):
@@ -491,7 +514,7 @@ class LocusExtracter(object):
 
         # drop SAMPLES that are only Ns after removing lowcov sites
         if not include_empty_rows:
-            keep = np.invert(np.all(seqarr == 78, axis=1))
+            keep = self.smask[lidx]
             seqarr = seqarr[keep, :]
             pnames = self.wpnames[keep]
 
@@ -588,6 +611,8 @@ def remote_filter_loci(self, block):
     self.loci = []
     self.filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
     self.farr = np.zeros(block.shape[0], dtype=np.bool)
+    self.smask = []
+    # self.smask = np.zeros((block.shape[0], len(self.names)), dtype=np.bool)
 
     # open h5 for reading seqarray
     with h5py.File(self.data, 'r') as io5:
@@ -604,11 +629,12 @@ def remote_filter_loci(self, block):
 
             # [optional] consensus reduce, stores wpnames.
             self._imap_consensus_reduce()
-            filters = self._filter_seqarr()
+            filters, smask = self._filter_seqarr()
 
             # only keep if it passed filtering
             if not any(list(filters.values())):
                 self.loci.append(self.seqarr)
+                self.smask.append(smask)
             else:
                 self.farr[idx] = True
 
@@ -616,4 +642,4 @@ def remote_filter_loci(self, block):
             for key in self.filters:
                 self.filters[key] += filters[key]
 
-    return self.loci, self.filters, self.farr
+    return self.loci, self.filters, self.farr, self.smask
