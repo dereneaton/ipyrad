@@ -103,7 +103,7 @@ class WindowExtracter(object):
         self.mincov = mincov
         self.rmincov = float(rmincov if rmincov else 0.0)
         self.imap = imap
-        self.minmap = minmap  # (minmap if minmap else {i: 1 for i in imap})
+        self.minmap = (minmap if minmap else {i: 0 for i in imap})
         self.consensus_reduce = consensus_reduce
         self.quiet = quiet
 
@@ -123,8 +123,8 @@ class WindowExtracter(object):
                     "consensus_reduce option requires an imap dictionary")
 
             # can condensed samples be missing? minmap must be [0-1].
-            if self.minmap is None:
-                self.minmap = {i: 0 for i in self.imap}
+            # if self.minmap is None:
+                # self.minmap = {i: 0 for i in self.imap}
                 # assert max(self.minmap.values) <= 1, (
                 # "minmap values cannot be >1 with consensus_reduce")
 
