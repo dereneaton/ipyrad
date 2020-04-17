@@ -1761,7 +1761,6 @@ def pseudoref2ref(pseudoref, ref):
 
 
 def fill_seq_array(data, ntaxa, nbases, nloci):
-   
     # init/reset hdf5 database
     with h5py.File(data.seqs_database, 'w') as io5:
 

@@ -35,6 +35,7 @@ from .sratools import SRA as sratools
 from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 
 # testing
+from .locus_extracter import LocusExtracter as locus_extracter
 from .tetrad import Tetrad as tetrad
 from .window_extracter import WindowExtracter as window_extracter
 from .clade_weights import CladeWeights as clade_weights
@@ -43,8 +44,9 @@ from .bucky import Bucky as bucky
 from .bpp import Bpp as bpp
 from .fasttree import Fasttree as fasttree
 from .baba import Baba as baba
+from .baba2 import Baba as baba2
+from .coverage import Coverage as coverage
 
-# from .fasttree import Fastree as fastree
 # from .momi import Momi as momi
 # from .eems import Eems as eems
 # from .popgen import Popgen as popgen

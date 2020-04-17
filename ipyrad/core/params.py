@@ -32,7 +32,7 @@ class Hackers(object):
         self.__dict__["_data"] = dict([
             ("random_seed", 42),
             ("max_fragment_length", 50),
-            ("max_inner_mate_distance", 60),
+            ("max_inner_mate_distance", 500),
             ("p5_adapter", "AGATCGGAAGAGC"),
             ("p3_adapter", "AGATCGGAAGAGC"),
             ("p3_adapters_extra", []),
