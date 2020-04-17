@@ -2384,7 +2384,8 @@ def build_vcf(data, chunksize=1000):
                     in snpmap[:, [0, 2]]
                 ]
                 # denovo based positions: pos on locus. tested. works. right.
-                pos = snpmap[:, 2]
+                # almost. POS is 1 indexed.
+                pos = snpmap[:, 2] + 1
                 # offset = 0
 
             # get alt genotype calls
