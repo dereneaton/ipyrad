@@ -10,8 +10,20 @@ import tempfile
 import h5py
 import numpy as np
 import pandas as pd
-import toyplot
 from .locus_extracter import LocusExtracter
+
+# import tested at init
+try:
+    import toyplot
+except ImportError:
+    pass
+_TOYPLOT_IMPORT = """
+This ipyrad analysis tool requires the following software
+that you can install with conda using this command:
+
+   conda install toytree -c eaton-lab
+"""
+
 
 
 class Coverage:
@@ -34,6 +46,10 @@ class Coverage:
         ----------
         seqs_database: The .seqs.hdf5 database file from ipyrad.
         """
+        # check imports
+        if not sys.modules.get("toyplot"):
+            raise ImportError(_TOYPLOT_IMPORT)
+
         # load args
         self.data = data
         self.imap = imap
