@@ -9,6 +9,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import glob
 import shutil
 import tempfile
 
@@ -94,7 +95,6 @@ class TreeSlider(object):
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.data = os.path.realpath(os.path.expanduser(data))
-        self.tmpdir = os.path.join(self.workdir, "tmpdir")
         self.keep_all_files = keep_all_files
 
         # work
@@ -449,10 +449,12 @@ class TreeSlider(object):
                 continue
 
             # extract the alignment for this window (auto-generate name)
+            keepdir = os.path.join(
+                self.workdir, "{}-{}".format(self.name, "bootsdir"))
             ext = window_extracter(
                 # name=str(np.random.randint(0, 1e15)),
                 data=self.data,
-                workdir=os.path.join(self.workdir, "tmpdir"),
+                workdir=keepdir,
                 scaffold_idx=int(self.tree_table.scaffold[idx]),
                 start=self.tree_table.start[idx],
                 end=self.tree_table.end[idx],
@@ -480,7 +482,7 @@ class TreeSlider(object):
                 ext.run(force=True, nexus=self._nexus)
 
                 # remote inference args
-                args = [ext.outfile, self.inference_args, self.keep_all_files]
+                args = [ext.outfile, self.inference_args, keepdir]
 
                 # send remote tree inference job that will clean up itself
                 if "raxml" in self.inference_method:
@@ -510,7 +512,24 @@ class TreeSlider(object):
             if not rasyncs:
                 self._print("")
                 break
-        shutil.rmtree(self.tmpdir)
+
+        # if not keeping boot then remove bootsdir
+        if not self.keep_all_files:
+            shutil.rmtree(self.tmpdir)
+
+        # or, write a boots file pointing to all bootsfiles
+        if self.keep_all_files:
+            if self.inference_args.get("N"):
+                newbootsfile = os.path.join(
+                    self.workdir, 
+                    "{}.bootsfiles.txt".format(self.name)
+                )
+                blist = sorted(
+                    glob.glob(os.path.join(keepdir, "RAxML_bootstrap*"))
+                )
+                with open(newbootsfile, 'w') as out:
+                    out.write("\n".join(blist))
+
 
 
 
@@ -547,13 +566,13 @@ def remote_mrbayes(nexfile, inference_args):
 
 
 
-def remote_raxml(phyfile, inference_args, keep_all_files=False):
+def remote_raxml(phyfile, inference_args, keepdir=None):
     """
     Call raxml on phy and returned parse tree result
     """
     # if keep_all_files then use workdir as the workdir instead of tmp
-    if keep_all_files:
-        workdir = os.path.dirname(os.path.dirname(phyfile))
+    if keepdir:
+        workdir = keepdir
     else:
         workdir = os.path.dirname(phyfile)
 
@@ -573,7 +592,7 @@ def remote_raxml(phyfile, inference_args, keep_all_files=False):
         tree = toytree.tree(rax.trees.bestTree).newick
 
     # remote tree files
-    if not keep_all_files:
+    if keepdir is None:
         for tfile in rax.trees:
             tpath = getattr(rax.trees, tfile)
             if os.path.exists(tpath):
