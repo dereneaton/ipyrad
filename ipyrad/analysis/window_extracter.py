@@ -629,11 +629,12 @@ class WindowExtracter(object):
         self.seqarr = self.seqarr[:, np.invert(mincovdrop)]
 
         # drop SAMPLES that are only Ns after removing lowcov sites
-        rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
-        keep = rcovp >= self.rmincov
-        self.seqarr = self.seqarr[keep, :]
-        self._names = self.wnames[keep]
-        self._pnames = self.wpnames[keep]
+        if self.seqarr.size:
+            rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
+            keep = rcovp >= self.rmincov
+            self.seqarr = self.seqarr[keep, :]
+            self._names = self.wnames[keep]
+            self._pnames = self.wpnames[keep]
 
 
     # def _filter_seqarr(self):
