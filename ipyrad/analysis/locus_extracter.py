@@ -86,6 +86,7 @@ class LocusExtracter(object):
         minsnps=0,
         maxmissing=1.0,
         consensus_reduce=False,
+        #imap_relabel=False,
         quiet=False,
         **kwargs
         ):
@@ -93,11 +94,10 @@ class LocusExtracter(object):
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        # self.scaffold_idx = scaffold_idx
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
         self.imap = imap
-        self.minmap = minmap  # (minmap if minmap else {i: 1 for i in imap})
+        self.minmap = minmap
         self.minsnps = minsnps
         self.consensus_reduce = consensus_reduce
         self.maxmissing = maxmissing
@@ -105,6 +105,11 @@ class LocusExtracter(object):
 
         # hardcoded in locus extracter
         self.rmincov = 0.1
+
+        # minmap defaults to 0 if empty and imap
+        if self.imap:
+            if self.minmap is None:
+                self.minmap = {i: 0 for i in self.imap}
 
         # file to write to
         if not os.path.exists(self.workdir):
@@ -434,7 +439,7 @@ class LocusExtracter(object):
         # for masking by filling the sample_filter array.
         rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
         keep = rcovp >= self.rmincov
-        self.seqarr = self.seqarr[keep, :]
+        # self.seqarr = self.seqarr[keep, :]
 
         # return filters dictionary and keep array
         return filters, keep
@@ -503,6 +508,15 @@ class LocusExtracter(object):
             else:
                 self.wnames = self.names
                 self.wpnames = self.pnames
+
+
+    def get_shape(self, lidx, include_empty_rows=False):
+        # build phy
+        seqarr = self.loci[lidx]
+        if not include_empty_rows:
+            keep = self.smask[lidx]
+            seqarr = seqarr[keep, :]
+        return seqarr.shape
 
 
     def get_locus(self, lidx, include_empty_rows=False, include_names=True):
@@ -628,7 +642,7 @@ def remote_filter_loci(self, block):
             # extract sequence
             self.seqarr = io5["phy"][self.sidxs, self.start:self.end]
 
-            # [optional] consensus reduce, stores wpnames.
+            # applies SITE filters to seqarr and returns loc and row filters
             self._imap_consensus_reduce()
             filters, smask = self._filter_seqarr()
 

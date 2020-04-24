@@ -103,7 +103,7 @@ class WindowExtracter(object):
         self.mincov = mincov
         self.rmincov = float(rmincov if rmincov else 0.0)
         self.imap = imap
-        self.minmap = (minmap if minmap else {i: 0 for i in imap})
+        self.minmap = minmap
         self.consensus_reduce = consensus_reduce
         self.quiet = quiet
 
@@ -121,6 +121,11 @@ class WindowExtracter(object):
             if self.imap is None:
                 raise IPyradError(
                     "consensus_reduce option requires an imap dictionary")
+
+        # imap requires a minmap so default set to 0
+        if self.imap:
+            if self.minmap is None:
+                self.minmap = {i: 0 for i in self.imap}
 
             # can condensed samples be missing? minmap must be [0-1].
             # if self.minmap is None:
