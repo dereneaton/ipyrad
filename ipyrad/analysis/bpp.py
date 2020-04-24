@@ -285,7 +285,7 @@ class Bpp(object):
         for kwarg in kwargs:
             if kwarg not in self._kwargs:
                 print(
-                    "argument {} if either incorrect or no longer supported "
+                    "argument {} is either incorrect or no longer supported "
                     "please check the latest documentation".format(kwarg))
 
 
