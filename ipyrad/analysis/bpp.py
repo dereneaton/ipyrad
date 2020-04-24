@@ -485,7 +485,7 @@ class Bpp(object):
                     self.asyncs.append(rasync)
 
         # report on the number of submitted jobs
-        if self.asyncs and (not quiet):
+        if self.asyncs:  # and (not quiet):
             print("distributed {} bpp jobs [{}] ({} loci)\n"
                   .format(nreps, self.name, self.maxloci))
         else:
