@@ -11,14 +11,17 @@ import os
 import sys
 import glob
 import copy
+import tempfile
+import requests
 import subprocess as sps
-from collections import Counter
 
 import numpy as np
 import pandas as pd
 
 from .utils import Params
-from ipyrad.assemble.utils import IPyradError, DUCT
+from ..core.Parallel import Parallel
+from ..assemble.utils import IPyradError
+from ..analysis.locus_extracter import LocusExtracter
 
 try:
     import toytree
@@ -29,19 +32,6 @@ You are missing required packages to use ipa.bpp().
 First run the following conda install command:
 
 conda install toytree -c eaton-lab
-"""
-
-# DUCT from where?
-# TODO: REPLACE DUCT
-# TODO: REPLACE TOYTREE USAGE
-# 
-
-
-MISSING_IMPORTS = """
-You are missing required packages to use ipa.bpp().
-First run the following conda install command:
-
-conda install bpp -c ipyrad
 """
 
 
@@ -79,6 +69,10 @@ class Bpp(object):
         to this object. This is useful if returning to a notebook later and 
         you want to summarize results. 
 
+    randomize_order (bool):
+        if True then when maxloci is set this will randomly sample a 
+        different set of N loci in each replicate, rather than sampling
+        just the first N loci < maxloci. 
 
     Attributes:
     -----------
@@ -158,6 +152,12 @@ class Bpp(object):
         workdir="analysis-bpp", 
         guidetree=None, 
         imap=None, 
+        minmap=None,
+        maxloci=100,
+        minsnps=0,
+        maxmissing=1.0,
+        minlen=50,
+        reps_resample_loci=False,
         load_existing_results=False,
         *args, 
         **kwargs):
@@ -174,57 +174,129 @@ class Bpp(object):
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.guidetree = guidetree
         self.imap = imap
+        self.minmap = minmap
+        self.maxloci = maxloci
+        self.minsnps = minsnps
+        self.maxmissing = maxmissing
+        self.minlen = minlen
+        self.reps_resample_loci = reps_resample_loci
         self.load_existing_results = load_existing_results
+
+        # parallelization
+        self.ipcluster = {
+            "cluster_id": "", 
+            "profile": "default",
+            "engines": "Local", 
+            "quiet": 0, 
+            "timeout": 60, 
+            "cores": 0, 
+            "threads": 2,
+            "pids": {},
+            }        
 
         # update kwargs 
         self.asyncs = []
         self._kwargs = {
             "binary": os.path.join(sys.prefix, "bin", "bpp"),
-            "maxloci": None,
-            "minmap": None,
-            "minsnps": 0,
             "infer_sptree": 0,
             "infer_delimit": 0,
-            "delimit_alg": (0, 5),
+            "infer_delimit_args": (0, 2),
+            "speciesmodelprior": 1,
             "seed": 12345,
-            "burnin": 1000,
-            "nsample": 10000,
+            "burnin": 10000,
+            "nsample": 100000,
             "sampfreq": 2,
-            "thetaprior": (3, 0.002, 1),
+            "thetaprior": (3, 0.002, "E"),
             "tauprior": (3, 0.002),
+            "phiprior": (1, 1),
             "usedata": 1,
             "cleandata": 0,
-            "finetune": (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01),
+            "finetune": (0.01, 0.02, 0.03, 0.04, 0.05, 0.01, 0.01),
             "copied": False,
         }
+        self._check_kwargs(kwargs)
         self._kwargs.update(kwargs)
 
-        # run checks
-        self.check_binary()
-        self.check_files()
+        # check that tmp binary is in /tmpdir
+        self._check_binary()
+
+        # run checks on args 
+        self._check_args()
+
+        # load existing results files for this named bpp object if they exist
+        if self.load_existing_results:
+            self._load_existing_results(self.name, workdir=self.workdir)
 
 
-    def check_binary(self):
+
+    def _check_binary(self):
+        """
+        Check for required software. If BPP is not present then a precompiled
+        binary is downloaded into the tmpdir.
+        """
         # check that toytree is installed
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
 
+        # platform specific bpp binaries
+        platform = "linux"
+        if sys.platform != "linux":
+            platform = "macos"
+        dirname = "bpp-4.1.4-{}-x86_64".format(platform)
+
+        # look for existing binary in tmpdir
+        self._kwargs["binary"] = os.path.join(
+            tempfile.gettempdir(), dirname, "bin", "bpp"
+        )
+
         # check that bpp is installed and in path            
-        for binary in [self._kwargs["binary"]]:
-            cmd = ['which', binary]
-            proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
-            comm = proc.communicate()[0]
-            if not comm:
-                raise IPyradError(MISSING_IMPORTS)
+        cmd = ['which', self._kwargs["binary"]]
+        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
+        comm = proc.communicate()[0]
+        if comm:
+            return 
+
+        # bpp not found in /tmp, download it.        
+        tarname = dirname + ".tar.gz"
+        url = "https://github.com/bpp/bpp/releases/download/v4.1.4/" + tarname
+        res = requests.get(url, allow_redirects=True)
+        tmptar = os.path.join(tempfile.gettempdir(), tarname)
+        with open(tmptar, 'wb') as tz:
+            tz.write(res.content)
+
+        # decompress tar file 
+        cmd = ["tar", "zxvf", tmptar, "-C", tempfile.gettempdir()]
+        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
+        comm = proc.communicate()
+        if proc.returncode:
+            print(comm[0], comm[1])
+
+        # check that binary now can be found
+        cmd = ['which', self._kwargs["binary"]]
+        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
+        comm = proc.communicate()[0]
+        if comm:
+            return 
+        raise IPyradError("bpp binary not found.")
 
 
-    def check_files(self):
+    def _check_kwargs(self, kwargs):
         # support for legacy args
-        if self._kwargs.get("locifile"):
-            self.data = self._kwargs.get("locifile")
-        if not self.data:
+        for kwarg in kwargs:
+            if kwarg not in self._kwargs:
+                print(
+                    "argument {} if either incorrect or no longer supported "
+                    "please check the latest documentation".format(kwarg))
+
+
+    def _check_args(self):
+        """
+        Check that data is a SEQS HDF5.
+        """
+        # check for data input
+        if 'seqs.hdf5' not in self.data:
             raise IPyradError(
-                "must enter a 'data' argument (an ipyrad .loci file).")
+                "'data' argument must be an ipyrad .seqs.hdf5 file.")
 
         # set the guidetree
         if not self.guidetree:
@@ -243,46 +315,26 @@ class Bpp(object):
         if not self.imap:
             self.imap = {i: [i] for i in self.tree.get_tip_labels()}
 
-        # update stats if alleles instead of loci 
-        if not self._kwargs["minmap"]:
-            self._kwargs["minmap"] = {i: 1 for i in self.tree.get_tip_labels()}
+        # check that all tree tip labels are represented in imap
+        itips = set(self.imap.keys())
+        ttips = set(self.tree.get_tip_labels())
+        if itips.difference(ttips):
+            raise IPyradError(
+                "guidetree tips not in IMAP dictionary: {}"
+                .format(itips.difference(ttips)))
+        if ttips.difference(itips):
+            raise IPyradError(
+                "IMAP keys not in guidtree: {}"
+                .format(ttips.difference(itips)))
 
-        if ('.alleles.loci' in self.data) and (not self._kwargs['copied']):
-            # add 0/1 to names
-            keys = self.imap.keys()
-            for key in keys:
-                oldvals = self.imap[key]
-                newvals = []
-                for val in oldvals:
-                    newvals += [val + "_0", val + "_1"]
-                self.imap[key] = newvals
+        # check that minmap is OK or set it.
+        # ...
 
-            # double the minmap (copied attribute protects from double 2X)
-            self._kwargs["minmap"] = \
-                {key: val * 2 for key, val in self._kwargs['minmap'].items()}
-
-        ## checks
+        # checks
         assert isinstance(self.imap, dict), "you must enter an IMAP dictionary"
         assert set(self.imap.keys()) == set(self.tree.get_tip_labels()), (
-               "IMAP keys must match guidetree names: \n{}\n{}"\
-               .format(self.imap.keys(), self.tree.get_tip_labels()))
-
-        ## filters
-        self.filters = Params()
-        self.filters.minmap = self._kwargs["minmap"]
-        self.filters.maxloci = self._kwargs["maxloci"]
-        self.filters.minsnps = self._kwargs["minsnps"]
-
-        ## set bpp parameters with defaults
-        self.params = Params()
-        notparams = set(["workdir", "maxloci", "minmap", "minsnps", "copied"])
-        for key in set(self._kwargs.keys()) - notparams:
-            self.params[key] = self._kwargs[key]
-
-
-        ## load existing results files for this named bpp object if they exist
-        if self.load_existing_results:
-            self._load_existing_results(self.name, workdir=self.workdir)
+            "IMAP keys must match guidetree names: \n{}\n{}"
+            .format(self.imap.keys(), self.tree.get_tip_labels()))
 
 
     def _load_existing_results(self, name, workdir):
@@ -307,14 +359,19 @@ class Bpp(object):
                 self.files.treefiles.append(tree)        
 
 
-    def run(
-        self,
-        ipyclient, 
-        nreps=1, 
-        quiet=False,
-        randomize_order=False,
-        force=False,
-        ):
+    @property
+    def _algorithm(self):
+        if self._kwargs["infer_sptree"]:
+            if self._kwargs["infer_delimit"]:
+                return "11"
+            return "10"
+        else:
+            if self._kwargs["infer_delimit"]:
+                return "01"
+            return "00"
+
+
+    def run(self, ipyclient=None, force=False, show_cluster=False, auto=False, nreps=1, dry_run=False):
         """
         Submits bpp jobs to run on a cluster (ipyparallel Client). 
         The seed for the random number generator if not set is randomly 
@@ -325,71 +382,121 @@ class Bpp(object):
 
         Parameters:
         -----------
-        nreps (int):
-            submits nreps replicate jobs to the cluster each with a different 
-            random seed drawn starting from the starting seed. 
-        ipyclient (ipyparallel.Client)
-            an ipyparallel.Client object connected to a running cluster. 
-        quiet (bool):
-            whether to print that the jobs have been submitted
-        randomize_order (bool):
-            if True then when maxloci is set this will randomly sample a 
-            different set of N loci in each replicate, rather than sampling
-            just the first N loci < maxloci. 
-        force (bool):
-            Overwrite existing files with the same name. Default=False, skip
-            over existing files.
+        ipyclient: (type=ipyparallel.Client); Default=None. 
+            If you started an ipyclient manually then you can 
+            connect to it and use it to distribute jobs here.
+
+        force: (type=bool); Default=False.
+            Force overwrite of existing output with the same name.
+
+        show_cluster: (type=bool); Default=False.
+            Print information about parallel connection.
+
+        auto: (type=bool); Default=False.
+            Let ipyrad automatically manage ipcluster start and shutdown. 
+            This will connect to all avaiable cores by default, but can 
+            be modified by changing the parameters of the .ipcluster dict 
+            associated with this tool.
         """
+        pool = Parallel(
+            tool=self,
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={"force": force, "nreps": nreps, "dry_run": dry_run},
+            )
+        pool.wrap_run()
 
-        ## is this running algorithm 00?
-        is_alg00 = (not self.params.infer_sptree) and (not self.params.infer_delimit)
 
-        ## clear out pre-existing files for this object
+    def _run(self, force, ipyclient, nreps, dry_run):
+        "Distribute bpp jobs in parallel."
+
+        # clear out pre-existing files for this object
         self.files.mcmcfiles = []
         self.files.outfiles = []
         self.files.treefiles = []
         self.asyncs = []
 
-        ## initiate random seed
-        np.random.seed(self.params.seed)
-
-        ## load-balancer
+        # load-balancer
         lbview = ipyclient.load_balanced_view()
 
-        ## send jobs
+        # apply locus extracter filtering
+        self.lex = LocusExtracter(
+            data=self.data, 
+            imap=self.imap,
+            minmap=self.minmap,
+            mincov=len(self.imap),  # ENFORCE at least 1 per spp.
+            minsnps=self.minsnps,
+            maxmissing=self.maxmissing,
+            minlen=self.minlen,
+        )
+        self.lex.run(ipyclient=ipyclient, force=True, show_cluster=False)
+        self.lex.wpnames = np.array(["^" + i for i in self.lex.wpnames])
+        self.maxloci = min([self.maxloci, len(self.lex.loci)])
+
+        # print BPP header
+        print("[bpp v4.1.4]")  
+
+        # initiate random seed 
+        np.random.seed(self._kwargs["seed"])
+
+        # static set of sampled loci if not resampling
+        self._lidxs = np.random.choice(
+                range(len(self.lex.loci)), 
+                size=self.maxloci, 
+                replace=False,
+        )
+
+        # track jobs
+        # njobs = len(jobs)
+        # printstr = "running {} structure jobs".format(njobs)
+        # prog = ProgressBar(njobs, None, printstr)
+
+        # replicate jobs can: ------
+        #    - 1. differ by random seed AND by the subset of loci
+        #    - 2. differ only by the random seed and use same subset of loci.
         for job in range(nreps):
 
-            ## make repname and make ctl filename
+            # make repname and make ctl filename
             self._name = "{}_r{}".format(self.name, job)
             ctlhandle = os.path.realpath(
                 os.path.join(self.workdir, "{}.ctl.txt".format(self._name)))
 
-            ## skip if ctlfile exists
+            # skip if ctlfile exists
             if (not force) and (os.path.exists(ctlhandle)):
-                print("Named ctl file already exists. Use force=True to" \
-                    +" overwrite\nFilename:{}".format(ctlhandle))
+                print("Named ctl file already exists. Use force=True to" 
+                      " overwrite\nFilename:{}".format(ctlhandle))
+
+            # submit job to run
             else:
-                ## change seed and ctl for each rep, this writes into the ctl
-                ## file the correct name for the other files which share the 
-                ## same rep number in their names.
-                #self.params._seed = np.random.randint(0, 1e9, 1)[0]
+                # write imap groupings to the imapfile
                 self._write_mapfile()
-                #if randomize_order:
-                self._write_seqfile(randomize_order=randomize_order)
+
+                # write the seq aligns to the .txt file
+                self._write_seqfile()
+
+                # change seed for each rep. CTL has other file paths.
+                self._seed = np.random.randint(0, 1e9)
                 ctlfile = self._write_ctlfile()
 
-                ## submit to engines
-                rasync = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile, is_alg00))
-                self.asyncs.append(rasync)
+                # submit to engines
+                if not dry_run:
+                    rasync = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile))
+                    self.asyncs.append(rasync)
 
-                ## save tree file if alg 00
-                if is_alg00:
-                    self.files.treefiles.append(
-                        ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre")
+        # report on the number of submitted jobs
+        if self.asyncs:  # and (not quiet):
+            print("distributed {} bpp jobs [{}] ({} loci)\n"
+                  .format(nreps, self.name, self.maxloci))
+        else:
+            print("wrote {} bpp ctl files [{}] ({} loci)\n"
+                  .format(nreps, self.name, self.maxloci))
 
-        if self.asyncs and (not quiet):
-            sys.stderr.write("submitted {} bpp jobs [{}] ({} loci)\n"\
-                             .format(nreps, self.name, self._nloci))
+        # block until jobs are done with a progress bar.
+        # track progress of running job if fewer jobs than cores.
+        # else track completed jobs.
+        # ...TODO.
+        
 
 
     def write_bpp_files(self, randomize_order=False, quiet=False):
@@ -405,7 +512,6 @@ class Bpp(object):
         quiet (bool):
             whether to print info to stderr when finished.
         """
-
         # remove any old jobs with this same job name
         self._name = self.name
         oldjobs = glob.glob(
@@ -416,6 +522,11 @@ class Bpp(object):
 
         # check params types
         # ...
+        # self._lidxs = np.random.choice(
+            # range(len(self.lex.loci)), 
+            # size=self.maxloci, 
+            # replace=False,
+        # )
 
         # write tmp files for the job
         self._write_seqfile(randomize_order=randomize_order)
@@ -431,22 +542,35 @@ class Bpp(object):
 
 
     def _write_mapfile(self):
+        """
+        Writes the IMAP formatted file for bpp from the ipa IMAP
+        """
+        # get outfile path
         self.mapfile = os.path.realpath(
             os.path.join(
                 self.workdir, self._name + ".imapfile.txt"
             )
         )
+
+        # get longest name in the file
+        longname = 0
+        for key in sorted(self.imap.keys()):
+            for name in self.imap[key]:
+                longname = max(longname, len(name))
+        formatstr = "{:<" + str(longname + 2) + "} {}"
+
+        # open handle for writing
         with open(self.mapfile, 'w') as mapfile:
             data = [
-                "{:<30} {}".format(val, key) for key in 
+                formatstr.format(val, key) for key in 
                 sorted(self.imap) for val in self.imap[key]
             ]
             mapfile.write("\n".join(data))
 
 
-    def _write_seqfile(self, randomize_order=False):
+    def _write_seqfile(self):
         """
-
+        Write filtered loci from locus extracter
         """
         # set path to output seq data file
         self.seqfile = os.path.realpath(
@@ -454,187 +578,80 @@ class Bpp(object):
                 self.workdir, self._name + ".seqfile.txt"
             )
         )
-        seqfile = open(self.seqfile, 'w')
 
-        # read the .loci file and parse sequences into a random list
-        with open(self.data, 'r') as infile:
-            loci = infile.read().strip().split("|\n")
-            nloci = len(loci)
-            if randomize_order:
-                np.random.shuffle(loci)
-
-        # get all samples from the imap
-        samples = []
-        for mapl in self.imap.values():
-            if isinstance(mapl, list):
-                samples += mapl
-            else:
-                samples.append(mapl)
+        # sample loci that meet the filtering requirements
+        if self.reps_resample_loci:
+            lidxs = np.random.choice(
+                range(len(self.lex.loci)), 
+                size=self.maxloci, 
+                replace=False,
+            )
+        else:
+            lidxs = self._lidxs
 
         # iterate over loci, printing to outfile
-        nkept = 0
-        for iloc in range(nloci):
-            lines = loci[iloc].split("//")[0].split()
-            names = lines[::2]
-            names = ["^" + i for i in names]
-            seqs = [list(i) for i in lines[1::2]]
-            seqlen = len(seqs[0])
-            # whether to skip this locus based on filters below
-            skip = 0
-
-            # if minmap filter for sample coverage
-            if self.filters.minmap:
-                covd = {}
-                for group, vals in self.imap.items():
-                    covd[group] = sum(["^" + i in names for i in vals])
-
-                # check that coverage is good enough
-                if not all(
-                    [covd[group] >= self.filters.minmap[group] for 
-                     group in self.filters.minmap]
-                    ):
-                    skip = 1
-
-            # too many loci?
-            if (not skip) and (self.filters.maxloci):
-                if nkept >= self.filters.maxloci:
-                    skip = 1
-
-            # if minsnps then count nsnps and filter loci
-            if (not skip) and (self.filters.minsnps):
-                npis = 0
-                arr = np.array(seqs)
-                arr = np.zeros((arr.shape[0] * 2, arr.shape[1]), dtype="S1")
-
-                # expand ambiguities
-                for row in range(len(seqs)):
-                    fillrow = 2 * row
-                    arr[fillrow] = [DUCT[i][0] for i in seqs[row]]
-                    arr[fillrow + 1] = [DUCT[i][1] for i in seqs[row]]
-
-                # count SNPs
-                arr = arr.astype(str)
-                for col in range(arr.shape[1]):
-                    bases = arr[:, col]
-                    bases = bases[bases != "N"]
-                    bases = bases[bases != "-"]
-                    counts = Counter(bases)
-                    counts = counts.most_common(2)
-                    if len(counts) == 2:
-                        if counts[1][1] > 1:
-                            npis += 1
-                if npis < self.filters.minsnps:
-                    skip = 1
-
-            # build locus as a string
-            if not skip:
-
-                # convert to phylip with caret starter and replace - with N.
-                data = [
-                    "{:<30} {}".format(i, "".join(k).replace("-", "N")) for
-                    (i, k) in zip(names, seqs) if i[1:] in samples
-                ]
-
-                # if not empty, write to the file
-                if data:
-                    seqfile.write(
-                        "{} {}\n\n{}\n\n"
-                        .format(len(data), seqlen, "\n".join(data))
-                    )
-                    nkept += 1
-
-        # close up shop
-        self._nloci = nkept
-        del loci
-        seqfile.close()    
+        with open(self.seqfile, 'w') as seqfile:
+            for lidx in lidxs:
+                header = "{} {}".format(*self.lex.get_shape(lidx))
+                locus = "\n".join(self.lex.get_locus(lidx))
+                seqfile.write("{}\n{}\n\n".format(header, locus))
 
 
     def _write_ctlfile(self):
         """ write outfile with any args in argdict """
 
-        # A string to store ctl info
-        ctl = []
-
-        # write the top header info
-        ctl.append("seed = {}".format(self.params.seed))
-        ctl.append("seqfile = {}".format(self.seqfile))
-        ctl.append("Imapfile = {}".format(self.mapfile))
-
+        # get full path to out files for this repname
         path = os.path.realpath(os.path.join(self.workdir, self._name))
         mcmcfile = "{}.mcmc.txt".format(path)
         outfile = "{}.out.txt".format(path)
+
+        # store files for this rep
         if mcmcfile not in self.files.mcmcfiles:
             self.files.mcmcfiles.append(mcmcfile)
         if outfile not in self.files.outfiles:
             self.files.outfiles.append(outfile)
 
-        ctl.append("mcmcfile = {}".format(mcmcfile))
-        ctl.append("outfile = {}".format(outfile))
+        # expand options to fill ctl file
+        ctlstring = CTLFILE.format(**{
+            "seqfile": self.seqfile,
+            "mapfile": self.mapfile,
+            "mcmcfile": mcmcfile,
+            "outfile": outfile,
 
-        # number of loci (checks that seq file exists and parses from there)
-        ctl.append("nloci = {}".format(self._nloci))
-        ctl.append("usedata = {}".format(self.params.usedata))
-        ctl.append("cleandata = {}".format(self.params.cleandata))
+            "nloci": self.maxloci,
+            "usedata": self._kwargs["usedata"],
+            "cleandata": self._kwargs["cleandata"],
 
-        # infer species tree
-        if self.params.infer_sptree:
-            ctl.append("speciestree = 1")  # 0.4 0.2 0.1")
-        else:
-            ctl.append("speciestree = 0")
+            "infer_sptree": int(self._kwargs["infer_sptree"]),
+            "infer_delimit": int(self._kwargs["infer_delimit"]),
+            "infer_delimit_args": (
+                " ".join([str(i) for i in self._kwargs["infer_delimit_args"]])
+                if self._kwargs["infer_delimit"]
+                else ""),
+            "nsp": len(self.imap),
+            "spnames": " ".join(sorted(self.imap)),
+            "spcounts": " ".join([str(len(self.imap[i])) for i in sorted(self.imap)]),
+            "spnewick": self.tree.write(tree_format=9),
+            "speciesmodelprior": self._kwargs["speciesmodelprior"],
 
-        # infer delimitation (with algorithm 1 by default)
-        ctl.append(
-            "speciesdelimitation = {} {} {}"
-            .format(
-                self.params.infer_delimit, 
-                self.params.delimit_alg[0],
-                " ".join([str(i) for i in self.params.delimit_alg[1:]]) 
-            )
-        )
+            "thetaprior": " ".join([str(i) for i in self._kwargs["thetaprior"]]),
+            "tauprior": " ".join([str(i) for i in self._kwargs["tauprior"]]),
+            "phiprior": " ".join([str(i) for i in self._kwargs["phiprior"]]),
 
-        # get tree values
-        nspecies = str(len(self.imap))
-        species = " ".join(sorted(self.imap))
-        ninds = " ".join([str(len(self.imap[i])) for i in sorted(self.imap)])
-
-        # species&tree = 3 1 2 3 \n 4 4 4 \n (3 (1, 2));
-        ctl.append(
-            SPECIESTREE.format(
-                nspecies, species, ninds, self.tree.write(None, 9))
-        )
-
-        # thetaprior = 3 0.002 E
-        ctl.append("thetaprior = {} {} E".format(*self.params.thetaprior))
-
-        # tauprio = 3 0.002
-        ctl.append("tauprior = {} {}".format(*self.params.tauprior))
-
-        # other values, fixed for now
-        ctl.append(
-            "finetune = 1: {}"
-            .format(" ".join([str(i) for i in self.params.finetune]))
-        )
-
-        # CTL.append("finetune = 1: 1 0.002 0.01 0.01 0.02 0.005 1.0")
-        ctl.append("print = 1 0 0 0")
-        ctl.append("burnin = {}".format(self.params.burnin))
-        ctl.append("sampfreq = {}".format(self.params.sampfreq))
-        ctl.append("nsample = {}".format(self.params.nsample))
+            "seed": self._seed,
+            "finetune": " ".join([str(i) for i in self._kwargs["finetune"]]),
+            "burnin": self._kwargs["burnin"],
+            "sampfreq": self._kwargs["sampfreq"],
+            "nsample": self._kwargs["nsample"],
+        })
 
         # write out the ctl file
         ctlhandle = os.path.realpath(
             "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
-        # if isinstance(rep, int):
-        #     ctlhandle = os.path.realpath(
-        #         "{}-r{}.ctl.txt".format(os.path.join(self.workdir, self._name), rep))
-        # else:
-        #     ctlhandle = os.path.realpath(
-        #         "{}.ctl.txt".format(os.path.join(self.workdir, self._name)))
         with open(ctlhandle, 'w') as out:
-            out.write("\n".join(ctl))
+            out.write(ctlstring)
 
         return ctlhandle
-
 
 
     def copy(self, name, load_existing_results=False):
@@ -672,13 +689,12 @@ class Bpp(object):
 
         # update special dict attributes but not files
         for key, val in newobj.params.__dict__.items():
-            newobj.params.__setattr__(key, self.params.__getattribute__(key))
+            newobj.params.__setattr__(key, self._kwargs.__getattribute__(key))
         for key, val in newobj.filters.__dict__.items():
             newobj.filters.__setattr__(key, self.filters.__getattribute__(key))
 
         # new object must have a different name than it's parent
         return newobj
-
 
 
     def summarize_results(self, individual_results=False):
@@ -713,27 +729,29 @@ class Bpp(object):
 
 
 
-def _call_bpp(binary, ctlfile, is_alg00):
+def _call_bpp(binary, ctlfile):  #, is_alg00):
 
     # call the command and block until job finishes
-    proc = sps.Popen([binary, ctlfile], stderr=sps.STDOUT, stdout=sps.PIPE)
+    cmd = [binary, "--cfile", ctlfile]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     comm = proc.communicate()
+    if proc.returncode:
+        raise IPyradError(comm[0])
 
     # Look for the ~/Figtree.tre file that bpp creates.
     # This has to be done here to make sure it is instantly run
     # when the job finishes so other reps won't write over it.
-    # Kludge due to bpp writing forcing the file to $HOME.
-    if is_alg00:
-        default_figtree_path = os.path.join(
-            os.path.expanduser("~"), "FigTree.tre")
-        new_figtree_path = ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre"
-        try:
-            if os.path.exists(default_figtree_path):
-                os.rename(default_figtree_path, new_figtree_path)
-        except Exception:
-            pass
-
-    return comm
+    # Kludge due to bpp harcoded to write FigTree file to CWD.
+    # if is_alg00:
+    #     default_figtree_path = os.path.join(
+    #         os.path.expanduser("~"), "FigTree.tre")
+    #     new_figtree_path = ctlfile.rsplit(".ctl.txt", 1)[0] + ".tre"
+    #     try:
+    #         if os.path.exists(default_figtree_path):
+    #             os.rename(default_figtree_path, new_figtree_path)
+    #     except Exception:
+    #         pass
+    # return comm[0]
 
 
 class Result_00(object):
@@ -763,6 +781,7 @@ def _parse_00(ofile):
             index=arr[1:, 0],
             ).T
         return df
+
 
 
 def _parse_01(ofiles, individual=False):
@@ -835,3 +854,48 @@ SPECIESTREE = """\
 species&tree = {} {}
                  {}
                  {}"""  
+
+
+
+
+
+CTLFILE = """
+* I/O 
+seqfile = {seqfile}
+Imapfile = {mapfile}
+mcmcfile = {mcmcfile}
+outfile = {outfile}
+
+* DATA
+nloci = {nloci}
+usedata = {usedata}
+cleandata = {cleandata}
+
+* MODEL
+speciestree = {infer_sptree}
+speciesdelimitation = {infer_delimit} {infer_delimit_args}
+speciesmodelprior = {speciesmodelprior}
+species&tree = {nsp} {spnames}
+               {spcounts}
+               {spnewick}
+
+* PRIORS
+thetaprior = {thetaprior}
+tauprior = {tauprior}
+phiprior = {phiprior}
+
+* MCMC PARAMS
+seed = {seed}
+finetune = 1: {finetune}
+print = 1 0 0 0
+burnin = {burnin}
+sampfreq = {sampfreq}
+nsample = {nsample}
+"""
+
+
+
+
+
+
+

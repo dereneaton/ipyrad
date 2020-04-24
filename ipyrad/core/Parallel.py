@@ -303,7 +303,8 @@ class Parallel(object):
 
             # print cluster stats at this point
             # self.widget.close()
-            self.get_cluster_info()
+            if self.show_cluster:
+                self.get_cluster_info()
 
             # before running any jobs store engine pids for hard shutdown
             self.store_pids_for_shutdown()

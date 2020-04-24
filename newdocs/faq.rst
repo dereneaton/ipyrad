@@ -391,7 +391,6 @@ results below.
     "Removal of PCR clones reduced the number of called genotypes by 2% but had almost no influence on estimates of heterozygosity."
 * Benjelloun et al 2019 - `An evaluation of sequencing coverage and genotyping strategies to assess neutral and adaptive diversity <https://sci-hub.tw/https://onlinelibrary.wiley.com/doi/abs/10.1111/1755-0998.13070>`__
     "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
-* McCartney‐Melstad et ak 2019 - `An empirical pipeline for choosing the optimal clustering
-threshold in RADseq studies <https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13029>`__
+* McCartney‐Melstad et ak 2019 - `An empirical pipeline for choosing the optimal clustering threshold in RADseq studies <https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13029>`__
     Similar in spirit to the Mastretta‐Yanes et al. (2015) paper that everyone currently cites.
 

@@ -206,7 +206,7 @@ class Params(object):
         self._maxdepth = 10000
         self._clust_threshold = 0.85
         self._max_barcode_mismatch = 0
-        self._filter_adapters = 0
+        self._filter_adapters = 2
         self._filter_min_trim_len = 35
         self._max_alleles_consens = 2
         self._max_Ns_consens = 0.05
