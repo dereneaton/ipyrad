@@ -833,6 +833,10 @@ def merge(name, assemblies, rename_dict=None):
         value = getattr(assemblies[0].params, key)
         setattr(merged.params, key, value)
 
+    # A flag to set if there are technical replicates among merging
+    # assemblies, so we can print a helpful message.
+    any_replicates = False
+
     # iterate over all sample names from all Assemblies
     for data in assemblies:
 
@@ -862,8 +866,11 @@ def merge(name, assemblies, rename_dict=None):
                     msample.files.edits += sample.files.edits
 
                 # do not allow state >2 at merging (requires reclustering)
-                # if merging WITHIN samples.
-                msample.stats.state = min(sample.stats.state, 2)
+                # if merging WITHIN samples. Set the flag so we can inform
+                # the user after all the samples have been handled
+                if sample.stats.state > 2:
+                    msample.stats.state = 2
+                    any_replicates = True
 
             # merge its stats and files
             else:
@@ -878,6 +885,9 @@ def merge(name, assemblies, rename_dict=None):
     merged.params.raw_fastq_path = "Merged: " + merged_names
     merged.params.barcodes_path = "Merged: " + merged_names
     merged.params.sorted_fastq_path = "Merged: " + merged_names
+
+    if any_replicates:
+       print(MERGED_TECHNICAL_REPLICATES)
 
     # return the new Assembly object
     merged.save()
@@ -966,6 +976,12 @@ BAD_ASSEMBLY_NAME = """\
     
     Here's what you put:
     {}
+    """
+
+MERGED_TECHNICAL_REPLICATES = """\
+    NB: One or more samples are present in one or more of the merged assemblies,
+    and are beyond step 3. Technical replicates need to be clustered within
+    samples so YOU MUST  re-run these samples from at least step 3.
     """
 
 BAD_BARCODE = """\
