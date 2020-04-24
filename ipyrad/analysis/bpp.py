@@ -481,7 +481,7 @@ class Bpp(object):
 
                 # submit to engines
                 if not dry_run:
-                    rasync = lbview.apply(_call_bpp, ctlfile)
+                    rasync = lbview.apply(_call_bpp, *(self._kwargs["binary"], ctlfile))
                     self.asyncs.append(rasync)
 
         # report on the number of submitted jobs
@@ -729,10 +729,10 @@ class Bpp(object):
 
 
 
-def _call_bpp(ctlfile):  #, is_alg00):
+def _call_bpp(binary, ctlfile):  #, is_alg00):
 
     # call the command and block until job finishes
-    cmd = [self._kwargs["binary"], "--cfile", ctlfile]
+    cmd = [binary, "--cfile", ctlfile]
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     comm = proc.communicate()
     if proc.returncode:
