@@ -85,11 +85,19 @@ class TreeSlider(object):
         quiet=False,
         scaffold_minlen=0,
         keep_all_files=False,
+        **kwargs,
         ):
 
         # check installations
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
+
+        # report bad arguments
+        if kwargs:
+            print(
+                "Warning: Some arg names are not recognized and may have "
+                "changed. Please check the documentation:\n"
+                "{}".format(kwargs))
 
         # store attributes
         self.name = name
@@ -455,7 +463,7 @@ class TreeSlider(object):
                 # name=str(np.random.randint(0, 1e15)),
                 data=self.data,
                 workdir=keepdir,
-                scaffold_idx=int(self.tree_table.scaffold[idx]),
+                scaffold_idxs=int(self.tree_table.scaffold[idx]),
                 start=self.tree_table.start[idx],
                 end=self.tree_table.end[idx],
                 mincov=self.mincov,
