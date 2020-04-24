@@ -616,7 +616,7 @@ class Assembly(object):
         force=False,
         ipyclient=None, 
         quiet=False,
-        show_cluster=False, 
+        show_cluster=True, 
         auto=False):
         """
         Run assembly steps (1-7) of an ipyrad analysis.
