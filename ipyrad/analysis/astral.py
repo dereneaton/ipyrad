@@ -9,6 +9,7 @@ from __future__ import print_function
 from builtins import range
 
 import os
+import sys
 import tempfile
 import requests
 import subprocess as sps
@@ -161,7 +162,7 @@ class Astral:
         """
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
-            
+
         # check for java
         cmd = ["which", "java"]
         proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
