@@ -236,7 +236,10 @@ class Astral:
         )
         comm = proc.communicate()
         if proc.returncode:
-            raise IPyradError(comm[0])
+            print("Astral Error:\n", comm[0].decode())
+            raise IPyradError(
+                "Astral Error: your command string was:\n{}"
+                .format(" ".join(self._get_command())))
 
         # store stderr to logfile
         with open(self.logfile, 'w') as out:
