@@ -3,14 +3,29 @@
 """
 Wrapper tool to conveniently call astral from ipa
 """
+
+# py2/3 compat
+from __future__ import print_function
+from builtins import range
+
 import os
 import tempfile
 import requests
 import subprocess as sps
 import pandas as pd
-import toytree
 from ..assemble.utils import IPyradError
 
+# import toytree
+try:
+    import toytree
+except ImportError:
+    pass
+_MISSING_TOYTREE = """
+You are missing required packages to use ipa.bpp().
+First run the following conda install command:
+
+conda install toytree -c eaton-lab
+"""
 
 
 class Astral:
@@ -144,6 +159,9 @@ class Astral:
         """
         Check that java is installed and get a tmp binary if needed.
         """
+        if not sys.modules.get("toytree"):
+            raise ImportError(_MISSING_TOYTREE)
+            
         # check for java
         cmd = ["which", "java"]
         proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
