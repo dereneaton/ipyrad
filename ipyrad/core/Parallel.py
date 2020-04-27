@@ -120,7 +120,7 @@ class Parallel(object):
         # if cluster with THIS ID is running then kill it and try again
         except subprocess.CalledProcessError:
             subprocess.check_call([
-                "ipcluster", "stop", 
+                IPCLUSTER_BIN, "stop", 
                 "--cluster-id", self.tool.ipcluster["cluster_id"],
             ], 
                 stderr=subprocess.STDOUT,
@@ -384,7 +384,7 @@ class Parallel(object):
                     self.ipyclient.close()
                     if self.show_cluster:
                         self.update_message(
-                            "\n{}Parallel connection closed."
+                            "{}Parallel connection closed."
                             .format(self.spacer))
                         time.sleep(0.5)
 
