@@ -38,6 +38,8 @@ First run the following conda install command:
 conda install toytree -c eaton-lab
 """
 
+# TODO: raise error on locus_filter result 0
+
 
 class Bpp(object):
     """
@@ -203,14 +205,15 @@ class Bpp(object):
             "finetune": (0.01, 0.02, 0.03, 0.04, 0.05, 0.01, 0.01),
             "copied": False,
         }
-        # 
+
+        # binary is needed for running or loading and combining results
+        self._check_binary()
 
         # update and check kwargs if data else do nothing which allows 
         # loading dummy objects for summarizing existing results.
         if data:
             self._check_kwargs(kwargs)
             self.kwargs.update(kwargs)
-            self._check_binary()
             self._check_args()
 
 
@@ -272,6 +275,10 @@ class Bpp(object):
                 print(
                     "argument {} is either incorrect or no longer supported "
                     "please check the latest documentation".format(kwarg))
+
+            # check type
+            if kwarg in ['nloci', 'burnin', 'sampfreq', 'nsample']:
+                kwargs[kwarg] = int(kwargs[kwarg])
 
 
     def _check_args(self):
@@ -423,6 +430,10 @@ class Bpp(object):
         self.lex.wpnames = np.array(["^" + i for i in self.lex.wpnames])
         self.maxloci = min([self.maxloci, len(self.lex.loci)])
 
+        # raise error if no loci passed filtering
+        if not self.maxloci:
+            raise IPyradError("No loci passed filtering. Check params.")
+
         # print BPP header
         print("[ipa bpp] bpp v4.1.4")
 
@@ -464,7 +475,7 @@ class Bpp(object):
 
                 # submit to engines
                 if not dry_run:
-                    args = (self.kwargs["binary"], ctlfile)
+                    args = (self.kwargs["binary"], ctlfile, self._algorithm)
                     rasync = lbview.apply(_call_bpp, *args)
                     self.asyncs.append(rasync)
 
@@ -719,9 +730,51 @@ class Bpp(object):
             return tables, dfs
 
         # concatenate each CSV and then get stats w/ describe
-        else:               
+        else:
+            print('[ipa.bpp] combining mcmc files')
+
+            # new file handles
+            cf = self.files.mcmcfiles[0].rsplit("_", 1)[0] + "_concat.mcmc.txt"
+            of = self.files.mcmcfiles[0].rsplit("_", 1)[0] + "_concat.out.txt"            
+
+            # existing and new ctl files
+            ctlfile = os.path.join(self.workdir, self.name + "_r0.ctl.txt")
+            newctl = os.path.join(self.workdir, self.name + "_tmp.ctl.txt")
+
+            # write a concatenated mcmc file
             concat = pd.concat(dfs, ignore_index=True)
-            return tables, concat
+            concat.to_csv(cf, sep="\t", float_format="%.6f")
+
+            # write a tmp ctl file with print=-1 and mcmcfile=cf
+            with open(ctlfile, 'r') as infile:
+                with open(newctl, 'w') as outfile:
+                    cdat = infile.readlines()
+                    for line in cdat:
+                        if 'mcmcfile' in line:
+                            line = "mcmcfile = {}\n".format(cf)
+                        if 'outfile' in line:
+                            line = "outfile = {}\n".format(of)
+                        if 'print' in line:
+                            line = "print = -1\n"
+                        outfile.write(line)
+
+            # run bpp on the new ctlfile
+            _call_bpp(self.kwargs["binary"], newctl, "00")
+
+            # cleanup tmp file
+            os.remove(newctl)
+
+            # load the new table
+            with open(ofile, 'r') as infile:
+                lines = infile.readlines()[-12:]
+                data = [i.strip().split() for i in lines]
+                index = [i[0] for i in data[1:]]
+                table = pd.DataFrame(
+                    data=[i[1:] for i in data[1:]],
+                    columns=data[0],
+                    index=index,
+                )
+            return table, concat
 
 
 
@@ -1152,7 +1205,7 @@ class Transformer(object):
 
 
 
-def _call_bpp(binary, ctlfile):
+def _call_bpp(binary, ctlfile, alg):
     """
     Remote function call of BPP binary
     """
@@ -1163,15 +1216,16 @@ def _call_bpp(binary, ctlfile):
     if proc.returncode:
         raise IPyradError(comm[0])
 
-    # bpp writes a Figtree.tre result to CWD (ugh.) so we need to catch it
-    # quickly and move it somewhere relevant. This contains summarized 
-    if 1:
+    # bpp writes a Figtree.tre result to CWD of the ipyparallel engine (ugh.)
+    # so we need to catch it quickly and move it somewhere relevant. 
+    if alg == "00":
         figfile = "Figtree.tre"
         newfigpath = ctlfile.replace(".ctl.txt", ".nex")
         if os.path.exists(figfile):
-            delta_time = time.time() - os.path.getmtime(figfile)
-            if delta_time < 30:
-                os.rename(figfile, newfigpath)
+            os.rename(figfile, newfigpath)
+
+    if os.path.exists("./SeedUsed"):
+        os.remove("./SeedUsed")
 
 
 
