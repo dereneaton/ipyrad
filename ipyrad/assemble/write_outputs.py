@@ -1761,7 +1761,6 @@ def pseudoref2ref(pseudoref, ref):
 
 
 def fill_seq_array(data, ntaxa, nbases, nloci):
-   
     # init/reset hdf5 database
     with h5py.File(data.seqs_database, 'w') as io5:
 
@@ -2384,7 +2383,8 @@ def build_vcf(data, chunksize=1000):
                     in snpmap[:, [0, 2]]
                 ]
                 # denovo based positions: pos on locus. tested. works. right.
-                pos = snpmap[:, 2]
+                # almost. POS is 1 indexed.
+                pos = snpmap[:, 2] + 1
                 # offset = 0
 
             # get alt genotype calls

@@ -268,7 +268,7 @@ class Step6:
 
             # get extents of regions using bedtools merge
             self.remote_build_ref_regions()
-            
+
             # build clusters from regions
             self.remote_build_ref_clusters()
 
@@ -1301,7 +1301,7 @@ def align_to_array(data, samples, chunk):
         lines = clusts[ldx].strip().split("\n")
         names = lines[::2]
         seqs = lines[1::2]
-        
+
         # skip aligning and continue if duplicates present (locus too big)
         # but reshape locs to be same lengths by adding --- to end, this 
         # simplifies handling them in step7 (they're still always filtered)
@@ -1334,7 +1334,7 @@ def align_to_array(data, samples, chunk):
         # no insert just align a single locus
         except IndexError:
             istack = muscle_it(proc, names, seqs)
-            
+
         # store the locus
         if istack:
             allstack.append("\n".join(istack))

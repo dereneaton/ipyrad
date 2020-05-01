@@ -4,6 +4,26 @@
 Release Notes
 =============
 
+0.9.51
+------
+**April 17, 2020**
+
+- 1 index POS in vcf output
+- minmap default is 0
+- bugfix: apply imapdrop only when imap
+- faster extraction and mincov after minmap in lex
+- mincov applies after minmap in wex
+- scaff arg entered later in cov tool
+- rmincov added to ts
+- option to keep all tmp files in treeslider
+- major fix to names sorting in wex
+- names offset by scaff length in cov plot
+- set default inner mate to 500 and use it unless user changes to None, in which case we estimate from reads
+- tmp working baba update
+- added locus extracter
+- option to keep all files in treeslider
+- added cov plot tool
+
 0.9.50
 ------
 **April 05, 2020**

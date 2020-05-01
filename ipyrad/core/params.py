@@ -32,7 +32,7 @@ class Hackers(object):
         self.__dict__["_data"] = dict([
             ("random_seed", 42),
             ("max_fragment_length", 50),
-            ("max_inner_mate_distance", 60),
+            ("max_inner_mate_distance", 500),
             ("p5_adapter", "AGATCGGAAGAGC"),
             ("p3_adapter", "AGATCGGAAGAGC"),
             ("p3_adapters_extra", []),
@@ -206,7 +206,7 @@ class Params(object):
         self._maxdepth = 10000
         self._clust_threshold = 0.85
         self._max_barcode_mismatch = 0
-        self._filter_adapters = 0
+        self._filter_adapters = 2
         self._filter_min_trim_len = 35
         self._max_alleles_consens = 2
         self._max_Ns_consens = 0.05

@@ -1994,6 +1994,8 @@ def check_insert_size(data, sample):
     far apart mate pairs can be to still be considered for bedtools merging 
     downstream.
     """
+
+    # read in the sorted bam file and extract SN stats
     sbam = os.path.join(
         data.dirs.refmapping, 
         "{}-mapped-sorted.bam".format(sample.name)
@@ -2001,21 +2003,21 @@ def check_insert_size(data, sample):
     stats = pysam.stats(sbam)
     statslines = [i for i in stats.split("\n") if i.startswith("SN")]
 
-    ## starting vals
+    # starting vals
     avg_insert = 0
     stdv_insert = 0
     avg_len = 0
 
-    ## iterate over results
+    # iterate over results and extract insert stats
     for line in statslines:
         if "insert size average" in line:
             avg_insert = float(line.split(":")[-1].strip())
 
         elif "insert size standard deviation" in line:
-            ## hack to fix sim data when stdv is 0.0. Shouldn't
-            ## impact real data bcz stdv gets rounded up below
+            # hack to fix sim data when stdv is 0.0. Shouldn't
+            # impact real data bcz stdv gets rounded up below
             stdv_insert = float(line.split(":")[-1].strip()) + 0.1
-       
+
         elif "average length" in line:
             avg_len = float(line.split(":")[-1].strip())
 
@@ -2074,18 +2076,21 @@ def bedtools_merge(data, sample):
     # +++ scrath the above, we now deal with step ladder data
     if 'pair' in data.params.datatype:
 
-        # estimates and updates hackers_only max inner value
-        if not data.hackersonly.max_inner_mate_distance:
-            check_insert_size(data, sample)       
-        #cmd2.insert(2, "1000")
-        #cmd2.insert(2, "-d")
+        # default is to use a reasonable value based on Illumina
+        # so the hackersonly default is 500bp. The user can either override
+        # this setting by changing the hacker setting, OR, if they want, 
+        # they can set it to None and have it estimated and updated here.
+        if data.hackersonly.max_inner_mate_distance is None:
+            check_insert_size(data, sample)
+
+        # tell bedtools to use the stored value.
         cmd2.insert(2, str(data.hackersonly.max_inner_mate_distance))
         cmd2.insert(2, "-d")
     #else:
     #    cmd2.insert(2, str(-1 * data._hackersonly["min_SE_refmap_overlap"]))
     #    cmd2.insert(2, "-d")
 
-    ## pipe output from bamtobed into merge
+    # pipe output from bamtobed into merge
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
     result = proc2.communicate()[0].decode()
@@ -2197,6 +2202,7 @@ def build_clusters_from_cigars(data, sample):
                         )
                     # *reg, derep, ori)
                     clust.append("{}\n{}".format(rname, pairseq))
+
 
         # single-end data cluster building
         else:   

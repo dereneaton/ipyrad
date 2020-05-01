@@ -152,7 +152,10 @@ class SNPsExtracter(object):
             for key, val in self.imap.items():
                 mincov = self.minmap[key]
                 pidxs = np.array(sorted(self.dbnames.index(i) for i in val))
-                subarr = genos[pidxs, :]
+                try:
+                    subarr = genos[pidxs, :]
+                except IndexError:
+                    raise IPyradError("imap is empty: {} - {}".format(key, val))
                 counts = np.sum(subarr != 9, axis=0)
                 if isinstance(mincov, float):
                     mask3 += (counts / subarr.shape[0]) < mincov

@@ -9,6 +9,7 @@ from __future__ import print_function
 import os
 import sys
 import time
+import glob
 import shutil
 import tempfile
 
@@ -77,22 +78,32 @@ class TreeSlider(object):
         mincov=0,
         imap=None,
         minmap=None,
+        rmincov=0.0,
         consensus_reduce=False,
         inference_method="raxml",
         inference_args={},
         quiet=False,
         scaffold_minlen=0,
+        keep_all_files=False,
+        **kwargs,
         ):
 
         # check installations
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
 
+        # report bad arguments
+        if kwargs:
+            print(
+                "Warning: Some arg names are not recognized and may have "
+                "changed. Please check the documentation:\n"
+                "{}".format(kwargs))
+
         # store attributes
         self.name = name
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.data = os.path.realpath(os.path.expanduser(data))
-        self.tmpdir = os.path.join(self.workdir, "tmpdir")
+        self.keep_all_files = keep_all_files
 
         # work
         self.scaffold_idxs = scaffold_idxs
@@ -102,6 +113,7 @@ class TreeSlider(object):
         self.imap = imap
         self.mincov = mincov
         self.minmap = minmap
+        self.rmincov = float(rmincov if rmincov else 0.0)
         self.consensus_reduce = consensus_reduce
         self.inference_method = inference_method
         self.inference_args = inference_args
@@ -444,18 +456,21 @@ class TreeSlider(object):
                 prog.finished += 1
                 continue
 
-            # extract the alignment for this window
+            # extract the alignment for this window (auto-generate name)
+            keepdir = os.path.join(
+                self.workdir, "{}-{}".format(self.name, "bootsdir"))
             ext = window_extracter(
                 # name=str(np.random.randint(0, 1e15)),
                 data=self.data,
-                workdir=os.path.join(self.workdir, "tmpdir"),
-                scaffold_idx=int(self.tree_table.scaffold[idx]),
+                workdir=keepdir,
+                scaffold_idxs=int(self.tree_table.scaffold[idx]),
                 start=self.tree_table.start[idx],
                 end=self.tree_table.end[idx],
                 mincov=self.mincov,
                 imap=self.imap,
                 minmap=self.minmap,
                 consensus_reduce=self.consensus_reduce,
+                rmincov=self.rmincov,
                 quiet=True,
             )
 
@@ -475,7 +490,7 @@ class TreeSlider(object):
                 ext.run(force=True, nexus=self._nexus)
 
                 # remote inference args
-                args = [ext.outfile, self.inference_args]
+                args = [ext.outfile, self.inference_args, keepdir]
 
                 # send remote tree inference job that will clean up itself
                 if "raxml" in self.inference_method:
@@ -505,7 +520,24 @@ class TreeSlider(object):
             if not rasyncs:
                 self._print("")
                 break
-        shutil.rmtree(self.tmpdir)
+
+        # if not keeping boot then remove bootsdir
+        if not self.keep_all_files:
+            shutil.rmtree(self.tmpdir)
+
+        # or, write a boots file pointing to all bootsfiles
+        if self.keep_all_files:
+            if self.inference_args.get("N"):
+                newbootsfile = os.path.join(
+                    self.workdir, 
+                    "{}.bootsfiles.txt".format(self.name)
+                )
+                blist = sorted(
+                    glob.glob(os.path.join(keepdir, "RAxML_bootstrap*"))
+                )
+                with open(newbootsfile, 'w') as out:
+                    out.write("\n".join(blist))
+
 
 
 
@@ -542,15 +574,21 @@ def remote_mrbayes(nexfile, inference_args):
 
 
 
-def remote_raxml(phyfile, inference_args):
+def remote_raxml(phyfile, inference_args, keepdir=None):
     """
     Call raxml on phy and returned parse tree result
     """
+    # if keep_all_files then use workdir as the workdir instead of tmp
+    if keepdir:
+        workdir = keepdir
+    else:
+        workdir = os.path.dirname(phyfile)
+
     # call raxml on the input phylip file with inference args
     rax = raxml(
         data=phyfile,
-        name="temp_" + str(os.getpid()),
-        workdir=tempfile.gettempdir(),
+        name=os.path.basename(phyfile).rsplit(".phy")[0],  # "temp_" + str(os.getpid()),
+        workdir=workdir,
         **inference_args
     )
     rax.run(force=True, quiet=True, block=True)
@@ -562,10 +600,11 @@ def remote_raxml(phyfile, inference_args):
         tree = toytree.tree(rax.trees.bestTree).newick
 
     # remote tree files
-    for tfile in rax.trees:
-        tpath = getattr(rax.trees, tfile)
-        if os.path.exists(tpath):
-            os.remove(tpath)
+    if keepdir is None:
+        for tfile in rax.trees:
+            tpath = getattr(rax.trees, tfile)
+            if os.path.exists(tpath):
+                os.remove(tpath)
 
     # remove the TEMP phyfile in workdir/tmpdir
     os.remove(phyfile)    
