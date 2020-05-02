@@ -106,7 +106,6 @@ class PCA(object):
         quiet=False,
         topcov=0.9,
         niters=5,
-        #ncomponents=None,
         ld_block_size=0,
         ):
 
@@ -130,8 +129,8 @@ class PCA(object):
         self.ld_block_size = ld_block_size
 
         # where the resulting data are stored.
-        self.pcaxes = "No results, you must first call .run()"
-        self.variances = "No results, you must first call .run()"
+        self.pcaxes = None  # "No results, you must first call .run()"
+        self.variances = None  # "No results, you must first call .run()"
 
         # to be filled
         self.snps = np.array([])
@@ -380,187 +379,71 @@ class PCA(object):
         shapes=None,
         size=10,
         legend=True,
+        imap=None,
         width=400, 
         height=300,
+        axes=None,
         **kwargs):
         """
         Draw a scatterplot for data along two PC axes. 
         """
-        try:
-            # check for replicates in the data
-            datas = self.pcaxes
-            nreplicates = len(datas)
-            variance = np.array([i for i in self.variances.values()]).mean(axis=0)
-        except AttributeError:
-            raise IPyradError("You must first call run() before calling draw().")
+        self.drawing = Drawing(
+            self, ax0, ax1, cycle, colors, shapes, size, legend,
+            imap, width, height, axes,
+            **kwargs)
+        return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
 
-        # check that requested axes exist
-        assert max(ax0, ax1) < self.pcaxes[0].shape[1], (
-            "data set only has {} axes.".format(self.pcaxes[0].shape[1]))
 
-        # test reversions of replicate axes (clumpp like) so that all plot
-        # in the same orientation as replicate 0.
-        model = LinearRegression()
-        for i in range(1, len(datas)):
-            for ax in [ax0, ax1]:
-                orig = datas[0][:, ax].reshape(-1, 1)
-                new = datas[i][:, ax].reshape(-1, 1)
-                swap = (datas[i][:, ax] * -1).reshape(-1, 1)
+    def draw_legend(self, axes, **kwargs):
+        """
+        Draw legend on a cartesian axes. This is intended to be added to a 
+        custom setup canvas and axes configuration in toyplot. Example below:
 
-                # get r^2 for both model fits
-                model.fit(orig, new)
-                c0 = model.coef_[0][0]
-                model.fit(orig, swap)
-                c1 = model.coef_[0][0]
+        import toyplot
+        canvas = toyplot.Canvas(width=1000, height=300)
+        ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
+        ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
+        ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
+        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
 
-                # if swapped fit is better make this the data
-                if c1 > c0:
-                    datas[i][:, ax] = datas[i][:, ax] * -1
-
-        # make reverse imap dictionary
-        irev = {}
-        for pop, vals in self.imap.items():
-            for val in vals:
-                irev[val] = pop
-
-        # the max number of pops until color cycle repeats
-        # If the passed in number of colors is big enough to cover
-        # the number of pops then set cycle to len(colors)
-        # If colors == None this first `if` falls through (lazy evaluation)
-        if colors and len(colors) >= len(self.imap):
-            cycle = len(colors)
-        else:
-            cycle = min(cycle, len(self.imap))
-
-        # get color list repeating in cycles of cycle
-        if not colors:
-            colors = itertools.cycle(
-                toyplot.color.broadcast(
-                    toyplot.color.brewer.map("Spectral"), shape=cycle,
+        pca.draw(0, 1, axes=ax0, legend=False)
+        pca.draw(0, 2, axes=ax1, legend=False)
+        pca.draw(1, 3, axes=ax2, legend=False);
+        pca.draw_legend(ax3, **{"font-size": "14px"})
+        """
+        # bail out if axes are not empty
+        if axes._children:
+            print(
+                "Warning: draw_legend() should be called on empty cartesian"
+                " axes.\nSee the example in the docstring."
                 )
-            )
-        else:
-            colors = iter(colors)
-            # assert len(colors) == len(imap), "len colors must match len imap"
+            return
 
-        # get shapes list repeating in cycles of cycle up to 5 * cycle
-        if not shapes:
-            shapes = itertools.cycle(np.concatenate([
-                np.tile("o", cycle),
-                np.tile("s", cycle),
-                np.tile("^", cycle),
-                np.tile("d", cycle),
-                np.tile("v", cycle),
-                np.tile("<", cycle),
-                np.tile("x", cycle),            
-            ]))
-        else:
-            shapes = iter(shapes)
-        # else:
-            # assert len(shapes) == len(imap), "len colors must match len imap"            
+        # bail out if no drawing exists to add legend to.
+        if not hasattr(self, "drawing"):
+            print("You must first call .draw() to store a drawing.")
+            return
 
-        # assign styles to populations and to legend markers (no replicates)
-        pstyles = {}
-        rstyles = {}
-        for idx, pop in enumerate(self.imap):
+        style = {
+            "fill": "#262626", 
+            "text-anchor": "start", 
+            "-toyplot-anchor-shift": "15px",
+            "font-size": "14px",
+        }
+        style.update(kwargs)
 
-            color = next(colors)
-            shape = next(shapes)
-
-            pstyles[pop] = toyplot.marker.create(
-                size=size, 
-                shape=shape,
-                mstyle={
-                    "fill": toyplot.color.to_css(color),
-                    "stroke": "#262626",
-                    "stroke-width": 1.0,
-                    "fill-opacity": 0.75,
-                },
-            )
-            rstyles[pop] = toyplot.marker.create(
-                size=size, 
-                shape=shape,
-                mstyle={
-                    "fill": toyplot.color.to_css(color),
-                    "stroke": "none",
-                    "fill-opacity": 0.9 / nreplicates,
-                },
-            )            
-
-        # assign styled markers to data points
-        pmarks = []
-        rmarks = []
-        for name in self.names:
-            pop = irev[name]
-            pmark = pstyles[pop]
-            pmarks.append(pmark)
-            rmark = rstyles[pop]
-            rmarks.append(rmark)
-
-        # get axis labels for PCA or TSNE plot
-        if variance[ax0] >= 0.0:
-            xlab = "PC{} ({:.1f}%) explained".format(ax0, variance[ax0] * 100)
-            ylab = "PC{} ({:.1f}%) explained".format(ax1, variance[ax1] * 100)
-        else:
-            xlab = "TNSE component 1"
-            ylab = "TNSE component 2"            
-
-        # plot points with colors x population
-        canvas = toyplot.Canvas(width, height)  # 400, 300)
-        axes = canvas.cartesian(
-            grid=(1, 5, 0, 1, 0, 4),
-            xlabel=xlab,
-            ylabel=ylab,
+        axes.scatterplot(
+            np.repeat(0, len(self.drawing.imap)),
+            np.arange(len(self.drawing.imap)),
+            marker=[self.drawing.pstyles[i] for i in self.drawing.imap],
         )
-
-        # if not replicates then just plot the points
-        if nreplicates < 2:
-            mark = axes.scatterplot(
-                datas[0][:, ax0],
-                datas[0][:, ax1],
-                marker=pmarks,
-                title=self.names,
-            )
-
-        # replicates show clouds plus centroids
-        else:
-            # add the replicates cloud points       
-            for i in range(nreplicates):
-                # get transformed coordinates and variances
-                mark = axes.scatterplot(
-                    datas[i][:, ax0],
-                    datas[i][:, ax1],
-                    marker=rmarks,
-                )
-
-            # compute centroids
-            Xarr = np.concatenate(
-                [
-                    np.array([datas[i][:, ax0], datas[i][:, ax1]]).T 
-                    for i in range(nreplicates)
-                ]
-            )
-            yarr = np.tile(np.arange(len(self.names)), nreplicates)
-            clf = NearestCentroid()
-            clf.fit(Xarr, yarr)
-
-            # draw centroids
-            mark = axes.scatterplot(
-                clf.centroids_[:, 0],
-                clf.centroids_[:, 1],
-                title=self.names,
-                marker=pmarks,
-            )
-
-        # add a legend
-        if legend:
-            if len(self.imap) > 1:
-                marks = [(pop, marker) for pop, marker in pstyles.items()]
-                canvas.legend(
-                    marks, 
-                    corner=("right", 35, 100, min(250, len(pstyles) * 25))
-                )
-        return canvas, axes, mark
+        axes.text(
+            np.repeat(0, len(self.drawing.imap)),
+            np.arange(len(self.drawing.imap)),
+            [i for i in self.drawing.imap],
+            style=style,
+        )
+        axes.show = False
 
 
     def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None):
@@ -592,6 +475,7 @@ class PCA(object):
 
 
     def pcs(self, rep=0):
+        "return a dataframe with the PC loadings."
         try:
             df = pd.DataFrame(self.pcaxes[rep], index=self.names)
         except ValueError:
@@ -599,19 +483,277 @@ class PCA(object):
         return df
 
 
-    # def run_and_plot_2D(
-    #     self, 
-    #     ax0=0, 
-    #     ax1=1, 
-    #     seed=None, 
-    #     subsample=True, 
-    #     nreplicates=None,
-    #     # model="pca",
-    #     ):
-    #     """
-    #     A convenience function for plotting 2D scatterplot of PCA results.
-    #     """
 
-    #     # plot canvas
-    #     canvas, axes, mark = self.plot_2D(ax0, ax1, datas, vexps)
-    #     return canvas, axes, mark
+
+class Drawing:
+    def __init__(
+        self,
+        pcatool,
+        ax0=0,
+        ax1=1,
+        cycle=8,
+        colors=None,
+        shapes=None,
+        size=10,
+        legend=True,
+        imap=None,
+        width=400, 
+        height=300,
+        axes=None,
+        **kwargs):
+        """
+        See .draw() function above for docstring.
+        """
+        self.pcatool = pcatool
+        self.datas = self.pcatool.pcaxes
+        self.names = self.pcatool.names
+        self.imap = (imap if imap else self.pcatool.imap)
+        self.ax0 = ax0
+        self.ax1 = ax1
+        self.axes = axes
+
+        # checks on user args
+        self.cycle = cycle
+        self.colors = colors
+        self.shapes = shapes
+        self.size = size
+        self.legend = legend
+        self.height = height
+        self.width = width
+
+        # parse attrs from the data
+        self.nreplicates = None
+        self.variance = None
+        self._parse_replicate_runs()
+        self._regress_replicates()
+
+        # setup canvas and axes or use user supplied axes
+        self.canvas = None
+        self.axes = axes
+        self._setup_canvas_and_axes()
+
+        # add markers to the axes
+        self.rstyles = {}
+        self.pstyles = {}
+        self._get_marker_styles()
+        self._assign_styles_to_marks()
+        self._draw_markers()
+
+        # add the legend
+        if self.legend and (self.canvas is not None):
+            self._add_legend()
+
+
+
+    def _setup_canvas_and_axes(self):
+        # get axis labels for PCA or TSNE plot
+        if self.variance[self.ax0] >= 0.0:
+            xlab = "PC{} ({:.1f}%) explained".format(
+                self.ax0, self.variance[self.ax0] * 100)
+            ylab = "PC{} ({:.1f}%) explained".format(
+                self.ax1, self.variance[self.ax1] * 100)
+        else:
+            xlab = "TSNE component 1"
+            ylab = "TSNE component 2"            
+
+        if not self.axes:
+            self.canvas = toyplot.Canvas(self.width, self.height)  # 400, 300)
+            self.axes = self.canvas.cartesian(
+                grid=(1, 5, 0, 1, 0, 4),  # <- leaves room for legend
+                xlabel=xlab,
+                ylabel=ylab,
+            )
+        else:
+            self.axes.x.label.text = xlab
+            self.axes.y.label.text = ylab
+
+
+
+    def _parse_replicate_runs(self):
+
+        # raise error if run() was not yet called.
+        if self.datas is None:
+            raise IPyradError(
+                "You must first call run() before calling draw().")          
+
+        try:
+            # check for replicates in the data
+            self.nreplicates = len(self.datas)
+            self.variance = np.array(
+                [i for i in self.pcatool.variances.values()]
+            ).mean(axis=0)
+        except AttributeError as err:
+            raise IPyradError(
+                "You must first call run() before calling draw().")
+
+        # check that requested axes exist
+        assert max(self.ax0, self.ax1) < self.datas[0].shape[1], (
+            "data set only has {} axes.".format(self.datas[0].shape[1]))
+
+
+
+    def _regress_replicates(self):
+        """
+        test reversions of replicate axes (clumpp like) so that all plot
+        in the same orientation as replicate 0.
+        """
+        model = LinearRegression()
+        for i in range(1, len(self.pcatool.pcaxes)):
+            for ax in [self.ax0, self.ax1]:
+                orig = self.datas[0][:, ax].reshape(-1, 1)
+                new = self.datas[i][:, ax].reshape(-1, 1)
+                swap = (self.datas[i][:, ax] * -1).reshape(-1, 1)
+
+                # get r^2 for both model fits
+                model.fit(orig, new)
+                c0 = model.coef_[0][0]
+                model.fit(orig, swap)
+                c1 = model.coef_[0][0]
+
+                # if swapped fit is better make this the data
+                if c1 > c0:
+                    self.datas[i][:, ax] = self.datas[i][:, ax] * -1
+
+
+
+    def _get_marker_styles(self):
+        # make reverse imap dictionary
+        self.irev = {}
+        for pop, vals in self.imap.items():
+            for val in vals:
+                self.irev[val] = pop
+
+        # the max number of pops until color cycle repeats
+        # If the passed in number of colors is big enough to cover
+        # the number of pops then set cycle to len(colors)
+        # If colors == None this first `if` falls through (lazy evaluation)
+        if self.colors and len(self.colors) >= len(self.imap):
+            self.cycle = len(self.colors)
+        else:
+            self.cycle = min(self.cycle, len(self.imap))
+
+        # get color list repeating in cycles of cycle
+        if not self.colors:
+            self.colors = itertools.cycle(
+                toyplot.color.broadcast(
+                    toyplot.color.brewer.map("Spectral"), shape=self.cycle,
+                )
+            )
+        else:
+            self.colors = iter(self.colors)
+            # assert len(colors) == len(imap), "len colors must match len imap"
+
+        # get shapes list repeating in cycles of cycle up to 5 * cycle
+        if not self.shapes:
+            self.shapes = itertools.cycle(np.concatenate([
+                np.tile("o", self.cycle),
+                np.tile("s", self.cycle),
+                np.tile("^", self.cycle),
+                np.tile("d", self.cycle),
+                np.tile("v", self.cycle),
+                np.tile("<", self.cycle),
+                np.tile("x", self.cycle),            
+            ]))
+        else:
+            self.shapes = iter(self.shapes)
+        # else:
+            # assert len(shapes) == len(imap), "len colors must match len imap"            
+
+        # assign styles to populations and to legend markers (no replicates)
+        for idx, pop in enumerate(self.imap):
+
+            icolor = next(self.colors)
+            ishape = next(self.shapes)
+
+            self.pstyles[pop] = toyplot.marker.create(
+                size=self.size, 
+                shape=ishape,
+                mstyle={
+                    "fill": toyplot.color.to_css(icolor),
+                    "stroke": "#262626",
+                    "stroke-width": 1.0,
+                    "fill-opacity": 0.75,
+                },
+            )
+
+            self.rstyles[pop] = toyplot.marker.create(
+                size=self.size, 
+                shape=ishape,
+                mstyle={
+                    "fill": toyplot.color.to_css(icolor),
+                    "stroke": "none",
+                    "fill-opacity": 0.9 / self.nreplicates,
+                },
+            )
+
+
+
+    def _assign_styles_to_marks(self):
+        # assign styled markers to data points
+        self.pmarks = []
+        self.rmarks = []
+        for name in self.names:
+            pop = self.irev[name]
+            pmark = self.pstyles[pop]
+            self.pmarks.append(pmark)
+            rmark = self.rstyles[pop]
+            self.rmarks.append(rmark)        
+
+
+
+    def _draw_markers(self):
+
+        # if not replicates then just plot the points
+        if self.nreplicates < 2:
+            mark = self.axes.scatterplot(
+                self.datas[0][:, self.ax0],
+                self.datas[0][:, self.ax1],
+                marker=self.pmarks,
+                title=self.names,
+            )
+
+        else:
+            # add the replicates cloud points       
+            for i in range(self.nreplicates):
+                # get transformed coordinates and variances
+                mark = self.axes.scatterplot(
+                    self.datas[i][:, self.ax0],
+                    self.datas[i][:, self.ax1],
+                    marker=self.rmarks,
+                )
+
+            # compute centroids
+            Xarr = np.concatenate([
+                np.array(
+                    [self.datas[i][:, self.ax0], self.datas[i][:, self.ax1]]).T 
+                for i in range(self.nreplicates)
+            ])
+            yarr = np.tile(np.arange(len(self.names)), self.nreplicates)
+            clf = NearestCentroid()
+            clf.fit(Xarr, yarr)
+
+            # draw centroids
+            mark = self.axes.scatterplot(
+                clf.centroids_[:, 0],
+                clf.centroids_[:, 1],
+                title=self.names,
+                marker=self.pmarks,
+            )
+
+
+
+    def _add_legend(self, corner=None):
+        """
+        Default arg:
+        corner = ("right", 35, 100, min(250, len(self.pstyles) * 25))
+        """
+        if corner is None:
+            corner = ("right", 35, 100, min(250, len(self.pstyles) * 25))
+
+        # add a legend
+        if len(self.imap) > 1:
+            marks = [(pop, marker) for pop, marker in self.pstyles.items()]
+            self.canvas.legend(
+                marks, 
+                corner=corner,
+            )

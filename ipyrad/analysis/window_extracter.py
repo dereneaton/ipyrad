@@ -44,8 +44,8 @@ class WindowExtracter(object):
         scaffold, start and end positions.
     workdir (str):
         Location for output files to be written. Created if it doesn't exist.
-    scaffold_idx (int):
-        Select scaffold by index number. If unsure, leave this
+    scaffold_idxs (int, list, or range):
+        Select scaffold(s) by index number. If unsure, leave this
         empty when loading a file and then check the .scaffold_table to view
         the indices of scaffolds. 
     start (int):
@@ -80,7 +80,7 @@ class WindowExtracter(object):
         data, 
         name=None,
         workdir="analysis-window_extracter",
-        scaffold_idx=None, 
+        scaffold_idxs=None, 
         start=None, 
         end=None, 
         mincov=4,
@@ -92,18 +92,24 @@ class WindowExtracter(object):
         quiet=False,
         **kwargs
         ):
+        # report bad arguments
+        if kwargs:
+            print(
+                "Warning: Some arg names are not recognized and may have "
+                "changed. Please check the documentation:\n"
+                "{}".format(kwargs))
 
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.scaffold_idx = scaffold_idx
+        self.scaffold_idxs = scaffold_idxs
         self.start = (start if start else 0)
         self.end = end
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
         self.rmincov = float(rmincov if rmincov else 0.0)
         self.imap = imap
-        self.minmap = (minmap if minmap else {i: 0 for i in imap})
+        self.minmap = minmap
         self.consensus_reduce = consensus_reduce
         self.quiet = quiet
 
@@ -121,6 +127,11 @@ class WindowExtracter(object):
             if self.imap is None:
                 raise IPyradError(
                     "consensus_reduce option requires an imap dictionary")
+
+        # imap requires a minmap so default set to 0
+        if self.imap:
+            if self.minmap is None:
+                self.minmap = {i: 0 for i in self.imap}
 
             # can condensed samples be missing? minmap must be [0-1].
             # if self.minmap is None:
@@ -147,15 +158,15 @@ class WindowExtracter(object):
             pass
 
         # single prep
-        elif (scaffold_idx is None) or isinstance(scaffold_idx, (int, str)):
-            self._scaffold_idx = self.scaffold_idx
+        elif (scaffold_idxs is None) or isinstance(scaffold_idxs, (int, str)):
+            self._scaffold_idx = self.scaffold_idxs
             self._single_prep()
-            if scaffold_idx is not None:
+            if scaffold_idxs is not None:
                 self.phymap = self._phymap
 
         # TODO: parallelize the single_prep() calls in this section.
         # run for each scaffold in list
-        elif isinstance(scaffold_idx, (list, tuple, np.ndarray, range)):
+        elif isinstance(scaffold_idxs, (list, tuple, np.ndarray, range)):
 
             # suppress messages
             self.quiet = True
@@ -170,7 +181,7 @@ class WindowExtracter(object):
             stats = []
             phymaps = []
 
-            for scaff in self.scaffold_idx:
+            for scaff in self.scaffold_idxs:
                 self._scaffold_idx = scaff
                 self._single_prep()
 
@@ -598,13 +609,14 @@ class WindowExtracter(object):
 
         # drop SITES that are too many Ns in minmap pops
         if self.imap:
+            imapdrop = np.zeros(self.seqarr.shape[1], dtype=bool)
             for ikey, ivals in self.imap.items():
 
                 # imap drops sites if mincov is below nsamples in group
                 match = [np.where(self.names == i)[0] for i in ivals]
                 sidxs = [i[0] for i in match if i.size]
                 subarr = self.seqarr[sidxs, :]
-                imapdrop = np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+                imapdrop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
         # replace data with consensus reduced to apply filters
         if self.consensus_reduce:
@@ -624,11 +636,12 @@ class WindowExtracter(object):
         self.seqarr = self.seqarr[:, np.invert(mincovdrop)]
 
         # drop SAMPLES that are only Ns after removing lowcov sites
-        rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
-        keep = rcovp >= self.rmincov
-        self.seqarr = self.seqarr[keep, :]
-        self._names = self.wnames[keep]
-        self._pnames = self.wpnames[keep]
+        if self.seqarr.size:
+            rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
+            keep = rcovp >= self.rmincov
+            self.seqarr = self.seqarr[keep, :]
+            self._names = self.wnames[keep]
+            self._pnames = self.wpnames[keep]
 
 
     # def _filter_seqarr(self):

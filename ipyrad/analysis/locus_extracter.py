@@ -85,26 +85,38 @@ class LocusExtracter(object):
         minmap=None,
         minsnps=0,
         maxmissing=1.0,
+        minlen=50,
         consensus_reduce=False,
         quiet=False,
         **kwargs
         ):
+        # report bad arguments
+        if kwargs:
+            print(
+                "Warning: Some arg names are not recognized and may have "
+                "changed. Please check the documentation:\n"
+                "{}".format(kwargs))
 
         # store params
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        # self.scaffold_idx = scaffold_idx
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
         self.imap = imap
-        self.minmap = minmap  # (minmap if minmap else {i: 1 for i in imap})
+        self.minmap = minmap
         self.minsnps = minsnps
         self.consensus_reduce = consensus_reduce
         self.maxmissing = maxmissing
+        self.minlen = minlen
         self.quiet = quiet
 
         # hardcoded in locus extracter
         self.rmincov = 0.1
+
+        # minmap defaults to 0 if empty and imap
+        if self.imap:
+            if self.minmap is None:
+                self.minmap = {i: 0 for i in self.imap}
 
         # file to write to
         if not os.path.exists(self.workdir):
@@ -197,7 +209,7 @@ class LocusExtracter(object):
         lbview = ipyclient.load_balanced_view()
 
         # print Nloci to start.
-        print("{} loci to be filtered".format(self.phymap.shape[0]))
+        print("[locus filter] full data: {}".format(self.phymap.shape[0]))
 
         # submit jobs in blocks of 2K loci
         chunksize = 2000
@@ -242,7 +254,7 @@ class LocusExtracter(object):
         self.sample_stats.loci = self.smask.sum(axis=0)
 
         # print results
-        print("{} loci passed filtering".format(len(self.loci)))
+        print("[locus filter] post filter: {}".format(len(self.loci)))
 
 
 
@@ -389,20 +401,24 @@ class LocusExtracter(object):
         they end up having all Ns.
         """
         # track filters
-        filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
+        filters = {
+            "mincov": 0, "minmap": 0, "minsnps": 0, 
+            "maxmissing": 0, "minlen": 0,
+        }
 
         # convert dash (-) to Ns
         self.seqarr[self.seqarr == 45] = 78
 
         # drop SITES that are too many Ns in minmap pops
         if self.imap:
+            imapdrop = np.zeros(self.seqarr.shape[1], dtype=bool)
             for ikey, ivals in self.imap.items():
 
-                # imap drops sites if mincov is below nsamples in group
+                # imap drops sites if minmap is below nsamples in group
                 match = [np.where(self.names == i)[0] for i in ivals]
                 sidxs = [i[0] for i in match if i.size]
                 subarr = self.seqarr[sidxs, :]
-                imapdrop = np.sum(subarr != 78, axis=0) < self._minmap[ikey]
+                imapdrop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
         # replace data with consensus reduced to apply filters
         if self.consensus_reduce:
@@ -416,27 +432,37 @@ class LocusExtracter(object):
         mincovdrop = np.sum(self.seqarr != 78, axis=0) < self._mincov
         self.seqarr = self.seqarr[:, np.invert(mincovdrop)]
 
+        ### TODO: apply ordered filters
+
+        # keep sample rows: only relevant if locus passes filters.
+        keep = np.ones(self.seqarr.shape[0]).astype(bool)
+
         # all sites were filtered?
         if not self.seqarr.size:
             filters["mincov"] = 1
+            return filters, keep
+
+        # filtered to be too short
+        if self.seqarr.shape[1] < self.minlen:
+            filters["minlen"] = 1
+            return filters, keep
 
         # drop LOCUS if too many Ns globally AFTER site filtering.
         missprop = np.sum(self.seqarr == 78) / self.seqarr.size
         if missprop > self.maxmissing:
             filters["maxmissing"] = 1
+            return filters, keep
 
         # drop LOCUS if too few SNPs
         nsnps = count_snps(self.seqarr)
         if nsnps < self.minsnps:
             filters["minsnps"] = 1
+            return filters, keep
 
         # mark SAMPLES that are only Ns after removing lowcov sites
         # for masking by filling the sample_filter array.
         rcovp = np.sum(self.seqarr != 78, axis=1) / self.seqarr.shape[1]
         keep = rcovp >= self.rmincov
-        self.seqarr = self.seqarr[keep, :]
-
-        # return filters dictionary and keep array
         return filters, keep
 
 
@@ -503,6 +529,15 @@ class LocusExtracter(object):
             else:
                 self.wnames = self.names
                 self.wpnames = self.pnames
+
+
+    def get_shape(self, lidx, include_empty_rows=False):
+        # build phy
+        seqarr = self.loci[lidx]
+        if not include_empty_rows:
+            keep = self.smask[lidx]
+            seqarr = seqarr[keep, :]
+        return seqarr.shape
 
 
     def get_locus(self, lidx, include_empty_rows=False, include_names=True):
@@ -618,7 +653,7 @@ def remote_filter_loci(self, block):
     # open h5 for reading seqarray
     with h5py.File(self.data, 'r') as io5:
 
-        # iterate over each locus
+        # iterate over the locus index in each block
         for idx, lidx in enumerate(block.index):
 
             # get sampling positions
@@ -628,7 +663,7 @@ def remote_filter_loci(self, block):
             # extract sequence
             self.seqarr = io5["phy"][self.sidxs, self.start:self.end]
 
-            # [optional] consensus reduce, stores wpnames.
+            # applies SITE filters to seqarr and returns loc and row filters
             self._imap_consensus_reduce()
             filters, smask = self._filter_seqarr()
 

@@ -393,7 +393,16 @@ class Step3:
         # If ref mapping, init samples and make refmapping output directory
         ref1 = self.data.params.reference_sequence
         ref2 = self.data.params.reference_as_filter
-        if (ref1 or ref2):
+        if not (ref1 or ref2):
+            # warn if assembly_method is reference but no refseqs
+            if self.data.params.assembly_method == "reference":
+                print(
+                    "Warning: using assembly_method=='reference' but no "
+                    "reference_sequence or reference_as_filter parameters"
+                    "wer set")
+
+        # set refmapping dir
+        if (ref1 or ref2):        
             self.data.dirs.refmapping = os.path.join(
                 pdir, "{}_refmapping".format(self.data.name))
             if not os.path.exists(self.data.dirs.refmapping):
