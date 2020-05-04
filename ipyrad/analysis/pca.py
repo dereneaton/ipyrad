@@ -148,7 +148,7 @@ class PCA(object):
                 name=data.split("/")[-1].split(".vcf")[0],
                 data=self.data,
                 ld_block_size=self.ld_block_size,
-                quiet=True,
+                quiet=quiet,
             )
             # run the converter
             converter.run()
