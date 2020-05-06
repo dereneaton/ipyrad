@@ -194,8 +194,8 @@ class WindowExtracter(object):
                     phymaps.append(self._phymap)
 
                 # debugging
-                else:
-                    print("skipping {}".format(scaff))
+                # else:
+                    # print("skipping {}".format(scaff))
 
             # if no data passed filtering for any loci then bail out
             if not stats:
