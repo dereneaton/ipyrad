@@ -459,7 +459,7 @@ class PCA(object):
         except ImportError:
             raise ImportError(
                 "to use this function you must install umap with:\n"
-                "  conda install umap -c conda-forge "
+                "  conda install umap-learn -c conda-forge "
                 )
 
         # subsample SNPS
