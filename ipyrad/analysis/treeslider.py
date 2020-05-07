@@ -519,7 +519,8 @@ class TreeSlider(object):
 
         # if not keeping boot then remove bootsdir
         if not self.keep_all_files:
-            shutil.rmtree(self.tmpdir)
+            if os.path.exists(keepdir):
+                shutil.rmtree(keepdir)
 
         # or, write a boots file pointing to all bootsfiles
         if self.keep_all_files:
