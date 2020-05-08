@@ -81,7 +81,7 @@ prset brlenspr=clock:uniform;
 prset clockvarpr=igr;
 prset igrvarpr=exp(10.0);
 prset clockratepr=normal(0.01,0.005);
-prset treeagepr=exponential(0.03);
+prset treeagepr=exp(0.03);
 
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25;
