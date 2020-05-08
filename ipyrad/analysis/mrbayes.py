@@ -66,6 +66,40 @@ end;
 
 
 
+# template for clock model tree inference
+# https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
+NEX_TEMPLATE_3 = """\
+#NEXUS
+execute {nexus};
+
+begin mrbayes;
+set autoclose=yes nowarn=yes;
+
+lset nst=6 rates=gamma;
+
+prset brlenspr=clock:uniform;
+prset clockvarpr=igr;
+prset igrvarpr=exp(10.0);
+prset clockratepr=lognorm(-7,2.0);
+prset treeagepr=offsetexp(1,5);
+
+mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
+mcmcp relburnin=yes burninfrac=0.25;
+mcmcp samplefreq={samplefreq};
+mcmcp printfreq=10000 diagnfr=5000;
+mcmcp filename={outname};
+mcmc;
+
+sump filename={outname};
+sumt filename={outname};
+end;
+"""
+
+
+
+
+
+
 class MrBayes(object):
     """
     MrBayes analysis utility function for running simple commands. 
@@ -107,7 +141,7 @@ class MrBayes(object):
         data,
         name="test",
         workdir="analysis-mb", 
-        clock=False,        
+        clock_model=False,        
         **kwargs):
 
         # path attributes
@@ -123,7 +157,7 @@ class MrBayes(object):
             os.makedirs(workdir)
 
         # entered args
-        self.clock = clock
+        self.clock_model = clock_model
         self.name = name
         self.workdir = workdir
         self.data = os.path.abspath(os.path.expanduser(data))
@@ -150,7 +184,7 @@ class MrBayes(object):
         for i, j in defaults.items():
             setattr(self.params, i, j)
 
-        # set params
+        # set params (overrides defaults)
         for key in self._kwargs:
             setattr(self.params, key, self._kwargs[key])
 
@@ -183,8 +217,10 @@ class MrBayes(object):
         cwargs = self.params.__dict__.copy()
         cwargs["nexus"] = self.data
         cwargs["outname"] = self.nexus
-        if self.clock:
+        if self.clock_model == 1:
             self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
+        elif self.clock_model == 2:
+            self._nexstring = NEX_TEMPLATE_3.format(**cwargs)
         else:
             self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
         with open(self.nexus, 'w') as out:
