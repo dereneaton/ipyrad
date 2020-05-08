@@ -70,6 +70,8 @@ end;
 # https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
 NEX_TEMPLATE_3 = """\
 #NEXUS
+
+log start filename={outname}.log replace;
 execute {nexus};
 
 begin mrbayes;
@@ -82,6 +84,8 @@ prset clockvarpr=igr;
 prset igrvarpr=exp(10.0);
 prset clockratepr=normal(0.01,0.005);
 
+{other}
+
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25;
 mcmcp samplefreq={samplefreq};
@@ -90,7 +94,8 @@ mcmcp filename={outname};
 mcmc;
 
 sump filename={outname};
-sumt filename={outname};
+sumt filename={outname} contype=allcompat;
+log stop filename={logname}.log append;
 end;
 """
 
@@ -216,6 +221,7 @@ class MrBayes(object):
         cwargs = self.params.__dict__.copy()
         cwargs["nexus"] = self.data
         cwargs["outname"] = self.nexus
+        cwargs["other"] = ""
         if self.clock_model == 1:
             self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
         elif self.clock_model == 2:
