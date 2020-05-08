@@ -95,7 +95,7 @@ mcmc;
 
 sump filename={outname};
 sumt filename={outname} contype=allcompat;
-log stop filename={logname}.log append;
+log stop filename={outname}.log append;
 end;
 """
 
