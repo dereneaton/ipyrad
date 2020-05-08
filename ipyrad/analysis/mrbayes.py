@@ -80,8 +80,8 @@ lset nst=6 rates=gamma;
 prset brlenspr=clock:uniform;
 prset clockvarpr=igr;
 prset igrvarpr=exp(10.0);
-prset clockratepr=lognorm(-7,2.0);
-prset treeagepr=offsetexp(1,5);
+prset clockratepr=normal(0.01,0.005);
+prset treeagepr=exponential(0.03)
 
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25;
