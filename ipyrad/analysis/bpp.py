@@ -959,18 +959,18 @@ class Bpp(object):
 
 
         # plot  ---------------------------------------------------------
-        canvas1 = toyplot.Canvas(width=900, height=300)
+        canvas1 = toyplot.Canvas(width=925, height=300)
         ax0 = canvas1.cartesian(
-            bounds=(50, 250, 50, 250), 
-            xlabel="prior on generation time",
+            bounds=(50, 275, 50, 250), 
+            xlabel="prior on mutation rates (x10^-8)",
         )
         ax1 = canvas1.cartesian(
-            bounds=(300, 550, 50, 250), 
-            xlabel="prior on tau root age"
+            bounds=(350, 575, 50, 250), 
+            xlabel="prior on theta (4Neu)",
         )
         ax2 = canvas1.cartesian(
-            bounds=(600, 850, 50, 250),
-            xlabel="prior on root crown age (Mya)"
+            bounds=(650, 875, 50, 250),
+            xlabel="prior on Ne",
         )
         for ax in (ax0, ax1, ax2):
             ax.y.ticks.labels.show = False

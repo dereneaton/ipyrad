@@ -163,6 +163,7 @@ class WindowExtracter(object):
             self._single_prep()
             if scaffold_idxs is not None:
                 self.phymap = self._phymap
+            self.pnames = self._pnames
 
         # TODO: parallelize the single_prep() calls in this section.
         # run for each scaffold in list
@@ -194,8 +195,8 @@ class WindowExtracter(object):
                     phymaps.append(self._phymap)
 
                 # debugging
-                else:
-                    print("skipping {}".format(scaff))
+                # else:
+                    # print("skipping {}".format(scaff))
 
             # if no data passed filtering for any loci then bail out
             if not stats:
@@ -744,7 +745,8 @@ class WindowExtracter(object):
         """
         # build phy
         phy = []
-        for idx, name in enumerate(self._pnames):
+        # print('TEST', len(self._pnames), len(self.pnames))
+        for idx, name in enumerate(self.pnames):
             seq = bytes(self.seqarr[idx]).decode()
             phy.append("{} {}".format(name, seq))
 
@@ -768,7 +770,7 @@ class WindowExtracter(object):
         for block in range(0, self.seqarr.shape[1], 100):           
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
-            for idx, name in enumerate(self._pnames):  
+            for idx, name in enumerate(self.pnames):  
 
                 # py2/3 compat --> b"TGCGGG..."
                 seqdat = self.seqarr[idx, block:stop]

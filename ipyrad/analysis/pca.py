@@ -299,6 +299,7 @@ class PCA(object):
         model.fit(data)
         newdata = model.transform(data)
         variance = model.explained_variance_ratio_
+        self._model = "PCA"
 
         # return tuple with new coordinates and variance explained
         return newdata, variance
@@ -446,9 +447,55 @@ class PCA(object):
         axes.show = False
 
 
-    def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None):
+
+    def run_umap(self, subsample=True, seed=123, n_neighbors=15, **kwargs):
         """
-        Calls TSNE model from scikit-learn on 
+
+
+        """
+        # check just-in-time install
+        try:
+            import umap
+        except ImportError:
+            raise ImportError(
+                "to use this function you must install umap with:\n"
+                "  conda install umap-learn -c conda-forge "
+                )
+
+        # subsample SNPS
+        seed = (seed if seed else self._seed())
+        if subsample:
+            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
+            print(
+                "Subsampling SNPs: {}/{}"
+                .format(data.shape[1], self.snps.shape[1])
+            )
+        else:
+            data = self.snps
+
+        # init TSNE model object with params (sensitive)
+        umap_kwargs = {
+            'n_neighbors': n_neighbors,
+            'init': 'spectral', 
+            'random_state': seed,
+        }
+        umap_kwargs.update(kwargs)
+        umap_model = umap.UMAP(**umap_kwargs)
+
+        # fit the model
+        umap_data = umap_model.fit_transform(data)
+        self.pcaxes = {0: umap_data}
+        self.variances = {0: [-1.0, -2.0]}
+        self._model = "UMAP"
+
+
+
+    def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None, **kwargs):
+        """
+        Calls TSNE model from scikit-learn on the SNP or subsampled SNP data
+        set. The 'seed' argument is used for subsampling SNPs. Perplexity
+        is the primary parameter affecting the TSNE, but any additional 
+        params supported by scikit-learn can be supplied as kwargs.
         """
         seed = (seed if seed else self._seed())
         if subsample:
@@ -461,17 +508,21 @@ class PCA(object):
             data = self.snps
 
         # init TSNE model object with params (sensitive)
-        tsne_model = TSNE(
-            perplexity=perplexity,
-            init='pca', 
-            n_iter=int(n_iter), 
-            random_state=seed,
-        )
+        tsne_kwargs = {
+            'perplexity': perplexity,
+            'init': 'pca', 
+            'n_iter': int(n_iter), 
+            'random_state': seed,
+        }
+        tsne_kwargs.update(kwargs)
+        tsne_model = TSNE(**tsne_kwargs)
 
         # fit the model
         tsne_data = tsne_model.fit_transform(data)
         self.pcaxes = {0: tsne_data}
         self.variances = {0: [-1.0, -2.0]}
+        self._model = "TSNE"
+
 
 
     def pcs(self, rep=0):
@@ -553,8 +604,9 @@ class Drawing:
             ylab = "PC{} ({:.1f}%) explained".format(
                 self.ax1, self.variance[self.ax1] * 100)
         else:
-            xlab = "TSNE component 1"
-            ylab = "TSNE component 2"            
+            xlab = "{} component 1".format(self.pcatool._model)
+            ylab = "{} component 2".format(self.pcatool._model)
+
 
         if not self.axes:
             self.canvas = toyplot.Canvas(self.width, self.height)  # 400, 300)
@@ -582,7 +634,7 @@ class Drawing:
             self.variance = np.array(
                 [i for i in self.pcatool.variances.values()]
             ).mean(axis=0)
-        except AttributeError as err:
+        except AttributeError:
             raise IPyradError(
                 "You must first call run() before calling draw().")
 

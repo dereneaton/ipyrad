@@ -43,12 +43,6 @@ You can install it with the following command from a terminal:
 conda install toytree -c eaton-lab
 """
 
-"""
-Infer whole scaffold if windowsize = 0, None
-scaffold_idx = 0 is default.
-extract PHY and trim for a given window entered...
-"""
-
 
 class TreeSlider(object):
     """
@@ -497,9 +491,11 @@ class TreeSlider(object):
                     rasyncs[idx] = lbview.apply(remote_raxml, *args)
                 elif "mb" in self.inference_method:
                     rasyncs[idx] = lbview.apply(remote_mrbayes, *args)
+                elif self.inference_method is None:
+                    pass
                 else:
                     raise IPyradError(
-                        "inference_method should be raxml or mb, you entered {}"
+                        "inference_method should be raxml, mb or None, you entered {}"
                         .format(self.inference_method))
 
             prog.update()
@@ -523,7 +519,8 @@ class TreeSlider(object):
 
         # if not keeping boot then remove bootsdir
         if not self.keep_all_files:
-            shutil.rmtree(self.tmpdir)
+            if os.path.exists(keepdir):
+                shutil.rmtree(keepdir)
 
         # or, write a boots file pointing to all bootsfiles
         if self.keep_all_files:
