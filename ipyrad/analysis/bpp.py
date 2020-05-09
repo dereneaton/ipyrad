@@ -1089,7 +1089,7 @@ class Transformer(object):
                 "scale": 1 / self.gentime_b, 
                 "random_state": self.seed, 
                 "size": self.df.shape[0],
-            },
+            }
         )
 
 
@@ -1100,7 +1100,7 @@ class Transformer(object):
                 "scale": 1 / self.mutrate_b, 
                 "random_state": self.seed, 
                 "size": self.df.shape[0],
-            },
+            }
         )
 
 
@@ -1139,7 +1139,7 @@ class Transformer(object):
                 'scale': 1 / b, 
                 "random_state": self.seed, 
                 "size": self.df.shape[0],
-            },
+            }
         )
 
 
@@ -1160,7 +1160,7 @@ class Transformer(object):
                 'scale': 1 / b, 
                 "random_state": self.seed, 
                 "size": self.df.shape[0],
-            },
+            }
         )
 
 

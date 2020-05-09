@@ -79,7 +79,7 @@ class TreeSlider(object):
         quiet=False,
         scaffold_minlen=0,
         keep_all_files=False,
-        **kwargs,
+        **kwargs
         ):
 
         # check installations
