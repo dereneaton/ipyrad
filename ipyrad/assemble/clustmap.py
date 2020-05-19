@@ -2178,11 +2178,10 @@ def build_clusters_from_cigars(data, sample):
 
                     # how far ahead of the start does this read begin
                     seq = cigared(r1.seq, r1.cigar)
-                    start = r1.reference_start - reg[1] 
+                    start = r1.reference_start - (reg[1] - 1) 
                     arr1[start:start + len(seq)] = list(seq)
-
                     seq = cigared(r2.seq, r2.cigar)
-                    start = r2.reference_start - reg[1] 
+                    start = r2.reference_start - (reg[1] - 1)
                     arr2[start:start + len(seq)] = list(seq)
 
                     arr3 = join_arrays(arr1, arr2)
