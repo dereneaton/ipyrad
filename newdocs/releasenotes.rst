@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.53
+------
+**May 19, 2020**
+
+- Fix off by 1 error in step 3 for PE data.
+- Fix toytree documentation in baba cookbook
+- Fix py2 compat by removing trailing commas from function argument lists in a couple of anaysis tools.
+- Fix oops in handling errors during convert_outputs
+
 0.9.52
 ------
 **May 09, 2020**
