@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.54
+------
+**May 31, 2020**
+
+- off-by-one to ref pos in s3 applied again here
+
 0.9.53
 ------
 **May 19, 2020**
