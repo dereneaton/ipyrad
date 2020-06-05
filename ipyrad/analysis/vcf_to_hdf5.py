@@ -174,53 +174,53 @@ class VCFtoHDF5(object):
             sep="\t", 
             skiprows=self.hlines, 
             chunksize=int(1e5),
+            index_col=False,  # prevent from interpreting int CHROM as index
         )
 
         # open h5
-        io5 = h5py.File(self.database, 'a')
-        prog = ProgressBar(self.nsnps, 0, "converting VCF to HDF5")
-        prog.finished = 0
-        prog.update()
-
-        # iterate over chunks of the file
-        xx = 0
-        lastchrom = "NULL"
-        e0 = 0  # 1-indexed new-locus index, will advance in get_snps/lastchrom
-        e1 = 0  # 0-indexed snps-per-loc index
-        e2 = 0  # 0-indexed snps-per-loc position
-        e3 = 0  # 1-indexed original-locus index, TODO, advancer
-        e4 = 0  # 0-indexed global snps counter
-        for chunkdf in self.df:
-
-            # get sub arrays
-            genos, snps = chunk_to_arrs(chunkdf, self.nsamples)
-
-            # get sub snpsmap
-            snpsmap, lastchrom = self.get_snpsmap(
-                chunkdf, lastchrom=lastchrom, e0=e0, e1=e1, e2=e2, e4=e4)
-
-            # store sub arrays
-            e0 = snpsmap[-1, 0].astype(int)
-            e1 = snpsmap[-1, 1].astype(int) + 1
-            e2 = snpsmap[-1, 2].astype(int) + 1
-            e4 = snpsmap[-1, 4].astype(int) + 1
-
-            # write to HDF5
-            io5['snps'][:, xx:xx + chunkdf.shape[0]] = snps.T
-            io5['genos'][xx:xx + chunkdf.shape[0], :] = genos
-            io5['snpsmap'][xx:xx + chunkdf.shape[0], :] = snpsmap
-            xx += chunkdf.shape[0]
-
-            # print progress
-            prog.finished = xx
+        with h5py.File(self.database, 'a') as io5:
+            prog = ProgressBar(self.nsnps, 0, "converting VCF to HDF5")
+            prog.finished = 0
             prog.update()
 
-        # return with last chunk
-        self.df = chunkdf
+            # iterate over chunks of the file
+            xx = 0
+            lastchrom = "NULL"
+            e0 = 0  # 1-indexed new-locus index, will advance in get_snps/lastchrom
+            e1 = 0  # 0-indexed snps-per-loc index
+            e2 = 0  # 0-indexed snps-per-loc position
+            e3 = 0  # 1-indexed original-locus index, TODO, advancer
+            e4 = 0  # 0-indexed global snps counter
+            for chunkdf in self.df:
 
-        # close h5 handle
-        self._print("")
-        io5.close()
+                # get sub arrays
+                genos, snps = chunk_to_arrs(chunkdf, self.nsamples)
+
+                # get sub snpsmap
+                snpsmap, lastchrom = self.get_snpsmap(
+                    chunkdf, lastchrom=lastchrom, e0=e0, e1=e1, e2=e2, e4=e4)
+
+                # store sub arrays
+                e0 = snpsmap[-1, 0].astype(int)
+                e1 = snpsmap[-1, 1].astype(int) + 1
+                e2 = snpsmap[-1, 2].astype(int) + 1
+                e4 = snpsmap[-1, 4].astype(int) + 1
+
+                # write to HDF5
+                io5['snps'][:, xx:xx + chunkdf.shape[0]] = snps.T
+                io5['genos'][xx:xx + chunkdf.shape[0], :] = genos
+                io5['snpsmap'][xx:xx + chunkdf.shape[0], :] = snpsmap
+                xx += chunkdf.shape[0]
+
+                # print progress
+                prog.finished = xx
+                prog.update()
+
+            # return with last chunk
+            self.df = chunkdf
+
+            # close h5 handle
+            self._print("")
 
 
     def build_matrix(self):
@@ -507,13 +507,13 @@ def chunk_to_arrs(chunkdf, nsamples):
     nsnps = chunkdf.shape[0]
 
     # chrom, pos as factor, integers
-    arrpos = chunkdf.values[:, [0, 1]]
+    arrpos = chunkdf.iloc[:, [0, 1]].values
     arrpos[:, 0] = pd.factorize(arrpos[:, 0])[0]
     arrpos = arrpos.astype(np.int64)
 
     # base calls as int8 (0/1/2/3/9)
-    ref = chunkdf.values[:, 3].astype(bytes).view(np.int8)
-    alts = chunkdf.values[:, 4].astype(bytes)
+    ref = chunkdf.iloc[:, 3].astype(bytes).view(np.int8).values
+    alts = chunkdf.iloc[:, 4].astype(bytes)
     sas = np.char.replace(alts, b",", b"")
     alts1 = np.zeros(alts.size, dtype=np.int8)
     alts2 = np.zeros(alts.size, dtype=np.int8)
@@ -524,8 +524,8 @@ def chunk_to_arrs(chunkdf, nsamples):
     alts3[lens == 3] = [i[2] for i in sas[lens == 3]]
 
     # genotypes as int8 
-    g0 = v_return_g(chunkdf.values[:, 9:], 0)
-    g1 = v_return_g(chunkdf.values[:, 9:], 2)
+    g0 = v_return_g(chunkdf.iloc[:, 9:], 0)
+    g1 = v_return_g(chunkdf.iloc[:, 9:], 2)
     genos = np.zeros((nsnps, nsamples, 2), dtype=np.int8)
     genos[:, :, 0] = g0
     genos[:, :, 1] = g1
