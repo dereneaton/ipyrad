@@ -858,9 +858,14 @@ class Bpp(object):
 
 
 
+
+
     def draw_priors(self, gentime_min, gentime_max, mutrate_min, mutrate_max, invgamma=True, seed=123):
         """
-
+        For BPP 4.0+ the priors are described using an invgamma dist. and 
+        so we expect that for the (a, b) input for thetaprior and tauprior
+        that the b value will be very small, since the inverse of it describes
+        the variance. 
         """
         import toyplot
 
@@ -962,15 +967,15 @@ class Bpp(object):
         canvas1 = toyplot.Canvas(width=925, height=300)
         ax0 = canvas1.cartesian(
             bounds=(50, 275, 50, 250), 
-            xlabel="prior on mutation rates (x10^-8)",
+            xlabel="prior on generation times",
         )
         ax1 = canvas1.cartesian(
             bounds=(350, 575, 50, 250), 
-            xlabel="prior on theta (4Neu)",
+            xlabel="prior on root tau (%)",
         )
         ax2 = canvas1.cartesian(
             bounds=(650, 875, 50, 250),
-            xlabel="prior on Ne",
+            xlabel="prior on root div time (Ma)",
         )
         for ax in (ax0, ax1, ax2):
             ax.y.ticks.labels.show = False
@@ -1054,9 +1059,14 @@ class Bpp(object):
 
 
 
+
+
+
+
 class Transformer(object):
     """
-    ...
+    When calling the "00" algorithm ipa.bpp always enforces that the results
+    should be returned as a GAMMA dist, not INVGAMMA. 
     """
     def __init__(self, df, gentime_min, gentime_max, mutrate_min, mutrate_max, seed=123):
 
@@ -1083,6 +1093,11 @@ class Transformer(object):
 
 
     def _sample_gentime_rvs(self):
+        """
+        Samples a distribution of generation times as a random variate to the
+        same size as the data by drawing from a GAMMA with mean,var based on
+        a range provided by the user.
+        """
         self.gentime_rvs = ss.gamma.rvs(
             self.gentime_a, 
             **{
@@ -1094,6 +1109,11 @@ class Transformer(object):
 
 
     def _sample_mutrate_rvs(self):
+        """
+        Samples a distribution of mutation rates as a random variate to the
+        same size as the data by drawing from a GAMMA with mean,var based on
+        a range provided by the user.
+        """
         self.mutrate_rvs = ss.gamma.rvs(
             self.mutrate_a, 
             **{
@@ -1188,16 +1208,18 @@ class Transformer(object):
         if "tau" in colname:
             self._transform_tau(colname)
             mean, var, std = ss.bayes_mvs(self.div_rvs)
-            print("mean: {}".format(mean))
-            print("95% CI: {}-{}".format(mean.minmax[0], mean.minmax[1]))
-            draw_dist(
+            print("mean: {:.2f}".format(mean.statistic))
+            print("95% CI: {:.2f}-{:.2f}".format(mean.minmax[0], mean.minmax[1]))
+            print("var: {:.2f}".format(var.statistic))
+            print("95% CI: {:.2f}-{:.2f}".format(var.minmax[0], var.minmax[1]))
+            canvas, axes = draw_dist(
                 mean.statistic, var.statistic, "Divergence time")
 
         if "theta" in colname:
             self._transform_theta(colname)
             mean, var, std = ss.bayes_mvs(self.ne_rvs)
-            print("mean: {}".format(mean))
-            print("95% CI: {}-{}".format(mean.minmax[0], mean.minmax[1]))
+            print("mean: {:.2f}".format(mean.statistic))
+            print("95% CI: {:.2f}-{:.2f}".format(mean.minmax[0], mean.minmax[1]))
             canvas, axes = draw_dist(
                 mean.statistic, var.statistic, "Effective population size")
         return canvas, axes
@@ -1219,8 +1241,8 @@ def _call_bpp(binary, ctlfile, alg):
     # bpp writes a Figtree.tre result to CWD of the ipyparallel engine (ugh.)
     # so we need to catch it quickly and move it somewhere relevant. 
     if alg == "00":
-        figfile = "Figtree.tre"
-        newfigpath = ctlfile.replace(".ctl.txt", ".nex")
+        figfile = "FigTree.tre"
+        newfigpath = ctlfile.replace(".ctl.txt", ".figtree.nex")
         if os.path.exists(figfile):
             os.rename(figfile, newfigpath)
 
@@ -1252,11 +1274,13 @@ def draw_dist(mean, var, xlabel):
             100)
 
         # plot values across range of gamma
+        style = ({"stroke": "black", "stroke-width": 2} if civ == 0.99 else {})
         axes.fill(
             x,  # / 1e6,
             ss.gamma.pdf(x, a, **{'scale': 1 / b}),
             opacity=0.25,
             color=toyplot.color.Palette()[0],
+            style=style,
         )
 
     axes.y.ticks.labels.show = False
