@@ -782,7 +782,7 @@ def build_ref_clusters(data, idx, iregion):
         keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
         # pull in the reference for this region (1-indexed)
-        refs = reffai.fetch(region[0], mstart + 1, mend + 1)
+        refs = reffai.fetch(region[0], mstart, mend)
 
         # make empty array
         rlen = mend - mstart
