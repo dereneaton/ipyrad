@@ -269,15 +269,6 @@ class WindowExtracter(object):
         Then it subselects ._scaffold_idx and 
         Applies to a single scaffold/locus.
         """
-        # get length of scaffold if end not provided
-        # if not self.end:
-        #     if isinstance(self._scaffold_idx, int):
-        #         self.end = int(self.scaffold_table.iloc[self._scaffold_idx, -1])
-        #     elif isinstance(self._scaffold_idx, str):
-        #         self.end = int(self.scaffold_table.loc[self._scaffold_idx, -1])
-        #     else:
-        #         self.end = None
-
         # output prefix name, e.g., scaff0-0-1000
         self._get_name(self._name)
 
@@ -448,8 +439,8 @@ class WindowExtracter(object):
         scaf = self.scaffold_table.loc[self._scaffold_idx, "scaffold_name"]
         self.stats = pd.DataFrame({
             "scaffold": [scaf],
-            "start": [int(self.start)],
-            "end": [int(self.end)],
+            "start": [self.start],
+            "end": [self.end],
             "sites": [0],
             "snps": [0],
             "missing": [0],
