@@ -14,6 +14,7 @@ import shutil
 import tempfile
 
 # third party
+import h5py
 import pandas as pd
 import numpy as np
 
@@ -25,12 +26,7 @@ from .utils import ProgressBar
 from ..core.Parallel import Parallel
 from ..assemble.utils import IPyradError
 
-# suppress the terrible h5 warning
-import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    import h5py
-
+# do not require
 try:
     import toytree
 except ImportError:
@@ -350,7 +346,10 @@ class TreeSlider(object):
 
 
     def _parse_scaffold_phymap(self, scaffold_idx):
-        "scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table"
+        """
+        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table.
+        I know, right?
+        """
         with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
 
@@ -517,6 +516,9 @@ class TreeSlider(object):
                 self._print("")
                 break
 
+        # the tree table was written as CSV to the workdir so report it.
+        self._print("tree_table written to {}".format(self.tree_table_path))    
+
         # if not keeping boot then remove bootsdir
         if not self.keep_all_files:
             if os.path.exists(keepdir):
@@ -538,18 +540,23 @@ class TreeSlider(object):
 
 
 
-def remote_mrbayes(nexfile, inference_args):
+def remote_mrbayes(nexfile, inference_args, keepdir=None):
     """
     Call mb on phy and returned parse tree result
     """
     # convert phyfile to tmp nexus seqfile
 
+    # if keep_all_files then use workdir as the workdir instead of tmp
+    if keepdir:
+        workdir = keepdir
+    else:
+        workdir = os.path.dirname(nexfile)
 
     # call mb on the input phylip file with inference args
     mb = mrbayes(
         data=nexfile,
         name="temp_" + str(os.getpid()),
-        workdir=tempfile.gettempdir(),
+        workdir=workdir,
         **inference_args
     )
     mb.run(force=True, quiet=True, block=True)
