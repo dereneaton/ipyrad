@@ -154,7 +154,7 @@ class WindowExtracter(object):
 
         # None for debugging and examining .names and .scaffold_table.
         if self.scaffold_idxs is None:
-            self._scaffold_idx = 0
+            self._scaffold_idx = None
 
         # run a single locus: single prep
         elif isinstance(self.scaffold_idxs, (int, str)):
@@ -471,6 +471,15 @@ class WindowExtracter(object):
 
         If we selected a 200bp window on scaffold 0 then it will extract only
         that subset window from one scaffold.
+
+        # Example phymap where we want to select scaf=0, start=5500, end=20000
+                chroms  phy0    phy1    pos0    pos1
+            0   1         0      66      3942    4008
+            1   1         66     152     5318    5404        <-- start
+            2   1         152    216     5634    5698
+            3   1         216    266     6236    6286
+            4   1         266    338     20667   20739       <-- end
+            5   2         400    500     20800   20900
         """
 
         # get mask to select window array region. No mask for denovo
@@ -479,13 +488,25 @@ class WindowExtracter(object):
         # select a single scaffold to pull start-stop alignment from.        
         if self.end:
 
-            # get phy positions from requested chrom positions.
-            # how far ahead of phy0 is pos0
-            offset = (self._phymap.pos0 - self._phymap.phy0)[0]
+            # get the chrom/loc that includes pos=start]
+            mask1 = self._phymap.pos1 >= self.start
+            mask2 = self._phymap.pos0 <= self.end
+            mask = mask1 & mask2
+            block = self._phymap.loc[mask, :]
 
-            # window start is requested start + offset
-            wmin = self.start + offset
-            wmax = self.end
+            # bail out if block is empty
+            if not block.size:
+                self.seqarr = np.array([])
+                return 
+
+            # get start pos as phy position (how far past pos0 is start)
+            wmin_offset = self.start - block.iloc[0, 3]
+            wmin = int(block.iloc[0, 1] + wmin_offset)
+
+            # get end as phy position (how far past pos0 is end)
+            wunder = min([self.end, block.iloc[-1, 4]])
+            wmax_offset = wunder - block.iloc[-1, 3]
+            wmax = int(block.iloc[-1, 1] + wmax_offset)
 
             # extract sequences
             with h5py.File(self.data, 'r') as io5:
