@@ -227,7 +227,7 @@ class WindowExtracter(object):
             # ...
 
             # fill concat seqarr allowing for missing taxa in each block
-            nsites = self._stats.sites.postfilter.sum()
+            nsites = int(self._stats.sites.postfilter.sum())
             self.seqarr = np.zeros((len(self.names), nsites), dtype=np.uint8)
             idx = 0           
             for (inames, iblock) in zip(names, blocks):
@@ -448,8 +448,8 @@ class WindowExtracter(object):
         scaf = self.scaffold_table.loc[self._scaffold_idx, "scaffold_name"]
         self.stats = pd.DataFrame({
             "scaffold": [scaf],
-            "start": [self.start],
-            "end": [self.end],
+            "start": [int(self.start)],
+            "end": [int(self.end)],
             "sites": [0],
             "snps": [0],
             "missing": [0],
