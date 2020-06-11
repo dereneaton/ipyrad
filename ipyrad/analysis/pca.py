@@ -804,7 +804,7 @@ class Drawing:
                     "fill": color,
                     "stroke": "none",
                     "fill-opacity": (
-                        self.opacity if self.opacity 
+                        self.opacity / self.nreplicates if self.opacity 
                         else 0.9 / self.nreplicates
                     ),
                 },
