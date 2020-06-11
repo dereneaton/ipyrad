@@ -378,6 +378,7 @@ class PCA(object):
         ax1=1,
         cycle=8,
         colors=None,
+        opacity=None,
         shapes=None,
         size=10,
         legend=True,
@@ -390,7 +391,7 @@ class PCA(object):
         Draw a scatterplot for data along two PC axes. 
         """
         self.drawing = Drawing(
-            self, ax0, ax1, cycle, colors, shapes, size, legend,
+            self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
             imap, width, height, axes,
             **kwargs)
         return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
