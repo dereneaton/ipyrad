@@ -592,7 +592,7 @@ class Drawing:
         colors=None,
         opacity=None,
         shapes=None,
-        size=10,
+        size=12,
         legend=True,
         imap=None,
         width=400, 
@@ -671,8 +671,12 @@ class Drawing:
             self.axes.y.label.text = ylab
 
         # style axes
-        self.axes.x.spine.style["stroke-width"] = 2
-        self.axes.y.spine.style["stroke-width"] = 2        
+        self.axes.x.spine.style["stroke-width"] = 2.25
+        self.axes.y.spine.style["stroke-width"] = 2.25    
+        self.axes.x.ticks.labels.style["font-size"] = "12px"
+        self.axes.y.ticks.labels.style["font-size"] = "12px"
+        self.axes.x.label.style['font-size'] = "14px"
+        self.axes.y.label.style['font-size'] = "14px"         
 
 
 
@@ -787,7 +791,8 @@ class Drawing:
                 mstyle={
                     "fill": color,
                     "stroke": "#262626",
-                    "stroke-width": 1.25,
+                    "stroke-opacity": 1.0,
+                    "stroke-width": 1.5,
                     "fill-opacity": (self.opacity if self.opacity else 0.75),
                 },
             )
