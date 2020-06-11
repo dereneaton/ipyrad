@@ -589,6 +589,7 @@ class Drawing:
         ax1=1,
         cycle=8,
         colors=None,
+        opacity=None,
         shapes=None,
         size=10,
         legend=True,
@@ -612,6 +613,7 @@ class Drawing:
         self.cycle = cycle
         self.colors = colors
         self.shapes = shapes
+        self.opacity = opacity
         self.size = size
         self.legend = legend
         self.height = height
@@ -642,6 +644,9 @@ class Drawing:
 
 
     def _setup_canvas_and_axes(self):
+        """
+        Setup and style the Canvas size and Cartesian axes styles.
+        """
         # get axis labels for PCA or TSNE plot
         if self.variance[self.ax0] >= 0.0:
             xlab = "PC{} ({:.1f}%) explained".format(
@@ -663,6 +668,10 @@ class Drawing:
         else:
             self.axes.x.label.text = xlab
             self.axes.y.label.text = ylab
+
+        # style axes
+        self.axes.x.spine.style["stroke-width"] = 2
+        self.axes.y.spine.style["stroke-width"] = 2        
 
 
 
@@ -714,6 +723,10 @@ class Drawing:
 
 
     def _get_marker_styles(self):
+        """
+        Build marker styles for individual or replicate marker plotting, 
+        and able to cycle over few or many categories of IMAP.
+        """
         # make reverse imap dictionary
         self.irev = {}
         for pop, vals in self.imap.items():
@@ -774,7 +787,7 @@ class Drawing:
                     "fill": color,
                     "stroke": "#262626",
                     "stroke-width": 1.25,
-                    "fill-opacity": 0.75,
+                    "fill-opacity": (self.opacity if self.opacity else 0.75),
                 },
             )
 
@@ -784,9 +797,13 @@ class Drawing:
                 mstyle={
                     "fill": color,
                     "stroke": "none",
-                    "fill-opacity": 0.9 / self.nreplicates,
+                    "fill-opacity": (
+                        self.opacity if self.opacity 
+                        else 0.9 / self.nreplicates
+                    ),
                 },
             )
+
 
 
     def _assign_styles_to_marks(self):
@@ -803,6 +820,9 @@ class Drawing:
 
 
     def _draw_markers(self):
+        """
+
+        """
 
         # if not replicates then just plot the points
         if self.nreplicates < 2:
