@@ -762,13 +762,18 @@ class Drawing:
             icolor = next(self.colors)
             ishape = next(self.shapes)
 
+            try:
+                color = toyplot.color.to_css(icolor)
+            except Exception:
+                color = icolor
+
             self.pstyles[pop] = toyplot.marker.create(
                 size=self.size, 
                 shape=ishape,
                 mstyle={
-                    "fill": toyplot.color.to_css(icolor),
+                    "fill": color,
                     "stroke": "#262626",
-                    "stroke-width": 1.0,
+                    "stroke-width": 1.25,
                     "fill-opacity": 0.75,
                 },
             )
@@ -777,12 +782,11 @@ class Drawing:
                 size=self.size, 
                 shape=ishape,
                 mstyle={
-                    "fill": toyplot.color.to_css(icolor),
+                    "fill": color,
                     "stroke": "none",
                     "fill-opacity": 0.9 / self.nreplicates,
                 },
             )
-
 
 
     def _assign_styles_to_marks(self):
