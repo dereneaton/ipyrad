@@ -9,15 +9,25 @@ import pandas as pd
 from ipyrad.assemble.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
+try:
+    import toytree
+except ImportError:
+    pass
+
+
 # template for standard tree inference
 NEX_TEMPLATE_1 = """\
 #NEXUS
+
+log start filename={outname}.log replace;
 execute {nexus};
 
 begin mrbayes;
 set autoclose=yes nowarn=yes;
 
 lset nst=6 rates=gamma;
+
+{constraints}
 
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25; 
@@ -33,8 +43,20 @@ end;
 
 # template for clock model tree inference
 # https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
+TEMPLATE_2_DICT = {
+    "brlenspr": "clock:birthdeath",
+    "clockratepr": "lognorm(-7,0.6)",
+    "clockvarpr": "tk02",
+    "tk02varpr": "exp(1.0)",
+    "samplestrat": "diversity",
+    "sampleprob": "0.1",
+    "speciationpr": "beta(2, 200)",
+    "treeagepr": "offsetexp(1,5)",
+}
 NEX_TEMPLATE_2 = """\
 #NEXUS
+
+log start filename={outname}.log replace;
 execute {nexus};
 
 begin mrbayes;
@@ -42,15 +64,18 @@ set autoclose=yes nowarn=yes;
 
 lset nst=6 rates=gamma;
 
-prset clockratepr=lognorm(-7,0.6);
-prset clockvarpr=tk02;
-prset tk02varpr=exp(1.0);
-prset brlenspr=clock:birthdeath;
-prset samplestrat=diversity;
-prset sampleprob=0.1;
-prset speciationpr=exp(10);
-prset extinctionpr=beta(2, 200);
-prset treeagepr=offsetexp(1,5);
+prset brlenspr={brlenspr};
+prset clockratepr={clockratepr};
+prset clockvarpr={tk02varpr};
+prset tk02varpr={tk02varpr};
+
+prset samplestrat={samplestrat};
+prset sampleprob={sampleprob};
+prset speciationpr={speciationpr};
+prset extinctionpr={extinctionpr};
+prset treeagepr={treeagepr};
+
+{constraints}
 
 mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
 mcmcp relburnin=yes burninfrac=0.25;
@@ -68,38 +93,53 @@ end;
 
 # template for clock model tree inference
 # https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
+TEMPLATE_3_DICT = {
+    "brlenspr": "clock:uniform",
+    "clockvarpr": "igr",
+    "igrvarpr": "exp(10.0)",
+    "clockratepr": "normal(0.01,0.005)",
+    "topologypr": "uniform"
+}
 NEX_TEMPLATE_3 = """\
 #NEXUS
 
+[log block]
 log start filename={outname}.log replace;
+
+[data block]
 execute {nexus};
 
+[tree block]
+{treeblock}
+
+[mb block]
 begin mrbayes;
-set autoclose=yes nowarn=yes;
+  set autoclose=yes nowarn=yes;
 
-lset nst=6 rates=gamma;
+  lset nst=6 rates=gamma;
 
-prset brlenspr=clock:uniform;
-prset clockvarpr=igr;
-prset igrvarpr=exp(10.0);
-prset clockratepr=normal(0.01,0.005);
+  prset brlenspr={brlenspr};
+  prset clockvarpr={clockvarpr};
+  prset igrvarpr={igrvarpr};
+  prset clockratepr={clockratepr};
+  prset topologypr={topologypr};
 
-{other}
+  {constraints}
 
-mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
-mcmcp relburnin=yes burninfrac=0.25;
-mcmcp samplefreq={samplefreq};
-mcmcp printfreq=10000 diagnfr=5000;
-mcmcp filename={outname};
-mcmc;
+  mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
+  mcmcp relburnin=yes burninfrac=0.25;
+  mcmcp samplefreq={samplefreq};
+  mcmcp printfreq=10000 diagnfr=5000;
+  mcmcp filename={outname};
+  mcmc;
 
-sump filename={outname};
-sumt filename={outname} contype=allcompat;
-log stop filename={outname}.log append;
+  sump filename={outname};
+  sumt filename={outname} contype=allcompat;
 end;
+
+[log block]
+log stop filename={outname}.log append;
 """
-
-
 
 
 
@@ -116,6 +156,9 @@ class MrBayes(object):
         The name for this run. An alias for '-n'.
     workdir: str
         The output directory for results. An alias for '-w'. 
+    force: bool
+        Overwrite/rm any existing mb results with this workdir/name prefix.
+
 
     Additional optional parameters
     -------------------------------
@@ -125,6 +168,13 @@ class MrBayes(object):
         Frequency to sample from MCMC chain.
     burnin: int
         Number of generations to run before sampling starts.       
+    clock_model: int
+        0, 1, or 2 define a set of parameters for a relaxed molecular clock
+        analysis that can then be further modified. 
+    constraints: dict or ToyTree
+        A dictionary mapping {constraint_names: [list of tips]}. To 
+        constrain an entire tree you can enter a tree and a dict will 
+        automatically be built to describe the tree structure.
 
     Attributes:
     -----------
@@ -132,6 +182,7 @@ class MrBayes(object):
         parameters for this mb run
     cmd: 
         returns the command string to run mb
+
 
     Functions:
     ----------
@@ -145,7 +196,8 @@ class MrBayes(object):
         data,
         name="test",
         workdir="analysis-mb", 
-        clock_model=False,        
+        clock_model=False,
+        constraints=None,
         **kwargs):
 
         # path attributes
@@ -162,6 +214,7 @@ class MrBayes(object):
 
         # entered args
         self.clock_model = clock_model
+        self.constraints = constraints
         self.name = name
         self.workdir = workdir
         self.data = os.path.abspath(os.path.expanduser(data))
@@ -171,20 +224,16 @@ class MrBayes(object):
 
         self.params = Params()
         defaults = {
-            "clockratepr": "lognorm(-7,0.6)",
-            "clockvarpr": "tk02",
-            "tk02varpr": "exp(1.0)",
-            "brlenspr": "clock:birthdeath",
-            "samplestrat": "diversity",
-            "sampleprob": "0.1",
-            "speciationpr": "exp(10)",
-            "extinctionpr": "beta(2, 200)",
-            "treeagepr": "offsetexp(1, 5)",
             "ngen": 100000,
             "nruns": "1",
             "nchains": 4,
             "samplefreq": 1000,
         }
+        if self.clock_model == 1:
+            defaults.update(TEMPLATE_2_DICT)
+        elif self.clock_model == 2:
+            defaults.update(TEMPLATE_3_DICT)
+
         for i, j in defaults.items():
             setattr(self.params, i, j)
 
@@ -217,17 +266,40 @@ class MrBayes(object):
 
 
     def _write_nexus_file(self, write=True):
-        "write a mrbayes block to a copy of the NEXUS file."
+        """
+        Write a mrbayes block to a copy of the NEXUS file.
+        """
+        # get parameters for this model type
         cwargs = self.params.__dict__.copy()
+
+        # always add I/O args
         cwargs["nexus"] = self.data
         cwargs["outname"] = self.nexus
-        cwargs["other"] = ""
+
+        # is the tree topology fixed?
+        if isinstance(self.constraints, toytree.Toytree.ToyTree):
+            self._fixed_tree()
+            cwargs["treeblock"] = self.treeblock
+            cwargs["topologypr"] = self.params.topologypr
+            cwargs["constraints"] = ""
+
+        elif isinstance(self.constraints, dict):          
+            # set constraints from dict
+            cwargs["constraints"] = self._get_constraint_str()
+            cwargs["treeblock"] = ""
+        else:
+            cwargs["constraints"] = ""
+            cwargs["treeblock"] = ""
+
+        # expand NEXUS usign string formatting
         if self.clock_model == 1:
             self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
         elif self.clock_model == 2:
             self._nexstring = NEX_TEMPLATE_3.format(**cwargs)
         else:
             self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
+
+        # write the NEX string
         with open(self.nexus, 'w') as out:
             out.write(self._nexstring)
 
@@ -374,7 +446,77 @@ class MrBayes(object):
         if not proc[0]:
             raise Exception(
                 "cannot find mb; "
-                "run 'conda install mrbayes -c bioconda -c conda-forge'")
+                "run 'conda install mrbayes -c conda-forge -c bioconda'")
+
+
+
+    def _get_constraints_from_tree(self):
+        """
+        Returns a dictionary mapping node idx to a list of names. This can 
+        be entered to the ipa.mb object as a constraints argument to constrain
+        an entire tree.
+        """
+        constraints = {}
+        for node in self.constraints.treenode.traverse():
+
+            # get all tips descendant
+            lvs = [i.name for i in node.get_leaves()]
+
+            if len(lvs) > 1:
+
+                # constraint string
+                constraints[node.idx] = lvs
+        return constraints
+
+
+
+    def _fixed_tree(self):
+        """
+        Based on a thread on GitHub it is recommended that for fixing a 
+        tree you simply set the parameters affecting topoology to zero and 
+        set the starting tree to your desired tree. This is better than 
+        setting a constraint on every node.
+
+        https://github.com/NBISweden/MrBayes/issues/38
+
+        """
+        # write a tree block in the NEXUS
+        self.treeblock = (
+            "begin trees;\n  tree fixedtree = {}\nend;".
+            format(self.constraints.write(tree_format=9))
+        )
+
+        # set topologypr to use fixed tree
+        self.params.topologypr = "fixed(fixedtree)"
+
+
+
+
+    def _get_constraint_str(self):
+        """
+        constraint <constraint name> <probability-x> = <list of taxa>
+
+        constraint example 100 = taxon_2 taxon_3;
+        prset topologypr = example;
+        """
+        # self.constraints is a dictionary
+        constraints = []
+        for key in self.constraints:
+
+            # const str
+            constraint = "constraint idx-{} 100 = {};".format(
+                key, " ".join(self.constraints[key])
+            )
+
+            # setting string
+            setit = "prset topologypr = constraints (idx-{});".format(key)
+
+            constraints.append(constraint)
+            constraints.append(setit)
+
+        # return empty string if no constraints
+        return "\n".join(constraints)
+
 
 
 
