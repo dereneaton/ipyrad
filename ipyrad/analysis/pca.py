@@ -742,7 +742,7 @@ class Drawing:
         # If the passed in number of colors is big enough to cover
         # the number of pops then set cycle to len(colors)
         # If colors == None this first `if` falls through (lazy evaluation)
-        if self.colors and len(self.colors) >= len(self.imap):
+        if (self.colors is not None) and len(self.colors) >= len(self.imap):
             self.cycle = len(self.colors)
         else:
             self.cycle = min(self.cycle, len(self.imap))
