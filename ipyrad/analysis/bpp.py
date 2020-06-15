@@ -858,8 +858,6 @@ class Bpp(object):
 
 
 
-
-
     def draw_priors(self, gentime_min, gentime_max, mutrate_min, mutrate_max, invgamma=True, seed=123):
         """
         For BPP 4.0+ the priors are described using an invgamma dist. and 
@@ -1203,26 +1201,41 @@ class Transformer(object):
         self.ne_rvs = self.theta_rvs / (self.mutrate_rvs * 4)
 
 
-    def transform(self, colname):
+    def transform(self, colname, axes=None, **kwargs):
+        """
+        Get posterior from BPP results table and transform it using the input 
+        distributions for mutrate and gentime. Prints the transformed mean 
+        and 95% CI, and returns a posterior distribution plot as (c, a, m)
+        unless an axes argument was provided. 
+        """
 
         if "tau" in colname:
             self._transform_tau(colname)
+
+            # get mean, var, std of the mcmc posterior values
             mean, var, std = ss.bayes_mvs(self.div_rvs)
-            print("mean: {:.2f}".format(mean.statistic))
-            print("95% CI: {:.2f}-{:.2f}".format(mean.minmax[0], mean.minmax[1]))
-            print("var: {:.2f}".format(var.statistic))
-            print("95% CI: {:.2f}-{:.2f}".format(var.minmax[0], var.minmax[1]))
-            canvas, axes = draw_dist(
-                mean.statistic, var.statistic, "Divergence time")
+
+            a = mean.statistic ** 2 / var.statistic
+            b = mean.statistic / var.statistic
+            ci0 = ss.gamma.ppf(0.025, a, **{'scale': 1 / b})
+            ci1 = ss.gamma.ppf(0.975, a, **{'scale': 1 / b})
+            print("mean: {:.0f}; 95% CI: ({:.0f}-{:.0f})".format(
+                mean.statistic, ci0, ci1)
+            )
+            canvas, axes, mark = draw_dist(
+                mean.statistic, 
+                var.statistic, 
+                "Divergence time", **kwargs)
 
         if "theta" in colname:
             self._transform_theta(colname)
             mean, var, std = ss.bayes_mvs(self.ne_rvs)
             print("mean: {:.2f}".format(mean.statistic))
             print("95% CI: {:.2f}-{:.2f}".format(mean.minmax[0], mean.minmax[1]))
-            canvas, axes = draw_dist(
-                mean.statistic, var.statistic, "Effective population size")
-        return canvas, axes
+            canvas, axes, mark = draw_dist(
+                mean.statistic, var.statistic, 
+                "Effective population size", **kwargs)
+        return canvas, axes, mark
 
 
 
@@ -1251,7 +1264,7 @@ def _call_bpp(binary, ctlfile, alg):
 
 
 
-def draw_dist(mean, var, xlabel):
+def draw_dist(mean, var, xlabel=None, axes=None, **kwargs):
     """
     Tranformer class subfunction to draw posterior density.
     """
@@ -1260,11 +1273,22 @@ def draw_dist(mean, var, xlabel):
     b = mean / var
 
     # set up plots
-    canvas = toyplot.Canvas(width=400, height=300)
-    axes = canvas.cartesian(ylabel="density", xlabel=xlabel)
+    canvas = None
+    if axes is None:
+        canvas = toyplot.Canvas(width=400, height=300)
+        axes = canvas.cartesian(ylabel="density", xlabel=xlabel)
+
+    # default kwargs
+    if "color" not in kwargs:
+        kwargs["color"] = toyplot.color.Palette()[0]
+    if "opacity" not in kwargs:
+        kwargs["opacity"] = toyplot.color.Palette()[0]
 
     # confidence intervals shaded
     for civ in [0.99, 0.95, 0.50]:
+
+        # stroke the wide interval only
+        style = ({"stroke": "black", "stroke-width": 2} if civ == 0.99 else {})
 
         # get 100 values evenly spaced across 99% 
         edge = (1 - civ) / 2.
@@ -1274,18 +1298,16 @@ def draw_dist(mean, var, xlabel):
             100)
 
         # plot values across range of gamma
-        style = ({"stroke": "black", "stroke-width": 2} if civ == 0.99 else {})
-        axes.fill(
+        mark = axes.fill(
             x,  # / 1e6,
             ss.gamma.pdf(x, a, **{'scale': 1 / b}),
-            opacity=0.25,
-            color=toyplot.color.Palette()[0],
             style=style,
+            **kwargs
         )
 
     axes.y.ticks.labels.show = False
     axes.x.ticks.show = True
-    return canvas, axes
+    return canvas, axes, mark
 
 
 
