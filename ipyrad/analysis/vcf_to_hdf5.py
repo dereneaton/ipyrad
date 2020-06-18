@@ -58,12 +58,19 @@ class VCFtoHDF5(object):
         self.reference = ""
 
 
-    def run(self):
+    def run(self,
+            force=False):
         """
         Parse and convert data to HDF5 file format.
         """
         # print message
         self._print("Indexing VCF to HDF5 database file")
+
+        if os.path.exists(self.database) and not force:
+            self._print("hdf5 file exists. Use `force=True` to overwrite.")
+            return
+        else:
+            pass
 
         # get sample names, count header lines and nsnps
         self.get_meta()
