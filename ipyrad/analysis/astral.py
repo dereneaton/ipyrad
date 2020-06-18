@@ -43,8 +43,7 @@ class Astral:
         annotation=1,
         gene_resampling=False,
         nboots=None,
-        **kwargs,
-        ):
+        **kwargs):
 
         # i/o
         self.name = name

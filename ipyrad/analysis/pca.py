@@ -54,7 +54,7 @@ this value.
 """
 
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
-# TODO: remove biallel singletons... (option, not sure it's a great idea...)
+
 
 class PCA(object):
     """
@@ -371,12 +371,14 @@ class PCA(object):
         self.variances = vexps
 
 
+
     def draw(
         self, 
         ax0=0,
         ax1=1,
         cycle=8,
         colors=None,
+        opacity=None,
         shapes=None,
         size=10,
         legend=True,
@@ -389,10 +391,11 @@ class PCA(object):
         Draw a scatterplot for data along two PC axes. 
         """
         self.drawing = Drawing(
-            self, ax0, ax1, cycle, colors, shapes, size, legend,
+            self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
             imap, width, height, axes,
             **kwargs)
         return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
+
 
 
     def draw_legend(self, axes, **kwargs):
@@ -412,13 +415,14 @@ class PCA(object):
         pca.draw(1, 3, axes=ax2, legend=False);
         pca.draw_legend(ax3, **{"font-size": "14px"})
         """
+
         # bail out if axes are not empty
-        if axes._children:
-            print(
-                "Warning: draw_legend() should be called on empty cartesian"
-                " axes.\nSee the example in the docstring."
-                )
-            return
+        # if axes._children:
+        #     print(
+        #         "Warning: draw_legend() should be called on empty cartesian"
+        #         " axes.\nSee the example in the docstring."
+        #         )
+        #     return
 
         # bail out if no drawing exists to add legend to.
         if not hasattr(self, "drawing"):
@@ -433,18 +437,60 @@ class PCA(object):
         }
         style.update(kwargs)
 
+
+        skeys = sorted(self.drawing.imap)
         axes.scatterplot(
             np.repeat(0, len(self.drawing.imap)),
             np.arange(len(self.drawing.imap)),
-            marker=[self.drawing.pstyles[i] for i in self.drawing.imap],
+            marker=[self.drawing.pstyles[i] for i in skeys],
         )
         axes.text(
             np.repeat(0, len(self.drawing.imap)),
             np.arange(len(self.drawing.imap)),
-            [i for i in self.drawing.imap],
+            [i for i in skeys],
             style=style,
         )
         axes.show = False
+
+
+
+    def draw_panels(self, pc0=0, pc1=1, pc2=2, **kwargs):
+        """
+        A convenience function for drawing a three-part panel plot with the 
+        first three PC axes. To do this yourself and further modify the layout
+        you can start with the code below.
+
+        Parameters (ints): three PC axes to plot.
+        Returns: canvas
+
+        ------------------------
+        import toyplot
+        canvas = toyplot.Canvas(width=1000, height=300)
+        ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
+        ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
+        ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
+        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+
+        pca.draw(0, 1, axes=ax0, legend=False)
+        pca.draw(0, 2, axes=ax1, legend=False)
+        pca.draw(1, 3, axes=ax2, legend=False);
+        pca.draw_legend(ax3, **{"font-size": "14px"})        
+        """
+        if self._model != "PCA":
+            print("You must first call .run() to infer PC axes.")
+            return
+
+        canvas = toyplot.Canvas(width=1000, height=300)
+        ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
+        ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
+        ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
+        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+
+        self.draw(pc0, pc1, axes=ax0, legend=False, **kwargs)
+        self.draw(pc0, pc2, axes=ax1, legend=False, **kwargs)
+        self.draw(pc1, pc2, axes=ax2, legend=False, **kwargs)
+        self.draw_legend(ax3, **{"font-size": "14px"})
+        return canvas
 
 
 
@@ -544,8 +590,9 @@ class Drawing:
         ax1=1,
         cycle=8,
         colors=None,
+        opacity=None,
         shapes=None,
-        size=10,
+        size=12,
         legend=True,
         imap=None,
         width=400, 
@@ -567,6 +614,7 @@ class Drawing:
         self.cycle = cycle
         self.colors = colors
         self.shapes = shapes
+        self.opacity = opacity
         self.size = size
         self.legend = legend
         self.height = height
@@ -597,6 +645,9 @@ class Drawing:
 
 
     def _setup_canvas_and_axes(self):
+        """
+        Setup and style the Canvas size and Cartesian axes styles.
+        """
         # get axis labels for PCA or TSNE plot
         if self.variance[self.ax0] >= 0.0:
             xlab = "PC{} ({:.1f}%) explained".format(
@@ -618,6 +669,14 @@ class Drawing:
         else:
             self.axes.x.label.text = xlab
             self.axes.y.label.text = ylab
+
+        # style axes
+        self.axes.x.spine.style["stroke-width"] = 2.25
+        self.axes.y.spine.style["stroke-width"] = 2.25    
+        self.axes.x.ticks.labels.style["font-size"] = "12px"
+        self.axes.y.ticks.labels.style["font-size"] = "12px"
+        self.axes.x.label.style['font-size'] = "14px"
+        self.axes.y.label.style['font-size'] = "14px"         
 
 
 
@@ -669,6 +728,10 @@ class Drawing:
 
 
     def _get_marker_styles(self):
+        """
+        Build marker styles for individual or replicate marker plotting, 
+        and able to cycle over few or many categories of IMAP.
+        """
         # make reverse imap dictionary
         self.irev = {}
         for pop, vals in self.imap.items():
@@ -692,7 +755,7 @@ class Drawing:
                 )
             )
         else:
-            self.colors = iter(self.colors)
+            self.colors = itertools.cycle(self.colors)
             # assert len(colors) == len(imap), "len colors must match len imap"
 
         # get shapes list repeating in cycles of cycle up to 5 * cycle
@@ -707,7 +770,7 @@ class Drawing:
                 np.tile("x", self.cycle),            
             ]))
         else:
-            self.shapes = iter(self.shapes)
+            self.shapes = itertools.cycle(self.shapes)
         # else:
             # assert len(shapes) == len(imap), "len colors must match len imap"            
 
@@ -717,14 +780,20 @@ class Drawing:
             icolor = next(self.colors)
             ishape = next(self.shapes)
 
+            try:
+                color = toyplot.color.to_css(icolor)
+            except Exception:
+                color = icolor
+
             self.pstyles[pop] = toyplot.marker.create(
                 size=self.size, 
                 shape=ishape,
                 mstyle={
-                    "fill": toyplot.color.to_css(icolor),
+                    "fill": color,
                     "stroke": "#262626",
-                    "stroke-width": 1.0,
-                    "fill-opacity": 0.75,
+                    "stroke-opacity": 1.0,
+                    "stroke-width": 1.5,
+                    "fill-opacity": (self.opacity if self.opacity else 0.75),
                 },
             )
 
@@ -732,9 +801,12 @@ class Drawing:
                 size=self.size, 
                 shape=ishape,
                 mstyle={
-                    "fill": toyplot.color.to_css(icolor),
+                    "fill": color,
                     "stroke": "none",
-                    "fill-opacity": 0.9 / self.nreplicates,
+                    "fill-opacity": (
+                        self.opacity / self.nreplicates if self.opacity 
+                        else 0.9 / self.nreplicates
+                    ),
                 },
             )
 
@@ -754,6 +826,9 @@ class Drawing:
 
 
     def _draw_markers(self):
+        """
+
+        """
 
         # if not replicates then just plot the points
         if self.nreplicates < 2:

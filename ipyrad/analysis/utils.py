@@ -67,6 +67,34 @@ def jsubsample_snps(snpsmap, seed):
     return subs
 
 
+@njit
+def jsubsample_loci(snpsmap, seed):
+    """
+    Return SNPs from re-sampled loci (shape = (nsample, ...can change)
+    """
+    np.random.seed(seed)
+
+    # the number of unique loci with SNPs in this subset
+    lidxs = np.unique(snpsmap[:, 0])
+
+    # resample w/ replacement N loci
+    lsample = np.random.choice(lidxs, len(lidxs))
+
+    # the size of array to fill
+    size = 0
+    for lidx in lsample:
+        size += snpsmap[snpsmap[:, 0] == lidx].shape[0]
+
+    # fill with data
+    subs = np.zeros(size, dtype=np.int64)
+    idx = 0
+    for lidx in lsample:
+        block = snpsmap[snpsmap[:, 0] == lidx, 1]
+        subs[idx: idx + block.size] = block
+        idx += block.size
+    return len(lidxs), subs
+
+
 
 @njit(parallel=True)
 def get_spans(maparr, spans):
@@ -147,6 +175,7 @@ def progressbar(finished, total, start, message):
         .format(hashes + nohash, int(progress), elapsed, message),
         end="")
     sys.stdout.flush()    
+
 
 
 class Params(object):

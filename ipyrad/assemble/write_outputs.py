@@ -1154,8 +1154,8 @@ def convert_outputs(data, oformat):
         # Allow one file to fail without breaking all step 7
         raise IPyradError("Error creating outfile: {}\n{}\t{}".format(
                                                             OUT_SUFFIX[oformat],
-                                                            type(inst).__name__),
-                                                            inst)
+                                                            type(inst).__name__,
+                                                            inst))
 
 ###############################################################
 

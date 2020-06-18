@@ -2119,8 +2119,9 @@ def build_clusters_from_cigars(data, sample):
     # genrator will be empty and this will raise a ValueError. This will just
     # pass through samples without any mapped reads with a 0 length clustS file
     if len(fullregions[0]):
-        regions = (i.split("\t") for i in fullregions)
-        regions = ((i, int(j), int(k)) for (i, j, k) in regions)
+        regions_split = (i.split("\t") for i in fullregions)
+        # bedtools is 0-based. sam is 1-based, so increment the positions here
+        regions = ((i, int(j) + 1, int(k) + 1) for (i, j, k) in regions_split)
     else:
         regions = []
 
@@ -2177,11 +2178,10 @@ def build_clusters_from_cigars(data, sample):
 
                     # how far ahead of the start does this read begin
                     seq = cigared(r1.seq, r1.cigar)
-                    start = r1.reference_start - reg[1] 
+                    start = r1.reference_start - (reg[1] - 1) 
                     arr1[start:start + len(seq)] = list(seq)
-
                     seq = cigared(r2.seq, r2.cigar)
-                    start = r2.reference_start - reg[1] 
+                    start = r2.reference_start - (reg[1] - 1)
                     arr2[start:start + len(seq)] = list(seq)
 
                     arr3 = join_arrays(arr1, arr2)
@@ -2240,8 +2240,12 @@ def build_clusters_from_cigars(data, sample):
                 if r1.is_reverse:
                     ori = "-"
                 derep = r1.qname.split("=")[-1]
+                # Pysam coords are 0 based, but sam files are 1 based, and
+                # since we we build sam in step 5, we need to account for the
+                # diffrent indexing strategies here by incrementing mstart
+                # and mend
                 rname = "{}:{}-{};size={};{}".format(
-                    reg[0], mstart, mend, derep, ori)
+                    reg[0], mstart+1, mend+1, derep, ori)
                 clust.append("{}\n{}".format(rname, aseq))
 
         # store this cluster

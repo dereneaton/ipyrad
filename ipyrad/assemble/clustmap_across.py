@@ -339,7 +339,7 @@ class Step6:
         printstr = ("concatenating inputs", "s6")
         args = (self.data, list(self.cgroups.keys()), self.randomseed)
         rasync = self.lbview.apply(build_concat_two, *args)
-        
+
         while 1:
             ready = rasync.ready()
             self.data._progressbar(int(ready), 1, start, printstr)
@@ -771,7 +771,7 @@ def build_ref_clusters(data, idx, iregion):
 
         # build a dict to reference seqs and cigars by name
         mstart = 9e12
-        mend = 0        
+        mend = 0
         rdict = {}
         for read in reads:
             rstart = read.reference_start
@@ -782,17 +782,17 @@ def build_ref_clusters(data, idx, iregion):
         keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
         # pull in the reference for this region (1-indexed)
-        refs = reffai.fetch(region[0], mstart + 1, mend + 1)
+        refs = reffai.fetch(region[0], mstart, mend)
 
         # make empty array
-        rlen = mend - mstart       
+        rlen = mend - mstart
         arr = np.zeros((len(keys) + 1, rlen), dtype=bytes)
         arr[0] = list(refs.upper())
 
         # fill arr with remaining samples
         for idx, key in enumerate(keys):
             seq, cigar, start, end = rdict[key]
-            
+
             # how far ahead of ref start and short of ref end is this read
             fidx = start - mstart
             eidx = arr.shape[1] - (mend - end)

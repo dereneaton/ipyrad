@@ -4,6 +4,72 @@
 Release Notes
 =============
 
+0.9.54
+------
+**May 31, 2020**
+
+- off-by-one to ref pos in s3 applied again here
+
+0.9.53
+------
+**May 19, 2020**
+
+- Fix off by 1 error in step 3 for PE data.
+- Fix toytree documentation in baba cookbook
+- Fix py2 compat by removing trailing commas from function argument lists in a couple of anaysis tools.
+- Fix oops in handling errors during convert_outputs
+
+0.9.52
+------
+**May 09, 2020**
+
+- Fix nasty off-by-one error in reference positions
+- multiple default clock models
+- multiple default clock models
+- multiple default clock models
+- multiple default clock models
+- multiple default clock models
+- multiple default clock models
+- multiple default clock models
+- wex concat name drop fix
+- ts tmpdir renamed bootsdir
+- umap learn conda instructions
+- ts: added dryrun method
+- wex: remove print debug statement
+- Fix baba cookbook docs
+- add umap option
+- added pseudocode for a further imputer in prog
+- prettier bpp plot
+- pca analysis tool passes through quiet flag to subfunctions
+- warning about missing ref only up with no ref1 or ref2
+- merge fix
+- improving ipabpp summary funcs
+- ensure conda ipcluster bin on stop
+- bpp prior checks, new ctl build for 4.0, parsing results funcs
+- Add a helpful message if merging assemblies with technical replicates beyond step 3.
+- missing import
+- Handle empty imap population in snps_extractor
+- binary fix
+- syntaxerr on quiet
+- hide toytree dep in ast
+- ast better error message
+- ip assemble shows cluster on run by default
+- show_cluster func now listens to param arg
+- big update for bpp 4.0, uses lex
+- wex and ts both use idxs in param name now
+- simple astral run tool
+- lex: imap/minmap filtering fix
+- wex: imap/minmap filtering fix
+- fixed warning message
+- default minmap to 0 if imap and minmap empty
+- hide toyplot dependency
+- simple option to keep treefiles in treeslider
+- under the hood mods to pca draw func to make it more atomic
+- Update faq.rst
+- Set default filter_adapters parameter to 2
+- raise warning if ref+ or ref- and method not ref
+- notes on window extracter
+
 0.9.51
 ------
 **April 17, 2020**

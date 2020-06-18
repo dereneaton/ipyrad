@@ -24,6 +24,8 @@ from ..assemble.utils import IPyradError
 from .utils import Params, ProgressBar
 from .snps_extracter import SNPsExtracter
 
+# tODO: add subsample_snps = False as an option.
+
 
 MISSING_IMPORTS = """
 To use the ipa.structure module you must install two additional 
@@ -88,7 +90,8 @@ class Structure(object):
         minmap=None,
         mincov=0.0,
         quiet=False,
-        load_only=False
+        load_only=False,
+        subsample_snps=True,
         ):
 
         # printing strategy
@@ -111,6 +114,7 @@ class Structure(object):
         self.imap = imap
         self.minmap = minmap
         self.mincov = mincov
+        self.subsample_snps = subsample_snps
 
         # run checks
         self._check_binaries()
@@ -118,8 +122,10 @@ class Structure(object):
 
         # load the database file for filtering/extracting later
         self._ext = SNPsExtracter(
-            data=self.data, imap=self.imap, 
-            minmap=self.minmap, mincov=self.mincov,
+            data=self.data,
+            imap=self.imap, 
+            minmap=self.minmap, 
+            mincov=self.mincov,
         )       
 
         # can skip parsing the file if load=True
@@ -253,6 +259,9 @@ class Structure(object):
                 "To call .run() you must re-init the structure object without load_only=True."
             )
             return
+
+        # print software info
+        
 
         # load the parallel client
         pool = Parallel(
@@ -449,7 +458,11 @@ class Structure(object):
         tmp_e.write(self.extraparams._asfile())
 
         # get sequence array
-        subs = self._ext.subsample_snps(quiet=True)
+        if self.subsample_snps:
+            subs = self._ext.subsample_snps(quiet=True)
+        else:
+            subs = self.snps.copy()
+
         arr = np.zeros(
             (self.header.shape[0], subs.shape[1]),
             dtype=np.int8,
