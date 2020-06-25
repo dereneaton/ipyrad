@@ -144,7 +144,7 @@ class Treemix(object):
         self.names = ext.names
         self.nsites = self.snps.shape[1]
         self.pops = self.imap.keys()
-        self.sidxs = {
+        self.sidx_map = {
             pop: [self.names.index(i) for i in self.imap[pop]]
             for pop in self.pops
         }
@@ -216,6 +216,7 @@ class Treemix(object):
         return " ".join(self._command_list)
 
 
+
     def write_treemix_file(self, quiet=False):
         """
         Write genos to treemix gzipped format:
@@ -235,9 +236,9 @@ class Treemix(object):
         # create 0,5 pairs for ancestral derived counts
         poptuples = {}
         for pop in popnames:
-            ances = np.sum(self.snps[self.sidxs[pop], :] == 0, axis=0) * 2
-            deriv = np.sum(self.snps[self.sidxs[pop], :] == 2, axis=0) * 2
-            heter = np.sum(self.snps[self.sidxs[pop], :] == 1, axis=0)
+            ances = np.sum(self.snps[self.sidx_map[pop], :] == 0, axis=0) * 2
+            deriv = np.sum(self.snps[self.sidx_map[pop], :] == 2, axis=0) * 2
+            heter = np.sum(self.snps[self.sidx_map[pop], :] == 1, axis=0)
             ances += heter
             deriv += heter
 
@@ -258,6 +259,7 @@ class Treemix(object):
         outf.close()
 
 
+
     def draw_tree(self, axes=None):
         """
         Returns a treemix plot on a toyplot.axes object. 
@@ -276,7 +278,7 @@ class Treemix(object):
                 scalebar=True,
             )
         else:
-            canvas, axes = tre.draw(
+            canvas, axes, mark = tre.draw(
                 axes=axes,
                 use_edge_lengths=True,
                 tip_labels_align=True,
@@ -352,7 +354,7 @@ class Treemix(object):
         # parse treemix results files.
         self._parse_results()
 
- 
+
     def _call_treemix(self):
         """
         Calls command on subprocess.
@@ -468,9 +470,10 @@ class Treemix(object):
 
         # check user binary first, then backups
         for binary in list_binaries:
-            proc = subprocess.Popen(["which", binary],
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT).communicate()
+            proc = subprocess.Popen(
+                ["which", binary],
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT).communicate()
             # if a binary was found then stop
             if proc[0]:
                 return binary
