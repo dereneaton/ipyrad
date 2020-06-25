@@ -96,6 +96,38 @@ def jsubsample_loci(snpsmap, seed):
 
 
 
+# @njit
+# def jsubsample_loci_full(snpsmap, seed):
+#     """
+#     Return SNPs from re-sampled loci (shape = (nsample, ...can change)
+#     including the possibility of sampling invariant loci, which 
+#     has the effect of reducing the size of the final returned array.
+#     """
+#     np.random.seed(seed)
+
+#     # the number of unique loci TOTAL in the subset dataset
+#     lidxs = np.unique(snpsmap[:, 0])
+
+#     # resample w/ replacement N loci
+#     lsample = np.random.choice(lidxs, len(lidxs))
+
+#     # the size of array to fill
+#     size = 0
+#     for lidx in lsample:
+#         size += snpsmap[snpsmap[:, 0] == lidx].shape[0]
+
+#     # fill with data
+#     subs = np.zeros(size, dtype=np.int64)
+#     idx = 0
+#     for lidx in lsample:
+#         block = snpsmap[snpsmap[:, 0] == lidx, 1]
+#         subs[idx: idx + block.size] = block
+#         idx += block.size
+#     return len(lidxs), subs
+
+
+
+
 @njit(parallel=True)
 def get_spans(maparr, spans):
     """ 
