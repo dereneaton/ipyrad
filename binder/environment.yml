@@ -1,14 +1,15 @@
 name: ipyrad
 channels: 
-  - bioconda
-  - eaton-lab
   - conda-forge
+  - bioconda
   - ipyrad
+  - eaton-lab
 dependencies:
-  - python>=3
+  - ipyrad
+  - ipcoal
   - toytree
-  - ipyrad 
   - raxml
+  - mrbayes
   - structure
   - clumpp
   - tetrad 
@@ -16,5 +17,5 @@ dependencies:
   - bcftools
   - htslib
   - bpp
-#  - fastqc
-#  - treemix   # forces openblas on numpy/scipy
+  - bucky
+  - treemix   # forces openblas on numpy/scipy
