@@ -332,7 +332,7 @@ class Bpp(object):
             .format(self.imap.keys(), self.tree.get_tip_labels()))
 
 
-    def _load_existing_results(self, name, workdir):
+    def _load_existing_results(self, name, workdir, quiet=False):
         """
         Load existing results files for an object with this workdir and name. 
         This does NOT reload the parameter settings for the object...
@@ -352,7 +352,9 @@ class Bpp(object):
         for tree in trees:
             if tree not in self.files.treefiles:
                 self.files.treefiles.append(tree)        
-        print("[ipa.bpp] found {} existing result files".format(len(mcmcs)))
+
+        if not quiet:
+            print("[ipa.bpp] found {} existing result files".format(len(mcmcs)))
 
 
     @property
@@ -678,16 +680,19 @@ class Bpp(object):
         return newself
 
 
-    def summarize_results(self, algorithm, individual_results=False):
+    def summarize_results(self, algorithm, individual_results=False, quiet=False):
         """ 
         Prints a summarized table of results from replicate runs, or,
         if individual_result=True, then returns a list of separate
         dataframes for each replicate run. 
         """
         # reports number of results found
-        self._load_existing_results(self.name, self.workdir)
+        self._load_existing_results(self.name, self.workdir, quiet)
         assert algorithm in ["00", "01", "10", "11"]
-        print("[ipa.bpp] summarizing algorithm '{}' results".format(algorithm))
+        if not quiet:
+            print(
+                "[ipa.bpp] summarizing algorithm '{}' results"
+                .format(algorithm))
 
         # algorithms supported
         if algorithm == "00":
@@ -732,6 +737,10 @@ class Bpp(object):
         # concatenate each CSV and then get stats w/ describe
         else:
             print('[ipa.bpp] combining mcmc files')
+
+            # return angrily if no files present
+            if not len(self.files.mcmcfiles):
+                raise IPyradError("No result files found.")
 
             # new file handles
             cf = self.files.mcmcfiles[0].rsplit("_", 1)[0] + "_concat.mcmc.txt"
@@ -1052,10 +1061,93 @@ class Bpp(object):
 
 
 
-    def draw_posteriors(self, ):
-        pass
+    def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max):
+        """
+
+        """
+        # table, mcmc = self.summarize("00", individual_results=False)
+        tx = Transformer(mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max)
+        df = pd.DataFrame(
+            index=["mean", "median", "S.D", "min", "max"],  # "2.5%", "97.5%", "ESS*", "Eff*"],
+            columns=mcmc.columns,
+        )
+
+        # fill values for lnL, ESS and Eff
+        # df.iloc[:, -1] = mcmc.iloc[:, -1]
+        # df.iloc[-2:, :] = mcmc.iloc[-2:, :]
+
+        # fill transformed data
+        for col in mcmc.columns:
+            if col == "lnL":
+                pass
+                # df.loc[:, "lnL"] = 
+            else:
+                cvals = tx.transform(col)
+                m, v, s = ss.bayes_mvs(cvals)
+                df.loc["mean", col] = m.statistic
+                df.loc["median", col] = np.median(cvals)
+                df.loc["S.D", col] = s.statistic
+                df.loc["min", col] = cvals.min()
+                df.loc["max", col] = cvals.max()                
+
+        # get new column names ("theta_1r0" -> "Ne-1-r0", 
+        columns = []
+        for column in mcmc.columns:
+            if "theta_" in column:
+                columns.append(column.replace("theta_", "Ne_"))
+            else:
+                columns.append(column.replace("tau_", "div_"))
+        df.columns = columns
+
+        return df
 
 
+
+    def draw_posteriors(self, gamma_tuples, labels, **kwargs):
+        """
+
+
+        """
+        import toyplot
+        c = toyplot.Canvas(225, 350)
+        ax = c.cartesian()
+
+        vals = gamma_tuples
+        vals = [(i[0] ** 2 / i[1], i[0] / i[1]) for i in vals]
+
+        marks = []
+        ax.hlines(len(vals))
+        for vidx, val in enumerate(vals):
+
+            idx = len(vals) - vidx - 1
+            a, b = val
+            x = np.linspace(
+                ss.gamma.ppf(0.01, a, scale=1/b),
+                ss.gamma.ppf(0.99, a, scale=1/b),
+                100,
+            )
+
+            mark = ax.fill(
+                x, 
+                (ss.gamma.pdf(x, a, scale=1/b) / ss.gamma.pdf(x, a, scale=1/b).max()) * 1.25,
+                style={"fill": toyplot.color.Palette()[0], "stroke": "white", "stroke-width": 1.5},
+                baseline=np.repeat(idx, x.size),
+                annotation=True,
+            )
+            ax.hlines(idx)
+            marks.append(mark) 
+
+        ax.hlines([-0.3, len(vals) + 0.35])
+        minm = min([i.domain('x')[0] for i in marks])
+        maxm = max([i.domain('x')[1] for i in marks])
+        ax.vlines([minm - maxm * 0.05, maxm + maxm * 0.05])
+        ax.x.ticks.locator = toyplot.locator.Extended(count=3, only_inside=True)
+        ax.x.ticks.show = True
+        ax.y.ticks.locator = toyplot.locator.Explicit(
+            locations=np.arange(len(vals)) + 0.5,
+            labels=labels,
+        )
+        return c, ax, marks
 
 
 
@@ -1201,41 +1293,128 @@ class Transformer(object):
         self.ne_rvs = self.theta_rvs / (self.mutrate_rvs * 4)
 
 
-    def transform(self, colname, axes=None, **kwargs):
+    def transform(self, colname):
         """
         Get posterior from BPP results table and transform it using the input 
         distributions for mutrate and gentime. Prints the transformed mean 
         and 95% CI, and returns a posterior distribution plot as (c, a, m)
         unless an axes argument was provided. 
         """
-
         if "tau" in colname:
             self._transform_tau(colname)
-
-            # get mean, var, std of the mcmc posterior values
-            mean, var, std = ss.bayes_mvs(self.div_rvs)
-
-            a = mean.statistic ** 2 / var.statistic
-            b = mean.statistic / var.statistic
-            ci0 = ss.gamma.ppf(0.025, a, **{'scale': 1 / b})
-            ci1 = ss.gamma.ppf(0.975, a, **{'scale': 1 / b})
-            print("mean: {:.0f}; 95% CI: ({:.0f}-{:.0f})".format(
-                mean.statistic, ci0, ci1)
-            )
-            canvas, axes, mark = draw_dist(
-                mean.statistic, 
-                var.statistic, 
-                "Divergence time", **kwargs)
+            return self.div_rvs
 
         if "theta" in colname:
             self._transform_theta(colname)
-            mean, var, std = ss.bayes_mvs(self.ne_rvs)
-            print("mean: {:.2f}".format(mean.statistic))
-            print("95% CI: {:.2f}-{:.2f}".format(mean.minmax[0], mean.minmax[1]))
-            canvas, axes, mark = draw_dist(
-                mean.statistic, var.statistic, 
-                "Effective population size", **kwargs)
-        return canvas, axes, mark
+            return self.ne_rvs
+
+
+    # def transform_plot(self, axes=None, **kwargs):
+    #     """
+
+    #     """
+    #     # get mean, var, std of the mcmc posterior values
+    #     mean, var, std = ss.bayes_mvs(self.div_rvs)
+
+    #     a = mean.statistic ** 2 / var.statistic
+    #     b = mean.statistic / var.statistic
+    #     x = np.linspace(
+    #         ss.gamma.ppf(0.025, a, **{'scale': 1 / b}),
+    #         ss.gamma.ppf(0.975, a, **{'scale': 1 / b})
+    #     )
+    #     pdf = ss.gamma.pdf(x, a, scale=1 / b)
+    #     print("mean: {:.0f}".format(mean.statistic))
+    #     print("95% CI: {:.0f}-{:.0f}".format(pdf[0], pdf[-1]))
+
+    #     canvas, axes, mark = draw_dist(
+    #         mean.statistic, 
+    #         var.statistic, 
+    #         xlabel="Divergence time", 
+    #         axes=axes,
+    #         **kwargs)
+
+
+    #     if "theta" in colname:
+    #         self._transform_theta(colname)
+    #         mean, var, std = ss.bayes_mvs(self.ne_rvs)
+    #         print("mean: {:.0f}".format(mean.statistic))
+    #         print("95% CI: {:.0f}-{:.0f}".format(mean.minmax[0], mean.minmax[1]))
+    #         canvas, axes, mark = draw_dist(
+    #             mean.statistic, var.statistic, 
+    #             "Effective population size", **kwargs)
+    #     return canvas, axes, mark
+
+
+
+
+    # def draw_dists(self, mcmcs):
+    #     """
+
+    #     """
+    #     mcmcs = self.summarize_results("00")
+
+
+
+
+def draw_dists(mcmcs, **kwargs):
+    """
+    Draw several posterior distributions on a shared axis.
+    """
+    import toyplot
+    canvas = toyplot.Canvas(225, 50 * len(mcmcs))
+    axes = canvas.cartesian()
+
+    # store marks for each drawn distribution
+    marks = []
+
+    # draw each distribution
+    for idx, dist in enumerate(mcmcs):
+
+        # get mean, var, and a,b of gamma distribution
+        mean, var, std = ss.bayes_mvs(dist)
+        a = mean.statistic ** 2 / var.statistic
+        b = mean.statistic / var.statistic
+
+        # how far down from top
+        tidx = len(mcmcs) - idx
+
+        # x-axis points along distribution density
+        x = np.linspace(
+            ss.gamma.ppf(0.01, a, scale=1 / b),
+            ss.gamma.ppf(0.99, a, scale=1 / b),
+            100,
+        )
+
+        # get the density
+        density = ss.gamma.pdf(x, a, scale=1 / b)
+
+        # draw it
+        mark = axes.fill(
+            x, 
+            (density / density.max()) * 1.25,
+            baseline=np.repeat(tidx, x.size),
+            style={
+                "fill": "grey", 
+                "stroke": "white", 
+                "stroke-width": 2,
+            }
+        )
+        marks.append(mark)  
+        axes.hlines(idx)
+
+    # style the axes
+    axes.hlines([-0.25, len(mcmcs) + 0.35])
+    minm = min([i.domain('x')[0] for i in marks])
+    maxm = max([i.domain('x')[1] for i in marks])    
+    axes.vlines([minm - minm * 0.05, maxm + maxm * 0.05])
+    axes.x.ticks.locator = toyplot.locator.Extended(4, only_inside=True)
+    axes.x.ticks.show = True
+    axes.y.ticks.locator = toyplot.locator.Explicit(
+        locations=np.arange(len(mcmcs)) + 0.5,
+        labels=range(len(mcmcs)),
+    )
+    return canvas, axes, marks
+
 
 
 
@@ -1282,7 +1461,8 @@ def draw_dist(mean, var, xlabel=None, axes=None, **kwargs):
     if "color" not in kwargs:
         kwargs["color"] = toyplot.color.Palette()[0]
     if "opacity" not in kwargs:
-        kwargs["opacity"] = toyplot.color.Palette()[0]
+        kwargs["opacity"] = 0.25
+
 
     # confidence intervals shaded
     for civ in [0.99, 0.95, 0.50]:
