@@ -7,7 +7,6 @@ from __future__ import print_function, division
 from builtins import range
 
 import time
-import itertools
 from collections import OrderedDict
 
 # import scipy.stats as st  ## used for dfoil
