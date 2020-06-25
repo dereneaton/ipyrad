@@ -15,6 +15,7 @@ from builtins import range
 # standard lib
 import h5py
 import numpy as np
+import pandas as pd
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
 
@@ -247,6 +248,15 @@ class SNPsExtracter(object):
         replacement to the same number as the original assembly. This does
         not subsample unlinked SNPs per locus, but instead re-samples linked
         SNPs for use in bootstrapping (e.g., BABA analysis).
+
+        THIS RESAMPLES ONLY LOCI IN THE SNPS HDF5 FILE, MEANING THAT IT DOES
+        NOT RESAMPLE INVARIANT LOCI. AND IN FACT IT RESAMPLES LOCI AFTER
+        FILTERING HAS REDUCED THE LOCI TO ONLY THOSE THAT INCLUDE THE 
+        SELECTED SAMPLES. 
+        So a full data set (e.g., loci file) may include 
+        3000 loci of which only 2000 include data for the a particular set
+        of four samples, and only 1000 of those are variable. This will 
+        return a random resampling with replacment of those 1000 loci.
         """
         if not random_seed:
             random_seed = np.random.randint(0, 1e9)
@@ -254,6 +264,103 @@ class SNPsExtracter(object):
         subarr = self.snps[:, lidxs]
         if not quiet:
             self._print(
-                "subsampled {} SNPs from {} loci w/ replacement"
+                "subsampled {} SNPs from {} variable loci w/ replacement"
                 .format(subarr.shape[1], nloci))
         return subarr
+
+
+
+    def get_population_geno_counts(self, quiet=False):
+        """
+        Returns DF with genos in treemix format.
+        A   B   C   D
+        0,2 2,0 2,0 0,2
+        0,2 1,1 3,0 0,3
+        0,2 2,0 3,0 0,2
+        ...
+        """
+        # check for required imap groupings
+        assert self.imap, "imap dictionary is required to get counts."
+
+        # write the headers
+        df = pd.DataFrame(columns=sorted(self.imap))
+
+        # create 0,5 pairs for ancestral derived counts
+        for pop in df.columns:
+            samp = [self.names.index(i) for i in self.imap[pop]]
+            ances = np.sum(self.snps[samp, :] == 0, axis=0) * 2
+            deriv = np.sum(self.snps[samp, :] == 2, axis=0) * 2
+            heter = np.sum(self.snps[samp, :] == 1, axis=0)
+            ances += heter
+            deriv += heter
+
+            df.loc[:, pop] = [
+                "{},{}".format(i, j) for i, j in zip(ances, deriv)
+            ]
+        return df
+
+
+
+    def get_population_geno_frequency(self, quiet=False):
+        """
+        Returns DF with geno freqs as in construct format.
+             0    1    2   ...
+        A    0.0  0.5  1.0
+        B    1.0  0.5  0.0
+        C    0.0  0.0  0.0
+
+        TODO: missing can be included as NA 
+        """
+        # check for required imap groupings
+        assert self.imap, "imap dictionary is required to get counts."
+
+        # write the headers
+        df = pd.DataFrame(columns=sorted(self.imap))
+
+        # create 0,5 pairs for ancestral derived counts
+        for pop in df.columns:
+            samp = [self.names.index(i) for i in self.imap[pop]]
+            ances = np.sum(self.snps[samp, :] == 0, axis=0) * 2
+            deriv = np.sum(self.snps[samp, :] == 2, axis=0) * 2
+            heter = np.sum(self.snps[samp, :] == 1, axis=0)
+            ances += heter
+            deriv += heter
+            df.loc[:, pop] = deriv / (deriv + ances)
+        return df.T
+
+
+
+
+
+
+    # def subsample_loci_full(self, nloci, random_seed=None, quiet=False):
+    #     """
+    #     Calls jitted functions to subsample loci/linkage-blocks with
+    #     replacement to the same number as the original assembly. This does
+    #     not subsample unlinked SNPs per locus, but instead re-samples linked
+    #     SNPs for use in bootstrapping (e.g., BABA analysis).
+    #     THIS RESAMPLES FROM ALL LOCI IN THE DATA SET, WHETHER IT IS 
+    #     VARIABLE OR NOT.
+    #     So a full data set (e.g., loci file) may include 
+    #     3000 loci of which only 2000 include data for the a particular set
+    #     of four samples. This will return 2000 a random resampling with 
+    #     replacment of those 2000 loci.
+    #     """
+
+    #     # set random seed 
+    #     if not random_seed:
+    #         random_seed = np.random.randint(0, 1e9)
+
+    #     # expand snpsmap to include invariant loci that can be resampled.
+
+
+    #     # subsample nloci with replacment
+    #     nloci, lidxs = jsubsample_loci(self.snpsmap, random_seed)
+    #     subarr = self.snps[:, lidxs]
+
+
+    #     if not quiet:
+    #         self._print(
+    #             "subsampled {} SNPs from {} loci w/ replacement"
+    #             .format(subarr.shape[1], nloci))           
+    #     return subarr
