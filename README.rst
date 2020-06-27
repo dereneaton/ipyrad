@@ -14,9 +14,9 @@ where you will find installation instructions, example tutorials, and a full use
 Quick Install
 ------------
 ipyrad is available through the Python package installer `conda` with all dependencies included.
-If you have `conda` installed you can simply run::
+If you have `conda` installed you can simply run:
 
-    conda install -c ipyrad ipyrad
+    conda install ipyrad -c conda-forge -c bioconda
 
 
 If you do not have `conda` installed then you will enjoy our 
