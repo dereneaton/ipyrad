@@ -4,6 +4,44 @@
 Release Notes
 =============
 
+0.9.55
+------
+**June 26, 2020**
+
+- bpp with ipcoal demoup
+- update tmx tool for toytree v2
+- conversion funcs in snps_extracter
+- binder add ipcoal and CF as first env
+- ipcoal terremix docs
+- tool and docs for genotype freq conversion output
+- tool and docs for genotype freq conversion output
+- baba ipcoal notebook
+- update 2brad docs slightly
+- Add force flag to force overwrite vcf_to_hdf5 (prevent redundant conversion)
+- better prior plots and transformers
+- mb more prior options and fixed tree support
+- pca allow setting colors
+- pca cna set opacity
+- pca cna set opacity
+- pca cna set opacity
+- pca cna set opacity
+- fix to allow custom colors in pca
+- docs
+- fix py2 compat
+- wex ints
+- fix api oops in window extracter docs for scaffold_idxs
+- wex start end as ints
+- re-supporting single or multiple locs/chrom in wex
+- option to not subsample SNPs
+- add mrbayes keepdir arg to organize files
+- simplified wex
+- extracter filters invariant sites when subsampled by IMAP
+- added pca panel plot
+- subsample loci jit for snps_extractor of linked SNPS
+- major baba2 update, to replace baba eventually
+- axes label fix and figt cleanup
+- handle int chrom names
+
 0.9.54
 ------
 **May 31, 2020**
