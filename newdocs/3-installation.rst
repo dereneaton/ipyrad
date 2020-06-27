@@ -13,7 +13,7 @@ ipyrad is available for Python >=2.7 and >=3.5.
 
 .. code:: bash
 
-    conda install ipyrad -c bioconda
+    conda install ipyrad -c conda-forge -c bioconda
 
 
 Recommended additional packages
@@ -26,6 +26,16 @@ The ipyrad API provides a powerful interface to using ipyrad for assembling and 
     conda install mpi4py -c conda-forge
 
 
+We generally recommend setting conda-forge as your default conda channel 
+as this reduces the likelihood that you will run into incompatibilities 
+later if you install some software dependencies with 
+or without it. 
+
+.. code:: bash
+    conda config --add channels conda-forge
+    conda config --set channel_priority strict
+
+
 Alternative: install from GitHub
 --------------------------------
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
@@ -33,13 +43,14 @@ You can alternatively install ipyrad from its source code on GitHub. This is not
 .. code::bash
     
     # install external requirements first (e.g., using conda)
-    conda install vsearch muscle bedtools bwa samtools pysam cutadapt -c bioconda
+    conda install ipyrad -c conda-forge -c ipyrad 
     conda install mpi4py notebook -c conda-forge
 
     # clone the master branch from repo
     git clone -b master https://github.com/dereneaton/ipyrad
 
     # cd into source and install w/ pip (notice final . in command)
+    # this local ipyrad copy will take precedence over the conda copy.
     cd ./ipyrad
     pip install -e .
 
@@ -105,7 +116,6 @@ Linux install instructions for conda
 
     # Fetch the miniconda installer with wget
     wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-
 
     # Install miniconda into $HOME/miniconda3
     #  * Type 'yes' to agree to the license
