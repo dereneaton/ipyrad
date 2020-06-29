@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.56
+------
+**June 29, 2020**
+
+- revise installation docs to add conda-forge recommendation to reduce conflict errors
+- update README install instructions
+
 0.9.55
 ------
 **June 26, 2020**
