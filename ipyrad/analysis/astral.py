@@ -43,6 +43,7 @@ class Astral:
         annotation=1,
         gene_resampling=False,
         nboots=None,
+        binary=None,
         **kwargs):
 
         # i/o
@@ -159,6 +160,7 @@ class Astral:
         """
         Check that java is installed and get a tmp binary if needed.
         """
+        # check for toytree
         if not sys.modules.get("toytree"):
             raise ImportError(_MISSING_TOYTREE)
 
@@ -170,46 +172,27 @@ class Astral:
             print(comm[0])
         if not comm[0]:
             raise IPyradError(
-                "java must be installed or loaded to use Astral.")
+                "java must be installed or loaded to use Astral.\n"
+                "You can use 'conda install openjdk -c conda-forge"
+            )
 
-        # paths
-        uzip = "https://github.com/smirarab/ASTRAL/raw/master/Astral.5.7.3.zip"
-        dzip = "Astral.5.7.3.zip"
-        adir = "Astral"
-        jbin = "astral.5.7.3.jar"
+        # check for astral jarfile in userspec
+        if self.binary is not None:
+            if os.path.exists(self.binary):
+                return
 
-        # look for existing binary in tmpdir
-        self.binary = os.path.join(
-            tempfile.gettempdir(), adir, jbin,
+        # check for astral jarfile in eaton-lab conda install location
+        else:
+            binloc = os.path.join(sys.prefix, "bin", "astral3-5.7.1.jar")
+            if os.path.exists(binloc):
+                return
+
+        # if you get here an install was not found and you are in trouble.
+        raise IPyradError(
+            "astral binary not found. Please either specify a binary if\n"
+            "astral is already installed, or install with conda by using:\n"
+            "'conda install astral3 -c conda-forge -c eaton-lab'"
         )
-
-        # check that bpp is installed and in path            
-        cmd = ['which', self.binary]
-        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
-        comm = proc.communicate()[0]
-        if comm:
-            return 
-
-        # bpp not found in /tmp, download it.        
-        res = requests.get(uzip, allow_redirects=True)
-        tmpzip = os.path.join(tempfile.gettempdir(), dzip)
-        with open(tmpzip, 'wb') as tz:
-            tz.write(res.content)
-
-        # decompress tar file 
-        cmd = ["unzip", tmpzip, "-d", tempfile.gettempdir()]
-        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
-        comm = proc.communicate()
-        if proc.returncode:
-            print(comm[0], comm[1])
-
-        # check that binary now can be found
-        cmd = ['which', self.binary]
-        proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=sps.PIPE)
-        comm = proc.communicate()[0]
-        if comm:
-            return 
-        raise IPyradError("astral binary not found.")
 
 
 
@@ -226,13 +209,16 @@ class Astral:
             treelist = data
 
         # it is a filepath string
-        if isinstance(data, (str, bytes)):
+        elif isinstance(data, (str, bytes)):
             data = pd.read_csv(data)
             treelist = data[data.tree.notna()].tree.tolist()
 
         # assume this is the treeslider dataframe output with .tree column
-        if isinstance(data, pd.DataFrame):
+        elif isinstance(data, pd.DataFrame):
             treelist = data[data.tree.notna()].tree.tolist()
+
+        else:
+            raise IPyradError("input format should be list or DataFrame.")
 
         # write to tmpfile
         self._tmptrees = os.path.join(self.workdir, "tmptrees.txt")
