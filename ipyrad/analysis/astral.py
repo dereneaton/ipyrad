@@ -183,7 +183,7 @@ class Astral:
 
         # check for astral jarfile in eaton-lab conda install location
         else:
-            binloc = os.path.join(sys.prefix, "bin", "astral3-5.7.1.jar")
+            binloc = os.path.join(sys.prefix, "bin", "astral.5.7.1.jar")
             if os.path.exists(binloc):
                 return
 
