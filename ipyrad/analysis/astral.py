@@ -10,8 +10,6 @@ from builtins import range
 
 import os
 import sys
-import tempfile
-import requests
 import subprocess as sps
 import pandas as pd
 from ..assemble.utils import IPyradError
@@ -32,6 +30,21 @@ conda install toytree -c eaton-lab
 class Astral:
     """
     Wrapper to run simple astral analyses on a list of gene trees.
+    The input can be either a file with newick trees on separate lines, 
+    or a list of newick strings, or a list of toytree objects, or a DataFrame
+    containing a column labeled .tree.
+
+    Parameters
+    ===========
+    data (str or list)
+
+    name (str)
+
+    workdir (str)
+
+    bootsfile (str or None)
+
+    ...
     """
     def __init__(
         self, 
@@ -183,8 +196,8 @@ class Astral:
 
         # check for astral jarfile in eaton-lab conda install location
         else:
-            binloc = os.path.join(sys.prefix, "bin", "astral.5.7.1.jar")
-            if os.path.exists(binloc):
+            self.binary = os.path.join(sys.prefix, "bin", "astral.5.7.1.jar")
+            if os.path.exists(self.binary):
                 return
 
         # if you get here an install was not found and you are in trouble.
@@ -231,7 +244,8 @@ class Astral:
         """
         Call Astral command ()
         """
-        print("[astral.5.7.3.jar]")
+        print("[astral.5.7.1.jar]")
+
         # setup the comamnd 
         proc = sps.Popen(
             self._get_command(), 
