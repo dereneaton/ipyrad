@@ -492,52 +492,63 @@ class Baba:
             Height in pixels
 
         prune: bool
-            Prune the tree to only draw tips that are involved in tests.
+            Prune the tree to only draw tips that are involved in tests.\
+            
+        sort: bool
+            
 
         """
 
-        # if prune tree
-        if prune:
-            intree = set([])
-            for cell in self.taxon_table.values.flatten():
-                for tax in cell.split(","):
-                    intree.add(tax)
-            tree = tree.drop_tips(
-                [i for i in tree.get_tip_labels() if i not in intree]
-            )
-
-        if sort:
-            # split to make cell into a list
-            sindex = (
-                self.taxon_table
-                .applymap(lambda x: x.split(","))
-                .applymap(tree.get_mrca_idx_from_tip_labels)
-                .sort_values(by=["p4", "p3", "p2", "p1"])
-            ).index
-
-            # rearrange tables by sindex
-            tax_table = self.taxon_table.loc[sindex]
-            res_table = self.results_table.loc[sindex]
-            tax_table.reset_index(drop=True, inplace=True)
-            res_table.reset_index(drop=True, inplace=True)
-        else:
-            res_table = self.results_table
-            tax_table = self.taxon_table
-
         # make the plot
-        drawing = Drawing(res_table, tax_table, tree, width, height)
+        drawing = Drawing(self.results_table, self.taxon_table, tree, width, height, sort=sort, prune=prune)
         return (drawing.canvas, )
 
 
 
 
 class Drawing:
-    def __init__(self, res, tax, tree, width=500, height=500):
-
-        self.tree = tree
+    def __init__(self, res, tax, tree, width=500, height=500, sort=False, prune=False):
+        
         self.tests = tax
         self.res = res
         self.ntests = res.shape[0]
+        
+      
+        # if prune tree
+        if prune:
+            intree = set([])
+            for cell in self.tests.values.flatten():
+                for tax_ in cell.split(","):
+                    intree.add(tax_)
+            tree = tree.drop_tips(
+                [i for i in tree.get_tip_labels() if i not in intree]
+            )
+        
+        
+        # define tree, original tree or prunned tree
+        self.tree = tree
+        
+        
+        if sort:
+            # split to make cell into a list
+            sindex = (
+                self.tests
+                .applymap(lambda x: x.split(","))
+                .applymap(self.tree.get_mrca_idx_from_tip_labels)
+                .sort_values(by=["p4", "p3", "p2", "p1"])
+            ).index
+
+            # rearrange tables by sindex
+            self.tests = self.tests.loc[sindex]
+            self.res = self.res.loc[sindex]
+            self.tests.reset_index(drop=True, inplace=True)
+            self.res.reset_index(drop=True, inplace=True)
+
+        
+        
+
+
+
 
         # canvas and axes components
         self.canvas = toyplot.Canvas(width, height)
