@@ -11,7 +11,7 @@ from builtins import range
 import os
 import sys
 import subprocess as sps
-import pandas as pd
+import numpy as np
 from ..assemble.utils import IPyradError
 
 # import toytree
@@ -55,6 +55,9 @@ class Snaq:
         nedges,
         name="test",
         workdir="analysis-snaq",
+        cftable=None,
+        seed=None,
+        nruns=4,
         **kwargs):
 
         # params
@@ -63,22 +66,32 @@ class Snaq:
         self.netin = netin
         self.nedges = int(nedges)
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
+        self.nruns = nruns
+        self.seed = (np.random.randint(int(1e7)) if seed is None else seed)
+        self.cftable = cftable
 
         # i/o
-        self.gt_infile = os.path.join(self.workdir, self.name + ".gtin")
-        self.net_infile = os.path.join(self.workdir, self.name + ".netin")
-        self.out_table = os.path.join(self.workdir, self.name + ".CFs.csv")
-        self.out_net = os.path.join(self.workdir, self.name + ".networks.nwk")
+        self.in_gt = os.path.realpath(os.path.expanduser(self.gtrees))
+        self.in_net = os.path.realpath(os.path.expanduser(self.netin))
+        self.io_table = os.path.join(self.workdir, self.name + ".CFs.csv")
+        self.out_net = os.path.join(self.workdir, self.name)
+        self.io_script = os.path.join(self.workdir, self.name + '.jl')
+        # self.in_gt = os.path.join(self.workdir, self.name + ".gtin")
+        # self.in_net = os.path.join(self.workdir, self.name + ".netin")
 
+        # final result
+        self.out_log = os.path.join(self.workdir, self.name + '.log')
+        self.out_net = os.path.join(self.workdir, self.name + '.networks')
+        
         # prep
         self._check_binary()
-        self._write_treefiles()
+        # self._write_treefiles()
         self._expand_script()
 
 
-        self._check_args()
-        self._parse_data_to_tmpfile()
-        self._write_mapfile()
+        #self._check_args()
+        #self._parse_data_to_tmpfile()
+        #self._write_mapfile()
 
 
 
@@ -108,33 +121,35 @@ class Snaq:
         """
 
         expand = {
+            "nruns": self.nruns,
+            "io_table": self.io_table,
+            "in_net": self.in_net,
             "nedges": self.nedges,
-            "in_net": self.netin,
-            "out_net": self.netout,
-            "gtree_input": self.gtrees,
-            "out_table": self.out_table
+            "out_net": self.out_net,
+            "seed": self.seed,
+            "gtree_input": self.in_gt,
         }
-        self._script = SCRIPT.format(**expand)
+        self._setup = SETUP.format(**expand)
+        self._run = SCRIPT.format(**expand)
+
+        # if table already exists then use it
+        if os.path.exists(self.io_table):
+            print("using existing CF table: {}".format(self.io_table))
+            self._script = self._run
+
+        else:
+            self._script = self._setup + "\n" + self._run
+
+        with open(self.io_script, 'w') as out:
+            out.write(self._script)
 
 
-
-    def null(self):
+    def _get_command(self):
         # base command
-        cmd = ["julia", "-jar", self.binary]
-
-        # additional args
-        for key, val in self._kwargs.items():
-            if val is not None:
-                if val is True:
-                    cmd.extend([str(key)])
-                elif val is False:
-                    pass
-                else:
-                    cmd.extend([str(key), str(val)])
+        cmd = ["julia", self.io_script]
         return cmd
 
-
-
+    
     def print_command(self):
         self._expand_script()
         print(self._script)
@@ -174,9 +189,11 @@ class Snaq:
 
     def run(self):
         """
-        Call Astral command ()
+        Call SNAQ julia script 
         """
-        print("[Julia SNAQ]")
+        print("[SNAQ v.x.y]")
+        print("[nproc = {}]".format(self.nruns))
+        print("julia {}".format(self.io_script))
 
         # setup the comamnd 
         proc = sps.Popen(
@@ -186,30 +203,21 @@ class Snaq:
         )
         comm = proc.communicate()
         if proc.returncode:
-            print("Astral Error:\n", comm[0].decode())
+            print("SNAQ Error:\n", comm[0].decode())
             raise IPyradError(
-                "Astral Error: your command string was:\n{}"
-                .format(" ".join(self._get_command())))
-
-        # store stderr to logfile
-        with open(self.logfile, 'w') as out:
-            out.write(comm[0].decode())
-
-        # cleanup 
-        if os.path.exists(self._tmptrees):
-            os.remove(self._tmptrees)
-
+                "SNAQ Error: see .jl script and .err file in workdir")
+               
         # try loading the tree result
-        self.tree = toytree.tree(self.treefile)
+        with open(self.out_log, 'r') as inlog:
+            maxnet = inlog.read().split("MaxNet is ")[-1]
+        self.tree, self.admix = toytree.utils.parse_network(maxnet)
 
         # report result file
-        print("inferred tree written to ({})".format(self.treefile))
-
+        print("inferred network written to ({})".format(self.out_net))
 
 
 
 SCRIPT = """
-
 #!/usr/bin/env julia
 
 # check for required packages
@@ -217,26 +225,42 @@ using Pkg
 Pkg.add("PhyloNetworks")
 Pkg.add("CSV")
 
+# parallelize
+using Distributed
+addprocs({nruns})
+
+# load packages
+using CSV
+@everywhere using PhyloNetworks
+
+# load quartet-CF object from table
+df_sp = CSV.read("{io_table}", categorical=false);
+d_sp = readTableCF!(df_sp);
+
+# load starting network
+netin = readTopology("{in_net}")
+
+# infer the network
+snaq!(netin, d_sp, hmax={nedges}, filename="{out_net}", seed={seed}, runs={nruns})
+"""
+
+
+SETUP = """
+#!/usr/bin/env julia
+
 # load required packages
 using PhyloNetworks
 using CSV
 
-# i/o handles
-io_gtrees = {gtree_input}
-io_table = {out_table}
-io_netin = {in_net}
-io_netout = {out_net}
-
 # load gene trees and starting tree
-gtrees = readMultiTopology(io_gtrees);
-netin = readTopology(io_netin)
+gtrees = readMultiTopology("{gtree_input}");
 
-# count quartet CFs and save table
+# count quartet CFs
 q, t = countquartetsintrees(gtrees);
-cfdf = writeTableCF(q, t);
-qtcf = readTableCF(cfdf);
-CSV.write(io_table, qtcf);
 
-# infer the zero edge network
-snaq!(netin, qtcf, hmax={nedges}, filename=netout, seed=1234)
+# reshape into dataframe
+cfdf = writeTableCF(q, t);
+
+# save table
+CSV.write("{io_table}", cfdf);
 """
