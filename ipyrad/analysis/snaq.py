@@ -209,7 +209,6 @@ class Snaq:
 
 
 SCRIPT = """
-
 #!/usr/bin/env julia
 
 # check for required packages
@@ -217,26 +216,42 @@ using Pkg
 Pkg.add("PhyloNetworks")
 Pkg.add("CSV")
 
+# parallelize
+using Distributed
+addprocs({nruns})
+
+# load packages
+using CSV
+@everwhere using PhyloNetworks
+
+# load quartet-CF object from table
+df_sp = CSV.read({io_table}, categorical=false);
+d_sp = readTableCF!(df_sp);
+
+# load starting network
+netin = readTopology({in_net})
+
+# infer the network
+snaq!(netin, qtcf, hmax={nedges}, filename={out_net}, seed={seed}, runs={runs})
+"""
+
+
+COUNT = """
+#!/usr/bin/env julia
+
 # load required packages
 using PhyloNetworks
 using CSV
 
-# i/o handles
-io_gtrees = {gtree_input}
-io_table = {out_table}
-io_netin = {in_net}
-io_netout = {out_net}
-
 # load gene trees and starting tree
-gtrees = readMultiTopology(io_gtrees);
-netin = readTopology(io_netin)
+gtrees = readMultiTopology({gtree_input});
 
-# count quartet CFs and save table
+# count quartet CFs
 q, t = countquartetsintrees(gtrees);
-cfdf = writeTableCF(q, t);
-qtcf = readTableCF(cfdf);
-CSV.write(io_table, qtcf);
 
-# infer the zero edge network
-snaq!(netin, qtcf, hmax={nedges}, filename=netout, seed=1234)
+# reshape into dataframe
+cfdf = writeTableCF(q, t);
+
+# save table
+CSV.write({io_table}, cfdf);
 """
