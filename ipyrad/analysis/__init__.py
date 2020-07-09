@@ -47,6 +47,7 @@ from .baba import Baba as baba
 from .baba2 import Baba as baba2
 from .coverage import Coverage as coverage
 from .astral import Astral as astral
+from .snaq import Snaq as snaq
 
 # from .momi import Momi as momi
 # from .eems import Eems as eems
