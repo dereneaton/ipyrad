@@ -25,10 +25,10 @@ Examples using the ipyrad CLI
 .. code-block:: bash
 
     ## branch and only keep 3 samples from assembly data1
-    >>> ipyrad -n data1 -b data2 1A0 1B0 1C0
+    >>> ipyrad -p params-data1 -b data2 1A0 1B0 1C0
 
     ## and/or, branch and only exclude 3 samples from assembly data1
-    >>> ipyrad -n data1 -b data3 - 1A0 1B0 1C0
+    >>> ipyrad -p params-data1 -b data3 - 1A0 1B0 1C0
 
 
 Examples using the ipyrad Python API 
