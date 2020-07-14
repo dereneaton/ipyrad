@@ -223,8 +223,14 @@ class Astral:
 
         # it is a filepath string
         elif isinstance(data, (str, bytes)):
+
+            # could be a CSV file from treeslider or ipcoal
             data = pd.read_csv(data)
             treelist = data[data.tree.notna()].tree.tolist()
+
+            # or it could be a file with newicks on lines
+            # ...
+            
 
         # assume this is the treeslider dataframe output with .tree column
         elif isinstance(data, pd.DataFrame):
