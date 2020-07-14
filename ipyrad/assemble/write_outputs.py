@@ -1106,7 +1106,7 @@ class Edges:
     def trim_param_trim_loci(self):
         "user entered hard trims"
         self.trims[0] = max([self.trims[0], self.data.params.trim_loci[0]])
-        self.trims[1] = (self.trims[1] - self.data.params.trim_loci[0]
+        self.trims[1] = (self.trims[1] - self.data.params.trim_loci[1]
             if self.trims[1] else 0)
         self.trims[2] = (self.trims[2] + self.data.params.trim_loci[2]
             if self.trims[2] else 0)
