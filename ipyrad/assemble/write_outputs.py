@@ -2693,7 +2693,8 @@ The distribution of SNPs (var and pis) per locus.
 MISSING_SAMPLE_IN_DB = """
 There are samples in this assembly that were not present in step 6. This is 
 likely due to failed samples retained in the assembly from prior to step 5, or
-branching/merging. The following samples are not in the step6 database:
+branching/merging. Either branch and remove these samples, or run them through
+step 6. The following samples are not in the step6 database:
 {}
 Simplest solution is to branch and remove these from the assembly.
 """
