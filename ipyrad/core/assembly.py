@@ -22,6 +22,7 @@ from ipyrad.core.paramsinfo import paraminfo, paramname
 from ipyrad.core.Parallel import Parallel
 from ipyrad.core.params import Params, Hackers
 
+pd.set_option('display.max_colwidth', 250)
     
 
 class Assembly(object):
