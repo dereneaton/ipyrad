@@ -50,7 +50,7 @@ class SNPsExtracter(object):
         # get names from imap, else will be filled/checked against db
         self.names = []
         for key, val in self.imap.items():
-            if isinstance(val, (list, tuple)):
+            if isinstance(val, (list, tuple, np.ndarray)):
                 self.names.extend(val)
             elif isinstance(val, str):
                 self.names.append(val)        
