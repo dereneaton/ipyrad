@@ -561,16 +561,16 @@ class LocusExtracter(object):
         # convert to bytes and write spacer names
         phy = []
         for idx, name in enumerate(pnames):
-            seq = bytes(seqarr[idx]).decode()
+            seq = bytes(seqarr[idx]).decode().upper()
             phy.append("{} {}".format(name, seq))
         return phy
 
 
     def get_locus_phy(self, lidx):
         # write to string       
-        phy = self.get_locus(lidx)
-        ntaxa, nsites = self.seqarr.shape
-        stringout = "{} {}\n{}".format(ntaxa, nsites, "\n".join(phy))
+        seqarr = self.get_locus(lidx)
+        ntaxa, nsites = self.loci[lidx].shape
+        stringout = "{} {}\n{}".format(ntaxa, nsites, "\n".join(seqarr))
         return stringout
 
 
