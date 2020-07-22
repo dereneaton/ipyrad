@@ -378,7 +378,7 @@ class Baba:
 
 
 
-    def run(self, imaps, minmaps=None, nboots=1000, auto=True, ipyclient=None, show_cluster=False):
+    def run(self, imaps, minmaps=None, nboots=100, auto=True, ipyclient=None, show_cluster=False):
         """
         Run a batch of dstat tests in parallel on a list of test dictionaries.
         The list of tests can either be set on the .tests attribute of the
