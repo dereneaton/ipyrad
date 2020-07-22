@@ -80,8 +80,8 @@ class Snaq:
         self.io_script = os.path.join(self.workdir, self.name + '.jl')
 
         # final result
-        self.out_log = os.path.join(self.workdir, self.name + '.log')
-        self.out_net = os.path.join(self.workdir, self.name + '.networks')
+        self.out_log = os.path.join(self.workdir, self.name + '.snaq.log')
+        self.out_net = os.path.join(self.workdir, self.name + '.snaq')
 
         # prep
         self._check_binary()

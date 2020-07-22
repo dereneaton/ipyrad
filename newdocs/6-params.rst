@@ -655,7 +655,7 @@ Affected steps = 7. Example entries to params.txt
 .. parsed-literal::
 
     0, 0, 0, 0     ## [26] no locus edge trimming
-    0, 5, 0, 0     ## [26] trims first 5 bases from R1s in aligned locus
+    5, 0, 0, 0     ## [26] trims first 5 bases from R1s in aligned locus
     0, 5, 5, 0     ## [26] trims last 5 bases from R1s and first 5 from R2s
 
 

@@ -54,6 +54,11 @@ You can alternatively install ipyrad from its source code on GitHub. This is not
     cd ./ipyrad
     pip install -e .
 
+or alternatively (for version 0.9.56, for example):
+
+.. code::bash
+
+    pip install git+https://github.com/dereneaton/ipyrad.git@0.9.56
 
 Details: dependencies:
 ----------------------
