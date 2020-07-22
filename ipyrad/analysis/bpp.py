@@ -35,7 +35,7 @@ _MISSING_TOYTREE = """
 You are missing required packages to use ipa.bpp().
 First run the following conda install command:
 
-conda install toytree -c eaton-lab
+conda install toytree -c conda-forge
 """
 
 # TODO: raise error on locus_filter result 0
