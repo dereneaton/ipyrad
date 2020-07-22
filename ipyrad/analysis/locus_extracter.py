@@ -86,6 +86,7 @@ class LocusExtracter(object):
         minsnps=0,
         maxmissing=1.0,
         minlen=50,
+        rmincov=0.1,
         consensus_reduce=False,
         quiet=False,
         **kwargs
@@ -111,7 +112,7 @@ class LocusExtracter(object):
         self.quiet = quiet
 
         # hardcoded in locus extracter
-        self.rmincov = 0.1
+        self.rmincov = rmincov        
 
         # minmap defaults to 0 if empty and imap
         if self.imap:
@@ -357,8 +358,6 @@ class LocusExtracter(object):
     #     self.stats.loc["prefilter", "samples"] = self.seqarr.shape[0]
 
 
-
-
     def _imap_consensus_reduce(self):
         """
         Called on REMOTE.
@@ -569,7 +568,8 @@ class LocusExtracter(object):
     def get_locus_phy(self, lidx):
         # write to string       
         seqarr = self.get_locus(lidx)
-        ntaxa, nsites = self.loci[lidx].shape
+        ntaxa = len(seqarr)
+        nsites = self.loci[lidx].shape[1]
         stringout = "{} {}\n{}".format(ntaxa, nsites, "\n".join(seqarr))
         return stringout
 
