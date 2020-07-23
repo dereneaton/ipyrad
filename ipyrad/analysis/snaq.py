@@ -55,10 +55,11 @@ class Snaq:
         nedges,
         name="test",
         workdir="analysis-snaq",
-        cftable=None,
         seed=None,
         nruns=4,
         nproc=4,
+        # cftable=None,
+        force=False,
         **kwargs):
 
         # params
@@ -70,7 +71,8 @@ class Snaq:
         self.nruns = nruns
         self.nproc = nproc
         self.seed = (np.random.randint(int(1e7)) if seed is None else seed)
-        self.cftable = cftable
+        self.force = force
+        # self.cftable = cftable
 
         # i/o
         self.in_gt = os.path.realpath(os.path.expanduser(self.gtrees))
@@ -126,6 +128,11 @@ class Snaq:
         }
         self._setup = SETUP.format(**expand)
         self._run = SCRIPT.format(**expand)
+
+        # remove existing cf table
+        if self.force:
+            if os.path.exists(self.io_table):
+                os.remove(self.io_table)
 
         # if table already exists then use it
         if os.path.exists(self.io_table):
