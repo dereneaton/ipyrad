@@ -273,7 +273,7 @@ def clade_weights(treelist, clades, idx=0):
                             dt = tree.drop_tips(todrop)
                             tsum += clade_true(dt.unroot(), iclade)
                             idx += 1
-            
+
             # individual test support for individual clades
             else:
                 # get pair samplers
@@ -281,7 +281,7 @@ def clade_weights(treelist, clades, idx=0):
                 isamp = itertools.combinations(iclade, 2)
                 oclade = tips.difference(iclade)
                 osamp = itertools.combinations(oclade, 2)
-            
+
                 # iterate over quartets
                 for ipair in isamp:
                     for opair in osamp:
@@ -290,7 +290,7 @@ def clade_weights(treelist, clades, idx=0):
                         dt = tree.drop_tips(todrop)
                         tsum += clade_true(dt.unroot(), iclade)
                         idx += 1
-                
+
             # store result
             if idx:
                 clade_weights.loc[tidx, name] = tsum / idx
