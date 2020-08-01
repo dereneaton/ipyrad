@@ -20,6 +20,8 @@ from ipyrad.assemble.utils import IPyradError
 # missing imports to be raised on class init
 try:
     import toyplot
+    import toyplot.svg
+    import toyplot.pdf
 except ImportError:
     pass
 
@@ -215,7 +217,10 @@ class PCA(object):
                 self.topcov, self.niters, self.quiet)
 
         else:
+            #self.snps[self.snps == 9] = 0
+            missing = self.snps == 9
             self.snps[self.snps == 9] = 0
+            self.snps[missing] += np.random.choice([0,1,2], self.snps.shape)[missing].astype(np.uint64)
             self._print(
                 "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(100, 0, 0)            
@@ -382,6 +387,7 @@ class PCA(object):
         shapes=None,
         size=10,
         legend=True,
+        outfile='',
         imap=None,
         width=400, 
         height=300,
@@ -392,7 +398,7 @@ class PCA(object):
         """
         self.drawing = Drawing(
             self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
-            imap, width, height, axes,
+            outfile, imap, width, height, axes,
             **kwargs)
         return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
 
@@ -594,6 +600,7 @@ class Drawing:
         shapes=None,
         size=12,
         legend=True,
+        outfile='',
         imap=None,
         width=400, 
         height=300,
@@ -617,6 +624,7 @@ class Drawing:
         self.opacity = opacity
         self.size = size
         self.legend = legend
+        self.outfile = outfile
         self.height = height
         self.width = width
 
@@ -642,6 +650,14 @@ class Drawing:
         if self.legend and (self.canvas is not None):
             self._add_legend()
 
+        # Write to pdf/svg
+        if self.outfile and (self.canvas is not None):
+            if self.outfile.endswith(".pdf"):
+                toyplot.pdf.render(self.canvas, self.outfile)
+            elif self.outfile.endswith(".svg"):
+                toyplot.svg.render(self.canvas, self.outfile)
+            else:
+                raise IPyradError("outfile only supports pdf/svg.")
 
 
     def _setup_canvas_and_axes(self):
