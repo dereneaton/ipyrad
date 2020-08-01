@@ -4,6 +4,31 @@
 Release Notes
 =============
 
+0.9.57
+------
+**August 01, 2020**
+
+- Add functionality to pca to allow adding easy text titles to the plots with the  param
+- Document writing pca figure to a file
+- Allow pca.draw() to write out pdf and svg
+- force option to remove cftable in snaq
+- fix ntaxa in phy header for lex
+- mb ipcoal doc up
+- get locus phy uppers
+- changed default nboots in baba
+- Set pandas max_colwidth=250 to allow for very long sample names.
+- Fix oops in step 7 where trim_loci 3' R1 wasn't being used.
+- Allow imap pops to be specified as np.ndarray in snps_extracter
+- fix path snaq log
+- Fix branching oops
+- snaq working
+- snaq
+- network updated
+- testing network analysis
+- ast conda bin path fix
+- ast conda bin path fix
+- ast conda bin
+
 0.9.56
 ------
 **June 29, 2020**
