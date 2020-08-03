@@ -22,7 +22,6 @@ try:
     import toyplot
     import toyplot.svg
     import toyplot.pdf
-    import toyplot.png
 except ImportError:
     pass
 
@@ -649,16 +648,14 @@ class Drawing:
         if self.legend and (self.canvas is not None):
             self._add_legend()
 
-        # Write to pdf/png/svg
+        # Write to pdf/svg
         if self.outfile and (self.canvas is not None):
             if self.outfile.endswith(".pdf"):
                 toyplot.pdf.render(self.canvas, self.outfile)
-            elif self.outfile.endswith(".png"):
-                toyplot.png.render(self.canvas, self.outfile)
             elif self.outfile.endswith(".svg"):
                 toyplot.svg.render(self.canvas, self.outfile)
             else:
-                raise IPyradError("outfile only supports pdf/png/svg.")
+                raise IPyradError("outfile only supports pdf/svg.")
 
 
     def _setup_canvas_and_axes(self):
