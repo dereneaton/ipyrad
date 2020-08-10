@@ -20,6 +20,8 @@ from ipyrad.assemble.utils import IPyradError
 # missing imports to be raised on class init
 try:
     import toyplot
+    import toyplot.svg
+    import toyplot.pdf
 except ImportError:
     pass
 
@@ -215,7 +217,10 @@ class PCA(object):
                 self.topcov, self.niters, self.quiet)
 
         else:
+            #self.snps[self.snps == 9] = 0
+            missing = self.snps == 9
             self.snps[self.snps == 9] = 0
+            self.snps[missing] += np.random.choice([0,1,2], self.snps.shape)[missing].astype(np.uint64)
             self._print(
                 "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(100, 0, 0)            
@@ -382,6 +387,8 @@ class PCA(object):
         shapes=None,
         size=10,
         legend=True,
+        label='',
+        outfile='',
         imap=None,
         width=400, 
         height=300,
@@ -392,7 +399,7 @@ class PCA(object):
         """
         self.drawing = Drawing(
             self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
-            imap, width, height, axes,
+            label, outfile, imap, width, height, axes,
             **kwargs)
         return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
 
@@ -493,7 +500,6 @@ class PCA(object):
         return canvas
 
 
-
     def run_umap(self, subsample=True, seed=123, n_neighbors=15, **kwargs):
         """
 
@@ -535,7 +541,6 @@ class PCA(object):
         self._model = "UMAP"
 
 
-
     def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None, **kwargs):
         """
         Calls TSNE model from scikit-learn on the SNP or subsampled SNP data
@@ -570,7 +575,6 @@ class PCA(object):
         self._model = "TSNE"
 
 
-
     def pcs(self, rep=0):
         "return a dataframe with the PC loadings."
         try:
@@ -578,8 +582,6 @@ class PCA(object):
         except ValueError:
             raise IPyradError("You must call run() before accessing the pcs.")
         return df
-
-
 
 
 class Drawing:
@@ -594,6 +596,8 @@ class Drawing:
         shapes=None,
         size=12,
         legend=True,
+        label='',
+        outfile='',
         imap=None,
         width=400, 
         height=300,
@@ -617,6 +621,8 @@ class Drawing:
         self.opacity = opacity
         self.size = size
         self.legend = legend
+        self.label = label
+        self.outfile = outfile
         self.height = height
         self.width = width
 
@@ -642,6 +648,14 @@ class Drawing:
         if self.legend and (self.canvas is not None):
             self._add_legend()
 
+        # Write to pdf/svg
+        if self.outfile and (self.canvas is not None):
+            if self.outfile.endswith(".pdf"):
+                toyplot.pdf.render(self.canvas, self.outfile)
+            elif self.outfile.endswith(".svg"):
+                toyplot.svg.render(self.canvas, self.outfile)
+            else:
+                raise IPyradError("outfile only supports pdf/svg.")
 
 
     def _setup_canvas_and_axes(self):
@@ -678,6 +692,9 @@ class Drawing:
         self.axes.x.label.style['font-size'] = "14px"
         self.axes.y.label.style['font-size'] = "14px"         
 
+        if self.label:
+            self.axes.label.text = self.label
+            self.axes.label.style['font-size'] = "20px"
 
 
     def _parse_replicate_runs(self):
@@ -702,7 +719,6 @@ class Drawing:
             "data set only has {} axes.".format(self.datas[0].shape[1]))
 
 
-
     def _regress_replicates(self):
         """
         test reversions of replicate axes (clumpp like) so that all plot
@@ -724,7 +740,6 @@ class Drawing:
                 # if swapped fit is better make this the data
                 if c1 > c0:
                     self.datas[i][:, ax] = self.datas[i][:, ax] * -1
-
 
 
     def _get_marker_styles(self):
@@ -811,7 +826,6 @@ class Drawing:
             )
 
 
-
     def _assign_styles_to_marks(self):
         # assign styled markers to data points
         self.pmarks = []
@@ -822,7 +836,6 @@ class Drawing:
             self.pmarks.append(pmark)
             rmark = self.rstyles[pop]
             self.rmarks.append(rmark)        
-
 
 
     def _draw_markers(self):
@@ -866,7 +879,6 @@ class Drawing:
                 title=self.names,
                 marker=self.pmarks,
             )
-
 
 
     def _add_legend(self, corner=None):
