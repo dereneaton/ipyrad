@@ -327,7 +327,7 @@ class CLI:
 
         print("\n  Merging succeeded. New params file for merged assembly:")
         print("\n    params-{}.txt\n".format(newname))
-        sys.exit(1)
+        sys.exit(0)
 
 
     def get_assembly(self):
