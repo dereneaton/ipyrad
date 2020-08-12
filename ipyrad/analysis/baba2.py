@@ -479,7 +479,7 @@ class Baba:
 
 
 
-    def draw(self, tree, width=500, height=500, sort=False, prune=False, *args, **kwargs):
+    def draw(self, tree, width=500, height=500, sort=False, prune=False, fade=False, zscoreTH=2.5, *args, **kwargs):
         """ 
         Draw a multi-panel figure with tree, tests, and results 
 
@@ -493,51 +493,66 @@ class Baba:
 
         prune: bool
             Prune the tree to only draw tips that are involved in tests.
+            
+        sort: bool
+            Sort tests
+            
+        fade: float
+            Fade test blocks if the Z-score is not significant.
 
         """
 
-        # if prune tree
-        if prune:
-            intree = set([])
-            for cell in self.taxon_table.values.flatten():
-                for tax in cell.split(","):
-                    intree.add(tax)
-            tree = tree.drop_tips(
-                [i for i in tree.get_tip_labels() if i not in intree]
-            )
-
-        if sort:
-            # split to make cell into a list
-            sindex = (
-                self.taxon_table
-                .applymap(lambda x: x.split(","))
-                .applymap(tree.get_mrca_idx_from_tip_labels)
-                .sort_values(by=["p4", "p3", "p2", "p1"])
-            ).index
-
-            # rearrange tables by sindex
-            tax_table = self.taxon_table.loc[sindex]
-            res_table = self.results_table.loc[sindex]
-            tax_table.reset_index(drop=True, inplace=True)
-            res_table.reset_index(drop=True, inplace=True)
-        else:
-            res_table = self.results_table
-            tax_table = self.taxon_table
-
         # make the plot
-        drawing = Drawing(res_table, tax_table, tree, width, height)
+        drawing = Drawing(self.results_table, self.taxon_table, tree, width, height, sort=sort, prune=prune, fade=fade, zscoreTH=zscoreTH)
         return (drawing.canvas, )
 
 
 
 
 class Drawing:
-    def __init__(self, res, tax, tree, width=500, height=500):
-
-        self.tree = tree
+    def __init__(self, res, tax, tree, width=500, height=500, sort=False, prune=False, fade=False, zscoreTH=2.5):
+        
         self.tests = tax
         self.res = res
         self.ntests = res.shape[0]
+        self.zscoreTH = zscoreTH
+        self.fade = fade
+      
+        # if prune tree
+        if prune:
+            intree = set([])
+            for cell in self.tests.values.flatten():
+                for tax_ in cell.split(","):
+                    intree.add(tax_)
+            tree = tree.drop_tips(
+                [i for i in tree.get_tip_labels() if i not in intree]
+            )
+        
+        
+        # define tree, original tree or prunned tree
+        self.tree = tree
+        
+        
+        if sort:
+            # split to make cell into a list
+            sindex = (
+                self.tests
+                .applymap(lambda x: x.split(","))
+                .applymap(self.tree.get_mrca_idx_from_tip_labels)
+                .sort_values(by=["p4", "p3", "p2", "p1"])
+            ).index
+
+            # rearrange tables by sindex
+            self.tests = self.tests.loc[sindex]
+            self.res = self.res.loc[sindex]
+            self.tests.reset_index(drop=True, inplace=True)
+            self.res.reset_index(drop=True, inplace=True)
+
+        
+        
+
+
+
 
         # canvas and axes components
         self.canvas = toyplot.Canvas(width, height)
@@ -616,6 +631,7 @@ class Drawing:
         # coloring
         COLORS = toyplot.color.Palette()
         colors = [COLORS[0], COLORS[1], toyplot.color.black, COLORS[7]]
+        opacities = [1, 1, 1, 1]
         TIPS = self.tree.get_tip_labels()
 
         # draw blocks
@@ -624,36 +640,57 @@ class Drawing:
             # line tracing
             hidx = self.ntests - idx
             ax1.hlines(hidx, color=toyplot.color.black, style={"stroke-dasharray": "2,4"})
+            
+            
+            #if fade option is true, make half transparent non significant blocks
+            if self.fade:
+                # check if Z is significant and set opacities for every block
+                if self.res.Z[idx] < self.zscoreTH:
+                    opacities = [0.6, 0.6, 1, 1] #make both P1 and P2 transparent
+                else:
+                    if self.res.D[idx] > 0:
+                        opacities = [0.6, 1, 1, 1] #make P1 transparent
+                    else:
+                        opacities = [1, 0.6, 1, 1] #make P2 transparent
+        
+            
 
             # get test [name1, name2, name3]
             for cidx, pop in enumerate(["p1", "p2", "p3", "p4"]):
                 test = self.tests.iloc[idx][pop]
 
+                
                 # get name indices [0, 2, 3]
                 tidxs = sorted([TIPS.index(i) for i in test.split(",")])
-
+                                
                 # draw blocks connecting index to next until no more.
                 blocks = []
-                block = [tidxs[0], tidxs[0]]
+                
+                # declare a block as [names, initial tip, last tip]
+                block = [test.replace(",","\n"), tidxs[0], tidxs[0]]
                 for i in range(1, len(tidxs)):
                     if tidxs[i] - tidxs[i - 1] == 1:
                         block[-1] = tidxs[i]
                     else:
                         blocks.append(block)
-                        block = [tidxs[i], tidxs[i]]
+                        block = [test, tidxs[i], tidxs[i]]
+
                 blocks.append(block)
                 blocks[-1][-1] = tidxs[-1]
 
+                
                 # draw them (left, right, top, bottom)
                 for block in blocks:
                     ax1.rectangle(
-                        a=block[0] + 0.25,
-                        b=block[1] + 0.75,
+                        a=block[1] + 0.25,
+                        b=block[2] + 0.75,
                         c=hidx + 0.25, 
                         d=hidx - 0.25,
+                        title=block[0],
                         style={
                             "fill": colors[cidx],
                             "stroke": toyplot.color.black,
+                            "opacity": opacities[cidx],
                             "stroke-width": 0.5,
                         },
                     )
@@ -696,6 +733,7 @@ class Drawing:
                 0, -self.res.Z[idx],
                 hidx - 0.25, hidx + 0.25, 
                 color=toyplot.color.black,
+                title="Z-score: " + str(round(-self.res.Z[idx], 2))
             )
 
 
@@ -710,7 +748,17 @@ class Drawing:
         ax2.hlines(
             [0, self.ntests + 1],
             style={"stroke": toyplot.color.black, "stroke-width": 1.5},            
-        )
+        ) 
+        
+        #zscore threshold
+        if -maxz < -self.zscoreTH:
+            ax2.vlines(
+                -self.zscoreTH, 
+                style={
+                    "stroke": "grey", 
+                    "stroke-dasharray": "2,4", 
+                    "stroke-width": 1,
+                })
 
 
     def add_histos_to_canvas(self):
@@ -739,7 +787,7 @@ class Drawing:
             hidx = self.ntests - idx
 
             # get fill color
-            if self.res.Z[idx] < 2.5:
+            if self.res.Z[idx] < self.zscoreTH:
                 fill = toyplot.color.Palette()[7]
             else:
                 if self.res.D[idx] > 0:
@@ -759,6 +807,7 @@ class Drawing:
                     "stroke": 'black', 
                     "stroke-width": 0.5, 
                     "fill": fill},
+                title="D-statistic: " + str(round(self.res.D[idx], 2))
             )
 
         # Z=0 indicator    
