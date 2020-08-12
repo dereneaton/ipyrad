@@ -809,10 +809,6 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     miscfile = miscfile.replace(os.path.realpath("."), '.', 1)  
     miscfile = miscfile.replace(os.path.expanduser('~'), '~', 1)    
 
-    # check that clumpp is installed
-    sys.
-
-
     cmd = [
         self.CLUMPP, clumphandle, 
         "-i", indfile,
