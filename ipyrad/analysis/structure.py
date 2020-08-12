@@ -31,7 +31,7 @@ MISSING_IMPORTS = """
 To use the ipa.structure module you must install two additional 
 libraries which can be done with the following conda command. 
 
-conda install -c ipyrad structure clumpp
+conda install structure clumpp -c ipyrad
 """
 
 
@@ -117,6 +117,8 @@ class Structure(object):
         self.subsample_snps = subsample_snps
 
         # run checks
+        self.STRUCTURE = os.path.join(sys.prefix, "bin", "structure")
+        self.CLUMPP = os.path.join(sys.prefix, "bin", "CLUMPP")
         self._check_binaries()
         self._setup_dirs()
 
@@ -157,12 +159,9 @@ class Structure(object):
 
     def _check_binaries(self):
         "check for structure and clumpp"
-        for binary in ['structure', 'CLUMPP']:
-            cmd = ["which", binary]
-            proc = sps.Popen(cmd, stdout=sps.PIPE, stderr=sps.PIPE)
-            stdout = proc.communicate()[0]
-            if not stdout:
-                raise IPyradError(MISSING_IMPORTS) 
+        for binary in [self.STRUCTURE, self.CLUMPP]:
+            if not os.path.exists(binary):
+                raise IPyradError(MISSING_IMPORTS)
 
 
     def _setup_dirs(self):
@@ -593,7 +592,7 @@ def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpo
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
 
     cmd = [
-        "structure", 
+        self.STRUCTURE,
         "-m", mname, 
         "-e", ename, 
         "-K", str(kpop),
@@ -810,8 +809,12 @@ def _get_clumpp_table(self, kpop, max_var_multiple, quiet):
     miscfile = miscfile.replace(os.path.realpath("."), '.', 1)  
     miscfile = miscfile.replace(os.path.expanduser('~'), '~', 1)    
 
+    # check that clumpp is installed
+    sys.
+
+
     cmd = [
-        "CLUMPP", clumphandle, 
+        self.CLUMPP, clumphandle, 
         "-i", indfile,
         "-o", outfile, 
         "-j", miscfile,
