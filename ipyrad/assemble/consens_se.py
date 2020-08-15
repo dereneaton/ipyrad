@@ -551,6 +551,8 @@ class Processor:
             rname = self.names[0].rsplit(";", 2)[0]
             chrom, posish = rname.rsplit(":")
             pos0, pos1 = posish.split("-")
+            # drop `tag=ACGTACGT` if 3rad and declone_PCR_duplicates is set
+            pos1 = pos1.split(";")[0]
             # pull idx from .fai reference dict
             chromint = self.faidict[chrom] + 1
             self.ref_position = (int(chromint), int(pos0), int(pos1))
