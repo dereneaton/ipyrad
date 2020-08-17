@@ -526,7 +526,7 @@ class Baba:
 
         # make the plot
         drawing = Drawing(res_table, tax_table, tree, width, height)
-        return (drawing.canvas, )
+        return drawing.canvas
 
 
 
