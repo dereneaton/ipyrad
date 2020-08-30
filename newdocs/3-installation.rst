@@ -74,7 +74,11 @@ The following Python packages are installed as dependencies of ipyrad:
     - pysam
     - cutadapt
     - requests
-
+    - muscle
+    - samtools
+    - bedtools
+    - bwa
+    - vsearch
 
 .. _longform:
 

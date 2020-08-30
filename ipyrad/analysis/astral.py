@@ -53,7 +53,7 @@ class Astral:
         workdir="analysis-astral", 
         bootsfile=None, 
         imap=None,
-        annotation=1,
+        annotation=3,
         gene_resampling=False,
         nboots=None,
         binary=None,
