@@ -107,8 +107,9 @@ class DigestGenome(object):
             os.makedirs(self.workdir)
         handle1 = os.path.join(self.workdir, self.name + "_R1_.fastq.gz")
         handle2 = os.path.join(self.workdir, self.name + "_R2_.fastq.gz")
+
+        out1 = gzip.open(handle1, 'w')
         if self.paired:
-            out1 = gzip.open(handle1, 'w')
             out2 = gzip.open(handle2, 'w')
 
         # load genome file
@@ -139,7 +140,13 @@ class DigestGenome(object):
 
             # digest each fragment into second cut fragment
             if not self.re2:
-                bits = [(i, seq.index(i), len(i)) for i in bits]
+                bits1 = []
+                for fragment in bits:
+                    if len(fragment) > self.min_size:
+                        
+                        # forward read on fragment
+                        bits1.append((fragment[1:-1], 0, self.max_size))
+                bits = bits1
 
             else:
                 bits1 = bits
@@ -211,4 +218,4 @@ class DigestGenome(object):
             out2.close()
 
         # report stats
-        print("extracted {} reads".format(iloc))
+        print("extracted reads from {} positions".format(iloc))
