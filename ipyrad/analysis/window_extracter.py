@@ -101,8 +101,8 @@ class WindowExtracter(object):
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.scaffold_idxs = scaffold_idxs
-        self.start = (start if start else 0)
-        self.end = end
+        self.start = (int(start) if start is not None else 0)
+        self.end = (int(end) if end is not None else None)
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
         self.rmincov = float(rmincov if rmincov else 0.0)
@@ -359,11 +359,13 @@ class WindowExtracter(object):
         """
         # use provided name else auto gen a name (scaff-start-end)
         if not name:
+            start = (int(self.start) if self.start else "")
+            end = (int(self.end) if self.end else "")
             if isinstance(self._scaffold_idx, int):
                 self.name = "scaf{}-{}-{}".format(
                     self._scaffold_idx,
-                    int(self.start),
-                    int(self.end)
+                    start,
+                    end
                 )
             else:
                 self.name = "r{}".format(np.random.randint(0, 1e9))
@@ -491,13 +493,13 @@ class WindowExtracter(object):
                 return 
 
             # get start pos as phy position (how far past pos0 is start)
-            wmin_offset = self.start - block.iloc[0, 3]
+            # wmin_offset = self.start - block.iloc[0, 3]
+            # wmin = int(block.iloc[0, 1] + wmin_offset)
+            wmin_offset = max(0, self.start - block.iloc[0, 3])
             wmin = int(block.iloc[0, 1] + wmin_offset)
 
-            # get end as phy position (how far past pos0 is end)
-            wunder = min([self.end, block.iloc[-1, 4]])
-            wmax_offset = wunder - block.iloc[-1, 3]
-            wmax = int(block.iloc[-1, 1] + wmax_offset)
+            wmax_offset = int(max(0, block.iloc[-1, -1] - self.end))
+            wmax = int(block.iloc[-1, 2] - wmax_offset)
 
             # extract sequences
             with h5py.File(self.data, 'r') as io5:
