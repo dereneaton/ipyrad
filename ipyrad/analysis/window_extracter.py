@@ -508,13 +508,16 @@ class WindowExtracter(object):
         # if no end argument then select the entire scaffold(s)/locus
         else:
 
-            # phy start and end of selected chroms
-            wmin = self._phymap.iloc[:, 1].min()
-            wmax = self._phymap.iloc[:, 2].max()
+            # if no hits to this scaffold then skip it
+            if self._phymap.size:
 
-            # extract array from window
-            with h5py.File(self.data, 'r') as io5:
-                self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
+                # phy start and end of selected chroms
+                wmin = self._phymap.iloc[:, 1].min()
+                wmax = self._phymap.iloc[:, 2].max()
+
+                # extract array from window
+                with h5py.File(self.data, 'r') as io5:
+                    self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
 
 
     def _calc_initial_stats(self):
