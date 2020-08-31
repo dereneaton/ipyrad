@@ -578,10 +578,13 @@ def _loci_to_arr(loci, taxdict, mindict):
     ## grab seqs just for the good guys
     for loc in range(nloci):
 
-        ## parse the locus
-        lines = loci[loc].split("\n")[:-1]
-        names = [i.split()[0] for i in lines]
-        seqs = np.array([list(i.split()[1]) for i in lines])
+        try:
+            ## parse the locus
+            lines = loci[loc].split("\n")[:-1]
+            names = [i.split()[0] for i in lines]
+            seqs = np.array([list(i.split()[1]) for i in lines])
+        except Exception as inst:
+            raise IPyradError("Malformed locus\n{}".format(loci))
 
         ## check that names cover the taxdict (still need to check by site)
         covs = [sum([j in names for j in taxdict[tax]]) >= mindict[tax] \
