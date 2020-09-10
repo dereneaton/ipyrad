@@ -360,10 +360,14 @@ class WindowExtracter(object):
         # use provided name else auto gen a name (scaff-start-end)
         if not name:
             if isinstance(self._scaffold_idx, int):
-                self.name = "scaf{}-{}-{}".format(
-                    self._scaffold_idx,
-                    int(self.start),
-                    int(self.end)
+                # Allow scaffold idxs to be int and don't force to set start/end
+                if self.end is None:
+                    self.name = "scaf{}".format(self._scaffold_idx)
+                else:
+                    self.name = "scaf{}-{}-{}".format(
+                        self._scaffold_idx,
+                        int(self.start),
+                        int(self.end)
                 )
             else:
                 self.name = "r{}".format(np.random.randint(0, 1e9))
