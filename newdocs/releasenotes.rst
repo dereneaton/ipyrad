@@ -4,6 +4,35 @@
 Release Notes
 =============
 
+0.9.58
+------
+**September 10, 2020**
+
+- fix oops in window_extracter
+- Allow scaffold idxs to be int
+- bugfix to skip scaffs with no hits even when end=None
+- end arg offset bugfix, may have affected size of windows in treeslider
+- Add handler for malformed loci in baba.py
+- fix to allow digest of single end RAD
+- Changed astral annotation to default (#417)
+- Update dependency documentation
+- baba2 draw fix
+- return canvas in draw
+- Fix an oops iff hackersonly.declone_PCR_duplicates && reference assembly
+- Merge pull request #409 from camayal/master
+- path fix for conda envs
+- path fix for conda envs
+- update for py38
+- Update faq.rst
+- pca docs
+- Change exit code for successful merging from 1 to 0.
+- Remove the png outfile from pca because it wants ghostscript package installed and apparently toytree doesn't have that as a dependency. Annoying.
+- Update README.rst
+- Allow pca to write png as well.
+- Added fade option for blocks and tooltips
+- Merge pull request #1 from camayal/camayal-baba2-work
+- Changes in Drawing class
+
 0.9.57
 ------
 **August 01, 2020**
