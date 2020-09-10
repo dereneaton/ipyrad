@@ -101,8 +101,8 @@ class WindowExtracter(object):
         self.data = data
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
         self.scaffold_idxs = scaffold_idxs
-        self.start = (start if start else 0)
-        self.end = end
+        self.start = (int(start) if start is not None else 0)
+        self.end = (int(end) if end is not None else None)
         self.exclude = (exclude if exclude else [])
         self.mincov = mincov
         self.rmincov = float(rmincov if rmincov else 0.0)
@@ -359,15 +359,13 @@ class WindowExtracter(object):
         """
         # use provided name else auto gen a name (scaff-start-end)
         if not name:
+            start = (int(self.start) if self.start else "")
+            end = (int(self.end) if self.end else "")
             if isinstance(self._scaffold_idx, int):
-                # Allow scaffold idxs to be int and don't force to set start/end
-                if self.end is None:
-                    self.name = "scaf{}".format(self._scaffold_idx)
-                else:
-                    self.name = "scaf{}-{}-{}".format(
-                        self._scaffold_idx,
-                        int(self.start),
-                        int(self.end)
+                self.name = "scaf{}-{}-{}".format(
+                    self._scaffold_idx,
+                    start,
+                    end
                 )
             else:
                 self.name = "r{}".format(np.random.randint(0, 1e9))
@@ -495,13 +493,13 @@ class WindowExtracter(object):
                 return 
 
             # get start pos as phy position (how far past pos0 is start)
-            wmin_offset = self.start - block.iloc[0, 3]
+            # wmin_offset = self.start - block.iloc[0, 3]
+            # wmin = int(block.iloc[0, 1] + wmin_offset)
+            wmin_offset = max(0, self.start - block.iloc[0, 3])
             wmin = int(block.iloc[0, 1] + wmin_offset)
 
-            # get end as phy position (how far past pos0 is end)
-            wunder = min([self.end, block.iloc[-1, 4]])
-            wmax_offset = wunder - block.iloc[-1, 3]
-            wmax = int(block.iloc[-1, 1] + wmax_offset)
+            wmax_offset = int(max(0, block.iloc[-1, -1] - self.end))
+            wmax = int(block.iloc[-1, 2] - wmax_offset)
 
             # extract sequences
             with h5py.File(self.data, 'r') as io5:
@@ -510,13 +508,16 @@ class WindowExtracter(object):
         # if no end argument then select the entire scaffold(s)/locus
         else:
 
-            # phy start and end of selected chroms
-            wmin = self._phymap.iloc[:, 1].min()
-            wmax = self._phymap.iloc[:, 2].max()
+            # if no hits to this scaffold then skip it
+            if self._phymap.size:
 
-            # extract array from window
-            with h5py.File(self.data, 'r') as io5:
-                self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
+                # phy start and end of selected chroms
+                wmin = self._phymap.iloc[:, 1].min()
+                wmax = self._phymap.iloc[:, 2].max()
+
+                # extract array from window
+                with h5py.File(self.data, 'r') as io5:
+                    self.seqarr = io5["phy"][self.sidxs, wmin:wmax]
 
 
     def _calc_initial_stats(self):
