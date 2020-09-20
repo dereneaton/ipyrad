@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.59
+------
+**September 20, 2020**
+
+- In structure._call_structure() self is not in scope, so now we pass in the full path to the structure binary.
+
 0.9.58
 ------
 **September 10, 2020**
