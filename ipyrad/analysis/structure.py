@@ -396,6 +396,7 @@ class Structure(object):
 
             # build args with new tmp file strings
             args = [
+                self.STRUCTURE,
                 mname, ename, sname,
                 self.name, 
                 self.workdir,
@@ -585,14 +586,13 @@ class Structure(object):
 
 
 
-def _call_structure(mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpop, rep):
+def _call_structure(STRUCTURE, mname, ename, sname, name, workdir, seed, ntaxa, nsites, kpop, rep):
     "make the subprocess call to structure"
-
     # create call string
     outname = os.path.join(workdir, "{}-K-{}-rep-{}".format(name, kpop, rep))
 
     cmd = [
-        self.STRUCTURE,
+        STRUCTURE,
         "-m", mname, 
         "-e", ename, 
         "-K", str(kpop),
