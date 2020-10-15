@@ -308,7 +308,8 @@ class Bpp(object):
 
         # parsing imap dictionary, or create simple 1-1 mapping
         if not self.imap:
-            self.imap = {i: [i] for i in self.tree.get_tip_labels()}
+            raise IPyradError("no IMAP dictionary.")
+            # self.imap = {i: [i] for i in self.tree.get_tip_labels()}
 
         # check that all tree tip labels are represented in imap
         itips = set(self.imap.keys())
@@ -657,6 +658,7 @@ class Bpp(object):
         return ctlhandle
 
 
+
     def copy(self, name):
         """ 
         Returns a copy of the bpp object with the same parameter settings
@@ -678,6 +680,7 @@ class Bpp(object):
         newself.files.outfiles = []
         newself.asyncs = []
         return newself
+
 
 
     def summarize_results(self, algorithm, individual_results=False, quiet=False):
@@ -877,21 +880,23 @@ class Bpp(object):
         import toyplot
 
         # setup canvas
-        canvas0 = toyplot.Canvas(width=925, height=300)
+        canvas0 = toyplot.Canvas(width=800, height=250)
         ax0 = canvas0.cartesian(
-            bounds=(50, 275, 50, 250), 
-            xlabel="prior on mutation rates (x10^-8)",
+            bounds=("10%", "30%", "20%", "80%"), 
+            xlabel="prior on u (mut. rate x10^-8)",
         )
         ax1 = canvas0.cartesian(
-            bounds=(350, 575, 50, 250), 
+            bounds=("40%", "60%", "20%", "80%"),
             xlabel="prior on theta (4Neu)",
         )
         ax2 = canvas0.cartesian(
-            bounds=(650, 875, 50, 250),
-            xlabel="prior on Ne",
+            bounds=("70%", "90%", "20%", "80%"),
+            xlabel="prior on Ne (theta/4u)",
         )
         for ax in (ax0, ax1, ax2):
             ax.y.ticks.labels.show = False
+            ax.x.ticks.show = True
+        ax0.y.label.text = "density"
 
         # distribution of mutation_rates ---------------------------------
         mean = (mutrate_max + mutrate_min) / 2.
@@ -971,21 +976,23 @@ class Bpp(object):
 
 
         # plot  ---------------------------------------------------------
-        canvas1 = toyplot.Canvas(width=925, height=300)
-        ax0 = canvas1.cartesian(
-            bounds=(50, 275, 50, 250), 
+        canvas1 = toyplot.Canvas(width=800, height=250)
+        ax3 = canvas1.cartesian(
+            bounds=("10%", "30%", "20%", "80%"), 
             xlabel="prior on generation times",
         )
-        ax1 = canvas1.cartesian(
-            bounds=(350, 575, 50, 250), 
+        ax4 = canvas1.cartesian(
+            bounds=("40%", "60%", "20%", "80%"),
             xlabel="prior on root tau (%)",
         )
-        ax2 = canvas1.cartesian(
-            bounds=(650, 875, 50, 250),
-            xlabel="prior on root div time (Ma)",
+        ax5 = canvas1.cartesian(
+            bounds=("70%", "90%", "20%", "80%"),
+            xlabel="prior on root Ma div (tau*gen/u)",            
         )
-        for ax in (ax0, ax1, ax2):
+        for ax in (ax3, ax4, ax5):
             ax.y.ticks.labels.show = False
+            ax.x.ticks.show = True
+        ax3.y.label.text = "density"
 
         # distribution of generation times -------------------------------
         mean = (gentime_max + gentime_min) / 2.
@@ -1003,10 +1010,10 @@ class Bpp(object):
                 ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
                 100)
             y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
-            ax0.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[0])
+            ax3.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[0])
 
             if cix == 0.95:
-                ax0.label.text = (
+                ax3.label.text = (
                     "95% CI: {:.1f} - {:.1f}"
                     .format(round(x[0], 1), round(x[-1], 1)))
 
@@ -1027,10 +1034,10 @@ class Bpp(object):
                 ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
                 100)
             y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
-            ax1.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[1])
+            ax4.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[1])
 
             if cix == 0.95:
-                ax1.label.text = (
+                ax4.label.text = (
                     "95% CI: {:.4f} - {:.4f}"
                     .format(x[0], x[-1]))
 
@@ -1050,25 +1057,57 @@ class Bpp(object):
                 ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
                 100)
             y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
-            ax2.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[2])
+            ax5.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[2])
 
             if cix == 0.95:
-                ax2.label.text = (
+                ax5.label.text = (
                     "95% CI: {:.1f} - {:.1f}"
                     .format(x[0], x[-1]))
 
-        return canvas0, canvas1
+        return canvas0, canvas1#, (ax0, ax1, ax2, ax3, ax4, ax5)
 
 
 
-    def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max):
+    def get_transformed_values(self, mcmc, param, gentime_min, gentime_max, mutrate_min, mutrate_max):
         """
+        Transforms a single posterior column from mcmc array using assumed 
+        gamma distributed values from min max assumptions.
+        """
+        # init transformer tool
+        tx = Transformer(mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max)
+        return tx.transform(param)
+
+
+
+    def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, nsamp=500):
+        """
+        Transform the theta and tau parameter posterior estimates using a distribution of
+        assumed values for the generation times and mutation rates. The min and max values
+        will be used by Transformer class tool to describe gamma distributed values. Values
+        are then randomly sampled from these distributions to transform the parameters.
+        The returned table converts column names to node idxs and return a tree with the values
+        mapped to the nodes.
+
+        Parameters
+        ==========
+
+
+        Returns
+        ========
+        (Ne_dataframe, Div_dataframe, toytree, multitree)
 
         """
+        # check that use supplied a tree to the bpp object
+        if not hasattr(self, 'tree'):
+            if not hasattr(self, 'guidetree'):
+                raise IPyradError("requires a 'guidetree' to be set for the bpp object.")
+            else:
+                self.tree = toytree.tree(self.guidetree)
+
         # table, mcmc = self.summarize("00", individual_results=False)
         tx = Transformer(mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max)
         df = pd.DataFrame(
-            index=["mean", "median", "S.D", "min", "max"],  # "2.5%", "97.5%", "ESS*", "Eff*"],
+            index=["mean", "median", "std", "min", "max", "2.5%", "97.5%"], #, "ESS*", "Eff*"],
             columns=mcmc.columns,
         )
 
@@ -1086,26 +1125,328 @@ class Bpp(object):
                 m, v, s = ss.bayes_mvs(cvals)
                 df.loc["mean", col] = m.statistic
                 df.loc["median", col] = np.median(cvals)
-                df.loc["S.D", col] = s.statistic
+                df.loc["std", col] = s.statistic
                 df.loc["min", col] = cvals.min()
-                df.loc["max", col] = cvals.max()                
+                df.loc["max", col] = cvals.max()
 
-        # get new column names ("theta_1r0" -> "Ne-1-r0", 
-        columns = []
-        for column in mcmc.columns:
-            if "theta_" in column:
-                columns.append(column.replace("theta_", "Ne_"))
+                pc0, pc1 = np.percentile(cvals, [2.5, 97.5])
+                df.loc["2.5%", col] = pc0
+                df.loc["97.5%", col] = pc1
+
+        # split out the tau estimates and relabel columns
+        divs = df.loc[:, [i for i in df.columns if "tau_" in i]].copy()
+        columns = divs.columns.tolist()
+        newcolumns = {}
+        for node in self.tree.treenode.traverse():
+            if not node.is_leaf():
+                tips = node.get_leaf_names()
+                for i in columns:
+                    if all([t in i for t in tips]):
+                        columns.remove(i)
+                        newcolumns[i] = node.idx
+                        break
+        divs.columns = [newcolumns[i] for i in divs.columns]
+        divs = divs.reindex(sorted(divs.columns), axis=1)
+
+        # split out the theta estimates and relabel columns
+        popsize = df.loc[:, [i for i in df.columns if "theta_" in i]].copy()
+        columns = popsize.columns.tolist()
+        newcolumns = {}
+        for node in self.tree.treenode.traverse():
+            tips = node.get_leaf_names()
+            for i in columns:
+                if all([t in i for t in tips]):
+                    columns.remove(i)
+                    newcolumns[i] = node.idx
+                    break
+        popsize.columns = [newcolumns[i] for i in popsize.columns]
+        popsize = popsize.reindex(sorted(popsize.columns), axis=1)
+
+        # get new ultrametric tree with root height set
+        newtree = self.tree.copy()
+       
+        # set mean Ne and dist values on tree
+        for node in newtree.treenode.traverse("postorder"):
+
+            # set Ne
+            node.Ne = popsize.loc["mean", node.idx]
+
+            # set dists
+            if node.is_leaf():
+                node.dist = divs.loc["mean", node.up.idx]
             else:
-                columns.append(column.replace("tau_", "div_"))
-        df.columns = columns
-
-        return df
+                if node.up:
+                    node.dist = (divs.loc["mean", node.up.idx] - divs.loc["mean", node.idx])
 
 
+        # sample 1000 topologies for a multitree
+        mtree = toytree.mtree([newtree.write(tree_format=9)] * nsamp)
+        taus = mcmc.sample(nsamp).loc[:, [i for i in mcmc.columns if "tau_" in i]]
 
-    def draw_posteriors(self, gamma_tuples, labels, **kwargs):
+        # relabel columns and indices
+        columns = taus.columns.tolist()
+        newcolumns = {}
+        for node in self.tree.treenode.traverse():
+            if not node.is_leaf():
+                tips = node.get_leaf_names()
+                for i in columns:
+                    if all([t in i for t in tips]):
+                        columns.remove(i)
+                    newcolumns[i] = node.idx
+                    break
+        taus.columns = [newcolumns[i] for i in taus.columns]
+        taus = taus.reset_index()
+
+        # set node heights
+        for tidx, tree in enumerate(mtree.treelist):
+            for node in tree.treenode.traverse("postorder"):            
+                # set dists
+                if node.is_leaf():
+                    node.dist = taus.loc[tidx, node.up.idx]
+                else:
+                    if node.up:
+                        node.dist = (taus.loc[tidx, node.up.idx] - taus.loc[tidx, node.idx])
+
+        return divs, popsize, newtree, mtree
+
+
+
+    def draw_posteriors(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, invgamma=True, seed=123):
         """
+        Draws posterior distribution on top of priors with transform.
+        """
+        import toyplot
 
+        # setup canvas
+        canvas0 = toyplot.Canvas(width=800, height=250)
+        ax0 = canvas0.cartesian(
+            bounds=("10%", "30%", "20%", "80%"), 
+            xlabel="prior on u (mut. rate x10^-8)",
+        )
+        ax1 = canvas0.cartesian(
+            bounds=("40%", "60%", "20%", "80%"),
+            xlabel="prior on theta (4Neu)",
+        )
+        ax2 = canvas0.cartesian(
+            bounds=("70%", "90%", "20%", "80%"),
+            xlabel="prior on Ne (theta/4u)",
+        )
+        for ax in (ax0, ax1, ax2):
+            ax.y.ticks.labels.show = False
+            ax.x.ticks.show = True
+        ax0.y.label.text = "density"
+
+        # distribution of mutation_rates ---------------------------------
+        mean = (mutrate_max + mutrate_min) / 2.
+        var = ((mutrate_max - mutrate_min) ** 2) / 16
+        a = mean ** 2 / var
+        b = mean / var
+        muts_rvs = ss.gamma.rvs(
+            a, **{"scale": 1 / b, 'random_state': 123, "size": 10000})
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax0.fill(x * 1e8, y, opacity=0.33, color=toyplot.color.Palette()[0])
+
+            if cix == 0.95:
+                ax0.label.text = (
+                    "95% CI: {:.1f} - {:.1f}"
+                    .format(round(x[0] * 1e8, 1), round(x[-1] * 1e8, 1)))
+
+
+        # distribution of prior on theta ---------------------------------
+        # invgamma_a = self.kwargs["thetaprior"][0]
+        # invgamma_b = self.kwargs["thetaprior"][1]
+        # mean = invgamma_b / (invgamma_a - 1.)
+        # var = (invgamma_b ** 2) / (((invgamma_a - 1) ** 2) * (invgamma_a - 2))
+        # a = mean ** 2 / var
+        # b = mean / var
+        a = self.kwargs["thetaprior"][0]
+        b = self.kwargs["thetaprior"][1]
+        if invgamma:
+            b = 1 / b
+
+        theta_rvs = ss.gamma.rvs(
+            a, **{"scale": 1 / b, 'random_state': 123, "size": 10000})
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax1.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[1])
+
+            if cix == 0.95:
+                ax1.label.text = (
+                    "95% CI: {:.3f} - {:.3f}"
+                    .format(x[0], x[-1]))
+
+
+        # distribution of effective population sizes --------------------
+        ne_rvs = (theta_rvs / (muts_rvs * 4))
+        mean, var, std = ss.bayes_mvs(ne_rvs)
+        a = mean.statistic ** 2 / var.statistic
+        b = mean.statistic / var.statistic
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax2.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[2])
+
+            if cix == 0.95:
+                ax2.label.text = (
+                    "95% CI: {:.0f} - {:.0f}"
+                    .format(x[0], x[-1]))
+
+
+        # -----------
+        thetacols = [i for i in mcmc.columns if "theta_" in i] 
+        for col in thetacols:
+            theta = mcmc.loc[:, col]
+            mags, edges = np.histogram(
+                theta,
+                bins=100, 
+                range=(0, 0.03),
+                density=True,
+            )
+            
+            ax1.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
+            nes = (theta.sample(10000) / (muts_rvs * 4))
+            mags, edges = np.histogram(
+                nes,
+                bins=100, 
+                range=(0, 1200000),
+                density=True,
+            )
+            ax2.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
+
+
+        # plot  ---------------------------------------------------------
+        canvas1 = toyplot.Canvas(width=800, height=250)
+        ax3 = canvas1.cartesian(
+            bounds=("10%", "30%", "20%", "80%"), 
+            xlabel="prior on generation times",
+        )
+        ax4 = canvas1.cartesian(
+            bounds=("40%", "60%", "20%", "80%"),
+            xlabel="prior on root tau (%)",
+        )
+        ax5 = canvas1.cartesian(
+            bounds=("70%", "90%", "20%", "80%"),
+            xlabel="prior on root Ma div (tau*gen/u)",            
+        )
+        for ax in (ax3, ax4, ax5):
+            ax.y.ticks.labels.show = False
+            ax.x.ticks.show = True
+        ax3.y.label.text = "density"
+
+        # distribution of generation times -------------------------------
+        mean = (gentime_max + gentime_min) / 2.
+        var = ((gentime_max - gentime_min) ** 2) / 16
+        a = mean ** 2 / var
+        b = mean / var
+        gens_rvs = ss.gamma.rvs(
+            a, **{"scale": 1 / b, 'random_state': 123, "size": 10000})
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax3.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[0])
+
+            if cix == 0.95:
+                ax3.label.text = (
+                    "95% CI: {:.1f} - {:.1f}"
+                    .format(round(x[0], 1), round(x[-1], 1)))
+
+
+        # distribution of prior on tau ----------------------------------
+        a = self.kwargs["tauprior"][0]
+        b = self.kwargs["tauprior"][1]        
+        if invgamma:
+            b = 1 / b
+        tau_rvs = ss.gamma.rvs(
+            a, **{"scale": 1 / b, 'random_state': 123, "size": 10000})
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax4.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[1])
+
+            if cix == 0.95:
+                ax4.label.text = (
+                    "95% CI: {:.4f} - {:.4f}"
+                    .format(x[0], x[-1]))
+
+
+        # distribution of divergence times in years ----------------------
+        div_rvs = (gens_rvs * tau_rvs) / muts_rvs
+        div_rvs /= 1e6
+        mean, var, std = ss.bayes_mvs(div_rvs)
+        a = mean.statistic ** 2 / var.statistic
+        b = mean.statistic / var.statistic
+
+        # draw dist
+        for cix in (0.99, 0.95, 0.5):
+            edge = (1 - cix) / 2.
+            x = np.linspace(
+                ss.gamma.ppf(edge, a, **{"scale": 1 / b}),
+                ss.gamma.ppf(1 - edge, a, **{"scale": 1 / b}),
+                100)
+            y = ss.gamma.pdf(x, a, **{"scale": 1 / b})
+            ax5.fill(x, y, opacity=0.25, color=toyplot.color.Palette()[2])
+
+            if cix == 0.95:
+                ax5.label.text = (
+                    "95% CI: {:.1f} - {:.1f}"
+                    .format(x[0], x[-1]))
+
+        # --------------------------------------------------------
+        # POSTERIOR
+        # 
+        # get the deepest divergence time
+        taus = sorted([i for i in mcmc.columns if "tau_" in i], key=lambda x: len(x))[-1]
+        taus = mcmc.loc[:, taus]
+        mags, edges = np.histogram(taus, bins=100, range=(0, 0.03), density=True)
+
+        ax4.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
+        divs = (gens_rvs * taus.sample(10000)) / muts_rvs
+        divs /= 1e6
+        mags, edges = np.histogram(divs.to_list(), bins=100, range=(0, 75), density=True)
+        ax5.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
+
+        # get all Ne values
+        return canvas0, canvas1
+
+
+
+
+    def draw_posteriors_stacked(self, gamma_tuples, labels, **kwargs):
+        """
+        ...
 
         """
         import toyplot
@@ -1418,7 +1759,6 @@ def draw_dists(mcmcs, **kwargs):
 
 
 
-
 def _call_bpp(binary, ctlfile, alg):
     """
     Remote function call of BPP binary
@@ -1488,6 +1828,17 @@ def draw_dist(mean, var, xlabel=None, axes=None, **kwargs):
     axes.y.ticks.labels.show = False
     axes.x.ticks.show = True
     return canvas, axes, mark
+
+
+
+def build_00_tree(tree, mcmc):
+    """
+    Convert theta and tau estimates into Ne and Div times respectively and 
+    set values to nodes of the toytree object.
+    """
+
+
+    tree = tree.mod.make_ultrametric().mod.node_scale_root_height(crown_mean)
 
 
 
