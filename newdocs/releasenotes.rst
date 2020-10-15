@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.60
+------
+**October 13, 2020**
+
+- Fix mapping minus reads bug step 3
+
 0.9.59
 ------
 **September 20, 2020**
