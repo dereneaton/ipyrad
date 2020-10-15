@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.61
+------
+**October 15, 2020**
+
+- Fix nasty nasty bug in step 7 for issue #422
+
 0.9.60
 ------
 **October 13, 2020**
