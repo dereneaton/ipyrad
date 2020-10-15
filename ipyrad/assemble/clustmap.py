@@ -135,7 +135,7 @@ class Step3:
                     self.remote_run(
                         function=mapping_reads,
                         printstr=("mapping minus reads ", "s3"),
-                        args=(self.nthreads, 0,),
+                        args=(self.nthreads, 1,),
                         threaded=True,
                     )
                     # discard dir with successfully mapped reads
@@ -168,7 +168,7 @@ class Step3:
                     self.remote_run(
                         function=mapping_reads,
                         printstr=("mapping minus reads ", "s3"),
-                        args=(self.nthreads, 0,),
+                        args=(self.nthreads, 1,),
                         threaded=True,
                     )
 
