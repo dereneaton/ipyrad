@@ -1927,27 +1927,34 @@ def fill_seq_array(data, ntaxa, nbases, nloci):
 
             # close bit handle
             indata.close()
-                    
-        # trim final chunk tmparr to size
-        trim = np.where(tmparr != 0)[1]
-        if trim.size:
-            trim = trim.max() + 1
+
+        if start == 0 and end == 0:
+            # The last chunk fell exactly on the maxsize boundary so it has
+            # already been trimmed and dumped to the phy. In this case the for
+            # loop on the line iterator has fallen through (no more data) so
+            # there is no final chunk to trim.
+            pass
         else:
-            trim = tmparr.shape[1]
+            # trim final chunk tmparr to size
+            trim = np.where(tmparr != 0)[1]
+            if trim.size:
+                trim = trim.max() + 1
+            else:
+                trim = tmparr.shape[1]
 
-        # fill missing with 78 (N)
-        tmparr[tmparr == 0] = 78
+            # fill missing with 78 (N)
+            tmparr[tmparr == 0] = 78
 
-        # dump tmparr and maplist to hdf5. Because we dropped sites that are 
-        # all N or - the length of phy data can be less than nbases and so 
-        # there can be 000 at the end of phy. This is ok, we trim it when
-        # writing phylip file, but good to be aware it's there for other things
-        phy[:, gstart:gstart + trim] = tmparr[:, :trim]           
-        phymap[mapstart:locidx, 0] = mapchroms
-        phymap[mapstart:locidx, 2] = mapends
-        if data.isref:
-            phymap[mapstart:locidx, 3] = mappos0
-            phymap[mapstart:locidx, 4] = mappos1
+            # dump tmparr and maplist to hdf5. Because we dropped sites that are
+            # all N or - the length of phy data can be less than nbases and so
+            # there can be 000 at the end of phy. This is ok, we trim it when
+            # writing phylip file, but good to be aware it's there for other things
+            phy[:, gstart:gstart + trim] = tmparr[:, :trim]
+            phymap[mapstart:locidx, 0] = mapchroms
+            phymap[mapstart:locidx, 2] = mapends
+            if data.isref:
+                phymap[mapstart:locidx, 3] = mappos0
+                phymap[mapstart:locidx, 4] = mappos1
         phymap[1:, 1] = phymap[:-1, 2]
 
         # fill 'scaffold' information for denovo data sets from the data
