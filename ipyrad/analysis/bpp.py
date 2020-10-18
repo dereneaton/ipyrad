@@ -1547,7 +1547,7 @@ class Bpp(object):
 
         # do not allow any tips in node_dists:
         for nidx in node_dists:
-            if node in ttre.idx_dict[nidx].is_leaf():
+            if ttre.idx_dict[nidx].is_leaf():
                 raise IPyradError(
                     "error in node_dists: cannot plot div time for tip nodes")
 
