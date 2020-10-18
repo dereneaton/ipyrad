@@ -54,6 +54,8 @@ class Structure(object):
     workdir (str):
         Directory for output files; will be created if not present.
 
+    ... (common ipyrad-analysis params supported)
+
     Attributes:
     ----------
     mainparams (dict):
@@ -89,6 +91,7 @@ class Structure(object):
         imap=None,
         minmap=None,
         mincov=0.0,
+        minmaf=0.0,
         quiet=False,
         load_only=False,
         subsample_snps=True,
@@ -114,6 +117,7 @@ class Structure(object):
         self.imap = imap
         self.minmap = minmap
         self.mincov = mincov
+        self.minmaf = minmaf
         self.subsample_snps = subsample_snps
 
         # run checks
@@ -128,6 +132,7 @@ class Structure(object):
             imap=self.imap, 
             minmap=self.minmap, 
             mincov=self.mincov,
+            minmaf=self.minmaf,
         )       
 
         # can skip parsing the file if load=True
