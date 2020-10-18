@@ -33,6 +33,7 @@ from .distance import Distance as distance
 from .structure import Structure as structure
 from .sratools import SRA as sratools
 from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
+from .download import Download as download
 
 # testing
 from .locus_extracter import LocusExtracter as locus_extracter
