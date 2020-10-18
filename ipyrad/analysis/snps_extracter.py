@@ -256,6 +256,14 @@ class SNPsExtracter(object):
             self.snpsmap = snpsmap
             del snpsmap
 
+            # final report
+            self._print(
+                "SNPs (total): {}\nSNPs (unlinked): {}".format(
+                    self.snps.shape[1], 
+                    np.unique(self.snpsmap[:, 0]).size
+                )
+            )
+
         # .snps is an array of 0,1,2 or 9.
         # .snpsmap is ready to subsample .snps to 1-per-locus 
 
