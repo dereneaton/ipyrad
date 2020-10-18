@@ -209,11 +209,13 @@ class Bpp(object):
         # binary is needed for running or loading and combining results
         self._check_binary()
 
+        # can set prior for visual plotting and/or for real analysis
+        self._check_kwargs(kwargs)
+        self.kwargs.update(kwargs)
+
         # update and check kwargs if data else do nothing which allows 
         # loading dummy objects for summarizing existing results.
         if data:
-            self._check_kwargs(kwargs)
-            self.kwargs.update(kwargs)
             self._check_args()
 
 
@@ -279,6 +281,11 @@ class Bpp(object):
             # check type
             if kwarg in ['nloci', 'burnin', 'sampfreq', 'nsample']:
                 kwargs[kwarg] = int(kwargs[kwarg])
+
+            if kwarg in ['thetaprior', 'tauprior']:
+                if not isinstance(kwargs[kwarg], tuple):
+                    raise IPyradError("prior must be a tuple")
+                kwargs[kwarg] = kwargs[kwarg]
 
 
     def _check_args(self):
@@ -707,7 +714,7 @@ class Bpp(object):
 
 
 
-    def _summarize_00(self, individual_results):
+    def _summarize_00(self, individual_results, ):
         """
         Combines MCMC files together and writes a ctl file then calls
         bpp with the print=-1 option which means "read in" so that it 
@@ -1079,7 +1086,7 @@ class Bpp(object):
 
 
 
-    def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, nsamp=500):
+    def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, nsamp=1000):
         """
         Transform the theta and tau parameter posterior estimates using a distribution of
         assumed values for the generation times and mutation rates. The min and max values
@@ -1140,11 +1147,16 @@ class Bpp(object):
         for node in self.tree.treenode.traverse():
             if not node.is_leaf():
                 tips = node.get_leaf_names()
+
+                # find all bpp names that include these tip names
+                matches = []
                 for i in columns:
                     if all([t in i for t in tips]):
-                        columns.remove(i)
-                        newcolumns[i] = node.idx
-                        break
+                        matches.append(i)
+                # get the shortest match name as this name
+                match = sorted(matches, key=lambda x: len(x))[0]
+                newcolumns[match] = node.idx
+
         divs.columns = [newcolumns[i] for i in divs.columns]
         divs = divs.reindex(sorted(divs.columns), axis=1)
 
@@ -1154,11 +1166,16 @@ class Bpp(object):
         newcolumns = {}
         for node in self.tree.treenode.traverse():
             tips = node.get_leaf_names()
+
+            # find all bpp names that include these tip names
+            matches = []
             for i in columns:
                 if all([t in i for t in tips]):
-                    columns.remove(i)
-                    newcolumns[i] = node.idx
-                    break
+                    matches.append(i)
+            # get the shortest match name as this name
+            match = sorted(matches, key=lambda x: len(x))[0]
+            newcolumns[match] = node.idx
+
         popsize.columns = [newcolumns[i] for i in popsize.columns]
         popsize = popsize.reindex(sorted(popsize.columns), axis=1)
 
@@ -1169,14 +1186,14 @@ class Bpp(object):
         for node in newtree.treenode.traverse("postorder"):
 
             # set Ne
-            node.Ne = popsize.loc["mean", node.idx]
+            node.Ne = popsize.loc["median", node.idx]
 
             # set dists
             if node.is_leaf():
-                node.dist = divs.loc["mean", node.up.idx]
+                node.dist = divs.loc["median", node.up.idx]
             else:
                 if node.up:
-                    node.dist = (divs.loc["mean", node.up.idx] - divs.loc["mean", node.idx])
+                    node.dist = (divs.loc["median", node.up.idx] - divs.loc["median", node.idx])
 
 
         # sample 1000 topologies for a multitree
@@ -1184,16 +1201,21 @@ class Bpp(object):
         taus = mcmc.sample(nsamp).loc[:, [i for i in mcmc.columns if "tau_" in i]]
 
         # relabel columns and indices
-        columns = taus.columns.tolist()
+        columns = taus.columns.tolist().copy()
         newcolumns = {}
         for node in self.tree.treenode.traverse():
             if not node.is_leaf():
                 tips = node.get_leaf_names()
+
+                # find all bpp names that include these tip names
+                matches = []
                 for i in columns:
                     if all([t in i for t in tips]):
-                        columns.remove(i)
-                    newcolumns[i] = node.idx
-                    break
+                        matches.append(i)
+                # get the shortest match name as this name
+                match = sorted(matches, key=lambda x: len(x))[0]
+                newcolumns[match] = node.idx
+
         taus.columns = [newcolumns[i] for i in taus.columns]
         taus = taus.reset_index()
 
@@ -1443,7 +1465,6 @@ class Bpp(object):
 
 
 
-
     def draw_posteriors_stacked(self, gamma_tuples, labels, **kwargs):
         """
         ...
@@ -1489,6 +1510,176 @@ class Bpp(object):
             labels=labels,
         )
         return c, ax, marks
+
+
+
+    def draw_posterior_tree(
+        self,
+        mcmc, 
+        gentime_min, 
+        gentime_max, 
+        mutrate_min, 
+        mutrate_max, 
+        node_dists=None,
+        nbins=50,
+        ydrop=2,
+        **kwargs):
+        """
+        
+
+        Parameters
+        ----------
+        node_dists: list
+            A list of node indices to show histogram distributions under.
+        ydrop: int
+            The amount of y space to leave for histograms.
+        """
+        import toyplot
+        import toytree
+        icolors = copy.deepcopy(toytree.icolors2)
+
+        # get results as transformed dataframes and trees
+        dfdiv, dfne, ttre, tmtre = self.transform(
+            mcmc, 
+            gentime_min, gentime_max,
+            mutrate_min, mutrate_max,
+        )
+
+        # do not allow any tips in node_dists:
+        for nidx in node_dists:
+            if node in ttre.idx_dict[nidx].is_leaf():
+                raise IPyradError(
+                    "error in node_dists: cannot plot div time for tip nodes")
+
+        # setup plot dims
+        height = (275 if "height" not in kwargs else kwargs["height"])
+        width = (450 if "width" not in kwargs else kwargs["width"])
+        canvas = toyplot.Canvas(height=height, width=width)
+        axes = canvas.cartesian(yshow=False) 
+
+        # draw the tree on canvas
+        mark = ttre.draw(
+            axes=axes,
+            node_sizes=0,
+            edge_type='c', 
+            # node_labels="idx",
+            layout='r',
+            scalebar=True,
+        );
+
+        # add error bars at nodes
+        colors = {}
+        for node in ttre.treenode.traverse():
+            if not node.is_leaf():
+                if node.idx in node_dists:
+                    colors[node.idx] = next(icolors)
+                else:
+                    colors[node.idx] = "grey"               
+                axes.rectangle(
+                    -dfdiv.loc["2.5%", node.idx],
+                    -dfdiv.loc["97.5%", node.idx],
+                    node.x - 0.15, 
+                    node.x + 0.15, 
+                    color=colors[node.idx],
+                    opacity=0.45,
+                )
+
+                if node.idx in node_dists:
+                    axes.scatterplot(
+                        -dfdiv.loc["median", node.idx],
+                        node.x,
+                        marker="o",
+                        size=8,
+                        mstyle={"stroke": "black", "fill": colors[node.idx]},
+                        opacity=0.45
+                    )
+
+        # add vertical lines at select nodes
+        for nidx in node_dists:
+            axes.plot(
+                [-dfdiv.loc["median", nidx], -dfdiv.loc["median", nidx]],
+                [-ydrop, ttre.get_node_coordinates()[nidx, 1]],
+                color=colors[nidx], #'black',  #toytree.colors[1],
+                opacity=0.45,
+                style={"stroke-dasharray": "2,2"}
+            )
+
+        # add histograms under nodes
+        hists = {}
+        for nidx in node_dists:  #, nodename in enumerate(node_dists):
+
+            # get tips desc from this node
+            tips = self.tree.get_tip_labels(nidx)
+            taus = [i for i in mcmc.columns if "tau_" in i]
+            matches = []
+            for i in taus:
+                if all([t in i for t in tips]):
+                    matches.append(i)
+            match = sorted(matches, key=lambda x: len(x))[0]
+
+            # get tranformed values for this specific node
+            vals = self.get_transformed_values(
+                mcmc,
+                match,
+                gentime_min, gentime_max,
+                mutrate_min, mutrate_max,
+            )
+
+            # plot histogram of these values
+            p0, p1 = np.percentile(vals, [2.5, 97.5])
+            mags, edges = np.histogram(
+                vals, 
+                bins=nbins,
+                range=(p0, p1),
+                density=True,
+            )
+            hists[nidx] = (mags, edges)
+
+        # get max mags
+        maxmags = max([i[0].max() for i in hists.values()])
+        maxmags *= 1.10
+        
+        # plot normalized histos maxed at maxmags
+        for nidx in node_dists:        
+
+            # reload data
+            mags, edges = hists[nidx]
+
+            # plot bars at midpoints
+            nudge = ((edges[1] - edges[0]) / 2)
+            axes.fill(
+                -(edges[:-1] + nudge),
+                (mags / maxmags) * ydrop,
+                color=colors[nidx],
+                opacity=0.25,
+                baseline=[-ydrop] * nbins
+            )
+
+            axes.plot(
+                a=-edges[1:], 
+                b=((mags / maxmags) * ydrop) - ydrop,
+                color=colors[nidx],  #toytree.colors[nidx],
+                opacity=0.5,
+            )
+
+        # get tick spacers
+        ndigits = len(str(dfdiv.loc["97.5%"].max().astype(int)))
+        raised = ndigits - 2
+
+        # style the axes
+        axes.x.label.text = "time (x 10^{})".format(raised)
+        marks = np.linspace(0, dfdiv.loc["97.5%"].max().astype(int), raised)
+        ticks = marks / (10**raised)
+        axes.x.ticks.locator = toyplot.locator.Explicit(
+            [-1 * i for i in marks], 
+            ["{:.0f}".format(i) for i in ticks.round(0)]
+        )
+        axes.padding = 10
+
+        # SAVE THE FIGURE AND DISPLAY IT
+        #toyplot.html.render(canvas, "/tmp/test.html")
+        return canvas, axes
+                
 
 
 
