@@ -29,7 +29,7 @@ _MISSING_TOYPLOT = """
 This ipyrad tool requires the plotting library toyplot. 
 You can install it with the following command in a terminal.
 
-conda install toyplot -c eaton-lab 
+conda install toyplot -c conda-forge 
 """
 
 try:
@@ -78,6 +78,9 @@ class PCA(object):
     mincov: (float; default=0.5)
         If a site does not have data across this proportion of total samples
         in the data then it is filtered from the data set.
+    minmaf: float or int
+        The minimum minor allele frequency for a SNP to be retained in the
+        dataset. 
     impute_method: (str; default='sample')
         None, "sample", or an integer for the number of kmeans clusters.
     topcov: (float; default=0.9)
@@ -105,6 +108,7 @@ class PCA(object):
         imap=None,
         minmap=None,
         mincov=0.1,
+        minmaf=0.0,
         quiet=False,
         topcov=0.9,
         niters=5,
@@ -124,6 +128,7 @@ class PCA(object):
         # data attributes
         self.impute_method = impute_method
         self.mincov = mincov        
+        self.minmaf = minmaf
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
         self.topcov = topcov
@@ -160,7 +165,7 @@ class PCA(object):
         # load .snps and .snpsmap from HDF5
         first = (True if isinstance(self.impute_method, int) else quiet)
         ext = SNPsExtracter(
-            self.data, self.imap, self.minmap, self.mincov, quiet=first,
+            self.data, self.imap, self.minmap, self.mincov, self.minmaf, quiet=first,
         )
 
         # run snp extracter to parse data files
@@ -685,8 +690,8 @@ class Drawing:
             self.axes.y.label.text = ylab
 
         # style axes
-        self.axes.x.spine.style["stroke-width"] = 2.25
-        self.axes.y.spine.style["stroke-width"] = 2.25    
+        self.axes.x.spine.style["stroke-width"] = 2.
+        self.axes.y.spine.style["stroke-width"] = 2.    
         self.axes.x.ticks.labels.style["font-size"] = "12px"
         self.axes.y.ticks.labels.style["font-size"] = "12px"
         self.axes.x.label.style['font-size'] = "14px"

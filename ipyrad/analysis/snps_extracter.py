@@ -29,6 +29,26 @@ class SNPsExtracter(object):
     """
     Extract .snps and .snpsmap from snps.hdf5 after filtering for indels, 
     bi-allelic, mincov, and minmap.
+
+    Parameters
+    ------------
+    data (str)
+        path to the .snps.hdf5 file produced by ipyrad (or created by converting a
+        vcf file to .snps.hdf5 using ipyrad.analysis).
+    imap: (dict)
+        a dictionary mapping population names to a list of sample names.
+    minmap: (dict)
+        a dictionary mapping population names to a float or integer representing
+        the minimum samples required to be present for a SNP to be retained in the
+        filtered dataset.
+    mincov: int or float
+        the minimum samples required globally for a SNP to be retained in the dataset.
+    minmaf: float
+        minimum minor allele frequency. The minor allele at a variant must 
+        be present across at least n% of samples (with data) at a SNP to retain
+        the SNP in the dataset. The default is zero, meaning that any SNP will 
+        be retained, greater values require minor variants to be shared across
+        more samples.
     """
     def __init__(
         self, 
@@ -36,6 +56,7 @@ class SNPsExtracter(object):
         imap=None,
         minmap=None,
         mincov=0.0,
+        minmaf=0.0,
         quiet=False,
         ):
 
@@ -46,6 +67,7 @@ class SNPsExtracter(object):
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
         self.mincov = mincov
         self.quiet = quiet
+        self.maf = minmaf
 
         # get names from imap, else will be filled/checked against db
         self.names = []
@@ -175,7 +197,8 @@ class SNPsExtracter(object):
             self._print("Filtered (minmap): {}".format(mask3.sum()))
 
             # filter based on whether subsample still is variable at site
-            # after masking missing data values
+            # after masking missing data values, while also collapsing data
+            # back into diploid genotype calls where haplo-missing is masked.
             marr = np.ma.array(
                 data=diplo[self.sidxs, :], 
                 mask=diplo[self.sidxs, :] == 9,
@@ -188,8 +211,16 @@ class SNPsExtracter(object):
             mask4 = np.invert(np.any(marr != common, axis=0).data)
             self._print("Filtered (subsample invariant): {}".format(mask4.sum()))
 
+            # maf filter
+            if isinstance(self.maf, int):
+                mask5 = marr.sum(axis=0)
+            else:
+                mask5 = marr.sum(axis=0) / (2 * np.sum(marr.mask == False, axis=0))
+            mask5 = mask5 < self.maf
+            self._print("Filtered (minor allele frequency): {}".format(mask5.sum()))
+
             # apply mask to snps
-            summask = mask0 + mask1 + mask2 + mask3 + mask4
+            summask = mask0 + mask1 + mask2 + mask3 + mask4 + mask5
             allmask = np.invert(summask)
             self._print("Filtered (combined): {}".format(summask.sum()))
             self.snps = diplo[self.sidxs, :][:, allmask]
