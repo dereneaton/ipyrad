@@ -43,12 +43,16 @@ class SNPsExtracter(object):
         filtered dataset.
     mincov: int or float
         the minimum samples required globally for a SNP to be retained in the dataset.
-    minmaf: float
+    minmaf: int or float
         minimum minor allele frequency. The minor allele at a variant must 
-        be present across at least n% of samples (with data) at a SNP to retain
-        the SNP in the dataset. The default is zero, meaning that any SNP will 
-        be retained, greater values require minor variants to be shared across
-        more samples.
+        be present across at least n% of samples (haploid base calls with data)
+        at a SNP to retain the SNP in the dataset. The default is zero, meaning
+        that any SNP will be retained, greater values require minor variants 
+        to be shared across more samples. An int value of 1 will remove sites
+        heterozygous in a single diploid, whereas 2 would would remove a site
+        hetero in two samples, or homozygous in only one sample. Float values
+        take into account the proportion of samples with missing data in each
+        site so that it is a proportion of the alleles present.
     """
     def __init__(
         self, 
@@ -150,7 +154,7 @@ class SNPsExtracter(object):
             mask0 = np.any(snps[self.sidxs, :] == 45, axis=0)
             self._print("Filtered (indels): {}".format(mask0.sum()))
 
-            # filter all sites w/ multi-allelic
+            # filter all sites w/ multi-allelic in the selected samples
             mask1 = np.sum(genos[:, self.sidxs] == 2, axis=2).sum(axis=1).astype(bool)
             mask1 += np.sum(genos[:, self.sidxs] == 3, axis=2).sum(axis=1).astype(bool)
             self._print("Filtered (bi-allel): {}".format(mask1.sum()))
@@ -175,11 +179,8 @@ class SNPsExtracter(object):
             self._print("Filtered (mincov): {}".format(mask2.sum()))
 
             # filter based on per-population min coverages
-            if not self.imap:
-                mask3 = np.zeros(snps.shape[1], dtype=np.bool_)
-
-            else:
-                mask3 = np.zeros(snps.shape[1], dtype=np.bool_)
+            mask3 = np.zeros(snps.shape[1], dtype=np.bool_)
+            if self.imap:
                 for key, val in self.imap.items():
                     mincov = self.minmap[key]
                     pidxs = np.array(sorted(self.dbnames.index(i) for i in val))
@@ -211,19 +212,27 @@ class SNPsExtracter(object):
             mask4 = np.invert(np.any(marr != common, axis=0).data)
             self._print("Filtered (subsample invariant): {}".format(mask4.sum()))
 
-            # maf filter
+            # maf filter: applies to all gene copies (haploids)
             if isinstance(self.maf, int):
-                mask5 = marr.sum(axis=0)
+                freqs = marr.sum(axis=0)
             else:
-                mask5 = marr.sum(axis=0) / (2 * np.sum(marr.mask == False, axis=0))
-            mask5 = mask5 < self.maf
-            self._print("Filtered (minor allele frequency): {}".format(mask5.sum()))
+                freqs = marr.sum(axis=0) / (2 * np.sum(marr.mask == False, axis=0))
+                freqs[freqs > 0.5] = 1 - (freqs[freqs > 0.5])
+            mask5 = freqs < self.maf
 
-            # apply mask to snps
+            # only report filters unique to mask5
+            masks = mask0 + mask1 + mask2 + mask3 + mask4
+            drop = mask5[~masks].sum()
+            self._print("Filtered (minor allele frequency): {}".format(drop))
+
+            # apply the filters
             summask = mask0 + mask1 + mask2 + mask3 + mask4 + mask5
             allmask = np.invert(summask)
-            self._print("Filtered (combined): {}".format(summask.sum()))
             self.snps = diplo[self.sidxs, :][:, allmask]
+
+            # total report
+            totalsnps = summask.sum() + mask5.sum()
+            self._print("Filtered (combined): {}".format(totalsnps))
 
             # bail out if ALL snps were filtered
             if self.snps.size == 0:
