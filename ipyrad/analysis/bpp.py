@@ -1546,10 +1546,11 @@ class Bpp(object):
         )
 
         # do not allow any tips in node_dists:
-        for nidx in node_dists:
-            if ttre.idx_dict[nidx].is_leaf():
-                raise IPyradError(
-                    "error in node_dists: cannot plot div time for tip nodes")
+        if node_dists:
+            for nidx in node_dists:
+                if ttre.idx_dict[nidx].is_leaf():
+                    raise IPyradError(
+                        "error in node_dists: cannot plot div time for tip nodes")
 
         # setup plot dims
         height = (275 if "height" not in kwargs else kwargs["height"])
