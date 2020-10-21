@@ -128,7 +128,7 @@ class SNPsExtracter(object):
                 sorted([self.dbnames.index(i) for i in self.names]))
 
 
-    def parse_genos_from_hdf5(self):
+    def parse_genos_from_hdf5(self, return_as_characters=False):
         """
         Parse genotype calls from hdf5 snps file and store snpsmap
         for subsampling.
@@ -228,6 +228,8 @@ class SNPsExtracter(object):
             # apply the filters
             summask = mask0 + mask1 + mask2 + mask3 + mask4 + mask5
             allmask = np.invert(summask)
+
+            # store filtered int genotype calls (the output used by most tools)
             self.snps = diplo[self.sidxs, :][:, allmask]
 
             # total report
@@ -272,6 +274,13 @@ class SNPsExtracter(object):
                     np.unique(self.snpsmap[:, 0]).size
                 )
             )
+
+            # overwrite geno calls with str data.
+            # store the filtered SNP calls (actual A,C,T or G) 
+            if return_as_characters:
+                self.snps = snps[self.sidxs, :][:, allmask].view("S1")
+                # if the b'' bothers you then you can call .astype(str)
+
 
         # .snps is an array of 0,1,2 or 9.
         # .snpsmap is ready to subsample .snps to 1-per-locus 
