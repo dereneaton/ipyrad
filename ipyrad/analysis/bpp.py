@@ -40,6 +40,9 @@ conda install toytree -c conda-forge
 
 # TODO: raise error on locus_filter result 0
 
+DELIM = "___"
+
+
 
 class Bpp(object):
     """
@@ -436,8 +439,9 @@ class Bpp(object):
             maxmissing=self.maxmissing,
             minlen=self.minlen,
         )
+        # add delimiter to names for seqfile writing.
         self.lex.run(ipyclient=ipyclient, force=True, show_cluster=False)
-        self.lex.wpnames = np.array(["^" + i for i in self.lex.wpnames])
+        self.lex.wpnames = np.array(["^" + DELIM + i for i in self.lex.wpnames])
         self.maxloci = min([self.maxloci, len(self.lex.loci)])
 
         # raise error if no loci passed filtering
@@ -562,18 +566,19 @@ class Bpp(object):
             )
         )
 
-        # get longest name in the file
+        # get longest name in the file to create fmt string: e.g., '{:<10} {}'
         longname = 0
         for key in sorted(self.imap.keys()):
             for name in self.imap[key]:
                 longname = max(longname, len(name))
         formatstr = "{:<" + str(longname + 2) + "} {}"
 
-        # open handle for writing
+        # open handle for writing and add delimiter to names
         with open(self.mapfile, 'w') as mapfile:
             data = [
-                formatstr.format(val, key) for key in 
-                sorted(self.imap) for val in self.imap[key]
+                formatstr.format(DELIM + val, DELIM + key) 
+                for key in sorted(self.imap) 
+                for val in self.imap[key]
             ]
             mapfile.write("\n".join(data))
 
@@ -621,6 +626,13 @@ class Bpp(object):
         if outfile not in self.files.outfiles:
             self.files.outfiles.append(outfile)
 
+        # get tree with delimiters on names
+        tmptre = self.tree.copy()
+        tmptre = tmptre.set_node_values(
+            "name", 
+            {i: DELIM + str(j.name) for (i, j) in tmptre.idx_dict.items()},
+        )
+
         # expand options to fill ctl file
         ctlstring = CTLFILE.format(**{
             "seqfile": self.seqfile,
@@ -639,9 +651,9 @@ class Bpp(object):
                 if self.kwargs["infer_delimit"]
                 else ""),
             "nsp": len(self.imap),
-            "spnames": " ".join(sorted(self.imap)),
+            "spnames": " ".join([DELIM + i for i in sorted(self.imap)]),
             "spcounts": " ".join([str(len(self.imap[i])) for i in sorted(self.imap)]),
-            "spnewick": self.tree.write(tree_format=9),
+            "spnewick": tmptre.write(tree_format=9),
             "speciesmodelprior": self.kwargs["speciesmodelprior"],
 
             "thetaprior": " ".join([str(i) for i in self.kwargs["thetaprior"]]),
@@ -1140,42 +1152,23 @@ class Bpp(object):
                 df.loc["2.5%", col] = pc0
                 df.loc["97.5%", col] = pc1
 
-        # split out the tau estimates and relabel columns
+        # split out the tau estimates columns and relabel with node idxs 
         divs = df.loc[:, [i for i in df.columns if "tau_" in i]].copy()
-        columns = divs.columns.tolist()
         newcolumns = {}
-        for node in self.tree.treenode.traverse():
-            if not node.is_leaf():
-                tips = node.get_leaf_names()
-
-                # find all bpp names that include these tip names
-                matches = []
-                for i in columns:
-                    if all([t in i for t in tips]):
-                        matches.append(i)
-                # get the shortest match name as this name
-                match = sorted(matches, key=lambda x: len(x))[0]
-                newcolumns[match] = node.idx
-
+        for col in divs.columns.tolist():
+            tips = col.split("__")[1:]
+            nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
+            newcolumns[col] = nidx
         divs.columns = [newcolumns[i] for i in divs.columns]
         divs = divs.reindex(sorted(divs.columns), axis=1)
 
-        # split out the theta estimates and relabel columns
+        # split out the theta estimates and relabel columns with node idxs
         popsize = df.loc[:, [i for i in df.columns if "theta_" in i]].copy()
-        columns = popsize.columns.tolist()
         newcolumns = {}
-        for node in self.tree.treenode.traverse():
-            tips = node.get_leaf_names()
-
-            # find all bpp names that include these tip names
-            matches = []
-            for i in columns:
-                if all([t in i for t in tips]):
-                    matches.append(i)
-            # get the shortest match name as this name
-            match = sorted(matches, key=lambda x: len(x))[0]
-            newcolumns[match] = node.idx
-
+        for col in popsize.columns.tolist():
+            tips = col.split("__")[1:]
+            nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
+            newcolumns[col] = nidx
         popsize.columns = [newcolumns[i] for i in popsize.columns]
         popsize = popsize.reindex(sorted(popsize.columns), axis=1)
 
@@ -1186,7 +1179,10 @@ class Bpp(object):
         for node in newtree.treenode.traverse("postorder"):
 
             # set Ne
-            node.Ne = popsize.loc["median", node.idx]
+            if node.idx in popsize.columns:
+                node.Ne = popsize.loc["median", node.idx]
+            else:
+                node.Ne = 10000
 
             # set dists
             if node.is_leaf():
@@ -1194,7 +1190,7 @@ class Bpp(object):
             else:
                 if node.up:
                     node.dist = (divs.loc["median", node.up.idx] - divs.loc["median", node.idx])
-
+        #newtree = newtree.mod.make_ultrametric()
 
         # sample 1000 topologies for a multitree
         mtree = toytree.mtree([newtree.write(tree_format=9)] * nsamp)
@@ -1203,19 +1199,10 @@ class Bpp(object):
         # relabel columns and indices
         columns = taus.columns.tolist().copy()
         newcolumns = {}
-        for node in self.tree.treenode.traverse():
-            if not node.is_leaf():
-                tips = node.get_leaf_names()
-
-                # find all bpp names that include these tip names
-                matches = []
-                for i in columns:
-                    if all([t in i for t in tips]):
-                        matches.append(i)
-                # get the shortest match name as this name
-                match = sorted(matches, key=lambda x: len(x))[0]
-                newcolumns[match] = node.idx
-
+        for col in columns:
+            tips = col.split("__")[1:]
+            nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
+            newcolumns[col] = nidx
         taus.columns = [newcolumns[i] for i in taus.columns]
         taus = taus.reset_index()
 
@@ -1228,6 +1215,7 @@ class Bpp(object):
                 else:
                     if node.up:
                         node.dist = (taus.loc[tidx, node.up.idx] - taus.loc[tidx, node.idx])
+        #mtree.treelist = [i.mod.make_ultrametric() for i in mtree.treelist]
 
         return divs, popsize, newtree, mtree
 
