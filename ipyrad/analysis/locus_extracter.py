@@ -224,7 +224,7 @@ class LocusExtracter(object):
             args = (self, block)
             rasyncs[lidx] = lbview.apply(remote_filter_loci, *args)
 
-        # wait for jobs to finish
+        # wait for THESE jobs to finish
         ipyclient.wait()
 
         # collect results as an ordered list

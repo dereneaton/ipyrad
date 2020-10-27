@@ -417,7 +417,7 @@ class Bpp(object):
         pool.wrap_run()
 
 
-    def _run(self, force, ipyclient, nreps, dry_run):
+    def _run(self, force, ipyclient, nreps, dry_run, block=True):
         "Distribute bpp jobs in parallel."
 
         # clear out pre-existing files for this object
@@ -439,8 +439,15 @@ class Bpp(object):
             maxmissing=self.maxmissing,
             minlen=self.minlen,
         )
+
+        # use separate cluster for filtering if not blocking progress.
+        if block:
+            self.lex.run(ipyclient=ipyclient, force=True, show_cluster=False)
+        else:
+            self.ipcluster['cores'] = 2
+            self.lex.run(auto=True, force=True, show_cluster=False)
+
         # add delimiter to names for seqfile writing.
-        self.lex.run(ipyclient=ipyclient, force=True, show_cluster=False)
         self.lex.wpnames = np.array(["^" + DELIM + i for i in self.lex.wpnames])
         self.maxloci = min([self.maxloci, len(self.lex.loci)])
 
@@ -503,6 +510,8 @@ class Bpp(object):
             print("[ipa.bpp] distributed {} bpp jobs (name={}, nloci={})"
                   .format(nreps, self.name, self.maxloci))
 
+        # block and show progress until jobs are done.
+        if block:
             # setup progress bar
             rep = 0
             nits = int(self.kwargs["nsample"])
@@ -693,11 +702,14 @@ class Bpp(object):
         if name == self.name:
             raise Exception(
                 "new object must have a different 'name' than its parent")
+        asyncs = self.asyncs
+        self.asyncs = []
         newself = copy.deepcopy(self)
         newself.name = name
         newself.files.mcmcfiles = []
         newself.files.outfiles = []
         newself.asyncs = []
+        self.asyncs = asyncs
         return newself
 
 
