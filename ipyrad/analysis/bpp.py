@@ -745,18 +745,22 @@ class Bpp(object):
         will compute a new posterior table...
         """
         # load out tables of summarized posteriors
-        tables = []
-        for ofile in self.files.outfiles:
-            with open(ofile, 'r') as infile:
-                lines = infile.readlines()[-12:]
-                data = [i.strip().split() for i in lines]
-                index = [i[0] for i in data[1:]]
-                df = pd.DataFrame(
-                    data=[i[1:] for i in data[1:]],
-                    columns=data[0],
-                    index=index,
-                )
-                tables.append(df.astype(float))
+        try:
+            tables = []
+            for ofile in self.files.outfiles:
+                with open(ofile, 'r') as infile:
+                    lines = infile.readlines()[-12:]
+                    data = [i.strip().split() for i in lines]
+                    index = [i[0] for i in data[1:]]
+                    df = pd.DataFrame(
+                        data=[i[1:] for i in data[1:]],
+                        columns=data[0],
+                        index=index,
+                    )
+                    tables.append(df.astype(float))
+        except IndexError:
+            raise IPyradError(
+                "BPP job cannot be summarized because it did not finish.")
 
         # load mcmc tables of posteriors
         dfs = [
@@ -1168,7 +1172,7 @@ class Bpp(object):
         divs = df.loc[:, [i for i in df.columns if "tau_" in i]].copy()
         newcolumns = {}
         for col in divs.columns.tolist():
-            tips = col.split("__")[1:]
+            tips = col.split(DELIM)[1:]
             nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
             newcolumns[col] = nidx
         divs.columns = [newcolumns[i] for i in divs.columns]
@@ -1178,7 +1182,7 @@ class Bpp(object):
         popsize = df.loc[:, [i for i in df.columns if "theta_" in i]].copy()
         newcolumns = {}
         for col in popsize.columns.tolist():
-            tips = col.split("__")[1:]
+            tips = col.split(DELIM)[1:]
             nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
             newcolumns[col] = nidx
         popsize.columns = [newcolumns[i] for i in popsize.columns]
@@ -1212,7 +1216,7 @@ class Bpp(object):
         columns = taus.columns.tolist().copy()
         newcolumns = {}
         for col in columns:
-            tips = col.split("__")[1:]
+            tips = col.split(DELIM)[1:]
             nidx = self.tree.get_mrca_idx_from_tip_labels(tips)
             newcolumns[col] = nidx
         taus.columns = [newcolumns[i] for i in taus.columns]
@@ -1228,7 +1232,6 @@ class Bpp(object):
                     if node.up:
                         node.dist = (taus.loc[tidx, node.up.idx] - taus.loc[tidx, node.idx])
         #mtree.treelist = [i.mod.make_ultrametric() for i in mtree.treelist]
-
         return divs, popsize, newtree, mtree
 
 
