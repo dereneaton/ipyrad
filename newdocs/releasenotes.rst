@@ -4,6 +4,27 @@
 Release Notes
 =============
 
+0.9.62
+------
+**November 03, 2020**
+
+- updating mb cookbook
+- bpp transform parser bugfix
+- add bpp dev nb
+- allow non-blocking calls again in bpp
+- bpp result split on delimiter
+- allow empty node dist in bpp
+- add option to extract as string/bytes
+- snps_extracter: report maf filter as unique filtered
+- snps extracter reports n unlinked snps
+- tmp dir for new cookbook docs
+- allow maf filter in structure
+- node_dists check for tips in bpp plot
+- new plotting tools for bpp results
+- added download util
+- add minmaf filter to snps_extracter, pca
+- additionall bpp summary tools
+
 0.9.61
 ------
 **October 15, 2020**
