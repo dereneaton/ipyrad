@@ -1455,12 +1455,16 @@ class Bpp(object):
         # get the deepest divergence time
         taus = sorted([i for i in mcmc.columns if "tau_" in i], key=lambda x: len(x))[-1]
         taus = mcmc.loc[:, taus]
-        mags, edges = np.histogram(taus, bins=100, range=(0, 0.03), density=True)
+
+        # had range(0, 0.03) as an arg, removed on 2020-11-25
+        mags, edges = np.histogram(taus, bins=100, density=True)
 
         ax4.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
         divs = (gens_rvs * taus.sample(10000)) / muts_rvs
         divs /= 1e6
-        mags, edges = np.histogram(divs.to_list(), bins=100, range=(0, 75), density=True)
+
+        # had range(0, 75) as an arg, removed on 2020-11-25
+        mags, edges = np.histogram(divs.to_list(), bins=100, density=True)
         ax5.plot(edges[:-1][mags>0], mags[mags>0], color='black', opacity=0.5);
 
         # get all Ne values
