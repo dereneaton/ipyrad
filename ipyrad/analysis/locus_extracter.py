@@ -210,7 +210,8 @@ class LocusExtracter(object):
         lbview = ipyclient.load_balanced_view()
 
         # print Nloci to start.
-        print("[locus filter] full data: {}".format(self.phymap.shape[0]))
+        if not self.quiet:
+            print("[locus filter] full data: {}".format(self.phymap.shape[0]))
 
         # submit jobs in blocks of 2K loci
         chunksize = 2000
@@ -255,7 +256,8 @@ class LocusExtracter(object):
         self.sample_stats.loci = self.smask.sum(axis=0)
 
         # print results
-        print("[locus filter] post filter: {}".format(len(self.loci)))
+        if not self.quiet:
+            print("[locus filter] post filter: {}".format(len(self.loci)))
 
 
 
