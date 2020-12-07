@@ -179,10 +179,10 @@ class Popgen(object):
         :param int S: The number of segregating sites.
         """
         b1 = (n+1)/float(3*(n-1))
-        a1 = sum([1./x for x in xrange(1, n)])
+        a1 = sum([1./x for x in range(1, n)])
         c1 = b1 - (1./a1)
         e1 = c1/a1
-        a2 = sum([1./(x**2) for x in xrange(1, n)])
+        a2 = sum([1./(x**2) for x in range(1, n)])
         b2 = (2.*(n**2 + n + 3))/(9*n*(n-1))
         c2 = b2 - (n+2)/(a1*n) + (a2/(a1**2))
         e2 = c2/(a1**2+a2)
