@@ -1296,13 +1296,15 @@ class Converter:
                 
                 # the first block
                 charsetblock.append("charset {} = {}-{};".format(
-                    0, 0, maparr[0],
+                    0, 1, maparr[0],
                 ))
 
                 # all other blocks
+                # nexus is 1-indexed. mapparr is dtype np.uint64, so adding
+                # a standard int results in np.float64, so cast uint64 first
                 for idx in range(0, maparr.shape[0] - 1):
                     charsetblock.append("charset {} = {}-{};".format(
-                        idx + 1, maparr[idx], maparr[idx + 1]
+                        idx + 1, maparr[idx] + np.uint64(1) , maparr[idx + 1]
                         )
                     )
                 charsetblock.append("END;")
