@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.64
+------
+**January 16, 2021**
+
+- replaced core.Assembly.database which actually wasn't doing anything with snps_database and seqs_database to retain info about the hdf5 files in the assembly object
+- fix empirical api structure params format
+- Allow structure to accept vcf files and auto-convert to hdf5
+- fix oops in i7 demux cookbook
+
 0.9.63
 ------
 **December 17, 2020**
