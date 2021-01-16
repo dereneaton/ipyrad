@@ -4,6 +4,19 @@
 Release Notes
 =============
 
+0.9.63
+------
+**December 17, 2020**
+
+- Fix off-by-one error in nexus output
+- update struct testdocs
+- Add Tajima's D denominator equation to the popgen analysis tool, because I coded it before and it's a nightmare.
+- use quiet in lex
+- plot posteriors range limits removed
+- Actually fix pca cookbook
+- fix malformatted pca cookbook
+- raxml w/ gamma rates
+
 0.9.62
 ------
 **November 03, 2020**

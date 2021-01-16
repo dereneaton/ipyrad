@@ -175,8 +175,8 @@ class FileLinker:
             # file checks
             if not r1s:
                 raise IPyradError(
-                    "No fastqs files found. Names may be "
-                    "improperly formatted. See Docs.")
+                    "No fastqs files found. File names must contain '_R1_' "
+                    "(and '_R2_' for paired data). See Docs.")
             if len(r1s) != len(r2s):
                 raise IPyradError(
                     R1_R2_name_error.format(len(r1s), len(r2s)))
