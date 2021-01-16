@@ -117,7 +117,8 @@ class Assembly(object):
 
         # storing supercatg file
         self.clust_database = ""
-        self.database = ""
+        self.snps_database = ""
+        self.seqs_database = ""
 
         ## the default params dict
         self.params = Params(self)
@@ -749,8 +750,9 @@ def save_json(data):
         ("paramsdict", paramsdict),
         ("samples", list(data.__dict__["samples"].keys())),
         ("populations", data.__dict__["populations"]),
-        ("database", data.__dict__["database"]),
         ("clust_database", data.__dict__["clust_database"]),        
+        ("snps_database", data.__dict__["snps_database"]),
+        ("seqs_database", data.__dict__["seqs_database"]),
         ("outfiles", data.__dict__["outfiles"]),
         ("barcodes", data.__dict__["barcodes"]),
         ("stats_files", data.__dict__["stats_files"]),
