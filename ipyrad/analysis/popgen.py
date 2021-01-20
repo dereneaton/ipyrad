@@ -15,7 +15,21 @@ from ipyrad.assemble.utils import IPyradError
 
 
 class Popgen(object):
-    "Analysis functions for calculating theta, Fst, Fis, thetaW, etc."
+    """
+    Analysis functions for calculating theta, Fst, Fis, thetaW, etc.
+
+    Some functions follow Ferretti et al 2012 for calculating stats while
+    accounting for missing data:
+
+    Ferretti, L., Raineri, E., & Ramos-Onsins, S. (2012). Neutrality tests for
+    sequences with missing data. Genetics, 191(4), 1397-1401.
+
+    Another useful resource for calculating sumstats with missing data:
+
+    Korunes, K., & Samuk, K. (2021). pixy: Unbiased estimation of nucleotide
+    diversity and divergence in the presence of missing data. Molecular Ecology
+    Resources.
+    """
 
     def __init__(self, name, data, workdir, mapfile=None):
         
