@@ -740,7 +740,7 @@ class Processor(object):
                 self.useqs.append(list(bytes(line.upper().encode())))
 
         # filter to include only samples in this assembly
-        mask = [i in self.data.snames for i in self.names]
+        mask = np.array([i in self.data.snames for i in self.names])
         self.names = np.array(self.names)[mask].tolist()
 
         if not self.filter_dups():
