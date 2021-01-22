@@ -314,7 +314,7 @@ and finally reinstall ipyrad:
 
 .. code-block:: bash
 
-    conda install -c ipyrad ipyrad
+    conda install -c conda-forge -c bioconda ipyrad
     conda install toytree -c eaton-lab
 
 optional:
