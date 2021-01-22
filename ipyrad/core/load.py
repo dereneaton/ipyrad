@@ -58,7 +58,7 @@ def load_json(json_path, quiet=False, cli=False):
     oldparams = fullj["assembly"].pop("paramsdict")
     for _param in null.params._keys[1:]:
 
-        # support legacy JSONs: if a new param now exists is is set to default.
+        # support legacy JSONs: if a new param now exists it is set to default.
         param = _param.lstrip("_")
         try:
             value = oldparams[param]
@@ -69,7 +69,10 @@ def load_json(json_path, quiet=False, cli=False):
                 value = getattr(null.params, _param)
 
         # set param in new null assembly with value from old assembly.
-        null.set_params(param, value)           
+        if cli and param == "pop_assign_file":
+            null.params._pop_assign_file = value
+        else:
+            null.set_params(param, value)
 
     # Update hackers dict.
     try:
