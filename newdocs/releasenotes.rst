@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.65
+------
+**January 22, 2021**
+
+- Fix #429 weird masking bug in older versions of numpy.
+- Add refs to the analysis.popgen tool.
+
 0.9.64
 ------
 **January 16, 2021**
