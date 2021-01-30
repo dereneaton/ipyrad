@@ -10,6 +10,7 @@ import tempfile
 import h5py
 import numpy as np
 import pandas as pd
+import sys
 from .locus_extracter import LocusExtracter
 
 # import tested at init
