@@ -24,7 +24,7 @@ requirements:
     - python
     - pandas
     - scipy
-    - numpy
+    - numpy >=1.15
     - numba >=0.37
     - future
     - h5py
