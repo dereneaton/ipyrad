@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
 """
-Plot the distribution of ref-aligned RAD tags on chromosomes
-of the reference genome and calculate stats such as distance
-between markers after applying filtering for missing data.
+Plot the pairwise locus sharing and pairwise missingness.
 """
 
 import tempfile
@@ -26,17 +24,15 @@ that you can install with conda using this command:
 
 
 
-class Coverage:
+class Sharing:
     def __init__(
         self, 
         data,
-        # scaffold_idxs=None,
         imap=None, 
         minmap=None, 
-        mincov=4, 
+        mincov=0, 
         minsnps=0,
         maxmissing=1.0,
-        consensus_reduce=False,
         exclude=None,
         ):
         """
@@ -44,7 +40,7 @@ class Coverage:
 
         Parameters
         ----------
-        seqs_database: The .seqs.hdf5 database file from ipyrad.
+        data: The .seqs.hdf5 database file from ipyrad.
         """
         # check imports
         if not sys.modules.get("toyplot"):
@@ -54,15 +50,10 @@ class Coverage:
         self.data = data
         self.imap = imap
         self.minmap = minmap
+        self.mincov = mincov
         self.minsnps = minsnps
         self.maxmissing = maxmissing
-        self.consensus_reduce = consensus_reduce
-        self.mincov = mincov
         self.exclude = exclude
-
-        # self.scaffold_idxs = scaffold_idxs
-        # if self.scaffold_idxs is None:
-        #     self.scaffold_idxs = range(12)
 
         # to be filled
         self.phymap = None
@@ -73,8 +64,6 @@ class Coverage:
         # run functions
         self._load_phymap()
         self._apply_filters()
-
-
 
 
     def _load_phymap(self):
