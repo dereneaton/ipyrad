@@ -21,7 +21,7 @@ _TOYPLOT_IMPORT = """
 This ipyrad analysis tool requires the following software
 that you can install with conda using this command:
 
-   conda install toytree -c eaton-lab
+   conda install toyplot -c eaton-lab
 """
 
 
