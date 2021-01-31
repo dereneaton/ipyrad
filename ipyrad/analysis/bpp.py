@@ -463,8 +463,8 @@ class Bpp(object):
 
         # static set of sampled loci if not resampling
         self._lidxs = np.random.choice(
-            range(len(self.lex.loci)), 
-            size=self.maxloci, 
+            range(len(self.lex.loci)),
+            size=self.maxloci,
             replace=False,
         )
 
@@ -478,7 +478,7 @@ class Bpp(object):
 
             # skip if ctlfile exists
             if (not force) and (os.path.exists(ctlhandle)):
-                print("Named ctl file already exists. Use force=True to" 
+                print("Named ctl file already exists. Use force=True to"
                       " overwrite\nFilename:{}".format(ctlhandle))
 
             # submit job to run
@@ -536,7 +536,7 @@ class Bpp(object):
                         prog.finished = nlines
                     spacer = 0
 
-                # break between checking progress       
+                # break between checking progress
                 prog.update()
                 time.sleep(5)
                 spacer += 1
