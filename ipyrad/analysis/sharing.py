@@ -154,7 +154,6 @@ class Sharing:
             scaled=True,
             keep_order=None,
             sort=None,
-            keep=None,
             cmap="YlGnBu",
             **kwargs):
         """
@@ -162,10 +161,19 @@ class Sharing:
 
         Parameters
         ----------
-        scaled boolean: Whether to plot the  heatmap to with absolut absolute
+        :param float width: Width of the figure to draw.
+        :param float height: Height of the figure to draw.
+        :param bool scaled: Whether to plot the  heatmap to with absolut absolute
                         values or rescale so show proportional values with
                         with respect to maximum values of sharing and
                         missingness.
+        :param list/dict keep_order: A list or dict of samples to retain and
+                        the order to plet them in. This list can potentially
+                        be a subset of the samples in the analysis.
+        :param str sort: Whether to sort samples in descending order of locus
+                        missingness sharing. Possible values are: "loci" or
+                        "missing".
+        :param str cmap: A valid matplotlib cmap for coloring the figure.
         """
         # set up
         width = (width if width else 20)
