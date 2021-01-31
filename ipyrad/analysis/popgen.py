@@ -11,9 +11,12 @@ import itertools
 import math
 import numpy as np
 import pandas as pd
-from ipyrad.analysis.utils import Params
-from ipyrad.assemble.utils import IPyradError
+import time
 from ipyrad import Assembly
+from ipyrad.assemble.utils import IPyradError
+from ..core.Parallel import Parallel
+from .locus_extracter import LocusExtracter
+from .utils import Params, ProgressBar
 
 _BAD_IMAP_ERROR = """
 Samples in imap not in the hdf5 file: {}"
@@ -56,7 +59,15 @@ class Popgen(object):
         self.quiet = quiet
         self.params = Params()
         self.nboots = 100
-        self.data = pd.DataFrame()
+
+        # Data from the LocusExtracter
+        self.seqs = ''
+
+        # SNP data from snps.hdf5["snps"]
+        # This is the way I started with, but maybe not the best approach
+        # get rid of this when you're sick of looking at it once the seqs
+        # approach is working.
+        self.snps = pd.DataFrame()
 
         # i/o paths
         self.workdir=workdir
@@ -65,28 +76,39 @@ class Popgen(object):
         self._check_samples()
         #self.maparr = np.zeros()
 
+        # parallelization
+        self.ipcluster = {
+            "cluster_id": "",
+            "profile": "default",
+            "engines": "Local",
+            "quiet": 0,
+            "timeout": 60,
+            "cores": 0,
+            "threads": 1,
+            "pids": {},
+            }
+
         # results dataframes
         self.results = Params()
 
+        # maybe these aren't necessary?
         # pairwise Fst between all populations
-        arrfst = np.zeros((self.npops, self.npops), dtype=np.uint64)
-        self.results.fst = pd.DataFrame(
-            arrfst
-            )
+#        arrfst = np.zeros((self.npops, self.npops), dtype=np.uint64)
+#        self.results.fst = pd.DataFrame(
+#            arrfst
+#            )
 
         # individual pi 
-        nsamples = len(list(chain(*self.imap.values())))
-        arrpi = np.zeros(nsamples, dtype=np.uint64)
-        self.results.pi = pd.DataFrame(
-            arrpi
-            )
+#        arrpi = np.zeros(self.npops, dtype=np.uint64)
+#        self.results.pi = pd.DataFrame(
+#            arrpi
+#            )
 
         # population thetas
-        npops = len(self.imap)
-        arrtheta = np.zeros(npops, dtype=np.uint64)
-        self.results.theta = pd.DataFrame(
-            arrtheta
-            )
+#        arrtheta = np.zeros(self.npops, dtype=np.uint64)
+#        self.results.theta = pd.DataFrame(
+#            arrtheta
+#            )
 
 
     def _check_files(self, data):
@@ -97,7 +119,8 @@ class Popgen(object):
                 # Since v0.9.63-ish the snps_database is stored as an
                 # assembly parameter. If it's not there try to construct
                 # it from data.outfiles
-                self.datafile = data.snps_database
+                self.snpfile = data.snps_database
+                self.datafile = data.seqs_database
             except AttributeError:
                 self.datafile = os.path.join(data.dirs.outfiles + 
                                             f"{data.name}.seqs.hdf5")
@@ -120,17 +143,23 @@ class Popgen(object):
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
 
-        # load the data
-        with h5py.File(self.datafile, 'r') as io5:
+        # load the snp data
+        with h5py.File(self.snpfile, 'r') as io5:
             for idx, name in enumerate(io5["snps"].attrs["names"]):
                 self.snps[name.decode("utf-8")] = io5["snps"][idx]
+            # TODO This is temporary to keep _fst running with the snps data
+            self.data = self.snps
 
 
     def _check_samples(self):
         "Read in list of sample names from the datafile"
-        
+
+        # On the assumption we'll focus on the seqs file for the sumstats
+        # then this can be deleted.
+        #with h5py.File(self.snpfile, 'r') as io5:
+        #    self.samples = [x.decode() for x in io5["snps"].attrs["names"]]
         with h5py.File(self.datafile, 'r') as io5:
-            self.samples = [x.decode('utf-8') for x in io5["snps"].attrs["names"]]
+            self.samples = [x.decode() for x in io5["phymap"].attrs["phynames"]]
         if self.imap:
             # Check agreement between samples in imap and hdf5 file
             imap_samps = list(chain(*self.imap.values()))
@@ -146,10 +175,97 @@ class Popgen(object):
                     print(_SKIP_SAMPLES_WARN.format(in_hdf5_not_imap))
 
 
-    def run(self, force=False, ipyclient=False):
-        "calculate the given statistic"
+    def run(self, ipyclient=None, force=False, show_cluster=True, auto=False):
+        """
+        Submits popgen jobs to run on a cluster (ipyparallel Client). An
+        ipyclient connection is optional. If no ipyclient then it runs
+        serially on one core.
+
+        Parameters:
+        -----------
+        ipyclient: (type=ipyparallel.Client); Default=None.
+            If you started an ipyclient manually then you can
+            connect to it and use it to distribute jobs here.
+
+        force: (type=bool); Default=False.
+            Force overwrite of existing output with the same name.
+
+        show_cluster: (type=bool); Default=False.
+            Print information about parallel connection.
+
+        auto: (type=bool); Default=False.
+            Let ipyrad automatically manage ipcluster start and shutdown.
+            This will connect to all avaiable cores by default, but can
+            be modified by changing the parameters of the .ipcluster dict
+            associated with this tool.
+        """
+        pool = Parallel(
+            tool=self,
+            ipyclient=ipyclient,
+            show_cluster=show_cluster,
+            auto=auto,
+            rkwargs={"force": force},
+            )
+        pool.wrap_run()
+
+
+    def _run(self, force=False, ipyclient=None):
+
+        self.asyncs = []
+
+        lbview = ipyclient.load_balanced_view()
+
+        # apply locus extracter filtering
+        self.lex = LocusExtracter(
+            data=self.datafile,
+            imap=self.imap,
+            minmap=self.minmap,
+            mincov=len(self.imap),  # ENFORCE at least 1 per spp.
+#            minsnps=self.minsnps,
+#            maxmissing=self.maxmissing,
+#            minlen=self.minlen,
+        )
+
+        # Extract loci from seqs data
+        self.lex.run(ipyclient=ipyclient, force=True, show_cluster=False)
+
+        # For each locus, calculate all the sumstats of interest
+        nloci = len(self.lex.loci)
+        for lidx in range(nloci):
+            locus = self.lex.get_locus(lidx, as_df=True)
+            rasync = lbview.apply(_calc_sumstats, locus)
+            self.asyncs.append(rasync)
+
+        # setup progress bar
+        prog = ProgressBar(nloci, None, "Calculating sumstats for nloci {}".format(nloci))
+        prog.finished = 0
+        prog.update()
+
+        # block until jobs are done with a progress bar.
+        while 1:
+            # break between checking progress
+            prog.update()
+            time.sleep(5)
+            # calc finished jobs
+            finished = [i.ready() for i in self.asyncs]
+            if not all(finished):
+                prog.finished = len(finished)
+            else:
+                # all jobs finished
+                prog.finished = nloci
+                prog.update()
+                print("")
+                break
+        # Fst
         farr, darr, narr = self._fst()
-        return farr, darr, narr
+        self.results.farr = farr
+        self.results.darr = darr
+        self.results.narr = narr
+
+        # pi
+        pi_dict = {}
+        for lidx in range(len(self.lex.loci)):
+            pi_dict[lidx] = self._pi(self.lex.get_locus(lidx, as_df=True))
 
 
     def _fst(self):
@@ -225,13 +341,8 @@ class Popgen(object):
         pass
 
 
-    def _pi(self):
+    def _pi(self, locus):
         "calculate per-sample heterozygosity after filtering"
-        pass
-
-
-    def _filter_data(self):
-        "take input data as phylip seq array and subsample loci from mapfile"
         pass
 
 
@@ -258,4 +369,8 @@ class Popgen(object):
         e2 = c2/(a1**2+a2)
         ddenom = math.sqrt(e1*S + e2*S*(S-1))
         return ddenom
+
+
+def _calc_sumstats(locus):
+    return 1
 
