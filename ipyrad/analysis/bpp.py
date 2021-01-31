@@ -1956,8 +1956,6 @@ def draw_dists(mcmcs, **kwargs):
     return canvas, axes, marks
 
 
-
-
 def _call_bpp(binary, ctlfile, alg):
     """
     Remote function call of BPP binary
@@ -1979,7 +1977,6 @@ def _call_bpp(binary, ctlfile, alg):
 
     if os.path.exists("./SeedUsed"):
         os.remove("./SeedUsed")
-
 
 
 def draw_dist(mean, var, xlabel=None, axes=None, **kwargs):
@@ -2029,7 +2026,6 @@ def draw_dist(mean, var, xlabel=None, axes=None, **kwargs):
     return canvas, axes, mark
 
 
-
 def build_00_tree(tree, mcmc):
     """
     Convert theta and tau estimates into Ne and Div times respectively and 
@@ -2038,7 +2034,6 @@ def build_00_tree(tree, mcmc):
 
 
     tree = tree.mod.make_ultrametric().mod.node_scale_root_height(crown_mean)
-
 
 
 CTLFILE = """
