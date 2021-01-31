@@ -56,15 +56,13 @@ class Popgen(object):
         self.quiet = quiet
         self.params = Params()
         self.nboots = 100
+        self.data = pd.DataFrame()
 
         # i/o paths
         self.workdir=workdir
         self.mapfile = ""
-        # Sets the self.datafile attribute
         self._check_files(data)
-        # Sets the self.samples attribute
         self._check_samples()
-        #self.data = np.zeros()
         #self.maparr = np.zeros()
 
         # results dataframes
@@ -102,7 +100,7 @@ class Popgen(object):
                 self.datafile = data.snps_database
             except AttributeError:
                 self.datafile = os.path.join(data.dirs.outfiles + 
-                                            f"{data.name}.snps.hdf5")
+                                            f"{data.name}.seqs.hdf5")
         else:
             self.datafile = data
 
@@ -121,6 +119,11 @@ class Popgen(object):
         # check workdir
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
+
+        # load the data
+        with h5py.File(self.datafile, 'r') as io5:
+            for idx, name in enumerate(io5["snps"].attrs["names"]):
+                self.snps[name.decode("utf-8")] = io5["snps"][idx]
 
 
     def _check_samples(self):
@@ -145,7 +148,8 @@ class Popgen(object):
 
     def run(self, force=False, ipyclient=False):
         "calculate the given statistic"
-        pass
+        farr, darr, narr = self._fst()
+        return farr, darr, narr
 
 
     def _fst(self):
@@ -156,6 +160,9 @@ class Popgen(object):
         subpopulations (using the number sampled, since the true number is 
         unknown) and number of migrants (Nm) derived from Li (1976b) as 
         described in the Hudson et al. (1992) paper. 
+
+        See also Bhatia et al 2013 Estimating and interpreting FST: The impact
+        of rare variants, though this formulation isn't implemented here.
         """       
         # init fst matrix df with named rows and cols
         farr = pd.DataFrame(
@@ -190,22 +197,26 @@ class Popgen(object):
                 lambda x: bool(x in withins),
                 allpairs
             )
-
+            # A list of T/F values for differences between each pair per site
             diff = [self.data[i] != self.data[j] for (i, j) in withins]
+            # sum of all pairwise differences per site
             sums = np.sum(diff, axis=0)
-            a = sums / sums.shape[0]
-            
+            # average number of differences per site
+            a = np.sum(sums) / sums.shape[0]
+
+            # Same as above, but now pairwise for samples between sites
             diff = [self.data[i] != self.data[j] for (i, j) in betweens]
             sums = np.sum(diff, axis=0)
-            b = sums / sums.shape[0]
-            
-            farr.loc[pop1, pop2] = abs(1 - (a / b))
-            narr.loc[pop1, pop2] = (((d - 1) / d) * (1 / 2) * (a / b - a))
-            darr.loc[pop1, pop2] = (
-                abs(1 - (a / ((1 / d) * a) + (((d - 1) / d) * b))))
-        farr.columns = range(len(self.imap))
-        darr.columns = range(len(self.imap))
-        narr.columns = range(len(self.imap))
+            b = np.sum(sums) / sums.shape[0]
+
+            # Fst - Hudson 1992 Eq 3
+            farr.loc[pop1, pop2] = 1 - (a / b)
+            # Fst adjusted for known # of subpops - Hudson 1992 Eq 6
+            darr.loc[pop1, pop2] = 1 - (a / (((1 / d) * a) \
+                                        + (((d - 1) / d) * b)))
+            # Nm adjusted for known # of subpops - Hudson 1992 Eq 7
+            narr.loc[pop1, pop2] = (((d - 1) / d) * (1 / 2) * (a / (b - a)))
+
         return farr, darr, narr
 
 
