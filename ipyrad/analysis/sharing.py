@@ -11,7 +11,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sys
+import time
 from .snps_extracter import SNPsExtracter
+from .utils import progressbar
 
 # import tested at init
 try:
@@ -42,7 +44,6 @@ class Sharing:
         mincov=0,
         minsnps=0,
         maxmissing=1.0,
-        exclude=None,
         quiet=True,
         ):
         """
@@ -62,8 +63,6 @@ class Sharing:
         self.minmap = minmap
         self.mincov = mincov
         self.minsnps = minsnps
-        self.maxmissing = maxmissing
-        self.exclude = exclude
 
         # to be filled
         self.snps = None
@@ -87,8 +86,11 @@ class Sharing:
             # Set data to the new hdf5 file
             self.data = converter.database
 
-        ext = SNPsExtracter(
-            data=self.data, imap=self.imap, minmap=minmap, mincov=mincov, quiet=quiet,
+        ext = SNPsExtracter(data=self.data,
+                            imap=self.imap,
+                            minmap=minmap,
+                            mincov=mincov,
+                            quiet=quiet,
         )
 
         # run snp extracter to parse data files
@@ -101,11 +103,27 @@ class Sharing:
 
         sidx = np.arange(len(self.names))
 
+        # A matrix with shared data above the diagonal and shared
+        # missingness below the diagonal
         sharing_matrix = pd.DataFrame(np.zeros([len(self.names),
                                                 len(self.names)]))
 
-        cs = itertools.combinations(sidx, 2)
-        for idx, pair in enumerate(cs):
+        # Turns out not to be straightforward to reorder the
+        # matrix structure above, so keep all the info in 2 separate
+        # matrices so we can reorder the samples for plotting
+        _shared = pd.DataFrame(np.zeros([len(self.names),
+                                         len(self.names)]))
+        _missed = pd.DataFrame(np.zeros([len(self.names),
+                                         len(self.names)]))
+
+        nfinished = 0
+        ntotal = len(list(itertools.combinations(sidx, 2)))
+        start = time.time()
+        message = "Calculating shared loci/missingness"
+        progressbar(nfinished, ntotal, start, message)
+        for idx, pair in enumerate(itertools.combinations(sidx, 2)):
+            progressbar(nfinished, ntotal, start, message)
+
             snps = self.snps[[pair[0], pair[1]]]
             sh_data = np.all(snps == 9, axis=0)
             sh_missing = np.all(snps != 9, axis=0)
@@ -113,12 +131,23 @@ class Sharing:
             sharing_matrix[pair[0]][pair[1]] = np.sum(sh_data)
             sharing_matrix[pair[1]][pair[0]] = np.sum(sh_missing)
 
-        sharing_matrix.columns = self.names
-        sharing_matrix.index = self.names
+            _shared[pair[0]][pair[1]] = sharing_matrix[pair[0]][pair[1]]
+            _shared[pair[1]][pair[0]] = sharing_matrix[pair[0]][pair[1]]
+            _missed[pair[0]][pair[1]] = sharing_matrix[pair[1]][pair[0]]
+            _missed[pair[1]][pair[0]] = sharing_matrix[pair[1]][pair[0]]
+            nfinished += 1
+
+        progressbar(nfinished, ntotal, start, message)
+
+        for x in [_shared, _missed, sharing_matrix]:
+            x.columns = self.names
+            x.index = self.names
         self.sharing_matrix = sharing_matrix
+        self._shared = _shared
+        self._missed = _missed
 
 
-    def draw(self, width=None, height=None, scaled=True, cmap="YlGnBu", **kwargs):
+    def draw(self, width=None, height=None, scaled=True, order=None, cmap="YlGnBu", **kwargs):
         """
         ...
 
@@ -132,6 +161,18 @@ class Sharing:
         # set up
         width = (width if width else 20)
         height = (height if height else 20)
+
+        # reorder columns if specified
+        if order:
+            # Only retain the names actually in the data
+            names = [x for x in order if x in self.names]
+            # Copy the matrix and set the columns/index in the new order
+            new_df = self.sharing_matrix.copy()[order].loc[order]
+
+            for pair in itertools.combinations(order, 2):
+                new_df[pair[0]][pair[1]] = self._shared[pair[0]][pair[1]]
+                new_df[pair[1]][pair[0]] = self._missed[pair[1]][pair[0]]
+            self.sharing_matrix = new_df
 
         mask = np.zeros_like(self.sharing_matrix)
         mask[np.triu_indices_from(mask)] = True
