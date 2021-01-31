@@ -512,7 +512,9 @@ class CLI:
             # get pool object
             pool = Parallel(
                 tool=self.data, 
-                rkwargs={"steps": self.args.steps, "force": self.args.force},
+                rkwargs={"steps": self.args.steps,
+                        "force": self.args.force,
+                        "quiet": self.args.quiet},
                 ipyclient=ipyclient,
                 show_cluster=True,
                 auto=True,

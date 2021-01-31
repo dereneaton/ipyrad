@@ -667,6 +667,7 @@ class Assembly(object):
         ipyclient=None, 
         show_cluster=False,
         auto=False,
+        quiet=False,
         ):
         """
         Run subfunction run inside parallel wrapper.
@@ -686,6 +687,9 @@ class Assembly(object):
         if steps is None:
             print("You must enter one or more steps to run, e.g., '123'")
             return 
+
+        # hide all messages/progress bars
+        self.quiet = quiet
 
         # run step fuctions and save and clear memory after each
         for step in steps:
