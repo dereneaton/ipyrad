@@ -6,13 +6,22 @@ from __future__ import print_function, division
 from itertools import chain
 
 import os
+import h5py
 import itertools
 import math
 import numpy as np
 import pandas as pd
 from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
+from ipyrad import Assembly
 
+_BAD_IMAP_ERROR = """
+Samples in imap not in the hdf5 file: {}"
+"""
+
+_SKIP_SAMPLES_WARN = """
+Skipping samples in hdf5 not present in imap: {}"
+"""
 
 class Popgen(object):
     """
@@ -31,54 +40,72 @@ class Popgen(object):
     Resources.
     """
 
-    def __init__(self, name, data, workdir, mapfile=None):
+    def __init__(
+        self,
+        data,
+        imap=None,
+        minmap=None,
+        workdir="analysis-popgen",
+        quiet=False,
+        ):
         
-        # i/o paths
-        self.workdir = workdir
-        self._datafile = data
-        self._mapfile = mapfile
-        self._check_files()
-        self.data = np.zeros()
-        self.maparr = np.zeros()
-
-        # init default param settings
+        # set attributes
+        self.imap = (imap if imap else {})
+        self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
+        self.npops = (len(self.imap) if imap else 1)
+        self.quiet = quiet
         self.params = Params()
-        self.popdict = {}
-        self.mindict = {}
-        self.npops = len(self.popdict)
         self.nboots = 100
+
+        # i/o paths
+        self.workdir=workdir
+        self.mapfile = ""
+        # Sets the self.datafile attribute
+        self._check_files(data)
+        # Sets the self.samples attribute
+        self._check_samples()
+        #self.data = np.zeros()
+        #self.maparr = np.zeros()
 
         # results dataframes
         self.results = Params()
 
         # pairwise Fst between all populations
-        npops = len(self.popdict)
-        arrfst = np.zeros((npops, npops), dtype=np.uint64)
+        arrfst = np.zeros((self.npops, self.npops), dtype=np.uint64)
         self.results.fst = pd.DataFrame(
             arrfst
             )
 
         # individual pi 
-        nsamples = len(list(chain(*self.popdict.values())))
+        nsamples = len(list(chain(*self.imap.values())))
         arrpi = np.zeros(nsamples, dtype=np.uint64)
         self.results.pi = pd.DataFrame(
             arrpi
             )
 
         # population thetas
-        npops = len(self.popdict)
+        npops = len(self.imap)
         arrtheta = np.zeros(npops, dtype=np.uint64)
         self.results.theta = pd.DataFrame(
             arrtheta
             )
 
-        # parse samples from the data file
-        self._check_files()
 
-
-
-    def _check_files(self):
+    def _check_files(self, data):
         "check input files and file paths"
+
+        if isinstance(data, Assembly):
+            try:
+                # Since v0.9.63-ish the snps_database is stored as an
+                # assembly parameter. If it's not there try to construct
+                # it from data.outfiles
+                self.datafile = data.snps_database
+            except AttributeError:
+                self.datafile = os.path.join(data.dirs.outfiles + 
+                                            f"{data.name}.snps.hdf5")
+        else:
+            self.datafile = data
+
         # check data file
         if os.path.exists(self.datafile):
             self.datafile = os.path.realpath(self.datafile)
@@ -88,13 +115,32 @@ class Popgen(object):
                 .format(self.datafile))
 
         # check map file
-        if self.mapfile:
-            self.mapfile = os.path.realpath(self.mapfile)
+        #if self.mapfile:
+        #    self.mapfile = os.path.realpath(self.mapfile)
 
         # check workdir
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
+
+
+    def _check_samples(self):
+        "Read in list of sample names from the datafile"
         
+        with h5py.File(self.datafile, 'r') as io5:
+            self.samples = [x.decode('utf-8') for x in io5["snps"].attrs["names"]]
+        if self.imap:
+            # Check agreement between samples in imap and hdf5 file
+            imap_samps = list(chain(*self.imap.values()))
+            in_imap_not_hdf5 = set(imap_samps).difference(self.samples)
+            in_hdf5_not_imap = set(self.samples).difference(imap_samps)
+
+            if in_imap_not_hdf5:
+                # Error if you pass in a sample in imap not in hdf5
+                raise IPyradError(_BAD_IMAP_ERROR.format(in_imap_not_hdf5))
+            if in_hdf5_not_imap:
+                if not self.quiet:
+                    # Warn here because this is a valid way to remove samples
+                    print(_SKIP_SAMPLES_WARN.format(in_hdf5_not_imap))
 
 
     def run(self, force=False, ipyclient=False):
@@ -114,26 +160,26 @@ class Popgen(object):
         # init fst matrix df with named rows and cols
         farr = pd.DataFrame(
             data=np.zeros((self.npops, self.npops)),
-            index=self.popdict.keys(),
-            columns=self.popdict.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         darr = pd.DataFrame(
             data=np.zeros((self.npops, self.npops)),
-            index=self.popdict.keys(),
-            columns=self.popdict.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         narr = pd.DataFrame(
             data=np.zeros((self.npops, self.npops)),
-            index=self.popdict.keys(),
-            columns=self.popdict.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         d = self.npops
 
         # iterate over pairs of pops and fill Fst values
-        pairs = itertools.combinations(self.popdict.keys(), 2)
+        pairs = itertools.combinations(self.imap.keys(), 2)
         for (pop1, pop2) in pairs:
-            pop1idx = self.popdict[pop1]
-            pop2idx = self.popdict[pop2]
+            pop1idx = self.imap[pop1]
+            pop2idx = self.imap[pop2]
             popaidx = pop1idx + pop2idx
 
             within1 = list(itertools.combinations(pop1idx, 2))
@@ -157,11 +203,10 @@ class Popgen(object):
             narr.loc[pop1, pop2] = (((d - 1) / d) * (1 / 2) * (a / b - a))
             darr.loc[pop1, pop2] = (
                 abs(1 - (a / ((1 / d) * a) + (((d - 1) / d) * b))))
-        farr.columns = range(len(self.popdict))
-        darr.columns = range(len(self.popdict))
-        narr.columns = range(len(self.popdict))
+        farr.columns = range(len(self.imap))
+        darr.columns = range(len(self.imap))
+        narr.columns = range(len(self.imap))
         return farr, darr, narr
-
 
 
     def _fis(self):
