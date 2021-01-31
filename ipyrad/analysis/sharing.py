@@ -152,8 +152,9 @@ class Sharing:
             width=None,
             height=None,
             scaled=True,
-            order=None,
+            keep_order=None,
             sort=None,
+            keep=None,
             cmap="YlGnBu",
             **kwargs):
         """
@@ -172,10 +173,14 @@ class Sharing:
 
         # reorder columns if specified either by specified list order
         # or by sorting by shared loci or shared missing
-        if order or sort:
-            if order:
+        if keep_order or sort:
+            if keep_order:
+                # allow to pass in imap or dict and flatten to list
+                if isinstance(keep_order, dict):
+                    keep_order = [item for sublist in keep_order.values() for item in sublist]
+
                 # Only retain the names actually in the data
-                names = [x for x in order if x in self.names]
+                names = [x for x in keep_order if x in self.names]
                 # Copy the matrix and set the columns/index in the new order
             elif sort:
                 if sort == "loci":
