@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import sys
 import time
+from ..assemble.utils import IPyradError
 from .snps_extracter import SNPsExtracter
 from .utils import progressbar
 
@@ -125,8 +126,8 @@ class Sharing:
             progressbar(nfinished, ntotal, start, message)
 
             snps = self.snps[[pair[0], pair[1]]]
-            sh_data = np.all(snps == 9, axis=0)
-            sh_missing = np.all(snps != 9, axis=0)
+            sh_missing = np.all(snps == 9, axis=0)
+            sh_data = np.all(snps != 9, axis=0)
 
             sharing_matrix[pair[0]][pair[1]] = np.sum(sh_data)
             sharing_matrix[pair[1]][pair[0]] = np.sum(sh_missing)
@@ -147,7 +148,14 @@ class Sharing:
         self._missed = _missed
 
 
-    def draw(self, width=None, height=None, scaled=True, order=None, cmap="YlGnBu", **kwargs):
+    def draw(self,
+            width=None,
+            height=None,
+            scaled=True,
+            order=None,
+            sort=None,
+            cmap="YlGnBu",
+            **kwargs):
         """
         ...
 
@@ -162,14 +170,24 @@ class Sharing:
         width = (width if width else 20)
         height = (height if height else 20)
 
-        # reorder columns if specified
-        if order:
-            # Only retain the names actually in the data
-            names = [x for x in order if x in self.names]
-            # Copy the matrix and set the columns/index in the new order
-            new_df = self.sharing_matrix.copy()[order].loc[order]
+        # reorder columns if specified either by specified list order
+        # or by sorting by shared loci or shared missing
+        if order or sort:
+            if order:
+                # Only retain the names actually in the data
+                names = [x for x in order if x in self.names]
+                # Copy the matrix and set the columns/index in the new order
+            elif sort:
+                if sort == "loci":
+                    names = list(self._shared.mean(axis=0).sort_values(ascending=False).index)
+                elif sort == "missing":
+                    names = list(self._missed.mean(axis=0).sort_values(ascending=False).index)
+                else:
+                    raise IPyradError("  `sort` parameter must be either \"loci\" or \"missing\".")
 
-            for pair in itertools.combinations(order, 2):
+            new_df = self.sharing_matrix.copy()[names].loc[names]
+
+            for pair in itertools.combinations(names, 2):
                 new_df[pair[0]][pair[1]] = self._shared[pair[0]][pair[1]]
                 new_df[pair[1]][pair[0]] = self._missed[pair[1]][pair[0]]
             self.sharing_matrix = new_df
