@@ -541,7 +541,12 @@ class LocusExtracter(object):
         return seqarr.shape
 
 
-    def get_locus(self, lidx, include_empty_rows=False, include_names=True):
+    def get_locus(self,
+                    lidx,
+                    include_empty_rows=False,
+                    include_names=True,
+                    as_df=False,
+                    ):
         """
         Writes the .seqarr matrix as a string to .outfile.
         """
@@ -554,10 +559,15 @@ class LocusExtracter(object):
             keep = self.smask[lidx]
             seqarr = seqarr[keep, :]
             pnames = self.wpnames[keep]
+            names = self.names[keep]
 
         # return array without names
         if not include_names:
             return seqarr
+
+        # return as a dataframe with names as index
+        if as_df:
+            return pd.DataFrame(seqarr, names)
 
         # convert to bytes and write spacer names
         phy = []
