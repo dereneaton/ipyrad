@@ -16,7 +16,7 @@ from collections import Counter
 from ipyrad import Assembly
 from ipyrad.assemble.utils import IPyradError
 from itertools import combinations
-from scipy.stats import entropy
+from scipy.stats import entropy, hmean
 from ..core.Parallel import Parallel
 from .locus_extracter import LocusExtracter
 from .utils import Params, ProgressBar
@@ -308,10 +308,6 @@ class Processor(object):
 
 
     # Within population summary statistics
-    def _pi(self, locus):
-        "calculate per-sample heterozygosity after filtering"
-        pass
-
 
     def pi(self, locus):
         """
@@ -320,26 +316,24 @@ class Processor(object):
         :param array-like locus: An np.array or pd.DataFrame of aligned loci
             as might be returned by calling LocusExtracter.get_locus(as_df=True).
 
-        :return tuple: Returns a tuple with pi_per_base (averaged across the
-            length of the whole locus), and a dictionary containing values of
+        :return tuple: Returns a tuple with raw pi, pi_per_base (averaged across
+            the length of the whole locus), and a dictionary containing values of
             pi per site, with keys as the base positions.
         """
-        pi_per_base = 0
+        pi = 0
         site_pi = {}
-        len_seq = len(locus.iloc[0])
 
         # Count numbers of unique bases per site
-        cts = np.array(locus.apply(lambda x: Counter(x)))
+        # Don't consider indels (45) and N (78). Similar to how pixy
+        # does it and should result in less biased pi estimates.
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
         # Only consider variable sites
         snps = np.array([len(x) for x in cts]) > 1
         # Indexes of variable sites
         sidxs = np.where(snps)[0]
         for sidx in sidxs:
             site_pi[sidx] = 0
-            # Don't consider indels and N. This is similar to how pixy
-            # does it and should result in less biased pi estimates.
-            del cts[sidx]["-"]
-            del cts[sidx]["N"]
             # Enumerate the possible comparisons and for each
             # comparison calculate the number of pairwise differences,
             # summing over all sites in the sequence.
@@ -349,36 +343,12 @@ class Processor(object):
                 site_pi[sidx] += float(c[0]) * (n-c[0]) / n_comparisons
         if site_pi:
             # Average over the length of the whole sequence.
-            pi_per_base = sum(site_pi.values())/len_seq
+            pi = sum(site_pi.values())
 
-        return pi_per_base, site_pi
-
-
-    ## TODO: Replace this and the dxy function with the pi/dxy
-    ## functions from easyCGD which are much nicer and smarter.
-    def pi2(haplotypes):
-        ## If no seg sites in a pop then haplotypes will be 0 length
-        if haplotypes.size == 0:
-            return 0
-        n = len(haplotypes[0])
-        n_comparisons = float(n) * (n - 1) / 2
-
-        pi = 0
-        for hap in haplotypes:
-            k = np.count_nonzero(hap)
-            pi += float(k) * (n - k) / n_comparisons
-        return(pi)
+        return pi, pi/len(locus.iloc[0]),  site_pi
 
 
-    def _hnum(N):
-        """
-        The N-th harmonic number. Used by the Watterson function.
-    
-        :param int N: The harmonic number to calculate.
-        """
-        return (N)*(1./hmean(list(range(1, N+1))))
-
-    def Watterson(seqs, nsamples=0, per_base=True):
+    def Watterson(self, locus):
         """
         Calculate Watterson's theta and optionally average over sequence length.
     
@@ -388,44 +358,24 @@ class Processor(object):
             ambiguity codes indicating segregating sites. It can also be a string
             indicating the path to a fasta file, or a list of sequences which
             may or may not include the sample names (they will be removed).
-        :param int nsamples: The number of samples in the pooled sequence
-            (for pooled data only).
-        :param bool per_base: Whether to average over the length of the sequence.
     
-        :return float: The value of Watterson's estimator of theta per base.
+        :return tuple: The value of Watterson's estimator of theta, both the
+            raw value and scaled to per base.
         """
-        if isinstance(seqs, str):
-            try:
-                segsites = _n_segsites_pooled(seqs)
-            except Exception as inst:
-                try:
-                    ## If seqs is a file just read in the data here and do the
-                    ## calculation in the block below
-                    seqs = open(seqs).readlines()
-                except (IOError, TypeError) as inst:
-                    ## Not a file
-                    pass
+        nsamples = len(locus)
+        # Count numbers of unique bases per site excluding - and N
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Count indexes of variable sites
+        segsites = len(np.where(snps)[0])
+        # Calculate theta
+        w_theta = segsites/(nsamples*(1/hmean(list(range(1, nsamples+1)))))
+        # Scale per base by locus length
+        w_theta_per_base = w_theta/len(locus.iloc[0])
 
-        if isinstance(seqs, list):
-            ## Remove all the fasta names, if any, convert to a numpy array
-            ## and transpose, so now it's a list of lists of bases per sample.
-            seqs = np.array([list(x) for x in seqs if not ">" in x]).T
-            ## Get the number of samples
-            nsamples = seqs.shape[1]
-            ## Count the number of non-unique bases (the -1 turns monomorphic sites
-            ## into zeros.
-            #Py2 segsites = np.count_nonzero(np.array(map(len, map(lambda x: set(x), seqs))) - 1)
-            segsites = np.count_nonzero(np.array(list(map(len, [set(x) for x in seqs]))) - 1)
-    
-        if nsamples == 0:
-            raise MESS.util.MESSError("If using pooled data you must include the `nsamples` parameter.")
-
-        w_theta = segsites/_hnum(nsamples)
-
-        if per_base:
-            w_theta = w_theta/float(len(seqs))
-
-        return w_theta
+        return w_theta, w_theta_per_base
 
 
     def tajD_island(haplotypes, S):
