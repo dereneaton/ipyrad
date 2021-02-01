@@ -12,8 +12,11 @@ import math
 import numpy as np
 import pandas as pd
 import time
+from collections import Counter
 from ipyrad import Assembly
 from ipyrad.assemble.utils import IPyradError
+from itertools import combinations
+from scipy.stats import entropy
 from ..core.Parallel import Parallel
 from .locus_extracter import LocusExtracter
 from .utils import Params, ProgressBar
@@ -256,16 +259,235 @@ class Popgen(object):
                 prog.update()
                 print("")
                 break
-        # Fst
-        farr, darr, narr = self._fst()
-        self.results.farr = farr
-        self.results.darr = darr
-        self.results.narr = narr
 
-        # pi
-        pi_dict = {}
-        for lidx in range(len(self.lex.loci)):
-            pi_dict[lidx] = self._pi(self.lex.get_locus(lidx, as_df=True))
+
+# ------------------------------------------------------------
+# Classes initialized and run on remote engines.
+# ------------------------------------------------------------
+def _calc_sumstats(data, start_locus, nloci):
+    # process chunk writes to files and returns proc with features.
+    proc = Processor(data, start_locus, nloci)
+    proc.run()
+
+    out = {
+        "filters": proc.filters,
+        "lcov": proc.lcov,
+        "scov": proc.scov,
+        "var": proc.var,
+        "pis": proc.pis,
+        "nbases": proc.nbases
+    }
+
+    with open(proc.outpickle, 'wb') as outpickle:
+        pickle.dump(out, outpickle)
+
+
+##############################################################
+
+class Processor(object):
+    def __init__(self, data, start_locus, nloci, loci):
+        """
+        """
+
+        # init data
+        self.data = data
+        self.start_locus = start_locus
+        self.nloci = nloci
+        self.loci = iter(loci)
+
+
+    def run(self):
+
+        # iterate through loci in the chunk
+        while 1:
+            try:
+                locus = next(self.loci)
+                #print(locus)
+            except StopIteration:
+                break
+
+
+    # Within population summary statistics
+    def _pi(self, locus):
+        "calculate per-sample heterozygosity after filtering"
+        pass
+
+
+    def pi(self, locus):
+        """
+        Calculate nucleotide diversity per site and also average per base.
+
+        :param array-like locus: An np.array or pd.DataFrame of aligned loci
+            as might be returned by calling LocusExtracter.get_locus(as_df=True).
+
+        :return tuple: Returns a tuple with pi_per_base (averaged across the
+            length of the whole locus), and a dictionary containing values of
+            pi per site, with keys as the base positions.
+        """
+        pi_per_base = 0
+        site_pi = {}
+        len_seq = len(locus.iloc[0])
+
+        # Count numbers of unique bases per site
+        cts = np.array(locus.apply(lambda x: Counter(x)))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Indexes of variable sites
+        sidxs = np.where(snps)[0]
+        for sidx in sidxs:
+            site_pi[sidx] = 0
+            # Don't consider indels and N. This is similar to how pixy
+            # does it and should result in less biased pi estimates.
+            del cts[sidx]["-"]
+            del cts[sidx]["N"]
+            # Enumerate the possible comparisons and for each
+            # comparison calculate the number of pairwise differences,
+            # summing over all sites in the sequence.
+            for c in combinations(cts[sidx].values(), 2):
+                n = c[0] + c[1]
+                n_comparisons = float(n) * (n - 1) / 2
+                site_pi[sidx] += float(c[0]) * (n-c[0]) / n_comparisons
+        if site_pi:
+            # Average over the length of the whole sequence.
+            pi_per_base = sum(site_pi.values())/len_seq
+
+        return pi_per_base, site_pi
+
+
+    ## TODO: Replace this and the dxy function with the pi/dxy
+    ## functions from easyCGD which are much nicer and smarter.
+    def pi2(haplotypes):
+        ## If no seg sites in a pop then haplotypes will be 0 length
+        if haplotypes.size == 0:
+            return 0
+        n = len(haplotypes[0])
+        n_comparisons = float(n) * (n - 1) / 2
+
+        pi = 0
+        for hap in haplotypes:
+            k = np.count_nonzero(hap)
+            pi += float(k) * (n - k) / n_comparisons
+        return(pi)
+
+
+    def _hnum(N):
+        """
+        The N-th harmonic number. Used by the Watterson function.
+    
+        :param int N: The harmonic number to calculate.
+        """
+        return (N)*(1./hmean(list(range(1, N+1))))
+
+    def Watterson(seqs, nsamples=0, per_base=True):
+        """
+        Calculate Watterson's theta and optionally average over sequence length.
+    
+        :param str/array-like seqs: The DNA sequence(s) over which to 
+            calculate the statistic. This parameter can be a single DNA sequence
+            as a string, in which case we assume it is pooled data with IUPAC
+            ambiguity codes indicating segregating sites. It can also be a string
+            indicating the path to a fasta file, or a list of sequences which
+            may or may not include the sample names (they will be removed).
+        :param int nsamples: The number of samples in the pooled sequence
+            (for pooled data only).
+        :param bool per_base: Whether to average over the length of the sequence.
+    
+        :return float: The value of Watterson's estimator of theta per base.
+        """
+        if isinstance(seqs, str):
+            try:
+                segsites = _n_segsites_pooled(seqs)
+            except Exception as inst:
+                try:
+                    ## If seqs is a file just read in the data here and do the
+                    ## calculation in the block below
+                    seqs = open(seqs).readlines()
+                except (IOError, TypeError) as inst:
+                    ## Not a file
+                    pass
+
+        if isinstance(seqs, list):
+            ## Remove all the fasta names, if any, convert to a numpy array
+            ## and transpose, so now it's a list of lists of bases per sample.
+            seqs = np.array([list(x) for x in seqs if not ">" in x]).T
+            ## Get the number of samples
+            nsamples = seqs.shape[1]
+            ## Count the number of non-unique bases (the -1 turns monomorphic sites
+            ## into zeros.
+            #Py2 segsites = np.count_nonzero(np.array(map(len, map(lambda x: set(x), seqs))) - 1)
+            segsites = np.count_nonzero(np.array(list(map(len, [set(x) for x in seqs]))) - 1)
+    
+        if nsamples == 0:
+            raise MESS.util.MESSError("If using pooled data you must include the `nsamples` parameter.")
+
+        w_theta = segsites/_hnum(nsamples)
+
+        if per_base:
+            w_theta = w_theta/float(len(seqs))
+
+        return w_theta
+
+
+    def tajD_island(haplotypes, S):
+        if len(haplotypes) == 0:
+            return 0
+        if not any(haplotypes):
+            return 0
+        if S == 0:
+            return 0
+        d_num = pairwise_diffs(haplotypes) - watt_theta(len(haplotypes), S)
+        ddenom = tajD_denom(len(haplotypes), S)
+        if ddenom == 0:
+            D = 0
+        else:
+            D = d_num/ddenom
+            #print("nhaps {} nuniq {} S {} D {} num {} denom {}".format(len(haplotypes), len(set(haplotypes)), S, D, d_num, ddenom))
+        return D
+
+
+    def _TajimaD_denom(n, S):
+        """
+        Tajima's D denominator. I toiled over this to get it right and it is
+        known to be working.
+
+        This page has a nice worked example with values for each
+        subfunction so you can check your equations:
+        https://ocw.mit.edu/courses/health-sciences-and-technology/hst-508-
+        quantitative-genomics-fall-2005/study-materials/tajimad1.pdf
+
+        :param int N: The number of samples
+        :param int S: The number of segregating sites.
+        """
+        b1 = (n+1)/float(3*(n-1))
+        a1 = sum([1./x for x in range(1, n)])
+        c1 = b1 - (1./a1)
+        e1 = c1/a1
+        a2 = sum([1./(x**2) for x in range(1, n)])
+        b2 = (2.*(n**2 + n + 3))/(9*n*(n-1))
+        c2 = b2 - (n+2)/(a1*n) + (a2/(a1**2))
+        e2 = c2/(a1**2+a2)
+        ddenom = math.sqrt(e1*S + e2*S*(S-1))
+        return ddenom
+
+
+    # Between population summary statistics
+    def _dxy(aseqs, bseqs):
+        Dxy = 0
+        for a in aseqs:
+            for b in bseqs:
+                ## Get counts of bases that differ between seqs
+                diffs = np.sum(~np.array(a == b, dtype=np.bool))
+                indela = a == "-"
+                indelb = b == "-"
+                ## Get counts of indels that are present in one seq and not the other
+                indels = np.sum(~np.array(indela == indelb))
+                na = a == "N"
+                nb = b == "N"
+                ## Get count of Ns that are present in one seq and not the other
+                ns = np.sum(~np.array(na == nb))
+                ## Get average number of differences per base, not counting indels and Ns
+                Dxy += (diffs - indels - ns)/len(a)
+        return Dxy/(len(aseqs)*len(bseqs))
 
 
     def _fst(self):
@@ -341,36 +563,63 @@ class Popgen(object):
         pass
 
 
-    def _pi(self, locus):
-        "calculate per-sample heterozygosity after filtering"
-        pass
-
-
-    def _TajimaD_denom(n, S):
+    # utils
+    
+    def hill_number(abunds, order=0):
         """
-        Tajima's D denominator. I toiled over this to get it right and it is
-        known to be working.
-
-        This page has a nice worked example with values for each
-        subfunction so you can check your equations:
-        https://ocw.mit.edu/courses/health-sciences-and-technology/hst-508-
-        quantitative-genomics-fall-2005/study-materials/tajimad1.pdf
-
-        :param int N: The number of samples
-        :param int S: The number of segregating sites.
+        Get one hill humber from an array-like of values.
+    
+        :param array-like abunds: An `array-like` of counts of individuals per
+            species.
+        :param float order: The order of the Hill number to calculate.
+    
+        :return: The Hill number of order `order`.
         """
-        b1 = (n+1)/float(3*(n-1))
-        a1 = sum([1./x for x in range(1, n)])
-        c1 = b1 - (1./a1)
-        e1 = c1/a1
-        a2 = sum([1./(x**2) for x in range(1, n)])
-        b2 = (2.*(n**2 + n + 3))/(9*n*(n-1))
-        c2 = b2 - (n+2)/(a1*n) + (a2/(a1**2))
-        e2 = c2/(a1**2+a2)
-        ddenom = math.sqrt(e1*S + e2*S*(S-1))
-        return ddenom
+        abunds = np.array(abunds)
+        ## Degenerate edge cases can cause all zero values, particulary for pi
+        if not np.any(abunds):
+            return 0
+        if order == 0:
+            return len(np.nonzero(abunds)[0])
+        if order == 1:
+            h1 = np.exp(entropy(abunds))
+            return h1
+        tot = float(np.sum(abunds))
+        proportions = np.array(abunds[abunds > 0])/tot
+        prop_order = proportions**order
+        h2 = np.sum(prop_order)**(1./(1-order))
+        return h2
+    
+    def hill_numbers(abunds, orders, granularity=None, do_negative=False):
+        """
+        Get all hill numbers from 0 to 'orders' from an array-like of abundances.
+        If `granularity` is specified then calculate fractional Hill numbers
+        such that the returned `numpy.array` contains `granularity` count of Hill
+        numbers calculated and equally spaced between 0 and `orders`. The
+        `do_negative` parameter will include both positive and negative values
+        of Hill numbers up to order equal to `orders`.
+    
+        :param array-like abunds: An `array-like` of counts of individuals per
+            species.
+        :param int orders: The max order of Hill numbers to calculate.
+        :param int granularity: The number of equally spaced fractional Hill
+            numbers to calculate between 0 and `orders`. If not specified then
+            returns only integer values of Hill numbers between 0 and `orders`.
+        :param bool do_negative: Whether to calculate negative as well as positive
+            Hill numbers between 0 and `orders`.
+    
+        :return numpy.array: An array of Hill numbers from 0 to (+/-) `orders`
+            in intervals of defined by the `granularity` parameter.
+        """
+        ret = []
+        min_order = 0
+        if not granularity: granularity = orders + 1
+        if do_negative:
+            min_order = -orders
+            granularity *= 2
+        for order in np.linspace(min_order, orders, granularity):
+            ret.append(hill_number(abunds, order))
+        return np.array(ret)
 
 
-def _calc_sumstats(locus):
-    return 1
 
