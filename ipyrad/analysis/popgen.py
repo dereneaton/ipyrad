@@ -321,7 +321,7 @@ class Processor(object):
                 S = len(sidxs)
                 n = len(locus)
                 pi_res = self._pi(cts, sidxs)
-                w_theta_res = self._Watterson(S=S, n=n)
+                w_theta_res = self._Watterson(S=S, n=n, length=len(cts))
                 tajD_res = self._TajimasD(S=S, n=n,
                                             pi=pi_res[0],
                                             w_theta=w_theta_res[0])
@@ -356,9 +356,9 @@ class Processor(object):
         return pi, pi/len(cts),  site_pi
 
 
-    def _Watterson(self, S, n):
+    def _Watterson(self, S, n, length):
         w_theta = S/(n*(1/hmean(list(range(1, n+1)))))
-        return w_theta
+        return w_theta, w_theta/length
 
 
     def _TajimasD(self, S, n, pi, w_theta):
@@ -444,8 +444,7 @@ class Processor(object):
         # Count indexes of variable sites
         S = len(np.where(snps)[0])
         # Calculate theta
-        w_theta = self._Watterson(S, n)
-        return w_theta, w_theta/len(cts)
+        return self._Watterson(S, n, len(cts))
 
 
     def TajimasD(self, locus):
@@ -467,7 +466,7 @@ class Processor(object):
         # Count indexes of variable sites
         S = len(np.where(snps)[0])
         pi = self._pi(cts, sidxs)[0]
-        w_theta = self._Watterson(S, n)
+        w_theta = self._Watterson(S, n, len(cts))[0]
         return self._TajimasD(S, n, pi, w_theta)
 
 
