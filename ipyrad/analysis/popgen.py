@@ -302,7 +302,15 @@ class Processor(object):
         while 1:
             try:
                 locus = next(self.loci)
-                #print(locus)
+                # within pops stats
+                # For each population:
+                #  segregating sites
+                #  pi
+                #  Watterson
+                #  Tajima's D
+
+                # between pops stats
+                #
             except StopIteration:
                 break
 
@@ -352,12 +360,10 @@ class Processor(object):
         """
         Calculate Watterson's theta and optionally average over sequence length.
     
-        :param str/array-like seqs: The DNA sequence(s) over which to 
-            calculate the statistic. This parameter can be a single DNA sequence
-            as a string, in which case we assume it is pooled data with IUPAC
-            ambiguity codes indicating segregating sites. It can also be a string
-            indicating the path to a fasta file, or a list of sequences which
-            may or may not include the sample names (they will be removed).
+        :param array-like locus: The DNA sequence(s) over which to
+            calculate the statistic. This should be formatted in the same way
+            as the result from a call to LocusExtracter.get_locus(), i.e. as
+            an array or DataFrame with bases coded as int8 ascii values.
     
         :return tuple: The value of Watterson's estimator of theta, both the
             raw value and scaled to per base.
@@ -378,24 +384,33 @@ class Processor(object):
         return w_theta, w_theta_per_base
 
 
-    def tajD_island(haplotypes, S):
-        if len(haplotypes) == 0:
-            return 0
-        if not any(haplotypes):
-            return 0
-        if S == 0:
-            return 0
-        d_num = pairwise_diffs(haplotypes) - watt_theta(len(haplotypes), S)
-        ddenom = tajD_denom(len(haplotypes), S)
-        if ddenom == 0:
-            D = 0
-        else:
+    def TajimasD(self, locus):
+        """
+        Calculate Tajima's D for a given locus.
+
+        :param array-like locus: Locus data in the same format as the other
+            functions.
+
+        :return float: Tajima's D calculated on the data for this locus.
+        """
+        D = 0
+        nsamples = len(locus)
+        # Count numbers of unique bases per site excluding - and N
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Count indexes of variable sites
+        segsites = len(np.where(snps)[0])
+        if segsites > 0:
+            d_num = self.pi(locus)[0] - self.Watterson(locus)[0]
+            ddenom = self._TajimasD_denom(nsamples, segsites)
+        if ddenom != 0:
             D = d_num/ddenom
-            #print("nhaps {} nuniq {} S {} D {} num {} denom {}".format(len(haplotypes), len(set(haplotypes)), S, D, d_num, ddenom))
         return D
 
 
-    def _TajimaD_denom(n, S):
+    def _TajimasD_denom(self, n, S):
         """
         Tajima's D denominator. I toiled over this to get it right and it is
         known to be working.
