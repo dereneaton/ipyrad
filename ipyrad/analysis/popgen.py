@@ -309,6 +309,23 @@ class Processor(object):
                 #  Watterson
                 #  Tajima's D
 
+                # Count numbers of unique bases per site
+                # Don't consider indels (45) and N (78). Similar to how pixy
+                # does it and should result in less biased pi estimates.
+                cts = np.array(locus.apply(lambda bases:\
+                                Counter(x for x in bases if x not in [45, 78])))
+                # Only consider variable sites
+                snps = np.array([len(x) for x in cts]) > 1
+                # Indexes of variable sites
+                sidxs = np.where(snps)[0]
+                S = len(sidxs)
+                n = len(locus)
+                pi_res = self._pi(cts, sidxs)
+                w_theta_res = self._Watterson(S=S, n=n)
+                tajD_res = self._TajimasD(S=S, n=n,
+                                            pi=pi_res[0],
+                                            w_theta=w_theta_res[0])
+
                 # between pops stats
                 #
             except StopIteration:
@@ -316,30 +333,13 @@ class Processor(object):
 
 
     # Within population summary statistics
-
-    def pi(self, locus):
-        """
-        Calculate nucleotide diversity per site and also average per base.
-
-        :param array-like locus: An np.array or pd.DataFrame of aligned loci
-            as might be returned by calling LocusExtracter.get_locus(as_df=True).
-
-        :return tuple: Returns a tuple with raw pi, pi_per_base (averaged across
-            the length of the whole locus), and a dictionary containing values of
-            pi per site, with keys as the base positions.
-        """
+    # The semi-private (single "_") methods are driven by the run() method
+    # and require super specific, individualized data which is parsed and
+    # passed to them by run(). They will be difficult to call by hand, but
+    # will be much more efficient in aggregate than the public methods below.
+    def _pi(self, cts, sidxs):
         pi = 0
         site_pi = {}
-
-        # Count numbers of unique bases per site
-        # Don't consider indels (45) and N (78). Similar to how pixy
-        # does it and should result in less biased pi estimates.
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        # Indexes of variable sites
-        sidxs = np.where(snps)[0]
         for sidx in sidxs:
             site_pi[sidx] = 0
             # Enumerate the possible comparisons and for each
@@ -353,64 +353,25 @@ class Processor(object):
             # Average over the length of the whole sequence.
             pi = sum(site_pi.values())
 
-        return pi, pi/len(locus.iloc[0]),  site_pi
+        return pi, pi/len(cts),  site_pi
 
 
-    def Watterson(self, locus):
-        """
-        Calculate Watterson's theta and optionally average over sequence length.
-    
-        :param array-like locus: The DNA sequence(s) over which to
-            calculate the statistic. This should be formatted in the same way
-            as the result from a call to LocusExtracter.get_locus(), i.e. as
-            an array or DataFrame with bases coded as int8 ascii values.
-    
-        :return tuple: The value of Watterson's estimator of theta, both the
-            raw value and scaled to per base.
-        """
-        nsamples = len(locus)
-        # Count numbers of unique bases per site excluding - and N
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        # Count indexes of variable sites
-        segsites = len(np.where(snps)[0])
-        # Calculate theta
-        w_theta = segsites/(nsamples*(1/hmean(list(range(1, nsamples+1)))))
-        # Scale per base by locus length
-        w_theta_per_base = w_theta/len(locus.iloc[0])
-
-        return w_theta, w_theta_per_base
+    def _Watterson(self, S, n):
+        w_theta = S/(n*(1/hmean(list(range(1, n+1)))))
+        return w_theta
 
 
-    def TajimasD(self, locus):
-        """
-        Calculate Tajima's D for a given locus.
-
-        :param array-like locus: Locus data in the same format as the other
-            functions.
-
-        :return float: Tajima's D calculated on the data for this locus.
-        """
+    def _TajimasD(self, S, n, pi, w_theta):
         D = 0
-        nsamples = len(locus)
-        # Count numbers of unique bases per site excluding - and N
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        # Count indexes of variable sites
-        segsites = len(np.where(snps)[0])
-        if segsites > 0:
-            d_num = self.pi(locus)[0] - self.Watterson(locus)[0]
-            ddenom = self._TajimasD_denom(nsamples, segsites)
+        if S > 0:
+            d_num = pi - w_theta
+            ddenom = self._TajimasD_denom(S, n)
         if ddenom != 0:
             D = d_num/ddenom
         return D
 
 
-    def _TajimasD_denom(self, n, S):
+    def _TajimasD_denom(self, S, n):
         """
         Tajima's D denominator. I toiled over this to get it right and it is
         known to be working.
@@ -433,6 +394,81 @@ class Processor(object):
         e2 = c2/(a1**2+a2)
         ddenom = math.sqrt(e1*S + e2*S*(S-1))
         return ddenom
+
+
+    # The "public" methods are wholly independent and operate at the level
+    # of a given locus. They are also substantially redundant, so they may be
+    # called by hand, but the bulk of the work is done by the semi-private
+    # (single "_") methods above.
+    def pi(self, locus):
+        """
+        Calculate nucleotide diversity per site and also average per base.
+
+        :param array-like locus: An np.array or pd.DataFrame of aligned loci
+            as might be returned by calling LocusExtracter.get_locus(as_df=True).
+
+        :return tuple: Returns a tuple with raw pi, pi_per_base (averaged across
+            the length of the whole locus), and a dictionary containing values of
+            pi per site, with keys as the base positions.
+        """
+        # Count numbers of unique bases per site
+        # Don't consider indels (45) and N (78). Similar to how pixy
+        # does it and should result in less biased pi estimates.
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Indexes of variable sites
+        sidxs = np.where(snps)[0]
+        return self._pi(cts, sidxs)
+
+
+    def Watterson(self, locus):
+        """
+        Calculate Watterson's theta and optionally average over sequence length.
+    
+        :param array-like locus: The DNA sequence(s) over which to
+            calculate the statistic. This should be formatted in the same way
+            as the result from a call to LocusExtracter.get_locus(), i.e. as
+            an array or DataFrame with bases coded as int8 ascii values.
+    
+        :return tuple: The value of Watterson's estimator of theta, both the
+            raw value and scaled to per base.
+        """
+        n = len(locus)
+        # Count numbers of unique bases per site excluding - and N
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Count indexes of variable sites
+        S = len(np.where(snps)[0])
+        # Calculate theta
+        w_theta = self._Watterson(S, n)
+        return w_theta, w_theta/len(cts)
+
+
+    def TajimasD(self, locus):
+        """
+        Calculate Tajima's D for a given locus.
+
+        :param array-like locus: Locus data in the same format as the other
+            functions.
+
+        :return float: Tajima's D calculated on the data for this locus.
+        """
+        n = len(locus)
+        # Count numbers of unique bases per site excluding - and N
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        sidxs = np.where(snps)[0]
+        # Count indexes of variable sites
+        S = len(np.where(snps)[0])
+        pi = self._pi(cts, sidxs)[0]
+        w_theta = self._Watterson(S, n)
+        return self._TajimasD(S, n, pi, w_theta)
 
 
     # Between population summary statistics
