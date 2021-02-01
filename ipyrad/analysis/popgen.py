@@ -176,6 +176,9 @@ class Popgen(object):
                 if not self.quiet:
                     # Warn here because this is a valid way to remove samples
                     print(_SKIP_SAMPLES_WARN.format(in_hdf5_not_imap))
+        else:
+            # If no imap then all samples are from one population
+            self.imap["pop1"] = self.samples
 
 
     def run(self, ipyclient=None, force=False, show_cluster=True, auto=False):
@@ -308,7 +311,8 @@ class Processor(object):
                 #  pi
                 #  Watterson
                 #  Tajima's D
-
+                for pop in imap:
+                    pass
                 # Count numbers of unique bases per site
                 # Don't consider indels (45) and N (78). Similar to how pixy
                 # does it and should result in less biased pi estimates.
@@ -318,7 +322,9 @@ class Processor(object):
                 snps = np.array([len(x) for x in cts]) > 1
                 # Indexes of variable sites
                 sidxs = np.where(snps)[0]
+                # Number of segregating sites
                 S = len(sidxs)
+                # Number of samples
                 n = len(locus)
                 pi_res = self._pi(cts, sidxs)
                 w_theta_res = self._Watterson(S=S, n=n, length=len(cts))
