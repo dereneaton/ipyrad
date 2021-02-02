@@ -309,6 +309,7 @@ class Processor(object):
                 self.results.pi[lidx] = {}
                 self.results.Watterson[lidx] = {}
                 self.results.TajimasD[lidx] = {}
+
                 # within pops stats
                 for pop in self.data.imap:
                     # Carve off just the samples for this population
@@ -354,10 +355,10 @@ class Processor(object):
         # Only retain this info for variable sites
         var_cts = cts[snps]
 
-        # An inner function to convert to split alleles for base counts within
+        # An inner function to split alleles for base counts within
         # a given site. Will disambiguate ambiguous bases and sum all CATGs:
         # Counter({82: 5, 71: 4, 84: 3})
-        # The R (82) gets split up into As (65) and Gs (71)
+        # The Rs (82) gets split up into As (65) and Gs (71)
         # Counter({71: 13, 65: 5, 84: 6})
         def dcons(counter):
             return Counter(list(itertools.chain(*[DCONS[x]*ct for x, ct in counter.items()])))
@@ -365,6 +366,49 @@ class Processor(object):
         # There's probably a better way to do this, but this works.
         var_cts = list(map(dcons, var_cts))
         return var_cts, sidxs, len(cts)
+
+
+    def _process_locus_pops(self, locus, pops):
+        """
+        A helper function to return counts at variable sites between two
+        (or more) populations. There's probably a way to hack the
+        _process_locus() function to do this, but it would get ugly fast.
+
+        :param array-like locus: The locus to process.
+        :param list pops: The two or more populations to consider. These
+            should be valid keys in the self.data.imap dictionary.
+
+        :returns tuple: A dict with one record per population containing
+            a counter at all shared variable sites. The second element of the
+            tuple is a sorted list of all shared variable sites.
+        """
+        pop_cts = {}
+        pop_sidxs = {}
+
+        for pop in pops:
+            # Get counts for this pop
+            cts = np.array(locus.loc[self.data.imap[pop]].apply(
+                            lambda bases: Counter(x for x in bases if x not in [45, 78])))
+            # Only consider variable sites
+            snps = np.array([len(x) for x in cts]) > 1
+            # store indexes of variable sites and counts for all bases
+            pop_cts[pop] = cts
+            pop_sidxs[pop] = np.where(snps)[0]
+
+        # variable sites across all pops. Compile all the sidxs per population
+        # make a set and sort it. A little ugly.
+        sidxs = sorted(list(set((itertools.chain(*[pop_sidxs[x] for x in pop_sidxs])))))
+
+        # Now go back through and subset the counts to retain all shared
+        # variable sites. You have to do it this way because some sites may be
+        # invariable within a population, but you still want counts while
+        # accounting for missing data and indels.
+        for pop in pops:
+            pop_cts[pop] = pop_cts[pop][sidxs]
+
+        # pop_cts here will be a dictionary with list of equal length for all
+        # populations including counts per base at each sidxs site.
+        return pop_cts, sidxs
 
 
     # Within population summary statistics
