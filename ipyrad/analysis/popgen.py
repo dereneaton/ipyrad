@@ -60,7 +60,7 @@ class Popgen(object):
         
         # set attributes
         self.imap = (imap if imap else {})
-        self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
+        self.minmap = (minmap if minmap else {i: 4 for i in self.imap})
         self.npops = (len(self.imap) if imap else 1)
         self.quiet = quiet
         self.nboots = 100
