@@ -11,6 +11,7 @@ import itertools
 import math
 import numpy as np
 import pandas as pd
+import pickle
 import time
 from collections import Counter
 from ipyrad import Assembly
@@ -268,22 +269,13 @@ class Popgen(object):
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
 # ------------------------------------------------------------
-def _calc_sumstats(data, start_locus, nloci):
+def _calc_sumstats(data, start_locus, loci):
     # process chunk writes to files and returns proc with features.
-    proc = Processor(data, start_locus, nloci)
+    proc = Processor(data, start_locus, 100, loci)
     proc.run()
 
-    out = {
-        "filters": proc.filters,
-        "lcov": proc.lcov,
-        "scov": proc.scov,
-        "var": proc.var,
-        "pis": proc.pis,
-        "nbases": proc.nbases
-    }
-
-    with open(proc.outpickle, 'wb') as outpickle:
-        pickle.dump(out, outpickle)
+    with open(proc.outfile, 'wb') as outpickle:
+        pickle.dump(proc.results, outpickle)
 
 
 ##############################################################
@@ -295,6 +287,7 @@ class Processor(object):
 
         # init data
         self.data = data
+        self.outfile = os.path.join(data.workdir, "{}.p".format(start_locus))
         self.start_locus = start_locus
         self.nloci = nloci
         self.loci = iter(loci)
@@ -308,20 +301,19 @@ class Processor(object):
 
 
     def run(self):
-
+        lidx = self.start_locus
         # iterate through loci in the chunk
         while 1:
             try:
-                #lidx, locus = enumerate(next(self.loci))
                 locus = next(self.loci)
+                self.results.pi[lidx] = {}
+                self.results.Watterson[lidx] = {}
+                self.results.TajimasD[lidx] = {}
                 # within pops stats
-                # For each population:
-                #  segregating sites
-                #  pi
-                #  Watterson
-                #  Tajima's D
                 for pop in self.data.imap:
-                    cts, sidxs, length = self._process_locus(locus)
+                    # Carve off just the samples for this population
+                    cts, sidxs, length = self._process_locus(
+                                                locus.loc[self.data.imap[pop]])
                     # Number of segregating sites
                     S = len(sidxs)
                     # Number of samples
@@ -329,11 +321,15 @@ class Processor(object):
                     pi_res = self._pi(cts, sidxs, length)
                     w_theta_res = self._Watterson(S=S, n=n, length=length)
                     tajD_res = self._TajimasD(S=S, n=n,
-                                                pi=pi_res[0],
-                                                w_theta=w_theta_res[0])
-
+                                                pi=pi_res["pi"],
+                                                w_theta=w_theta_res["w_theta"])
+                    # store results
+                    self.results.pi[lidx][pop] = pi_res
+                    self.results.Watterson[lidx][pop] = w_theta_res
+                    self.results.TajimasD[lidx][pop] = tajD_res
                 # between pops stats
                 #
+                lidx += 1
             except StopIteration:
                 break
 
@@ -396,12 +392,12 @@ class Processor(object):
             # Average over the length of the whole sequence.
             pi = sum(site_pi.values())
 
-        return pi, pi/length,  site_pi
+        return {"pi":pi, "pi_per_base":pi/length,  "site_pi":site_pi}
 
 
     def _Watterson(self, S, n, length):
         w_theta = S/(n*(1/hmean(list(range(1, n+1)))))
-        return w_theta, w_theta/length
+        return {"w_theta":w_theta, "w_theta_per_base":w_theta/length}
 
 
     def _TajimasD(self, S, n, pi, w_theta):
@@ -487,8 +483,8 @@ class Processor(object):
         n = len(locus)
         cts, sidxs, length = self._process_locus(locus)
         S = len(sidxs)
-        pi = self._pi(cts, sidxs, length)[0]
-        w_theta = self._Watterson(S, n, length)[0]
+        pi = self._pi(cts, sidxs, length)["pi"]
+        w_theta = self._Watterson(S, n, length)["w_theta"]
         return self._TajimasD(S, n, pi, w_theta)
 
 
