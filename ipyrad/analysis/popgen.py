@@ -20,6 +20,7 @@ from scipy.stats import entropy, hmean
 from ..core.Parallel import Parallel
 from .locus_extracter import LocusExtracter
 from .utils import Params, ProgressBar
+from ..assemble.utils import DCONS
 
 _BAD_IMAP_ERROR = """
 Samples in imap not in the hdf5 file: {}"
@@ -298,12 +299,20 @@ class Processor(object):
         self.nloci = nloci
         self.loci = iter(loci)
 
+        self.results = Params()
+        self.results.pi = {}
+        self.results.Watterson = {}
+        self.results.TajimasD = {}
+        self.results.Fst = {}
+        self.results.Dxy = {}
+
 
     def run(self):
 
         # iterate through loci in the chunk
         while 1:
             try:
+                #lidx, locus = enumerate(next(self.loci))
                 locus = next(self.loci)
                 # within pops stats
                 # For each population:
@@ -311,26 +320,17 @@ class Processor(object):
                 #  pi
                 #  Watterson
                 #  Tajima's D
-                for pop in imap:
-                    pass
-                # Count numbers of unique bases per site
-                # Don't consider indels (45) and N (78). Similar to how pixy
-                # does it and should result in less biased pi estimates.
-                cts = np.array(locus.apply(lambda bases:\
-                                Counter(x for x in bases if x not in [45, 78])))
-                # Only consider variable sites
-                snps = np.array([len(x) for x in cts]) > 1
-                # Indexes of variable sites
-                sidxs = np.where(snps)[0]
-                # Number of segregating sites
-                S = len(sidxs)
-                # Number of samples
-                n = len(locus)
-                pi_res = self._pi(cts, sidxs)
-                w_theta_res = self._Watterson(S=S, n=n, length=len(cts))
-                tajD_res = self._TajimasD(S=S, n=n,
-                                            pi=pi_res[0],
-                                            w_theta=w_theta_res[0])
+                for pop in self.data.imap:
+                    cts, sidxs, length = self._process_locus(locus)
+                    # Number of segregating sites
+                    S = len(sidxs)
+                    # Number of samples
+                    n = len(locus)
+                    pi_res = self._pi(cts, sidxs, length)
+                    w_theta_res = self._Watterson(S=S, n=n, length=length)
+                    tajD_res = self._TajimasD(S=S, n=n,
+                                                pi=pi_res[0],
+                                                w_theta=w_theta_res[0])
 
                 # between pops stats
                 #
@@ -338,20 +338,57 @@ class Processor(object):
                 break
 
 
+    def _process_locus(self, locus):
+        """
+        Helper function to convert a locus into a list of counters per
+        variable site, the indices of each variable site, and the length
+        of the locus.
+        """
+        # Count numbers of unique bases per site
+        # Don't consider indels (45) and N (78). Similar to how pixy
+        # does it and should result in less biased pi estimates.
+        cts = np.array(locus.apply(lambda bases:\
+                        Counter(x for x in bases if x not in [45, 78])))
+        # Only consider variable sites
+        snps = np.array([len(x) for x in cts]) > 1
+        # Indexes of variable sites
+        sidxs = np.where(snps)[0]
+
+        # Split consensus bases and disambiguate (convert diploid to haploid)
+        # Only retain this info for variable sites
+        var_cts = cts[snps]
+
+        # An inner function to convert to split alleles for base counts within
+        # a given site. Will disambiguate ambiguous bases and sum all CATGs:
+        # Counter({82: 5, 71: 4, 84: 3})
+        # The R (82) gets split up into As (65) and Gs (71)
+        # Counter({71: 13, 65: 5, 84: 6})
+        def dcons(counter):
+            return Counter(list(itertools.chain(*[DCONS[x]*ct for x, ct in counter.items()])))
+        # Map this function across all counters per variable site.
+        # There's probably a better way to do this, but this works.
+        var_cts = list(map(dcons, var_cts))
+        return var_cts, sidxs, len(cts)
+
+
     # Within population summary statistics
     # The semi-private (single "_") methods are driven by the run() method
     # and require super specific, individualized data which is parsed and
     # passed to them by run(). They will be difficult to call by hand, but
     # will be much more efficient in aggregate than the public methods below.
-    def _pi(self, cts, sidxs):
+    def _pi(self, cts, sidxs, length):
+        """
+        :param array-like cts: A list of counters for each variable site.
+        :param array-like sidxs: List of base positions of variable sites
+        """
         pi = 0
         site_pi = {}
-        for sidx in sidxs:
+        for idx, sidx in enumerate(sidxs):
             site_pi[sidx] = 0
             # Enumerate the possible comparisons and for each
             # comparison calculate the number of pairwise differences,
             # summing over all sites in the sequence.
-            for c in combinations(cts[sidx].values(), 2):
+            for c in combinations(cts[idx].values(), 2):
                 n = c[0] + c[1]
                 n_comparisons = float(n) * (n - 1) / 2
                 site_pi[sidx] += float(c[0]) * (n-c[0]) / n_comparisons
@@ -359,7 +396,7 @@ class Processor(object):
             # Average over the length of the whole sequence.
             pi = sum(site_pi.values())
 
-        return pi, pi/len(cts),  site_pi
+        return pi, pi/length,  site_pi
 
 
     def _Watterson(self, S, n, length):
@@ -417,16 +454,8 @@ class Processor(object):
             the length of the whole locus), and a dictionary containing values of
             pi per site, with keys as the base positions.
         """
-        # Count numbers of unique bases per site
-        # Don't consider indels (45) and N (78). Similar to how pixy
-        # does it and should result in less biased pi estimates.
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        # Indexes of variable sites
-        sidxs = np.where(snps)[0]
-        return self._pi(cts, sidxs)
+        cts, sidxs, length = self._process_locus(locus)
+        return self._pi(cts, sidxs, length)
 
 
     def Watterson(self, locus):
@@ -442,15 +471,8 @@ class Processor(object):
             raw value and scaled to per base.
         """
         n = len(locus)
-        # Count numbers of unique bases per site excluding - and N
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        # Count indexes of variable sites
-        S = len(np.where(snps)[0])
-        # Calculate theta
-        return self._Watterson(S, n, len(cts))
+        cts, sidxs, length = self._process_locus(locus)
+        return self._Watterson(S=len(sidxs), n=n, length=length)
 
 
     def TajimasD(self, locus):
@@ -463,16 +485,10 @@ class Processor(object):
         :return float: Tajima's D calculated on the data for this locus.
         """
         n = len(locus)
-        # Count numbers of unique bases per site excluding - and N
-        cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
-        # Only consider variable sites
-        snps = np.array([len(x) for x in cts]) > 1
-        sidxs = np.where(snps)[0]
-        # Count indexes of variable sites
-        S = len(np.where(snps)[0])
-        pi = self._pi(cts, sidxs)[0]
-        w_theta = self._Watterson(S, n, len(cts))[0]
+        cts, sidxs, length = self._process_locus(locus)
+        S = len(sidxs)
+        pi = self._pi(cts, sidxs, length)[0]
+        w_theta = self._Watterson(S, n, length)[0]
         return self._TajimasD(S, n, pi, w_theta)
 
 
