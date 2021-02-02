@@ -169,7 +169,7 @@ class LocusExtracter(object):
 
     def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
         """
-        Distribute tree slider jobs in parallel. 
+        Distribute locus extracter jobs in parallel. 
 
         Parameters:
         -----------
