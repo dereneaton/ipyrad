@@ -329,7 +329,9 @@ class Processor(object):
                     self.results.Watterson[lidx][pop] = w_theta_res
                     self.results.TajimasD[lidx][pop] = tajD_res
                 # between pops stats
-                #
+                for pops in combinations(self.data.imap):
+                    pop_cts, sidxs = self._process_locus_pops(locus, pops)
+
                 lidx += 1
             except StopIteration:
                 break
@@ -533,23 +535,29 @@ class Processor(object):
 
 
     # Between population summary statistics
-    def _dxy(aseqs, bseqs):
+    def _dxy(self, cts_a, cts_b):
+        """
+        Calculate Dxy, the absolute sequence divergence, between two
+        populations. The input are counts of each base within each population
+        at sites that vary in either or both populations.
+
+        :param list cts_a: A list of counters for each base that varies in
+            either population for population 1.
+        :param list cts_b: Same thing for population 2.
+
+        :return float: The raw Dxy value (unscaled by sequence length).
+        """
         Dxy = 0
-        for a in aseqs:
-            for b in bseqs:
-                ## Get counts of bases that differ between seqs
-                diffs = np.sum(~np.array(a == b, dtype=np.bool))
-                indela = a == "-"
-                indelb = b == "-"
-                ## Get counts of indels that are present in one seq and not the other
-                indels = np.sum(~np.array(indela == indelb))
-                na = a == "N"
-                nb = b == "N"
-                ## Get count of Ns that are present in one seq and not the other
-                ns = np.sum(~np.array(na == nb))
-                ## Get average number of differences per base, not counting indels and Ns
-                Dxy += (diffs - indels - ns)/len(a)
-        return Dxy/(len(aseqs)*len(bseqs))
+        ncomps = 0
+        for cta, ctb in zip(cts_a, cts_b):
+            ncomps += sum(list(cta.values())) *\
+                        sum(list(ctb.values()))
+
+            for ka, va in cta.items():
+                for kb, vb in ctb.items():
+                    if ka == kb: continue
+                    Dxy += va*vb
+        return Dxy/ncomps
 
 
     def _fst(self):
@@ -623,6 +631,15 @@ class Processor(object):
     def _fis(self):
         "calculate population inbreeding Fis after filtering"
         pass
+
+
+    # "Public" methods for the between populations stats
+    def Dxy(self, locus, pops):
+        """
+        Calculate Dxy for a given locus.
+        """
+        pop_cts, sidxs = self._process_locus_pops(locus, pops)
+        return self._dxy(*pop_cts.values())/len(locus)
 
 
     # utils
