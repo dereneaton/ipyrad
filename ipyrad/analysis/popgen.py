@@ -11,6 +11,7 @@ import itertools
 import math
 import numpy as np
 import pandas as pd
+import os
 import pickle
 import time
 from collections import Counter
@@ -62,7 +63,6 @@ class Popgen(object):
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
         self.npops = (len(self.imap) if imap else 1)
         self.quiet = quiet
-        self.params = Params()
         self.nboots = 100
 
         # Data from the LocusExtracter
@@ -75,7 +75,7 @@ class Popgen(object):
         self.snps = pd.DataFrame()
 
         # i/o paths
-        self.workdir=workdir
+        self.workdir=os.path.abspath(workdir)
         self.mapfile = ""
         self._check_files(data)
         self._check_samples()
@@ -92,6 +92,11 @@ class Popgen(object):
             "threads": 1,
             "pids": {},
             }
+
+        # params to pass to the processor
+        self.params = Params()
+        self.params["imap"] = self.imap
+        self.params["workdir"] = self.workdir
 
         # results dataframes
         self.results = Params()
@@ -239,10 +244,21 @@ class Popgen(object):
 
         # For each locus, calculate all the sumstats of interest
         nloci = len(self.lex.loci)
-        for lidx in range(nloci):
-            locus = self.lex.get_locus(lidx, as_df=True)
-            rasync = lbview.apply(_calc_sumstats, locus)
+        chunksize = int(np.round(nloci/len(ipyclient)))
+        chunkstart = 0
+        while True:
+            # Test for the last chunk and pare it back to the correct size
+            if nloci < (chunkstart + chunksize):
+                chunksize = nloci - chunkstart
+            # Carve off big chunks to pass out to the cluster engines
+            chunk = [self.lex.get_locus(x, as_df=True) for x in range(chunkstart,
+                                                                      chunkstart+chunksize)]
+            args = [self.params, chunkstart, chunk]
+            rasync = lbview.apply(_calc_sumstats, *args)
             self.asyncs.append(rasync)
+
+            chunkstart += chunksize
+            if chunkstart >= nloci: break
 
         # setup progress bar
         prog = ProgressBar(nloci, None, "Calculating sumstats for nloci {}".format(nloci))
@@ -265,15 +281,22 @@ class Popgen(object):
                 print("")
                 break
 
+        # Check failed jobs
+        for job in self.asyncs:
+            if not job.successful():
+                job.get()
+
 
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
 # ------------------------------------------------------------
-def _calc_sumstats(data, start_locus, loci):
+def _calc_sumstats(params, start_lidx, loci):
     # process chunk writes to files and returns proc with features.
-    proc = Processor(data, start_locus, 100, loci)
+    proc = Processor(params, start_lidx, loci)
     proc.run()
 
+    with open("/tmp/wat.txt", 'w') as watdo:
+        watdo.write(proc.outfile)
     with open(proc.outfile, 'wb') as outpickle:
         pickle.dump(proc.results, outpickle)
 
@@ -281,15 +304,15 @@ def _calc_sumstats(data, start_locus, loci):
 ##############################################################
 
 class Processor(object):
-    def __init__(self, data, start_locus, nloci, loci):
+    def __init__(self, params, start_lidx, loci):
         """
         """
 
         # init data
-        self.data = data
-        self.outfile = os.path.join(data.workdir, "{}.p".format(start_locus))
-        self.start_locus = start_locus
-        self.nloci = nloci
+        self.imap = params.imap
+        self.outfile = os.path.join(params.workdir, "{}.p".format(start_lidx))
+        self.start_lidx = start_lidx
+        self.nloci = len(loci)
         self.loci = iter(loci)
 
         self.results = Params()
@@ -301,7 +324,7 @@ class Processor(object):
 
 
     def run(self):
-        lidx = self.start_locus
+        lidx = self.start_lidx
         # iterate through loci in the chunk
         while 1:
             try:
@@ -311,10 +334,10 @@ class Processor(object):
                 self.results.TajimasD[lidx] = {}
 
                 # within pops stats
-                for pop in self.data.imap:
+                for pop in self.imap:
                     # Carve off just the samples for this population
                     cts, sidxs, length = self._process_locus(
-                                                locus.loc[self.data.imap[pop]])
+                                                locus.loc[self.imap[pop]])
                     # Number of segregating sites
                     S = len(sidxs)
                     # Number of samples
@@ -331,13 +354,13 @@ class Processor(object):
 
                 # between pops stats
                 Dxy_arr = pd.DataFrame(
-                    data=np.zeros((len(self.data.imap), len(self.data.imap))),
-                    index=self.data.imap.keys(),
-                    columns=self.data.imap.keys(),
+                    data=np.zeros((len(self.imap), len(self.imap))),
+                    index=self.imap.keys(),
+                    columns=self.imap.keys(),
                 )
-                for pops in combinations(self.data.imap, 2):
+                for pops in combinations(self.imap, 2):
                     pop_cts, sidxs = self._process_locus_pops(locus, pops)
-                    Dxy_res = self._dxy(*pop_cts.values())/len(locus)
+                    Dxy_res = self._dxy(*pop_cts.values(), len(locus))
                     Dxy_arr[pops[1]][pops[0]] = Dxy_res
                 self.results.Dxy[lidx] = Dxy_arr
 
@@ -393,7 +416,7 @@ class Processor(object):
 
         :param array-like locus: The locus to process.
         :param list pops: The two or more populations to consider. These
-            should be valid keys in the self.data.imap dictionary.
+            should be valid keys in the self.imap dictionary.
 
         :returns tuple: A dict with one record per population containing
             a counter at all shared variable sites. The second element of the
@@ -404,7 +427,7 @@ class Processor(object):
 
         for pop in pops:
             # Get counts for this pop
-            cts = np.array(locus.loc[self.data.imap[pop]].apply(
+            cts = np.array(locus.loc[self.imap[pop]].apply(
                             lambda bases: Counter(x for x in bases if x not in [45, 78])))
             # Only consider variable sites
             snps = np.array([len(x) for x in cts]) > 1
@@ -463,6 +486,7 @@ class Processor(object):
 
     def _TajimasD(self, S, n, pi, w_theta):
         D = 0
+        ddenom = 0
         if S > 0:
             d_num = pi - w_theta
             ddenom = self._TajimasD_denom(S, n)
@@ -550,7 +574,7 @@ class Processor(object):
 
 
     # Between population summary statistics
-    def _dxy(self, cts_a, cts_b):
+    def _dxy(self, cts_a, cts_b, length):
         """
         Calculate Dxy, the absolute sequence divergence, between two
         populations. The input are counts of each base within each population
@@ -559,6 +583,7 @@ class Processor(object):
         :param list cts_a: A list of counters for each base that varies in
             either population for population 1.
         :param list cts_b: Same thing for population 2.
+        :param int length: The length of the sequence to calculate Dxy over
 
         :return float: The raw Dxy value (unscaled by sequence length).
         """
@@ -572,7 +597,9 @@ class Processor(object):
                 for kb, vb in ctb.items():
                     if ka == kb: continue
                     Dxy += va*vb
-        return Dxy/ncomps
+        # Monomorphic locus
+        if ncomps == 0: return 0
+        return Dxy/ncomps/length
 
 
     def _fst_full(self, locus):
@@ -597,29 +624,29 @@ class Processor(object):
         of rare variants, though this formulation isn't implemented here.
         """       
         # init fst matrix df with named rows and cols
-        npops = len(self.data.imap)
+        npops = len(self.imap)
         farr = pd.DataFrame(
             data=np.zeros((npops, npops)),
-            index=self.data.imap.keys(),
-            columns=self.data.imap.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         darr = pd.DataFrame(
             data=np.zeros((npops, npops)),
-            index=self.data.imap.keys(),
-            columns=self.data.imap.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         narr = pd.DataFrame(
             data=np.zeros((npops, npops)),
-            index=self.data.imap.keys(),
-            columns=self.data.imap.keys(),
+            index=self.imap.keys(),
+            columns=self.imap.keys(),
         ) 
         d = npops
 
         # iterate over pairs of pops and fill Fst values
-        pairs = itertools.combinations(self.data.imap.keys(), 2)
+        pairs = itertools.combinations(self.imap.keys(), 2)
         for (pop1, pop2) in pairs:
-            pop1idx = self.data.imap[pop1]
-            pop2idx = self.data.imap[pop2]
+            pop1idx = self.imap[pop1]
+            pop2idx = self.imap[pop2]
             popaidx = pop1idx + pop2idx
 
             within1 = list(itertools.combinations(pop1idx, 2))
@@ -664,7 +691,7 @@ class Processor(object):
         Calculate Dxy for a given locus.
         """
         pop_cts, sidxs = self._process_locus_pops(locus, pops)
-        return self._dxy(*pop_cts.values())/len(locus)
+        return self._dxy(*pop_cts.values(), len(locus))
 
 
     # utils
