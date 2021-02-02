@@ -328,9 +328,24 @@ class Processor(object):
                     self.results.pi[lidx][pop] = pi_res
                     self.results.Watterson[lidx][pop] = w_theta_res
                     self.results.TajimasD[lidx][pop] = tajD_res
+
                 # between pops stats
-                for pops in combinations(self.data.imap):
+                Dxy_arr = pd.DataFrame(
+                    data=np.zeros((len(self.data.imap), len(self.data.imap))),
+                    index=self.data.imap.keys(),
+                    columns=self.data.imap.keys(),
+                )
+                for pops in combinations(self.data.imap, 2):
                     pop_cts, sidxs = self._process_locus_pops(locus, pops)
+                    Dxy_res = self._dxy(*pop_cts.values())/len(locus)
+                    Dxy_arr[pops[1]][pops[0]] = Dxy_res
+                self.results.Dxy[lidx] = Dxy_arr
+
+                Fst_res = self._fst_full(locus)
+                self.results.Fst[lidx] = {}
+                self.results.Fst[lidx]["Fst"] = Fst_res[0]
+                self.results.Fst[lidx]["Fst_adj"] = Fst_res[1]
+                self.results.Fst[lidx]["Fst_Nm"] = Fst_res[2]
 
                 lidx += 1
             except StopIteration:
@@ -560,8 +575,17 @@ class Processor(object):
         return Dxy/ncomps
 
 
-    def _fst(self):
+    def _fst_full(self, locus):
         """
+        This function operates a bit differently than the others because it is
+        largely code that Deren implemented. It works great, but it operates on
+        the full locus sequence, rather than only the variable sites, and it
+        does all pairwise comparisons at once rather than one at a time.
+
+        The other thing to remember about this version is that it isn't
+        currently  accounting for '-' and 'N' in the calculations, which we
+        are explicitly doing with the other sumstats (e.g. pi/Dxy).
+
         Calculate population fixation index Fst using Hudson's estimator.
         Hudson et al. (1992) "Estimation of Levels of Gene Flow From DNA 
         Sequence Data", also returns Fstd with correction for the number of 
@@ -573,28 +597,29 @@ class Processor(object):
         of rare variants, though this formulation isn't implemented here.
         """       
         # init fst matrix df with named rows and cols
+        npops = len(self.data.imap)
         farr = pd.DataFrame(
-            data=np.zeros((self.npops, self.npops)),
-            index=self.imap.keys(),
-            columns=self.imap.keys(),
+            data=np.zeros((npops, npops)),
+            index=self.data.imap.keys(),
+            columns=self.data.imap.keys(),
         ) 
         darr = pd.DataFrame(
-            data=np.zeros((self.npops, self.npops)),
-            index=self.imap.keys(),
-            columns=self.imap.keys(),
+            data=np.zeros((npops, npops)),
+            index=self.data.imap.keys(),
+            columns=self.data.imap.keys(),
         ) 
         narr = pd.DataFrame(
-            data=np.zeros((self.npops, self.npops)),
-            index=self.imap.keys(),
-            columns=self.imap.keys(),
+            data=np.zeros((npops, npops)),
+            index=self.data.imap.keys(),
+            columns=self.data.imap.keys(),
         ) 
-        d = self.npops
+        d = npops
 
         # iterate over pairs of pops and fill Fst values
-        pairs = itertools.combinations(self.imap.keys(), 2)
+        pairs = itertools.combinations(self.data.imap.keys(), 2)
         for (pop1, pop2) in pairs:
-            pop1idx = self.imap[pop1]
-            pop2idx = self.imap[pop2]
+            pop1idx = self.data.imap[pop1]
+            pop2idx = self.data.imap[pop2]
             popaidx = pop1idx + pop2idx
 
             within1 = list(itertools.combinations(pop1idx, 2))
@@ -606,14 +631,14 @@ class Processor(object):
                 allpairs
             )
             # A list of T/F values for differences between each pair per site
-            diff = [self.data[i] != self.data[j] for (i, j) in withins]
+            diff = [locus.loc[i] != locus.loc[j] for (i, j) in withins]
             # sum of all pairwise differences per site
             sums = np.sum(diff, axis=0)
             # average number of differences per site
             a = np.sum(sums) / sums.shape[0]
 
             # Same as above, but now pairwise for samples between sites
-            diff = [self.data[i] != self.data[j] for (i, j) in betweens]
+            diff = [locus.loc[i] != locus.loc[j] for (i, j) in betweens]
             sums = np.sum(diff, axis=0)
             b = np.sum(sums) / sums.shape[0]
 
