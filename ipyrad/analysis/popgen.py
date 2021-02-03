@@ -5,7 +5,7 @@
 from __future__ import print_function, division
 from itertools import chain
 
-import os
+import glob
 import h5py
 import itertools
 import math
@@ -286,6 +286,98 @@ class Popgen(object):
             if not job.successful():
                 job.get()
 
+        self._collect_results()
+
+
+    def _collect_results(self):
+        "Collect results from Processor and write results files."
+
+        # organize stats averaged across all loci into dataframes
+        single_popstats = pd.DataFrame(
+            columns=["mean_pi", "mean_Watterson", "mean_TajimasD"],
+            index=self.imap.keys(),
+        )
+
+        avg_dxy = pd.DataFrame(
+            columns=self.imap.keys(),
+            index=self.imap.keys(),
+        )
+        avg_fst = pd.DataFrame(
+            columns=self.imap.keys(),
+            index=self.imap.keys(),
+        )
+
+        # load pickled dictionaries into a dict
+        pickles = glob.glob(os.path.join(self.workdir, "*.p"))
+
+        pdicts = {}
+        for pkl in pickles:
+            with open(pkl, 'rb') as inp:
+                pdicts[int(pkl.rsplit("/", 1)[-1][:-2])] = pickle.load(inp)
+
+        # Make one giant dictionary with all the results
+        full_res = {}
+        for d in [pdicts]: full_res.update(d)
+
+        # Sort locus ids so output files will be in locus order
+        pidx = sorted(full_res.keys())
+
+        pi_dict = {}
+        w_theta_dict = {}
+        tajd_dict = {}
+
+        dxy_dict = {}
+
+        # Unpack the results from each chunk per summary statistic
+        for idx in pidx:
+            pi_dict.update(full_res[idx]["pi"])
+            w_theta_dict.update(full_res[idx]["Watterson"])
+            tajd_dict.update(full_res[idx]["TajimasD"])
+            # Collect pi stats
+
+        prog = ProgressBar(len(self.imap), None, "Collating sumstats for npops {}".format(len(self.imap)))
+        prog.finished = 0
+        prog.update()
+
+        # Fill one dataframe per population for within population stats per locus
+        popstats = {}
+        site_pis = {}
+        for pidx, pop in enumerate(self.imap):
+            site_pis[pop] = {}
+            popstats[pop] = pd.DataFrame([], columns=["pi",
+                                                        "raw_pi",
+                                                        "Watterson",
+                                                        "raw_Watterson",
+                                                        "TajimasD"], index=range(len(self.lex.loci)))
+            for lidx in range(len(self.lex.loci)):
+                popstats[pop]["pi"].loc[lidx] = pi_dict[lidx][pop]["pi_per_base"]
+                popstats[pop]["raw_pi"].loc[lidx] = pi_dict[lidx][pop]["pi"]
+                popstats[pop]["Watterson"].loc[lidx] = w_theta_dict[lidx][pop]["w_theta_per_base"]
+                popstats[pop]["raw_Watterson"].loc[lidx] = w_theta_dict[lidx][pop]["w_theta"]
+                popstats[pop]["TajimasD"].loc[lidx] = tajd_dict[lidx][pop]
+
+                # Accumulate site pis per locus
+                site_pis[pop][lidx] = pi_dict[lidx][pop]["site_pi"]
+
+            with open(os.path.join(self.workdir, "{}-sites.pi".format(pop)), 'w') as sites_file:
+                sites_file.write("locus\tsite\tpi\n")
+                for lidx in site_pis[pop]:
+                    for k, v in site_pis[pop][lidx].items():
+                        sites_file.write("\t".join([str(x) for x in [lidx, k, v]]) + "\n")
+
+            # Simple means for quick reporting
+            single_popstats["mean_pi"][pop] = popstats[pop]["pi"].mean()
+            single_popstats["mean_Watterson"][pop] = popstats[pop]["Watterson"].mean()
+            single_popstats["mean_TajimasD"][pop] = popstats[pop]["TajimasD"].mean()
+
+            prog.finished = pidx
+            prog.update()
+        self.results["within"] = single_popstats
+
+        prog.finished = len(self.imap)
+        prog.update()
+        print("")
+
 
 # ------------------------------------------------------------
 # Classes initialized and run on remote engines.
@@ -295,8 +387,6 @@ def _calc_sumstats(params, start_lidx, loci):
     proc = Processor(params, start_lidx, loci)
     proc.run()
 
-    with open("/tmp/wat.txt", 'w') as watdo:
-        watdo.write(proc.outfile)
     with open(proc.outfile, 'wb') as outpickle:
         pickle.dump(proc.results, outpickle)
 
