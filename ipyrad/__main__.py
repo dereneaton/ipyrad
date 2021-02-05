@@ -4,18 +4,23 @@
 
 from __future__ import print_function
 
-from ipyrad.assemble.utils import IPyradError, detect_cpus
-from pkg_resources import get_distribution
-import ipyparallel as ipp
-import ipyrad as ip
 import argparse
 import sys
 import os
 
+from pkg_resources import get_distribution
+import ipyparallel as ipp
+from loguru import logger
+
+import ipyrad as ip
+from ipyrad.assemble.utils import IPyradError, detect_cpus
 from .core.Parallel import Parallel
 
 
 class CLI:
+    """
+    Command line organization
+    """
     def __init__(self):
 
         # turn off interactive flag
@@ -42,6 +47,7 @@ class CLI:
         # if args.debug turn on the debugger
         if self.args.debug:
             ip.__interactive__ = 1
+            self._enable_logger()
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
@@ -169,6 +175,17 @@ class CLI:
             help="download fastq files by accession (e.g., SRP or SRR)")
 
 
+
+    def _enable_logger(self):
+        """ set logger to debugging """
+        logger.info('ipyrad: {}'.format(ip.__version__))
+        logger.info('system: {}'.format(os.uname()))
+        logger.info('env: {}'.format(sys.prefix))
+        logger.info('python: {}'.format(sys.executable))
+        logger.info('params: {}'.format(vars(self.args)))
+
+
+
     # def _hardlog_cli(self):
 
     #     # Log the current version. End run around the LOGGER
@@ -180,30 +197,6 @@ class CLI:
     #         logfile.write("\n  Using args {}".format(vars(self.args)))
     #         logfile.write("\n  Platform info: {}".format(os.uname()))
 
-
-    # def _set_logger(self):
-
-    #     ## Turn the debug output written to ipyrad_log.txt up to 11!
-    #     ## Clean up the old one first, it's cleaner to do this here than
-    #     ## at the end (exceptions, etc)
-    #     #if os.path.exists(ip.__debugflag__):
-    #     #    os.remove(ip.__debugflag__)
-
-    #     if self.args.debug:
-    #         print("  ** Enabling debug mode ** ")
-    #         ip.set_logger_level("DEBUG")
-    #         #ip._debug_on()
-    #         #atexit.register(ip._debug_off)
-
-    #     ## Only blank the log file if we're actually going to run a new
-    #     ## assembly. This used to be in __init__, but had the side effect
-    #     ## of occasionally blanking the log file in an undesirable fashion
-    #     ## for instance if you run a long assembly and it crashes and
-    #     ## then you run `-r` and it blanks the log, it's crazymaking.
-    #     if os.path.exists(ip.__debugfile__):
-    #         if os.path.getsize(ip.__debugfile__) > 50000000:
-    #             with open(ip.__debugfile__, 'w') as clear:
-    #                 clear.write("file reset")
 
 
     def _flagnew(self):
