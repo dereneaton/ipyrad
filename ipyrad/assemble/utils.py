@@ -14,11 +14,15 @@ except ImportError:
 
 import os
 import sys
+import time
 import socket
+import string
+import tempfile
+import datetime
+
+from loguru import logger
 import pandas as pd
 import numpy as np
-import string
-
 import ipyrad
 
 
@@ -28,6 +32,181 @@ BADCHARS = (
     .replace("-", "")
     .replace(".", "") + " "
 )
+
+
+
+
+class AssemblyProgressBar(object):
+    """
+    Print pretty progress bar with printings specific to Assembly object
+
+    Parameters:
+    -----------
+    jobs: dict
+    start: time.time()
+    message: str
+    data: ipyrad.Assembly
+    """       
+    def __init__(self, jobs, start, message, data):
+        self.jobs = jobs
+        self.start = (start if start else time.time())
+        self.message = message
+        self.cli = data._cli
+        self.spacer = data._spacer
+        self.finished = 0
+
+        # filled by check_success
+        self.results = {}
+
+
+    @property
+    def progress(self):
+        "returns the percent progress as a float"
+        if not self.jobs:
+            return 0
+        return 100 * (self.finished / float(len(self.jobs)))
+
+    @property
+    def elapsed(self):
+        "returns the elapsed time in nice format"
+        return datetime.timedelta(seconds=int(time.time() - self.start))
+
+
+    def update(self):
+        "flushes progress bar at current state to STDOUT"
+        # build the bar
+        hashes = '#' * int(self.progress / 5.)
+        nohash = ' ' * int(20 - len(hashes))
+
+        # print to stderr
+        if self.cli:
+            print("\r{}[{}] {:>3}% {} | {:<12} ".format(
+                self.spacer,
+                hashes + nohash,
+                int(self.progress),
+                self.elapsed,
+                self.message[0],
+            ), end="")
+        else:
+            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
+                self.spacer,
+                hashes + nohash,
+                int(self.progress),
+                self.elapsed,
+                self.message[0],
+                self.message[1],
+            ]), end="")
+        sys.stdout.flush()
+
+
+    def block(self):
+        """
+        Tracks completion of asynchronous result objects in a while 
+        loop until they are finished, checking every 0.5 seconds.
+        Prints progress either continuously or occasionally, depending
+        on TTY output type.
+        """
+        # get TTY output type of STDOUT
+        isatty = os.isatty(1)
+
+        # store the current value
+        cur_finished = 0
+
+        # loop until all jobs are finished
+        while 1:
+            self.finished = sum([i.ready() for i in self.jobs.values()])
+            time.sleep(1)
+            
+            # flush progress and end
+            if self.finished == len(self.jobs):
+                self.update()
+                print("")
+                break
+
+            # -- decide whether to flush based on tty ---
+            # if value changed then print
+            if cur_finished != self.finished:
+                self.update()
+
+            # else, only print every 10 minutes if not in tty
+            elif not isatty:
+                if not int(self.elapsed.seconds) % 60:
+                    self.update()
+            
+            # normal tty print every second
+            else:
+                self.update()
+
+            # update cur_finished to match finished
+            cur_finished = self.finished
+
+
+
+    def check(self):
+        """
+        Will log and raise an error with traceback.
+        """
+        # check for failures:
+        for job in self.jobs:
+            if not self.jobs[job].successful():
+                # raise the exception from the job and catch it
+                try:
+                    self.results[job] = self.jobs[job].get()
+                except Exception as inst:
+                    # report it to the logger file.
+                    # logger.exception("exception on remote engine:")
+                    # raise
+                    # report it to stdout
+                    raise IPyradError("Exception on remote engine:") from inst
+
+
+
+class VsearchProgressBar(AssemblyProgressBar):
+    """
+    Subset Progress bar for step 6 clustering progress.
+    """
+    @property
+    def progress(self):
+        "get progress from vsearch stdout"
+        logger.warning(self.jobs)
+        logger.warning(self.jobs[0])
+        logger.warning(self.jobs[0].stdout)        
+        if self.jobs[0].stdout:
+            return int(self.jobs[0].stdout.split()[-1])
+        return 0
+
+
+
+LOGFORMAT = (
+    "{time:hh:mm:ss} <level>{level: <7}</level> <white>|</white> "
+    "<magenta>PID:{process.id}</magenta> <white>|</white> "
+    "<cyan>{file}:{line}</cyan> <white>|</white> "
+    "<level>{message}</level>"
+)
+
+
+def set_loglevel(loglevel="DEBUG", logfile=None):
+    """
+    Config and start the logger
+    """
+    if logfile is None:
+        logfile = os.path.join(tempfile.gettempdir(), "ipyrad-log.txt")
+
+    config = {
+        "handlers": [
+            dict(
+                sink=logfile,
+                rotation="50 MB",
+                format=LOGFORMAT,
+                level=loglevel,
+                enqueue=True,
+                colorize=False,
+            ),
+        ]
+    }
+    logger.configure(**config)
+    logger.enable("ipyrad")
+
 
 
 class IPyradError(Exception):
@@ -420,18 +599,21 @@ DCONS = {
 
 
 def clustdealer(pairdealer, optim):
-    """ return optim clusters given iterators, and whether it got all or not"""
+    """ 
+    Return 'optim' clusters from 'pairdealer' iterators, and returns 
+    1 if this includes the end of the iterator, else returns 0.
+    """
     ccnt = 0
     chunk = []
     while ccnt < optim:
-        ## try refreshing taker, else quit
+        # try refreshing taker, else quit
         try:
             taker = takewhile(lambda x: x[0] != b"//\n", pairdealer)
             oneclust = [b"".join(next(taker))]
         except StopIteration:
             return 1, chunk
 
-        ## load one cluster
+        # load one cluster
         while 1:
             try:
                 oneclust.append(b"".join(next(taker)))
