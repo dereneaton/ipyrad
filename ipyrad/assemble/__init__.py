@@ -3,7 +3,9 @@
 """ import assembly funcs """
 
 from . import demultiplex
+from . import demux
 from . import rawedit
+from . import trimreads
 from . import clustmap
 from . import jointestimate
 from . import consens_se
