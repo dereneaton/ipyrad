@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-"cluster across samples using vsearch or from bam files and bedtools"
+"""
+Denovo: Cluster across samples w/ vsearch and build clusters.
+Reference: Extract mapping from bam files and bedtools to build clusters
+  and apply filters to identify bad mapping.
+"""
 
 # py2/3 compatible
 from __future__ import print_function
@@ -22,13 +26,20 @@ import select
 import socket
 import subprocess as sps
 
+from loguru import logger
 import numpy as np
 from pysam import AlignmentFile, FastaFile
 import ipyrad
-from .utils import IPyradError, fullcomp, chroms2ints
+from ipyrad.assemble.utils import IPyradError, fullcomp, chroms2ints
+from ipyrad.assemble.utils import AssemblyProgressBar, VsearchProgressBar
+
 
 
 class Step6:
+    """
+    Group loci across samples by orthology using clustering in denovo
+    or by pulling from map positions in reference.
+    """
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.randomseed = int(self.data.hackersonly.random_seed)
@@ -57,6 +68,9 @@ class Step6:
 
 
     def print_headers(self):
+        """
+        Print CLI header 
+        """
         if self.data._cli:
             self.data._print(
                 "\n{}Step 6: Clustering/Mapping across samples "
@@ -65,7 +79,9 @@ class Step6:
 
 
     def setup_dirs(self, force=False):
-        "set up across and tmpalign dirs and init h5 database file"
+        """
+        set up across and tmpalign dirs and init h5 database file
+        """
         self.data.dirs.across = os.path.realpath(os.path.join(
             self.data.params.project_dir,
             "{}_across".format(self.data.name)))
@@ -90,8 +106,9 @@ class Step6:
 
 
     def get_subsamples(self):
-        "Apply state, ncluster, and force filters to select samples"
-
+        """
+        Apply state, ncluster, and force filters to select samples
+        """
         # bail out if no samples ready
         if not hasattr(self.data.stats, "state"):
             raise IPyradError("No samples ready for step 6")
@@ -115,9 +132,9 @@ class Step6:
             # tell user which samples have already completed step 6
             if state6.any():
                 raise IPyradError(
-                    "Some samples are already in state==6. If you wish to \n" \
-                  + "  create a new database for across sample comparisons \n" \
-                  + "  use the force=True (-f) argument.")
+                    "Some samples are already in state==6. If you wish to "
+                    "create a new database for across sample comparisons "
+                    "use the force=True (-f) argument.")
             # run all samples in state 5
             subsamples = [self.data.samples[i] for i in state5]
 
@@ -230,7 +247,9 @@ class Step6:
 
 
     def run(self):
-
+        """
+        Runs the set of methods for denovo or reference method
+        """
         # DENOVO
         if self.data.params.assembly_method == "denovo":
 
@@ -284,10 +303,13 @@ class Step6:
 
 
     def remote_build_concats_tier1(self):
-        "prepares concatenated consens input files for each clust1 group"
-
-        start = time.time()
+        """
+        Prepares concatenated consens input files for each clust1 group
+        """
         printstr = ("concatenating inputs", "s6")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
+
         rasyncs = {}
         for jobid, group in self.cgroups.items():
             # should we use sample objects or sample names in cgroups?
@@ -297,88 +319,64 @@ class Step6:
             args = (self.data, jobid, samples, self.randomseed)
             rasyncs[jobid] = self.lbview.apply(build_concat_files, *args)
 
-        while 1:
-            ready = [rasyncs[i].ready() for i in rasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.5)
-            if len(ready) == sum(ready):
-                break
-
-        # check for errors
-        self.data._print("")
-        for job in rasyncs:
-            if not rasyncs[job].successful():
-                rasyncs[job].get()
+        prog.jobs = rasyncs
+        prog.block()
+        prog.check()
 
 
     def remote_cluster1(self):
-        "send threaded jobs to remote engines"
-        start = time.time()
-        printstr = ("clustering tier 1   ", "s6")        
+        """
+        send threaded jobs to remote engines
+        """
+        printstr = ("clustering tier 1   ", "s6")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
+
         rasyncs = {}
         for jobid in self.cgroups:
             args = (self.data, jobid, self.nthreads)
             rasyncs[jobid] = self.thview.apply(cluster, *args)
 
-        while 1:
-            ready = [rasyncs[i].ready() for i in rasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.5)
-            if len(ready) == sum(ready):
-                break
-
-        # check for errors
-        self.data._print("")
-        for job in rasyncs:
-            if not rasyncs[job].successful():
-                rasyncs[job].get()
+        prog.jobs = rasyncs
+        prog.block()
+        prog.check()
 
 
     def remote_build_concats_tier2(self):
-        start = time.time()
+        """
+        Hierarchical clustering build
+        """
         printstr = ("concatenating inputs", "s6")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
+
         args = (self.data, list(self.cgroups.keys()), self.randomseed)
         rasync = self.lbview.apply(build_concat_two, *args)
 
-        while 1:
-            ready = rasync.ready()
-            self.data._progressbar(int(ready), 1, start, printstr)
-            time.sleep(0.5)
-            if ready:
-                break
-
-        # check for errors
-        rasync.wait()
-        self.data._print("")
-        if not rasync.successful():
-            rasync.get()
+        prog.jobs = rasync
+        prog.block()
+        prog.check()
 
 
     def remote_cluster_tiers(self, jobid):
-        start = time.time()
+        """
+        Hierarchical cluster. Uses vsearch output to track progress.
+        """
         printstr = ("clustering across   ", "s6")
+
         # nthreads=0 defaults to using all cores
         args = (self.data, jobid, 0, True)
         rasync = self.thview.apply(cluster, *args)
+        prog = VsearchProgressBar({0: rasync}, None, printstr, self.data)
+        prog.block()
+        prog.check()
 
-        prog = 0
-        while 1:
-            time.sleep(0.5)
-            if rasync.stdout:
-                prog = int(rasync.stdout.split()[-1])
-            self.data._progressbar(100, int(prog), start, printstr)
-            if prog == 100:
-                print("")
-                break
-
-        # check for errors
-        self.ipyclient.wait()
-        if not rasync.successful():
-            rasync.get()
 
 
     def remote_build_denovo_clusters(self):
-        "build denovo clusters from vsearch clustered seeds"
+        """
+        build denovo clusters from vsearch clustered seeds
+        """
         # filehandles; if not multiple tiers then 'x' is jobid 0
         uhandle = os.path.join(
             self.data.dirs.across, 
@@ -426,46 +424,35 @@ class Step6:
                 job.get()
 
 
+
     def remote_align_denovo_clusters(self):
         """
         Distributes parallel jobs to align_to_array() function. 
         """
+        # submit jobs to engines
+        printstr = ("aligning clusters   ", "s6")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
+
         # get files
         globpath = os.path.join(self.data.tmpdir, self.data.name + ".chunk_*")
         clustbits = glob.glob(globpath)
-
-        # submit jobs to engines
-        start = time.time()
-        printstr = ("aligning clusters   ", "s6")
         jobs = {}
         for idx, _ in enumerate(clustbits):
             args = [self.data, self.samples, clustbits[idx]]
             jobs[idx] = self.lbview.apply(align_to_array, *args)
-        allwait = len(jobs)
 
         # print progress while bits are aligning
-        while 1:
-            finished = [i.ready() for i in jobs.values()]
-            fwait = sum(finished)
-            self.data._progressbar(allwait, fwait, start, printstr)
-            time.sleep(0.4)
-            if all(finished):
-                break
+        prog.jobs = jobs
+        prog.block()
+        prog.check()
 
-        # check for errors in muscle_align_across
-        keys = list(jobs.keys())
-        for idx in keys:
-            if not jobs[idx].successful():
-                jobs[idx].get()
-            del jobs[idx]
-        self.data._print("")
 
 
     def concat_alignments(self):
         """
         This step is not necessary... we just chunk it up again in step 7...
         it's nice having a file as a product, but why bother...
-
         It creates a header with names of all samples that were present when
         step 6 was completed. 
         """
@@ -509,8 +496,9 @@ class Step6:
 
 
     def remote_concat_bams(self):
-        "merge bam files into a single large sorted indexed bam"
-
+        """
+        Merge bam files into a single large sorted indexed bam
+        """
         start = time.time()
         printstr = ("concatenating bams  ", "s6")
 
@@ -535,7 +523,7 @@ class Step6:
         proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
 
         # progress bar
-        while not proc.poll() == 0:
+        while proc.poll() != 0:
             self.data._progressbar(3, 0, start, printstr)
             time.sleep(0.1)
 
@@ -597,24 +585,33 @@ class Step6:
         self.data._print("")
 
 
+
     def remote_build_ref_regions(self):
-        "call bedtools remotely and track progress"
-        start = time.time()
+        """
+        call bedtools remotely and track progress
+        """
         printstr = ("fetching regions    ", "s6")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
         rasync = self.ipyclient[0].apply(build_ref_regions, self.data)
-        while 1:
-            done = rasync.ready()
-            self.data._progressbar(1, int(done), start, printstr)
-            time.sleep(0.1)
-            if done:
-                break
-        self.data._print("")
-        self.regions = rasync.get()
+        prog.jobs = {1: rasync}
+        prog.block()
+        prog.check()
+        self.regions = prog.results[1]               
+        # while 1:
+            # done = rasync.ready()
+            # self.data._progressbar(1, int(done), start, printstr)
+            # time.sleep(0.1)
+            # if done:
+                # break
+        # self.data._print("")
+        # self.regions = rasync.get()
 
 
     def remote_build_ref_clusters(self):
-        "build clusters and find variants/indels to store"
-        
+        """
+        build clusters and find variants/indels to store
+        """       
         # send N jobs each taking chunk of regions
         ncpus = self.data.ncpus
         nloci = len(self.regions)
@@ -698,8 +695,11 @@ def resolve_duplicates(keys, arr):
     return newkeys, newarr
 
 
+
 def build_ref_regions(data):
-    "use bedtools to pull in consens reads overlapping some region of ref"
+    """
+    Use bedtools to pull in consens reads overlapping some region of ref
+    """
     cmd1 = [
         ipyrad.bins.bedtools,
         "bamtobed",
@@ -730,6 +730,7 @@ def build_ref_regions(data):
             "error in {}: {}".format(" ".join(cmd2), result))
     regs = [i.split("\t") for i in result.strip().split("\n")]
     return [(i, int(j), int(k)) for i, j, k in regs]
+
 
 
 def build_ref_clusters(data, idx, iregion):
@@ -844,7 +845,11 @@ def build_ref_clusters(data, idx, iregion):
             outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
 
 
+
 def build_concat_two(data, jobids, randomseed):
+    """
+    
+    """
     seeds = [
         os.path.join(
             data.dirs.across, 
@@ -864,6 +869,7 @@ def build_concat_two(data, jobids, randomseed):
     proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
     proc2.communicate()
     proc1.stdout.close()
+
 
 
 def build_concat_files(data, jobid, samples, randomseed):
@@ -955,8 +961,11 @@ def build_concat_files(data, jobid, samples, randomseed):
     outdat.close()
 
 
-def cluster(data, jobid, nthreads, print_progress=False):
 
+def cluster(data, jobid, nthreads, print_progress=False):
+    """
+
+    """
     # get files for this jobid
     catshuf = os.path.join(
         data.dirs.across, 
@@ -1037,8 +1046,11 @@ def cluster(data, jobid, nthreads, print_progress=False):
         print(100)
 
 
+
 def count_seeds(uhandle):
-    "uses bash commands to quickly count N seeds from utemp file"
+    """
+    uses bash commands to quickly count N seeds from utemp file
+    """
     with open(uhandle, 'r') as insort:
         cmd1 = ["cut", "-f", "2"]
         cmd2 = ["uniq"]
@@ -1054,11 +1066,13 @@ def count_seeds(uhandle):
     return nseeds
 
 
+
 def sort_seeds(uhandle):
     "sort seeds from cluster results"
     cmd = ["sort", "-k", "2", uhandle, "-o", uhandle + ".sort"]
     proc = sps.Popen(cmd, close_fds=True)
     proc.communicate()
+
 
 
 def build_single_denovo_clusters(data, usort, nseeds, *args):
@@ -1461,3 +1475,17 @@ def retrieve_alleles_after_aligning(intarr, amask):
             # fill in new data into all other spots
             newmask[ridx, not_idx] = amask[ridx, :not_idx.shape[0]]
     return newmask
+
+
+
+if __name__ == "__main__":
+
+
+    import ipyrad as ip
+    ip.set_loglevel("DEBUG")
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.ipcluster['cores'] = 4
+    tdata.run("6", auto=True, force=True)
+    logger.info(tdata.stats.T)
