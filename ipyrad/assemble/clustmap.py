@@ -20,20 +20,21 @@ import shutil
 import warnings
 import subprocess as sps
 
+from loguru import logger
 import numpy as np
 import pysam
 import ipyrad as ip
-from .utils import IPyradError, bcomp, comp
+from ipyrad.assemble.utils import IPyradError, bcomp, comp, AssemblyProgressBar
+
 
 
 class Step3:
-    "Class for organizing step functions across datatypes and read formats"
-
+    """
+    Distributing derep, clust/map, and build functions on samples.
+    """
     def __init__(self, data, force, ipyclient):
-
         # store attributes
         self.data = data
-        # self.noreverse = noreverse
         self.maxindels = 8
         self.force = force
         self.ipyclient = ipyclient
@@ -47,10 +48,11 @@ class Step3:
 
 
     def run(self):
-        "Run the assembly functions for this step"
-
+        """
+        Run the assembly functions for this step
+        """
         # index reference fa files if there are any (bwa and sam index)
-        if (self.data.params.reference_sequence or \
+        if (self.data.params.reference_sequence or
            self.data.params.reference_as_filter):
             self.remote_index_refs()
 
@@ -76,7 +78,7 @@ class Step3:
                 self.remote_run(
                     function=merge_pairs_with_vsearch,
                     printstr=("join merged pairs   ", "s3"),
-                    args=(True,),
+                    args=(),
                 )
                 # join non-merged reads with a spacer (nnnn)
                 # i: tmpdir/{}_nonmerged_R[1,2].fastq
@@ -473,40 +475,31 @@ class Step3:
         """
         index the reference seq for bwa and samtools (pysam). 
         """
-        start = time.time()
-        printstr = ("indexing reference  ", "s3")
-
-        jobs = []
+        logger.debug("indexing reference with bwa and samtools")
+        jobs = {}
         if self.data.params.reference_sequence:
             rasync1 = self.lbview.apply(index_ref_with_bwa, self.data)
             rasync2 = self.lbview.apply(index_ref_with_sam, self.data)
-            jobs.append(rasync1)
-            jobs.append(rasync2)
-
+            jobs['bwa_index_ref'] = rasync1
+            jobs['sam_index_ref'] = rasync2
 
         if self.data.params.reference_as_filter:
             rasync1 = self.lbview.apply(index_ref_with_bwa, self.data, alt=1)
             rasync2 = self.lbview.apply(index_ref_with_sam, self.data, alt=1)
-            jobs.append(rasync1)
-            jobs.append(rasync2)
+            jobs['bwa_index_alt'] = rasync1
+            jobs['sam_index_alt'] = rasync2
 
         # track job
-        while 1:
-            ready = [i.ready() for i in jobs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        # check for errors
-        self.data._print("")
-        for job in [rasync1, rasync2]:
-            if not job.successful():
-                job.get()
+        printstr = ("indexing reference  ", "s3")
+        prog = AssemblyProgressBar(jobs, None, printstr, self.data)
+        prog.block()
+        prog.check()
 
 
     def remote_run_cluster_build(self):
-        # submit clustering/mapping job
+        """
+        submit clustering/mapping job
+        """
         start = time.time()
         casyncs = {}
         for sample in self.samples:
@@ -535,121 +528,96 @@ class Step3:
 
         # track job progress
         printstr = ("clustering/mapping  ", "s3")
-        while 1:
-            ready = [casyncs[i].ready() for i in casyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-        self.data._print("")
-        for job in casyncs:            
-            if not casyncs[job].successful():
-                casyncs[job].get()
+        prog = AssemblyProgressBar(casyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
         # track job progress
         start = time.time()
         printstr = ("building clusters   ", "s3")
-        while 1:
-            ready = [basyncs[i].ready() for i in basyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        self.data._print("")
-        for job in basyncs:
-            if not basyncs[job].successful():
-                basyncs[job].get()
+        prog = AssemblyProgressBar(basyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
         # track job progress
         start = time.time()
         printstr = ("chunking clusters   ", "s3")
-        while 1:
-            ready = [hasyncs[i].ready() for i in hasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-        self.data._print("")
-        for job in hasyncs:
-            if not hasyncs[job].successful():
-                hasyncs[job].get()
+        prog = AssemblyProgressBar(hasyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
+
 
 
     def remote_run_align_cleanup(self):
-
-        # submit ten aligning jobs for each sample
+        """
+        submit ten aligning jobs for each sample
+        """
         start = time.time()
         aasyncs = {}
         for sample in self.samples:
             aasyncs[sample.name] = []
             for idx in range(10):
+                
                 handle = os.path.join(
                     self.data.tmpdir,
                     "{}_chunk_{}.ali".format(sample.name, idx))
 
-                rasync = self.lbview.apply(
-                    align_and_parse,
-                    *(handle, self.maxindels, self.gbs, 
-                        self.data.hackersonly.declone_PCR_duplicates)
+                args = (
+                    handle, self.maxindels, self.gbs, 
+                    self.data.hackersonly.declone_PCR_duplicates
                 )
+
+                rasync = self.lbview.apply(align_and_parse, *args)
                 aasyncs[sample.name].append(rasync)
 
         # a list with all aasyncs concatenated
-        allasyncs = list(chain(*[aasyncs[i] for i in aasyncs]))
+        allasyncs = chain(*[aasyncs[i] for i in aasyncs])
+        allasyncs = dict(enumerate(allasyncs))
 
         # submit cluster building job for each sample *after* all align jobs
         basyncs = {}
         for sample in self.samples:
             with self.lbview.temp_flags(after=aasyncs[sample.name]):
-                basyncs[sample.name] = self.lbview.apply(
-                    reconcat,
-                    *(self.data, sample)
-                )
+                rasync = self.lbview.apply(reconcat, *(self.data, sample))
+                basyncs[sample.name] = rasync
 
         # track job 1 progress
         printstr = ("aligning clusters   ", "s3")
-        while 1:
-            ready = [i.ready() for i in allasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        self.data._print("")
-        for job in allasyncs:
-            if not job.successful():
-                job.get()
+        prog = AssemblyProgressBar(allasyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
         # track job 2 progress
         start = time.time()
         printstr = ("concat clusters     ", "s3")
-        while 1:
-            ready = [basyncs[i].ready() for i in basyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-        self.data._print("")
-        for job in basyncs:
-            if not basyncs[job].successful():
-                basyncs[job].get()
+        prog = AssemblyProgressBar(basyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
         # compile stats on highindel filteres, and duplicates
         if self.data.hackersonly.declone_PCR_duplicates:
             for sample in self.samples:
+                
                 # list of 3-tuples
                 res = [i.get() for i in aasyncs[sample.name]]
+                logger.debug("declone {} {}".format(sample.name, res))
 
                 # count proportio of reads that are PCR duplicates
                 nreads = [i[1] for i in res]
                 nwodups = [i[2] for i in res]
                 propdup = float(nwodups) / nreads
                 sample.stats_dfs.s3["prop_pcr_duplicates"] = propdup
+                logger.debug(
+                    "declone {} prop_pcr_duplicates={:.3f}"
+                    .format(sample.name, propdup))
+
 
 
     def remote_run_sample_cleanup(self):
-        # submit job
+        """
+        Send samples to calc depths on remote, and then enter stats
+        to sample objects non-parallel.
+        """
         printstr = ("calc cluster stats  ", "s3")
         start = time.time()
         rasyncs = {}
@@ -659,7 +627,7 @@ class Step3:
             rasyncs[sample.name] = self.lbview.apply(get_quick_depths, *args)
 
         # enter result stats as the jobs finish
-        finished = 0       
+        finished = 0
         while 1:
             samplelist = list(rasyncs.keys())
             for sname in samplelist:
@@ -683,6 +651,9 @@ class Step3:
 
 
     def remote_run(self, printstr, function, args, threaded=False):
+        """
+        General remote distributor
+        """
         # submit job
         start = time.time()
         rasyncs = {}
@@ -694,20 +665,15 @@ class Step3:
                 rasyncs[sample.name] = self.lbview.apply(function, *fargs)
 
         # track job
-        while 1:
-            ready = [rasyncs[i].ready() for i in rasyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                break
-
-        # check for errors, will raise ipp.RemoteError
-        self.data._print("")
-        for job in rasyncs:
-            rasyncs[job].get()
+        prog = AssemblyProgressBar(rasyncs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
         # clean up to free any RAM
         self.ipyclient.purge_everything()
+
+
+
 
 
 def dereplicate(data, sample, nthreads):
@@ -719,6 +685,7 @@ def dereplicate(data, sample, nthreads):
     Updated this function to take infile and outfile to support the double
     dereplication that we need for 3rad (5/29/15 iao).
     """
+    logger.debug("dereplicating: {}".format(sample.name))
     # find input file with following precedence:
     # .trimmed.fastq.gz, .concatedit.fq.gz, ._merged.fastq, ._declone.fastq
     infiles = [
@@ -749,12 +716,12 @@ def dereplicate(data, sample, nthreads):
         "--derep_fulllength", infile,
         "--strand", strand,
         "--output", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
-        # "--threads", str(nthreads),
         "--fasta_width", str(0),
         "--minseqlength",  str(data.params.filter_min_trim_len),
         "--sizeout", 
         "--relabel_md5",
         "--quiet",
+        # "--threads", str(nthreads),
         #"--fastq_qmax", "1000",        
     ]
 
@@ -771,7 +738,11 @@ def dereplicate(data, sample, nthreads):
 
 
 def concat_multiple_edits(data, sample):
-
+    """
+    Create a temporary concatenated file for multiple edits input
+    files, which arises when Assemblies were merged between steps
+    2 and 3.
+    """
     # define output files
     concat1 = os.path.join(
         data.tmpdir,
@@ -791,7 +762,7 @@ def concat_multiple_edits(data, sample):
                 cmd1, stderr=sps.STDOUT, stdout=cout1, close_fds=True)
             res1 = proc1.communicate()[0]
             if proc1.returncode:
-                raise IPyradError("error in: %s, %s", cmd1, res1)
+                raise IPyradError("error in: {} {}".format(cmd1, res1))
 
         # Only set conc2 if R2 actually exists
         if os.path.exists(str(sample.files.edits[0][1])):
@@ -801,11 +772,14 @@ def concat_multiple_edits(data, sample):
                     cmd2, stderr=sps.STDOUT, stdout=cout2, close_fds=True)
                 res2 = proc2.communicate()[0]
                 if proc2.returncode:
-                    raise IPyradError("error in: %s, %s", cmd2, res2)
+                    raise IPyradError("error in: {} {}".format(cmd2, res2))
 
 
-def merge_pairs_with_vsearch(data, sample, revcomp):
-    "Merge PE reads using vsearch to find overlap."
+def merge_pairs_with_vsearch(data, sample):
+    """
+    Merge PE reads using vsearch to find overlap.
+    """
+    logger.debug("merging pairs: {}".format(sample.name))
 
     # input files (select only the top one)
     in1 = [
@@ -861,6 +835,7 @@ def merge_pairs_with_vsearch(data, sample, revcomp):
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
     res = proc.communicate()[0].decode()
     if proc.returncode:
+        logger.exception(res)
         raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
 
 
@@ -871,7 +846,6 @@ def merge_end_to_end(data, sample, revcomp, append, identical=False):
 
     Parameters:
     ----------
-
     identical (bool):
         *only for paired denovo refminus*
         It will split paired reads that have already been
@@ -880,6 +854,7 @@ def merge_end_to_end(data, sample, revcomp, append, identical=False):
         other reads with nnnn, but if R1 and R2 are identical then we keep 
         just the R1 as the merged readpair. 
     """
+    logger.debug("join unmerged pairs end-to-end: {}".format(sample.name))
 
     # input files; 
     if identical:
@@ -1008,7 +983,9 @@ def merge_end_to_end(data, sample, revcomp, append, identical=False):
 
 
 def count_merged_reads(data, sample):
-    # record how many read pairs were merged
+    """
+    record how many read pairs were merged
+    """
     mergedfile = os.path.join(
         data.tmpdir, 
         "{}_merged.fastq".format(sample.name))  
@@ -1022,6 +999,8 @@ def cluster(data, sample, nthreads, force):
     Calls vsearch for clustering. cov varies by data type, values were chosen
     based on experience, but could be edited by users
     """
+    logger.debug("denovo clustering: {}".format(sample.name))
+
     # get dereplicated reads for denovo+reference or denovo-reference
     handles = [
         os.path.join(data.tmpdir, "{}_derep.fa".format(sample.name)),
@@ -1080,6 +1059,7 @@ def cluster(data, sample, nthreads, force):
            "-usersort"]
 
     # run vsearch
+    logger.debug(" ".join(cmd))
     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE, close_fds=True)
     res = proc.communicate()[0]
 
@@ -1280,7 +1260,9 @@ def muscle_chunker(data, sample):
 
 
 def declone_clusters(aligned):
+    """
 
+    """
     # store new decloned sequence as list of strings
     decloned = []
     nwdups = 0
@@ -1358,7 +1340,11 @@ def declone_clusters(aligned):
 
 
 def align_and_parse(handle, max_internal_indels=5, is_gbs=False, declone=False):
-    """ much faster implementation for aligning chunks """
+    """ 
+    Much faster implementation for aligning chunks that uses 
+    persistent_popen_align3() function.
+    """
+    logger.debug("aligning chunks: {}".format(handle))
 
     # CHECK: data are already chunked, read in the whole thing. bail if no data
     clusts = []
@@ -1412,8 +1398,12 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False, declone=False):
     return highindels
 
 
+
 def reconcat(data, sample):
-    """ takes aligned chunks (usually 10) and concatenates them """
+    """ 
+    takes aligned chunks (usually 10) and concatenates them
+    """
+    logger.debug("concatenating aligned chunks: {}".format(sample.name))
 
     # get chunks
     chunks = glob.glob(
@@ -1439,9 +1429,11 @@ def reconcat(data, sample):
             os.remove(fname)
 
 
-def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
-    "keeps a persistent bash shell open and feeds it muscle alignments"
 
+def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
+    """
+    keeps a persistent bash shell open and feeds it muscle alignments
+    """
     # create a separate shell for running muscle in, this is much faster
     # than spawning a separate subprocess for each muscle call
     proc = sps.Popen(
@@ -1588,8 +1580,9 @@ def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
 
 
 def aligned_indel_filter(clust, max_internal_indels):
-    """ checks for too many internal indels in muscle aligned clusters """
-
+    """ 
+    Checks for too many internal indels in muscle aligned clusters 
+    """
     # make into list
     lclust = clust.split()
 
@@ -1641,14 +1634,29 @@ def gbs_trim(align1):
     Revcomp-match  --------------------------------mmmmmmmmmmmmmmmmmm
     Revcomp-match  ------------------------mmmmmmmmmmmmmmmmmmmmmmmmmm
     """
+    logger.debug("applying gbs powertrim")
+
+    # get the left and rigth most occurrences of the cut site
     leftmost = rightmost = None
+
+    # create dict mapping {seqname: seq}
     dd = {k: v for k, v in [j.rsplit("\n", 1) for j in align1]}
+
+    # get the seed sequence which contains "*" in header
     seed = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "*"][0]
+
+    # position of the leftmost sequence that is not a "-" char.
     leftmost = [i != "-" for i in dd[seed]].index(True)
+
+    # which sequences are revcomp matched to the seed
     revs = [i for i in dd.keys() if i.rsplit(";")[-1][0] == "-"]
+
+    # ...
     if revs:
-        subright = max([[i != "-" for i in seq[::-1]].index(True) 
-                        for seq in [dd[i] for i in revs]])
+        subright = max([
+            [i != "-" for i in seq[::-1]].index(True) 
+            for seq in [dd[i] for i in revs]
+        ])
     else:
         subright = 0
     rightmost = len(dd[seed]) - subright
@@ -1663,9 +1671,11 @@ def gbs_trim(align1):
     return newalign1
 
 
-def index_ref_with_bwa(data, alt=False):
-    "Index the reference sequence, unless it already exists"
 
+def index_ref_with_bwa(data, alt=False):
+    """
+    Index the reference sequence, unless it already exists
+    """
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -1680,11 +1690,10 @@ def index_ref_with_bwa(data, alt=False):
                 "reference_sequence_path. The path you entered was not "
                 "found: \n{}")
                 .format(data.params.assembly_method))
-        else:
-            raise IPyradError((
-                "reference_as_filter requires that you enter a reference "
-                "fasta file. The path you entered was not found: \n{}")
-                .format(data.params.assembly_method))
+        raise IPyradError((
+            "reference_as_filter requires that you enter a reference "
+            "fasta file. The path you entered was not found: \n{}")
+            .format(data.params.assembly_method))
 
     # If reference sequence already exists then bail out of this func
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
@@ -1699,14 +1708,23 @@ def index_ref_with_bwa(data, alt=False):
     # error handling for one type of error on stderr
     if proc.returncode:
         if "please use bgzip" in error:
-            raise IPyradError(NO_ZIP_BINS.format(refseq_file))
-        else:
-            raise IPyradError(error)
+            raise IPyradError((
+                "Reference sequence must be de-compressed fasta or bgzip "
+                "compressed, your file is probably gzip compressed. The "
+                "simplest fix is to gunzip your reference sequence by "
+                "running this command: \n"
+                "    gunzip {}\n"
+                "Then edit your params file to remove the `.gz` from the "
+                "end of the path to your reference sequence file and rerun "
+                "step 3 with the `-f` flag."
+                .format(refseq_file)))
+        raise IPyradError(error)
 
 
 def index_ref_with_sam(data, alt=False):
-    "Index ref for building scaffolds w/ index numbers in steps 5-6"
-
+    """
+    Index ref for building scaffolds w/ index numbers in steps 5-6
+    """
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -1721,11 +1739,10 @@ def index_ref_with_sam(data, alt=False):
                 "reference_sequence_path. The path you entered was not "
                 "found: \n{}")
                 .format(data.params.assembly_method))
-        else:
-            raise IPyradError((
-                "reference_as_filter requires that you enter a reference "
-                "fasta file. The path you entered was not found: \n{}")
-                .format(data.params.assembly_method))
+        raise IPyradError((
+            "reference_as_filter requires that you enter a reference "
+            "fasta file. The path you entered was not found: \n{}")
+            .format(data.params.assembly_method))
 
     # If reference index exists then bail out unless force
     if os.path.exists(refseq_file + ".fai"):
@@ -1908,11 +1925,14 @@ def mapping_reads(data, sample, nthreads, altref=False):
     for arg in bwa_args:
         cmd1.insert(2, arg)
 
+    # run BWA job
+    logger.debug(" ".join(cmd1))
     with open(samout, 'wb') as outfile:
         proc1 = sps.Popen(cmd1, stderr=None, stdout=outfile)
         error1 = proc1.communicate()[0]
+        logger.debug("BWA out: {}".format(error1))
         if proc1.returncode:
-            raise IPyradError("bwa error: {}".format(error1))
+            raise IPyradError("bwa error: {} {}".format(error1, proc1.stdout))
 
     # sends unmapped reads to a files and will PIPE mapped reads to cmd3
     cmd2 = [
@@ -1987,7 +2007,6 @@ def mapping_reads(data, sample, nthreads, altref=False):
         raise IPyradError(error5)
 
 
-
 def check_insert_size(data, sample):
     """
     check mean insert size for this sample and update 
@@ -1995,7 +2014,6 @@ def check_insert_size(data, sample):
     far apart mate pairs can be to still be considered for bedtools merging 
     downstream.
     """
-
     # read in the sorted bam file and extract SN stats
     sbam = os.path.join(
         data.dirs.refmapping, 
@@ -2335,22 +2353,11 @@ def split_endtoend_reads(data, sample):
     splitderep2.close()
 
 
-# DEPRECATED: SLOW
-# def get_ref_region(reference, contig, rstart, rend):
-#     "returns the reference sequence over a given region"
-#     cmd = [
-#         ip.bins.samtools, 'faidx',
-#         reference,
-#         "{}:{}-{}".format(contig, rstart + 1, rend),
-#     ]
-#     stdout = sps.Popen(cmd, stdout=sps.PIPE).communicate()[0]
-#     name, seq = stdout.decode().split("\n", 1)
-#     listseq = [name, seq.replace("\n", "")]
-#     return listseq
-
 
 def join_arrays(arr1, arr2):
-    "join read1 and read2 arrays and resolve overlaps"
+    """
+    join read1 and read2 arrays and resolve overlaps
+    """
     arr3 = np.zeros(arr1.size, dtype="U1")
     for i in range(arr1.size):
 
@@ -2387,7 +2394,9 @@ def join_arrays(arr1, arr2):
 
 
 def cigared(sequence, cigartups):
-    "modify sequence based on its cigar string"
+    """
+    modify sequence based on its cigar string
+    """
     start = 0
     seq = ""
     for tup in cigartups:
@@ -2409,7 +2418,6 @@ def get_quick_depths(data, sample):
     """
     iterate over clustS files to get data returns maxlen and depths arrays
     """
-
     ## use existing sample cluster path if it exists, since this
     ## func can be used in step 4 and that can occur after merging
     ## assemblies after step3, and if we then referenced by data.dirs.clusts
@@ -2468,55 +2476,54 @@ def store_sample_stats(data, sample, maxlens, depths):
         print("    no clusters found for {}".format(sample.name))
         return
 
+    # store which min was used to calculate hidepth here
+    sample.stats_dfs.s3["hidepth_min"] = data.params.mindepth_majrule
+
+    # If our longest sequence is longer than the current max_fragment_len
+    # then update max_fragment_length. For assurance we require that
+    # max len is 4 greater than maxlen, to allow for pair separators.
+    hidepths = depths >= data.params.mindepth_majrule
+    maxlens = maxlens[hidepths]
+
+    # Handle the case where there are no hidepth clusters
+    if maxlens.any():
+        maxlen = int(maxlens.mean() + (2. * maxlens.std()))
     else:
-        # store which min was used to calculate hidepth here
-        sample.stats_dfs.s3["hidepth_min"] = data.params.mindepth_majrule
+        maxlen = 0
+    if maxlen > data.hackersonly.max_fragment_length:
+        data.hackersonly.max_fragment_length = int(maxlen + 4)
 
-        # If our longest sequence is longer than the current max_fragment_len
-        # then update max_fragment_length. For assurance we require that
-        # max len is 4 greater than maxlen, to allow for pair separators.
-        hidepths = depths >= data.params.mindepth_majrule
-        maxlens = maxlens[hidepths]
+    # make sense of stats
+    keepmj = depths[depths >= data.params.mindepth_majrule]
+    keepstat = depths[depths >= data.params.mindepth_statistical]
 
-        # Handle the case where there are no hidepth clusters
-        if maxlens.any():
-            maxlen = int(maxlens.mean() + (2. * maxlens.std()))
-        else:
-            maxlen = 0
-        if maxlen > data.hackersonly.max_fragment_length:
-            data.hackersonly.max_fragment_length = int(maxlen + 4)
+    # sample summary stat assignments
+    sample.stats["state"] = 3
+    sample.stats["clusters_total"] = int(depths.shape[0])
+    sample.stats["clusters_hidepth"] = int(keepmj.shape[0])
 
-        # make sense of stats
-        keepmj = depths[depths >= data.params.mindepth_majrule]
-        keepstat = depths[depths >= data.params.mindepth_statistical]
+    # store depths histogram as a dict. Limit to first 25 bins
+    bars, bins = np.histogram(depths, bins=range(1, 26))
+    sample.depths = {int(i): int(v) for i, v in zip(bins, bars) if v}
 
-        # sample summary stat assignments
-        sample.stats["state"] = 3
-        sample.stats["clusters_total"] = int(depths.shape[0])
-        sample.stats["clusters_hidepth"] = int(keepmj.shape[0])
-
-        # store depths histogram as a dict. Limit to first 25 bins
-        bars, bins = np.histogram(depths, bins=range(1, 26))
-        sample.depths = {int(i): int(v) for i, v in zip(bins, bars) if v}
-
-        # sample stat assignments
-        # Trap numpy warnings ("mean of empty slice") for samps w/ few reads
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
-            sample.stats_dfs.s3["clusters_total"] = int(depths.shape[0])
-            try:
-                sample.stats_dfs.s3["clusters_hidepth"] = (
-                    int(sample.stats["clusters_hidepth"]))
-            except ValueError:
-                # Handle clusters_hidepth == NaN
-                sample.stats_dfs.s3["clusters_hidepth"] = 0
-            sample.stats_dfs.s3["avg_depth_total"] = float(depths.mean())
-            sample.stats_dfs.s3["avg_depth_mj"] = float(keepmj.mean())
-            sample.stats_dfs.s3["avg_depth_stat"] = float(keepstat.mean())
-            sample.stats_dfs.s3["sd_depth_total"] = float(depths.std())
-            sample.stats_dfs.s3["sd_depth_mj"] = float(keepmj.std())
-            sample.stats_dfs.s3["sd_depth_stat"] = float(keepstat.std())
+    # sample stat assignments
+    # Trap numpy warnings ("mean of empty slice") for samps w/ few reads
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
+        sample.stats_dfs.s3["clusters_total"] = int(depths.shape[0])
+        try:
+            sample.stats_dfs.s3["clusters_hidepth"] = (
+                int(sample.stats["clusters_hidepth"]))
+        except ValueError:
+            # Handle clusters_hidepth == NaN
+            sample.stats_dfs.s3["clusters_hidepth"] = 0
+        sample.stats_dfs.s3["avg_depth_total"] = float(depths.mean())
+        sample.stats_dfs.s3["avg_depth_mj"] = float(keepmj.mean())
+        sample.stats_dfs.s3["avg_depth_stat"] = float(keepstat.mean())
+        sample.stats_dfs.s3["sd_depth_total"] = float(depths.std())
+        sample.stats_dfs.s3["sd_depth_mj"] = float(keepmj.std())
+        sample.stats_dfs.s3["sd_depth_stat"] = float(keepstat.std())
 
     # store results
     # If PE, samtools reports the _actual_ number of reads mapped, both
@@ -2703,19 +2710,63 @@ def tag_for_decloning(data, sample):
             outfile.close()
 
 
-# globals
-NO_ZIP_BINS = """
-  Reference sequence must be de-compressed fasta or bgzip compressed,
-  your file is probably gzip compressed. The simplest fix is to gunzip
-  your reference sequence by running this command:
 
-      gunzip {}
-
-  Then edit your params file to remove the `.gz` from the end of the
-  path to your reference sequence file and rerun step 3 with the `-f` flag.
-
-      error {}
-  """
 REQUIRE_REFERENCE_PATH = """\
   Assembly method {} requires that you enter a 'reference_sequence_path'.
 """
+
+
+
+if __name__ == "__main__":
+
+    import ipyrad as ip
+    ip.set_loglevel("DEBUG")
+
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # idata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata = idata.branch("test-amaranth-denovo")
+    # tdata.params.assembly_method = "denovo"
+    # tdata.run("3", auto=True, force=True)
+    # logger.info(tdata.stats)
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    idata = ip.load_json("/tmp/test-amaranth.json")
+    tdata = idata.branch("test-amaranth-reference")
+    tdata.params.assembly_method = "reference"
+    tdata.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
+    tdata.run("3", auto=True, force=True)
+    logger.info(tdata.stats)    
+
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # idata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata = idata.branch("test-amaranth-denovo")
+    # tdata.params.assembly_method = "reference"
+    # tdata.run("3", auto=True, force=True)
+    # logger.info(tdata.stats)
+
+
+    # test trimming of PE-ddRAD fastq files
+    # tdata = ip.load_json("/tmp/test-emppairgbs.json")
+    # print(tdata.params)
+    # tdata.run("5", auto=True, force=True)
+    # print(tdata.stats.T)
+    # print(tdata.stats_dfs.s3.T)
+
+
+
+    # test SE denovo RAD
+    # idata = ip.load_json("/home/deren/Documents/ipyrad/sandbox/test.json")
+    # tdata = idata.branch("test", force=True)
+    # tdata.ipcluster['cores'] = 4
+    # tdata.run("3", auto=True, force=True)
+
+    # test PE ddRAD
+    # idata = ip.load_json("/home/deren/Documents/ipyrad/sandbox/pe-test.json")
+    # tdata = idata.branch("test", force=True)
+    # tdata.ipcluster['cores'] = 4
+    # tdata.run("3", auto=True, force=True)
+
+
+
