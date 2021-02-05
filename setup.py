@@ -1,7 +1,17 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+"""
+Install ipyrad with:
+ `conda install ipyrad -c conda-forge -c bioconda`
+
+Or, for developers, install dependencies and then ipyrad w/ pip local:
+ `cd ipyrad/`
+ `conda env create -f environment.yml`
+ `pip install . --no-deps`
+"""
+
 import re
+from setuptools import setup, find_packages
 
 
 # Auto-update ipyrad version from git repo tag
@@ -31,8 +41,8 @@ setup(
         "pandas",
         "pysam",
         "h5py",
-        "cutadapt",  # THIS IS CAUSING PROBLEMS W/ XOPEN on PIP install!
         "requests",
+        "loguru",
     ],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
     license='GPL',
