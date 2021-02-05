@@ -908,7 +908,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("INFO")
+    ip.set_loglevel("DEBUG")
 
     # test FileLinker by loading SE fastq files
     # tdata = ip.Assembly("test-emprad")
@@ -922,13 +922,13 @@ if __name__ == "__main__":
     SIM_PREFIX = os.path.join(CURDIR, "../../tests/ipsimdata/")
 
     # test DEMUX by loading SE fastq files
-    # tdata = ip.Assembly("test-simrad")
-    # tdata.params.project_dir = "/tmp"
-    # tdata.params.raw_fastq_path = SIM_PREFIX + "rad_example_R*.gz"
-    # tdata.params.barcodes_path = SIM_PREFIX + "rad_example_barcodes.txt"
-    # tdata.params.datatype = "rad"
-    # tdata.run("1", auto=True, force=True)
-    # print(tdata.stats.head())
+    tdata = ip.Assembly("test-simrad")
+    tdata.params.project_dir = "/tmp"
+    tdata.params.raw_fastq_path = SIM_PREFIX + "rad_example_R*.gz"
+    tdata.params.barcodes_path = SIM_PREFIX + "rad_example_barcodes.txt"
+    tdata.params.datatype = "rad"
+    tdata.run("1", auto=True, force=True)
+    print(tdata.stats.head())
 
 
     # # test DEMUX by loading PE-ddRAD fastq files

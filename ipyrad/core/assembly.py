@@ -195,10 +195,13 @@ class Assembly(object):
 
 
     def _progressbar(self, njobs, finished, start, msg):
-
-        # bail
+        """
+        Print the progress bar to stdout.
+        """
+        # bail on quiet
         if self.quiet:
             return
+
         # measure progress
         if njobs:
             progress = 100 * (finished / float(njobs))
@@ -672,8 +675,8 @@ class Assembly(object):
         """
         # function dictionary
         stepdict = {
-            "1": ip.assemble.demultiplex.Step1,
-            "2": ip.assemble.rawedit.Step2, 
+            "1": ip.assemble.demux.Step1,
+            "2": ip.assemble.trimreads.Step2, 
             "3": ip.assemble.clustmap.Step3,
             "4": ip.assemble.jointestimate.Step4, 
             "5": ip.assemble.consens_se.Step5, 
@@ -888,7 +891,7 @@ def merge(name, assemblies, rename_dict=None):
     merged.params.sorted_fastq_path = "Merged: " + merged_names
 
     if any_replicates:
-       print(MERGED_TECHNICAL_REPLICATES)
+        print(MERGED_TECHNICAL_REPLICATES)
 
     # return the new Assembly object
     merged.save()
