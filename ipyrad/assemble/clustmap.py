@@ -361,7 +361,8 @@ class Step3:
             else:
                 self.data._print("skipping {}; no reads found.")
         if not any(checked_samples):
-            raise IPyradError("No samples ready for step 3.")
+            raise IPyradError("No samples ready for step 3. If branching, use"\
+                            + " the `-f` flag to force re-running step 3.")
 
         # sort samples so the largest is first
         checked_samples.sort(
