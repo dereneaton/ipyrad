@@ -354,8 +354,7 @@ class CLI:
                     data = ip.Assembly(assembly_name, cli=True)
                 else:
                     if os.path.exists(json_file):
-                        raise IPyradError(
-                        "Assembly already exists, use force to overwrite")
+                        raise IPyradError(_STEP_1_ASSEMBLY_EXISTS)
                     else:
                         data = ip.Assembly(assembly_name, cli=True)
             else:
@@ -575,6 +574,12 @@ _WRONG_NUM_CLI_MERGE = """
   The format for the merging command is:
   
   ipyrad -m new_assembly_name params-1.txt params-2.txt
+"""
+
+_STEP_1_ASSEMBLY_EXISTS = """
+    Looks like you're trying to re-run step 1 on an Assembly that already
+    exists. If you created a branch after step 1 you can simply proceed to step
+    2. If you wish to re-run step 1 you may use force to overwrite.
 """
 
 _WRONG_ORDER_CLI_MERGE = """
