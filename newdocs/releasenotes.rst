@@ -4,6 +4,39 @@
 Release Notes
 =============
 
+0.9.66
+------
+**February 18, 2021**
+
+- analysis.popgen: _collect_results() function to compile and organize results from the engines. It's a little ugly.
+- analysis.popgen Change default minmap value to 4
+- analysis.popgen Chunking of loci and parallelization of analysis working.
+- analysis.popgen._fst_full() implemented. Had to slightly tweak the code that was there, and it works a bit different than the other sumstats, but whatever for now it works.
+- analysis.popgen implemented Dxy
+- analysis.popgen._process_locus_pops() to prepare data for pairwise summary statistics
+- analysis.popgen: Stats returned as dict instead of tuple, and remote processes dump full stats to pickle files.
+- Add a _process_locus function to remove a bunch of redundancy, and split consens bases to account for diploidy in all the calcs
+- analysis.popgen: If no imap then all samples are considered from the same population.
+- analysis.popgen: refactor _Watterson to accept sequence length and return raw and per base theta values.
+- analysis.popgen: Refactor into 'public' sumstat methods which can be called on array-like locus data, and 'semi-private' methods (e.g. _pi, or _Watterson) that are much more efficient but accept very specific information. The Processor.run() function will do some housekeeping per locus and call the 'semi-private' methods, for efficiency. Public methods are for testing.
+- analysis.popgen Tajima's D function
+- analysis.popgen Watterson's theta function
+- clustmap: Handle bam files with very large chromosomes (#435)
+- clustmap_across: Catch samtools indexing failure for large bam files and try again with .csi indexing with the  flag.
+- Adopting the Processor() structure to enable parallelization. Also implemented nucleotide diversity.
+- analysis.popgen add parallelization support for calculating all sumstats per locus.
+- analysis.popgen _fst() is working for snp data
+- Add an option to LocusExtracter.get_locus to return a pd.DataFrame indexed by sample names
+- analysis.popgen getting it into current analysis tools format and starting to flesh it out.
+- CLI honors the -q flag now
+- analysis.sharing allow subsampling inside draw() to prevent recalculating data
+- analysis.shared allow sorting by mean pairwise sharing or missing
+- Allow analysis.sharing to reorder samples, and add a progress bar
+- Add new pairwise snp/missingness sharing analysis tool.
+- add locus sharing/missingness sharing analysis tool skel
+- pin numpy >=1.15, a known working version to address #429
+- Fix weird race condition with branching and pop_assign_files. See #430.
+
 0.9.65
 ------
 **January 22, 2021**
