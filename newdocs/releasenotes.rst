@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.67
+------
+**February 21, 2021**
+
+- Don't blank extra p3/p5 adapters in step2.check_adapters if filter_adapters != 3.
+
 0.9.66
 ------
 **February 18, 2021**
