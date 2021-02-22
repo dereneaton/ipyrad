@@ -24,7 +24,6 @@ OUTPUT_FORMATS = {
 }
 
 
-
 class Hackers(object):
     def __init__(self):
 
@@ -57,24 +56,12 @@ class Hackers(object):
         return self.__repr__()
 
 
-    def __setattr__(self, key, value):
-        "Checks keys during setattr's"
-        if key == "_data":
+    def __setattr__(self, key, val):
+        if key in ["_data", "__class__"] or key in self._data:
             pass
-        elif key in self._data:
-            super(Hackers, self).__setattr__(key, value)
         else:
-            print("'{}' is not a valid parameter".format(key))
-
-
-    def __setitem__(self, key, value):
-        "Checks keys during setattr's"
-        if key == "_data":
-            pass
-        if key in self._data:
-            super(Hackers, self).__setattr__(key, value)
-        else:
-            print("'{}' is not a valid parameter".format(key))
+            raise IPyradError("Attempting to set non-existant parameter: {}".format(key))
+        super().__setattr__(key, val)
 
 
     # setters
@@ -189,38 +176,6 @@ class Params(object):
         # harder to 'update' values if data is here...
         self._data = data
 
-        # DEFAULT VALUES
-        self._assembly_name = data.name
-        self._project_dir = os.path.realpath("./")
-        self._raw_fastq_path = ""
-        self._barcodes_path = ""
-        self._sorted_fastq_path = ""
-        self._assembly_method = "denovo"
-        self._reference_sequence = ""
-        self._datatype = "rad"
-        self._restriction_overhang = ("TGCAG", "")
-        self._max_low_qual_bases = 5
-        self._phred_Qscore_offset = 33
-        self._mindepth_statistical = 6
-        self._mindepth_majrule = 6
-        self._maxdepth = 10000
-        self._clust_threshold = 0.85
-        self._max_barcode_mismatch = 0
-        self._filter_adapters = 2
-        self._filter_min_trim_len = 35
-        self._max_alleles_consens = 2
-        self._max_Ns_consens = 0.05
-        self._max_Hs_consens = 0.05
-        self._min_samples_locus = 4
-        self._max_SNPs_locus = 0.20
-        self._max_Indels_locus = 8
-        self._max_shared_Hs_locus = 0.5
-        self._trim_reads = (0, 0, 0, 0)
-        self._trim_loci = (0, 0, 0, 0)
-        self._output_formats = list("psl")
-        self._pop_assign_file = ""
-        self._reference_as_filter = ""
-        
         self._keys = [
             "_assembly_name",
             "_project_dir",
@@ -253,7 +208,39 @@ class Params(object):
             "_pop_assign_file",
             "_reference_as_filter",            
         ]
-                
+
+        # DEFAULT VALUES
+        self._assembly_name = data.name
+        self._project_dir = os.path.realpath("./")
+        self._raw_fastq_path = ""
+        self._barcodes_path = ""
+        self._sorted_fastq_path = ""
+        self._assembly_method = "denovo"
+        self._reference_sequence = ""
+        self._datatype = "rad"
+        self._restriction_overhang = ("TGCAG", "")
+        self._max_low_qual_bases = 5
+        self._phred_Qscore_offset = 33
+        self._mindepth_statistical = 6
+        self._mindepth_majrule = 6
+        self._maxdepth = 10000
+        self._clust_threshold = 0.85
+        self._max_barcode_mismatch = 0
+        self._filter_adapters = 2
+        self._filter_min_trim_len = 35
+        self._max_alleles_consens = 2
+        self._max_Ns_consens = 0.05
+        self._max_Hs_consens = 0.05
+        self._min_samples_locus = 4
+        self._max_SNPs_locus = 0.20
+        self._max_Indels_locus = 8
+        self._max_shared_Hs_locus = 0.5
+        self._trim_reads = (0, 0, 0, 0)
+        self._trim_loci = (0, 0, 0, 0)
+        self._output_formats = list("psl")
+        self._pop_assign_file = ""
+        self._reference_as_filter = ""
+
         
     def __repr__(self):
         fullcurdir = os.path.realpath(os.path.curdir)
@@ -265,15 +252,19 @@ class Params(object):
                 value = value.replace(os.path.expanduser("~"), "~")
             printstr += "{:<4}{:<28}{:<45}\n".format(idx, key[1:], str(value))
         return printstr
+
     
     def __str__(self):
         return self.__repr__()
-        
 
-    # def __setattr__(self):
 
-    # def update(self, dict):
-
+    def __setattr__(self, key, val):
+        if key in ["_data", "_keys", "__class__"] or\
+            key.strip("_") in [x.strip("_") for x in self._keys]:
+            pass
+        else:
+            raise IPyradError("Attempting to set non-existant parameter: {}".format(key))
+        super().__setattr__(key, val)
 
 
     @property
@@ -788,7 +779,7 @@ def tuplecheck(newvalue, dtype=str):
 
 
 
-CANNOT_CHANGE_ASSEMBLY_NAME = """\
+CANNOT_CHANGE_ASSEMBLY_NAME = """
 Warning: Assembly name is set at Assembly creation time and is an immutable
 property: You may, however, branch the assembly which will create a copy
 with a new name, but retain a copy of the original Assembly. Here's how:
@@ -801,14 +792,14 @@ API (Jupyter Notebook Users):
 """
 
 
-SORTED_NOT_FOUND = """\
+SORTED_NOT_FOUND = """
 Error: fastq sequence files in sorted_fastq_path could not be found.
 Please check that the location was entered correctly and that a wild
 card selector (*) was used to select all or a subset of files.
 You entered: {}
 """
 
-SORTED_ISDIR = """\
+SORTED_ISDIR = """
 Error: You entered the path to a directory for sorted_fastq_path. To
 ensure the correct files in the directory are selected, please use a
 wildcard selector to designate the desired files.
@@ -816,14 +807,14 @@ Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
 You entered: {}
 """
 
-BAD_PROJDIR_NAME = """\
+BAD_PROJDIR_NAME = """
 Error: Your project_dir contains a directory with a space in the name.
 This can cause all kinds of funny problems so please rename this
 directory and remove the space. Try replacing the space with an underscore.
 You entered: {}
 """
 
-BARCODE_NOT_FOUND = """\
+BARCODE_NOT_FOUND = """
 Error: barcodes file not found. This must be an absolute path
 (/home/wat/ipyrad/data/data_barcodes.txt) or relative to the directory
 where you're running ipyrad (./data/data_barcodes.txt). The file you entered
