@@ -833,7 +833,7 @@ def merge(name, assemblies, rename_dict=None):
         assemblies = [assemblies]
 
     # inherit workdir
-    setattr(merged.params, "_project_dir", assemblies[0].params.project_dir)
+    merged.params.project_dir = assemblies[0].params.project_dir
 
     # inherit params setting from first assembly
     for key in assemblies[0].params._keys[5:]:
