@@ -837,7 +837,7 @@ class BarMatch:
 
             # i7 barcodes (get from name string instead of sequence)
             if self.data.hackersonly.demultiplex_on_i7_tags:
-                barcode = read1[0].decode().rsplit(":", 1)[-1].split("+")[0]
+                barcode = read1[0].decode().rsplit(":", 1)[-1].split("+")[0].strip()
 
             else:
                 # COMBINATORIAL BARCODES (BCODE1+BCODE2)
