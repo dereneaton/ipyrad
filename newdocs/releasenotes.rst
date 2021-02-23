@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.68
+------
+**February 23, 2021**
+
+- Handle i7 demux to strip trailing newline from barcode
+- demultiplex.py: Allow very short input fq files.
+- Fix project_dir inconsistency in merged assemblies.
+- Raise an error if setting a bad parameter in API mode #354
+
 0.9.67
 ------
 **February 21, 2021**
