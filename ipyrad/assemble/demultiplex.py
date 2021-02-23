@@ -1315,7 +1315,12 @@ def estimate_nreads(data, testfile):
 
     # divide by the tmp file size and multiply by 10000 to approximate
     # the size of the input .fq files
-    inputreads = int(insize / tmp_size) * 10000
+    # If the input file is less than 40000 lines long the islice returns
+    # 0, so here just return the full file size because this is toy data.
+    try:
+        inputreads = int(insize / tmp_size) * 10000
+    except ZeroDivisionError:
+        inputreads = insize
     os.remove(tmp_file_name)
 
     return inputreads
