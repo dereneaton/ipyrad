@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 
-""" Scikit-learn principal componenents analysis for missing data """
+""" 
+Scikit-learn principal componenents analysis for missing data
+Several options are available for filtering and imputation. 
+If no imputation argument is provided then missing data 
+(after filtering) is filled by the randomly sampling alleles at each 
+site based on their frequency in the entire sample. If imputation
+method is set to "sampled" then alleles are randomly sampled from 
+each population in the IMAP based on frequencies.
+
+TODO: use sampled-all by default
+TODO: set PC0 label to PC1
+TODO: allow spacing to fit long names on legend.
+"""
 
 from __future__ import print_function, division
 
