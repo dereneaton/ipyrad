@@ -10,20 +10,22 @@ from __future__ import print_function
 
 # standard lib
 import os
-import h5py
 import itertools
+from copy import copy
+
+import h5py
 import numpy as np
 import pandas as pd
-from copy import copy
 from numba import njit
 
-from .utils import count_snps
+from ipyrad.analysis.utils import count_snps
 from ipyrad.assemble.utils import GETCONS, IPyradError
-from ipyrad.assemble.write_outputs import NEXHEADER
+from ipyrad.assemble.write_outputs_converter import NEXHEADER
 
 
 """
     TODO:
+    - is rmincov working!?!!
 """
 
 
