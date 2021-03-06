@@ -453,7 +453,7 @@ class Step3:
             self.data.stats_dfs.s3.to_string(
                 buf=outfile,
                 formatters={
-                    'merged_pairs': '{:.0f}'.format,
+                    # 'merged_pairs': '{:.0f}'.format,
                     'clusters_total': '{:.0f}'.format,
                     'clusters_hidepth': '{:.0f}'.format,
                     'filtered_bad_align': '{:.0f}'.format,
@@ -463,7 +463,11 @@ class Step3:
                     'sd_depth_stat': '{:.2f}'.format,
                     'sd_depth_mj': '{:.2f}'.format,
                     'sd_depth_total': '{:.2f}'.format,
-                    'prop_pcr_duplicates': '{:.2f}'.format                    
+                    'pcr_duplicate_reads': '{:.0f}'.format,
+                    'pcr_duplicate_reads_prop': '{:.3f}'.format,
+                    "refseq_mapped_reads": '{:.0f}'.format,
+                    "refseq_mapped_reads_prop": '{:.3f}'.format,  
+                    # 'prop_pcr_duplicates': '{:.2f}'.format                    
                 })
 
         # remove temporary alignment chunk and derep files
@@ -595,21 +599,21 @@ class Step3:
         prog.check()
 
         # compile stats on highindel filteres, and duplicates
-        if self.data.hackersonly.declone_PCR_duplicates:
-            for sample in self.samples:
+        # if self.data.hackersonly.declone_PCR_duplicates:
+        #     for sample in self.samples:
                 
-                # list of 3-tuples
-                res = [i.get() for i in aasyncs[sample.name]]
-                logger.debug("declone {} {}".format(sample.name, res))
+        #         # list of 3-tuples
+        #         res = [i.get() for i in aasyncs[sample.name]]
+        #         logger.debug("declone {} {}".format(sample.name, res))
 
-                # count proportio of reads that are PCR duplicates
-                nreads = [i[1] for i in res]
-                nwodups = [i[2] for i in res]
-                propdup = float(nwodups) / nreads
-                sample.stats_dfs.s3["prop_pcr_duplicates"] = propdup
-                logger.debug(
-                    "declone {} prop_pcr_duplicates={:.3f}"
-                    .format(sample.name, propdup))
+        #         # count proportio of reads that are PCR duplicates
+        #         nreads = [i[1] for i in res]
+        #         nwodups = [i[2] for i in res]
+        #         propdup = float(nwodups) / nreads
+        #         sample.stats_dfs.s3["prop_pcr_duplicates"] = propdup
+        #         logger.debug(
+        #             "declone {} prop_pcr_duplicates={:.3f}"
+        #             .format(sample.name, propdup))
 
 
 
@@ -634,9 +638,9 @@ class Step3:
                 if rasyncs[sname].ready():
 
                     # enter results to sample object and checks for errors
-                    maxlens, depths = rasyncs[sname].get()
+                    maxlens, depths, counts = rasyncs[sname].get()
                     store_sample_stats(
-                        self.data, self.data.samples[sname], maxlens, depths)
+                        self.data, self.data.samples[sname], maxlens, depths, counts)
                     finished += 1
 
                     # remove sample from todo list, and del from rasyncs mem
@@ -1689,15 +1693,16 @@ def index_ref_with_bwa(data, alt=False):
                 "Assembly method {} requires that you enter a "
                 "reference_sequence_path. The path you entered was not "
                 "found: \n{}")
-                .format(data.params.assembly_method))
+                .format(data.params.assembly_method, data.params.reference_sequence))
         raise IPyradError((
             "reference_as_filter requires that you enter a reference "
             "fasta file. The path you entered was not found: \n{}")
-            .format(data.params.assembly_method))
+            .format(data.params.reference_as_filter))
 
     # If reference sequence already exists then bail out of this func
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
     if all([os.path.isfile(refseq_file + i) for i in index_files]):
+        logger.debug("reference bwa indexed: {}".format(refseq_file))
         return
 
     # bwa index <reference_file>
@@ -1738,14 +1743,15 @@ def index_ref_with_sam(data, alt=False):
                 "Assembly method {} requires that you enter a "
                 "reference_sequence_path. The path you entered was not "
                 "found: \n{}")
-                .format(data.params.assembly_method))
+                .format(data.params.assembly_method, data.params.reference_sequence))
         raise IPyradError((
             "reference_as_filter requires that you enter a reference "
             "fasta file. The path you entered was not found: \n{}")
-            .format(data.params.assembly_method))
+            .format(data.params.reference_as_filter))
 
     # If reference index exists then bail out unless force
     if os.path.exists(refseq_file + ".fai"):
+        logger.debug("reference sam indexed: {}".format(refseq_file))
         return
 
     # complain if file is bzipped
@@ -1930,8 +1936,8 @@ def mapping_reads(data, sample, nthreads, altref=False):
     with open(samout, 'wb') as outfile:
         proc1 = sps.Popen(cmd1, stderr=None, stdout=outfile)
         error1 = proc1.communicate()[0]
-        logger.debug("BWA out: {}".format(error1))
         if proc1.returncode:
+            logger.warning("BWA error: {}".format(error1))
             raise IPyradError("bwa error: {} {}".format(error1, proc1.stdout))
 
     # sends unmapped reads to a files and will PIPE mapped reads to cmd3
@@ -2132,6 +2138,7 @@ def build_clusters_from_cigars(data, sample):
     """
     # get all regions with reads. Generator to yield (str, int, int)
     fullregions = bedtools_merge(data, sample).strip().split("\n")
+    
     # If no reads map to reference the fullregions will be [''], so
     # we test for it and handle it properly. If you don't do this the regions
     # genrator will be empty and this will raise a ValueError. This will just
@@ -2298,6 +2305,7 @@ def split_endtoend_reads(data, sample):
     # output fasta names
     out1 = os.path.join(data.tmpdir, "{}_R1-tmp.fa".format(sample.name))
     out2 = os.path.join(data.tmpdir, "{}_R2-tmp.fa".format(sample.name))
+    logger.debug("resplit reads to {}".format(out1))
 
     # open files for writing
     splitderep1 = open(out1, 'w')
@@ -2329,7 +2337,13 @@ def split_endtoend_reads(data, sample):
 
             # later: use the fact they are identical to know they were merged.
             except ValueError:
-                part1, part2 = itera[1].strip(), itera[1]
+                # new 3/5/2021: trim bits off the edges of merged reads since
+                # the overlap during fastp read-trimming recovers the overhang 
+                # of the RE here and this can give rise to false heterozygotes
+                # since this bit of the RE should be trimmed off. Let's just
+                # set this to 3bp from each side to be safe.
+                ptrim = itera[1].strip()[3:-3]
+                part1, part2 = ptrim, ptrim
 
             # R1 needs a newline, but R2 inherits it from the original file
             # store parts in lists until ready to write
@@ -2433,12 +2447,14 @@ def get_quick_depths(data, sample):
             pairdealer = izip(*[iter(infile)] * 2)
 
             ## storage
+            counts = []
             depths = []
             maxlen = []
 
             ## start with cluster 0
             tdepth = 0
             tlen = 0
+            tcount = 0
 
             ## iterate until empty
             while 1:
@@ -2448,25 +2464,28 @@ def get_quick_depths(data, sample):
                 except StopIteration:
                     break
 
-                # if not the end of a cluster
+                # if at the end of a cluster
                 if name.strip() == seq.strip():
                     depths.append(tdepth)
                     maxlen.append(tlen)
+                    counts.append(tcount)
                     tlen = 0
                     tdepth = 0
+                    tcount = 0
 
                 else:
                     tdepth += int(name.strip().split("=")[-1][:-2])
                     tlen = len(seq)
+                    tcount += 1
     except TypeError:
         raise IPyradError(
             "error in get_quick_depths(): {}".format(sample.files.clusters))
 
     # return
-    return np.array(maxlen), np.array(depths)
+    return np.array(maxlen), np.array(depths), np.array(counts)
 
 
-def store_sample_stats(data, sample, maxlens, depths):
+def store_sample_stats(data, sample, maxlens, depths, counts):
     """
     stats, cleanup, and link to samples
     """
@@ -2502,6 +2521,14 @@ def store_sample_stats(data, sample, maxlens, depths):
     sample.stats["clusters_total"] = int(depths.shape[0])
     sample.stats["clusters_hidepth"] = int(keepmj.shape[0])
 
+    logger.debug(depths[:100])
+    logger.debug(counts[:100])
+
+    if data.hackersonly.declone_PCR_duplicates:
+        sample.stats_dfs.s3["pcr_duplicate_reads"] = int(sum(depths) - sum(counts))
+        sample.stats_dfs.s3["pcr_duplicate_reads_prop"] = float(
+            float(sum(depths) - sum(counts)) / sum(depths))
+
     # store depths histogram as a dict. Limit to first 25 bins
     bars, bins = np.histogram(depths, bins=range(1, 26))
     sample.depths = {int(i): int(v) for i, v in zip(bins, bars) if v}
@@ -2510,7 +2537,7 @@ def store_sample_stats(data, sample, maxlens, depths):
     # Trap numpy warnings ("mean of empty slice") for samps w/ few reads
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
+        # sample.stats_dfs.s3["merged_pairs"] = sample.stats.reads_merged
         sample.stats_dfs.s3["clusters_total"] = int(depths.shape[0])
         try:
             sample.stats_dfs.s3["clusters_hidepth"] = (
@@ -2530,17 +2557,16 @@ def store_sample_stats(data, sample, maxlens, depths):
     # R1 and R2, so here if PE divide the results by 2 to stay consistent
     # with how we've been reporting R1 and R2 as one "read pair"
     # TODO: how to report denovo - reference mapped.
-    if ("pair" in data.params.datatype):
+    if "pair" in data.params.datatype:
         # actually implement something. Apparently I am not super
         # worried about this ;p
         pass
 
     # Record refseq mapping stats for PE and SE
-    if ("denovo" not in data.params.assembly_method):
-        sample.stats["refseq_mapped_reads"] = sum(depths)
-        sample.stats["refseq_unmapped_reads"] = int(
-            sample.stats.reads_passed_filter - \
-            sample.stats["refseq_mapped_reads"])
+    if "denovo" not in data.params.assembly_method:
+        sample.stats_dfs.s3["refseq_mapped_reads"] = sum(depths)
+        sample.stats_dfs.s3["refseq_mapped_reads_prop"] = (
+            sample.stats_dfs.s3["refseq_mapped_reads"] / sample.stats.reads_passed_filter)
 
     # cleanup
     if not data.params.assembly_method == "denovo":    
@@ -2591,6 +2617,7 @@ def tag_to_header_for_decloning(data, sample):
 
     # we will write the modified version to this file
     tmpout = os.path.join(data.tmpdir, "{}_tagged.fa".format(sample.name))
+    logger.debug("declone tagged to {}".format(tmpout))
 
     # Remove adapters from head of sequence and write out
     # tmp_outfile is now the input file for the next step
@@ -2656,12 +2683,12 @@ def tag_for_decloning(data, sample):
     off the adapter, and push it down the pipeline. This will
     remove all identical seqs with identical random i5 adapters.
     """
-
     # paired reads are merged or joined in the merged file
     tmpin = os.path.join(data.tmpdir, "{}_merged.fastq".format(sample.name))
 
     # we will write the modified version to this file
     tmpout = os.path.join(data.tmpdir, "{}_declone.fastq".format(sample.name))
+    logger.debug("decloning prep to {}".format(tmpout))
 
     # Remove adapters from head of sequence and write out
     # tmp_outfile is now the input file for the next step
@@ -2730,13 +2757,31 @@ if __name__ == "__main__":
     # tdata.run("3", auto=True, force=True)
     # logger.info(tdata.stats)
 
-    # self.data.hackersonly.declone_PCR_duplicates:
-    idata = ip.load_json("/tmp/test-amaranth.json")
-    tdata = idata.branch("test-amaranth-reference")
+
+    # tdata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata.params.assembly_method = "denovo"    
+    # tdata.params.clust_threshold = 0.90
+    # tdata.run("3", auto=True, force=True)
+    # print(tdata.stats)
+    # print(tdata.stats_dfs.s3)
+
+    tdata = ip.load_json("/tmp/test-amaranth.json")
+    tdata = tdata.branch("test-amaranth-ref")
+    tdata.hackersonly.declone_PCR_duplicates = True
     tdata.params.assembly_method = "reference"
     tdata.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
     tdata.run("3", auto=True, force=True)
-    logger.info(tdata.stats)    
+    print(tdata.stats)
+    print(tdata.stats_dfs.s3.T)
+
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # idata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata = idata.branch("test-amaranth-reference")
+    # tdata.params.assembly_method = "reference"
+    # tdata.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
+    # tdata.run("3", auto=True, force=True)
+    # logger.info(tdata.stats)
 
 
     # self.data.hackersonly.declone_PCR_duplicates:
