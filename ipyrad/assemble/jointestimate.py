@@ -286,7 +286,7 @@ def recal_hidepth(data, sample):
     maxlen = data.hackersonly.max_fragment_length
 
     # get arrays of data
-    maxlens, depths = get_quick_depths(data, sample)
+    maxlens, depths, _ = get_quick_depths(data, sample)
 
     # calculate how many are hidepth
     hidepths = depths >= majrdepth
@@ -361,8 +361,12 @@ def stackarray(data, sample):
             piece = chunk[0].decode().strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
+
             # pull replicate read info from seqs
-            reps = [int(sname.split("=")[-1][:-2]) for sname in names]
+            if data.hackersonly.declone_PCR_duplicates:
+                reps = [1 for i in names]
+            else:
+                reps = [int(sname.split("=")[-1][:-2]) for sname in names]
 
             ## get all reps
             sseqs = [list(seq) for seq in seqs]
@@ -502,7 +506,18 @@ if __name__ == "__main__":
     ip.set_loglevel("DEBUG")
 
 
-    # self.data.hackersonly.declone_PCR_duplicates:
-    tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    tdata = ip.load_json("/tmp/test-amaranth-ref.json")
     tdata.run("4", auto=True, force=True)
-    logger.info(tdata.stats.T)
+    print(tdata.stats)
+    print(tdata.stats_dfs.s4)
+
+    # tdata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata.run("4", auto=True, force=True)
+    # print(tdata.stats)
+    # print(tdata.stats_dfs.s4)
+
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.run("4", auto=True, force=True)
+    # logger.info(tdata.stats.T)
