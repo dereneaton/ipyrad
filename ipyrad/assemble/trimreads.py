@@ -313,7 +313,7 @@ class ReadTrimming:
             else None
         )
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.paired = read2 != ""
+        self.paired = self.read2 is not None
         self.fastp_binary = os.path.join(sys.prefix, "bin", "fastp")
 
         # output file paths (do not bother gzipping since these are tmp files)
@@ -342,6 +342,7 @@ class ReadTrimming:
                 "-I", self.read2,
                 "-o", self.out1,
                 "-O", self.out2,
+                "--detect_adapter_for_pe"
             ]
 
         else:
@@ -354,7 +355,7 @@ class ReadTrimming:
         cmd.extend([
             "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
             "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
-            "-a", str(self.data.hackersonly.p5_adapter),
+            # "-a", str(self.data.hackersonly.p5_adapter), # allow auto-detection
             "-q", str(20 + self.data.params.phred_Qscore_offset - 33),
             "-l", str(self.data.params.filter_min_trim_len),
             "-y", "-Y", "50",  # complexity filter
@@ -421,16 +422,16 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_loglevel("DEBUG")
 
-    CURDIR = os.path.dirname(__file__)
-    SIM_PREFIX = os.path.join(CURDIR, "../../tests/ipsimdata/")
+    # CURDIR = os.path.dirname(__file__)
+    # SIM_PREFIX = os.path.join(CURDIR, "../../tests/ipsimdata/")
 
     # # Empirical pairddrad test
-    # tdata = ip.load_json("/tmp/test-amaranth.json")
-    # tdata.params.filter_adapters = 2
-    # tdata.params.filter_min_trim_len = 50
-    # tdata.run("2", auto=True, force=True)
-    # print(tdata.stats)
-    # print(tdata.stats_dfs.s2)
+    tdata = ip.load_json("/tmp/test-amaranth.json")
+    tdata.params.filter_adapters = 2
+    tdata.params.filter_min_trim_len = 50
+    tdata.run("2", auto=True, force=True)
+    print(tdata.stats)
+    print(tdata.stats_dfs.s2)
 
     # # Simulated SE RAD test
     # tdata = ip.load_json("/tmp/test-simrad.json")
@@ -440,10 +441,10 @@ if __name__ == "__main__":
     # print(tdata.stats_dfs.s2.head())
 
     # Simulated test that included merged assemblies
-    tdata = ip.load_json("/tmp/test-simrad.json")    
-    tdata = ip.merge('merge-s2-test', [tdata, tdata])
-    tdata.params.filter_adapters = 2
-    tdata.run("2", auto=True, force=True)
+    # tdata = ip.load_json("/tmp/test-simrad.json")    
+    # tdata = ip.merge('merge-s2-test', [tdata, tdata])
+    # tdata.params.filter_adapters = 2
+    # tdata.run("2", auto=True, force=True)
     # print(tdata.stats.head())
     # print(tdata.stats_dfs.s2.head())  
 
