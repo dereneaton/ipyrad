@@ -23,7 +23,6 @@ import datetime
 from loguru import logger
 import pandas as pd
 import numpy as np
-import ipyrad
 
 
 BADCHARS = (
@@ -150,6 +149,7 @@ class AssemblyProgressBar(object):
         for job in self.jobs:
             if not self.jobs[job].successful():
                 # raise the exception from the job and catch it
+                logger.debug(job, self.jobs)
                 try:
                     self.results[job] = self.jobs[job].get()
                 except Exception as inst:
@@ -210,19 +210,25 @@ def set_loglevel(loglevel="DEBUG", logfile=None):
 
 
 class IPyradError(Exception):
-    """
-    Exception handler that does clean exit for CLI, but also prints
-    the traceback and cleaner message for API.
-    """
     def __init__(self, *args, **kwargs):
         # raise the exception with this string message and a traceback
         Exception.__init__(self, *args, **kwargs)
 
-        # but suppress traceback and exit on CLI
-        if not ipyrad.__interactive__:
-            # clean exit for CLI that still exits as an Error (e.g. for HPC)
-            sys.tracebacklimit = 0
-            SystemExit(1)
+
+# class IPyradError(Exception):
+#     """
+#     Exception handler that does clean exit for CLI, but also prints
+#     the traceback and cleaner message for API.
+#     """
+#     def __init__(self, *args, **kwargs):
+#         # raise the exception with this string message and a traceback
+#         Exception.__init__(self, *args, **kwargs)
+
+#         # but suppress traceback and exit on CLI
+#         if not ipyrad.__interactive__:
+#             # clean exit for CLI that still exits as an Error (e.g. for HPC)
+#             sys.tracebacklimit = 0
+#             SystemExit(1)
 
 
 ## utility functions/classes
@@ -370,6 +376,8 @@ AMBIGS = {
     "W": ("T", "A"),
     "M": ("C", "A"),
     }
+
+
 
 
 def chroms2ints(data, intkeys):
