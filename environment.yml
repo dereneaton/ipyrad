@@ -1,0 +1,26 @@
+name: dev
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.6
+  - future
+  - ipyparallel>=6.02
+  - numpy>=1.15
+  - scipy
+  - pandas
+  - numba>=0.37
+  - h5py
+  - requests
+  - loguru
+  - pysam>=0.15
+  - fastp
+  - muscle
+  - vsearch
+  - toyplot
+  - toytree
+  - bwa
+  - bedtools
+  - samtools
+  - notebook
+
