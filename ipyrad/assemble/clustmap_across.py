@@ -23,7 +23,6 @@ import time
 import shutil
 import random
 import select
-import socket
 import subprocess as sps
 
 from loguru import logger
@@ -65,6 +64,9 @@ class Step6:
         self.nthreads = len(self.ipyclient.ids)
         self.lbview = self.ipyclient.load_balanced_view()
         self.thview = self.ipyclient.load_balanced_view()
+
+        # beds 
+        self.regions = []
 
 
     def print_headers(self):
@@ -156,94 +158,94 @@ class Step6:
         return checked_samples        
 
 
-    def assign_groups(self):
-        "assign samples to groups if not user provided for hierarchical clust"
+    # def assign_groups(self):
+    #     "assign samples to groups if not user provided for hierarchical clust"
 
-        # to hold group ints mapping to list of sample objects
-        # {0: [a, b, c], 1: [d, e, f]}
-        self.cgroups = {}
+    #     # to hold group ints mapping to list of sample objects
+    #     # {0: [a, b, c], 1: [d, e, f]}
+    #     self.cgroups = {}
 
-        # use population info to split samples into groups; or assign random
-        if self.data.populations:
-            self.cgroups = {}
-            for idx, val in enumerate(self.data.populations.values()):
-                self.cgroups[idx] = [self.data.samples[x] for x in val[1]]
+    #     # use population info to split samples into groups; or assign random
+    #     if self.data.populations:
+    #         self.cgroups = {}
+    #         for idx, val in enumerate(self.data.populations.values()):
+    #             self.cgroups[idx] = [self.data.samples[x] for x in val[1]]
 
-        # by default let's split taxa into groups of 20-50 samples at a time
-        else:
-            # calculate the number of cluster1 jobs to perform:
-            if len(self.samples) <= 100:
-                groupsize = 20
-            elif len(self.samples) <= 500:
-                groupsize = 50
-            else:
-                groupsize = 100
+    #     # by default let's split taxa into groups of 20-50 samples at a time
+    #     else:
+    #         # calculate the number of cluster1 jobs to perform:
+    #         if len(self.samples) <= 100:
+    #             groupsize = 20
+    #         elif len(self.samples) <= 500:
+    #             groupsize = 50
+    #         else:
+    #             groupsize = 100
 
-            # split samples evenly into groups
-            alls = self.samples
-            nalls = len(self.samples)
-            ngroups = int(np.ceil(nalls / groupsize))
-            gsize = int(np.ceil(nalls / ngroups))
+    #         # split samples evenly into groups
+    #         alls = self.samples
+    #         nalls = len(self.samples)
+    #         ngroups = int(np.ceil(nalls / groupsize))
+    #         gsize = int(np.ceil(nalls / ngroups))
 
-            idx = 0
-            for samps in range(0, nalls, gsize):
-                self.cgroups[idx] = alls[samps: samps + gsize]
-                idx += 1
+    #         idx = 0
+    #         for samps in range(0, nalls, gsize):
+    #             self.cgroups[idx] = alls[samps: samps + gsize]
+    #             idx += 1
 
 
-    def tune_hierarchical_threading(self):
-        "tune threads for across-sample clustering used in denovo assemblies"
+    # def tune_hierarchical_threading(self):
+    #     "tune threads for across-sample clustering used in denovo assemblies"
 
-        # get engine data, skips busy engines.
-        hosts = {}
-        for eid in self.ipyclient.ids:
-            engine = self.ipyclient[eid]
-            if not engine.outstanding:
-                hosts[eid] = engine.apply(socket.gethostname)
+    #     # get engine data, skips busy engines.
+    #     hosts = {}
+    #     for eid in self.ipyclient.ids:
+    #         engine = self.ipyclient[eid]
+    #         if not engine.outstanding:
+    #             hosts[eid] = engine.apply(socket.gethostname)
 
-        # get targets on each hostname for spreading jobs out.
-        self.ipyclient.wait()
-        hosts = [(eid, i.get()) for (eid, i) in hosts.items()]
-        hostnames = set([i[1] for i in hosts])
-        self.hostd = {x: [i[0] for i in hosts if i[1] in x] for x in hostnames}
+    #     # get targets on each hostname for spreading jobs out.
+    #     self.ipyclient.wait()
+    #     hosts = [(eid, i.get()) for (eid, i) in hosts.items()]
+    #     hostnames = set([i[1] for i in hosts])
+    #     self.hostd = {x: [i[0] for i in hosts if i[1] in x] for x in hostnames}
 
-        # calculate the theading of cluster1 jobs:
-        self.data.ncpus = len(self.ipyclient.ids)
-        njobs = len(self.cgroups)
-        nnodes = len(self.hostd)
+    #     # calculate the theading of cluster1 jobs:
+    #     self.data.ncpus = len(self.ipyclient.ids)
+    #     njobs = len(self.cgroups)
+    #     nnodes = len(self.hostd)
 
-        # how to load-balance cluster2 jobs
-        # maxthreads = 8 cuz vsearch isn't v efficient above that.
-        ## e.g., 24 cpus; do 2 12-threaded jobs
-        ## e.g., 2 nodes; 40 cpus; do 2 20-threaded jobs or 4 10-threaded jobs
-        ## e.g., 4 nodes; 80 cpus; do 8 10-threaded jobs
-        if nnodes == 1:
-            thr = np.floor(self.data.ncpus / njobs).astype(int)
-            eids = max(1, thr)
-            eids = max(eids, len(list(self.hostd.values())[0]))
+    #     # how to load-balance cluster2 jobs
+    #     # maxthreads = 8 cuz vsearch isn't v efficient above that.
+    #     ## e.g., 24 cpus; do 2 12-threaded jobs
+    #     ## e.g., 2 nodes; 40 cpus; do 2 20-threaded jobs or 4 10-threaded jobs
+    #     ## e.g., 4 nodes; 80 cpus; do 8 10-threaded jobs
+    #     if nnodes == 1:
+    #         thr = np.floor(self.data.ncpus / njobs).astype(int)
+    #         eids = max(1, thr)
+    #         eids = max(eids, len(list(self.hostd.values())[0]))
 
-        else:
-            eids = []
-            for node in self.hostd:
-                sids = self.hostd[node]
-                nids = len(sids)
-                thr = np.floor(nids / (njobs / nnodes)).astype(int)
-                thr = max(1, thr)
-                thr = min(thr, nids)
-                eids.extend(self.hostd[node][::thr])
+    #     else:
+    #         eids = []
+    #         for node in self.hostd:
+    #             sids = self.hostd[node]
+    #             nids = len(sids)
+    #             thr = np.floor(nids / (njobs / nnodes)).astype(int)
+    #             thr = max(1, thr)
+    #             thr = min(thr, nids)
+    #             eids.extend(self.hostd[node][::thr])
 
-        # set nthreads based on ipcluster dict (default is 2)        
-        #if "threads" in self.data.ipcluster.keys():
-        #    self.nthreads = int(self.data.ipcluster["threads"])
-        self.nthreads = 2
-        if self.data.ncpus > 4:
-            self.nthreads = int(np.floor(
-                self.data.ncpus) / len(self.cgroups))
-        eids = self.ipyclient.ids[::self.nthreads]
+    #     # set nthreads based on ipcluster dict (default is 2)        
+    #     #if "threads" in self.data.ipcluster.keys():
+    #     #    self.nthreads = int(self.data.ipcluster["threads"])
+    #     self.nthreads = 2
+    #     if self.data.ncpus > 4:
+    #         self.nthreads = int(np.floor(
+    #             self.data.ncpus) / len(self.cgroups))
+    #     eids = self.ipyclient.ids[::self.nthreads]
 
-        # create load-balancers
-        self.lbview = self.ipyclient.load_balanced_view()
-        self.thview = self.ipyclient.load_balanced_view(targets=eids)
+    #     # create load-balancers
+    #     self.lbview = self.ipyclient.load_balanced_view()
+    #     self.thview = self.ipyclient.load_balanced_view(targets=eids)
 
 
     def run(self):
@@ -594,18 +596,11 @@ class Step6:
         prog = AssemblyProgressBar({}, None, printstr, self.data)
         prog.update()
         rasync = self.ipyclient[0].apply(build_ref_regions, self.data)
-        prog.jobs = {1: rasync}
+        prog.jobs = {1: rasync}        
         prog.block()
         prog.check()
-        self.regions = prog.results[1]               
-        # while 1:
-            # done = rasync.ready()
-            # self.data._progressbar(1, int(done), start, printstr)
-            # time.sleep(0.1)
-            # if done:
-                # break
-        # self.data._print("")
-        # self.regions = rasync.get()
+        self.regions = rasync.get()
+        logger.debug('regions: {}...'.format(self.regions[:10]))
 
 
     def remote_build_ref_clusters(self):
@@ -619,30 +614,19 @@ class Step6:
         optim = int(np.ceil(optim / 2))
 
         # send jobs to func
-        start = time.time()
         printstr = ("building database   ", "s6")        
-        jobs = {}
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
+        prog.jobs = {}
         for idx, chunk in enumerate(range(0, nloci, optim)):
             region = self.regions[chunk: chunk + optim]
             if region:
                 args = (self.data, idx, region)
-                jobs[idx] = self.lbview.apply(build_ref_clusters, *args)
+                prog.jobs[idx] = self.lbview.apply(build_ref_clusters, *args)
 
         # print progress while bits are aligning
-        allwait = len(jobs)
-        while 1:
-            finished = [i.ready() for i in jobs.values()]
-            fwait = sum(finished)
-            self.data._progressbar(allwait, fwait, start, printstr)
-            time.sleep(0.4)
-            if all(finished):
-                break
-
-        # check success
-        for idx in jobs:
-            if not jobs[idx].successful():
-                jobs[idx].get()
-        self.data._print("")
+        prog.block()
+        prog.check()
 
 
 
@@ -1484,8 +1468,18 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_loglevel("DEBUG")
 
-    # self.data.hackersonly.declone_PCR_duplicates:
-    tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
-    # tdata.ipcluster['cores'] = 4
+    # tdata = ip.load_json("/tmp/test-simpairddrad.json")
+    # tdata.run("6", auto=True, force=True)
+    # logger.info(tdata.stats.T)
+
+
+    tdata = ip.load_json("/tmp/test-amaranth.json")
     tdata.run("6", auto=True, force=True)
-    logger.info(tdata.stats.T)
+    print(tdata.stats)
+    # print(tdata.stats_dfs.s5)
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.ipcluster['cores'] = 4
+    # tdata.run("6", auto=True, force=True)
+    # logger.info(tdata.stats.T)
