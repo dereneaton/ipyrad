@@ -79,6 +79,8 @@ class Sample(object):
                                      "sd_depth_mj",
                                      "sd_depth_stat",
                                      "filtered_bad_align",
+                                     "deduplicated_reads",
+                                     "deduplicated_reads_prop",
                                      ]).astype(np.object),
 
               "s4": pd.Series(index=["hetero_est",
@@ -88,7 +90,7 @@ class Sample(object):
               "s5": pd.Series(index=["clusters_total",
                                      "filtered_by_depth",
                                      "filtered_by_maxH",
-                                     "filtered_by_maxAlleles",
+                                     "filtered_by_max_alleles",
                                      "filtered_by_maxN",
                                      "reads_consens",
                                      "nsites",
