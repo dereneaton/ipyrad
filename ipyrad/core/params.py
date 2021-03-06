@@ -4,6 +4,7 @@
 
 import os
 import glob
+from loguru import logger
 from ..assemble.utils import IPyradError
 
 
@@ -658,16 +659,19 @@ class Params(object):
     def trim_reads(self, value):
         # cast to ints
         value = tuplecheck(value, int)
+        assert all([i >= 0 for i in value]), "trim_reads values must be greater than 0"
+        if any([i > 50 for i in value]):
+            logger.warning(NEW_BAD_TRIM_READS)
 
         # check that entries make sense 
-        if value[1] > 0:
-            if not value[1] > value[0]:
-                raise IPyradError(BAD_TRIM_READS)
-        if value[3] > 0:
-            if not value[3] > value[2]:
-                raise IPyradError(BAD_TRIM_READS)
-        if (value[0] < 0) or (value[2] < 0):
-            raise IPyradError(BAD_TRIM_READS)       
+        # if value[1] > 0:
+        #     if not value[1] > value[0]:
+        #         raise IPyradError(BAD_TRIM_READS)
+        # if value[3] > 0:
+        #     if not value[3] > value[2]:
+        #         raise IPyradError(BAD_TRIM_READS)
+        # if (value[0] < 0) or (value[2] < 0):
+        #     raise IPyradError(BAD_TRIM_READS)       
         self._trim_reads = value
 
 
@@ -860,4 +864,11 @@ Bad trim_reads entry. Think of these values like slice indices, but with
 0 as a special character meaning no effect. So (0, 80, 0, 0) trims the 
 first read to 80 bp. (5, 80, 0, 0) trims R1 to keep only bp 5-80. 
 See documentation for details.
+"""
+
+NEW_BAD_TRIM_READS = """\
+The trim_reads parameters has been updated as of v.1.0. The value you
+entered does not seem appropriate. Think of each value as a the number
+of bp that will be trimmed from that end of the read. The order of 
+parameters is (R1>, <R1, R2>, <R2).
 """
