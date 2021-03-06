@@ -4,7 +4,6 @@
 Helper classes for step7 (write_outputs.py) for filtering loci for the .loci output.
 """
 
-
 import numpy as np
 from numba import njit
 
@@ -386,9 +385,6 @@ class ChunkProcessor(object):
 
 
 
-
-
-
 class Edges:
     """
     Trims edges of overhanging sequences, cutsites, and pair inserts
@@ -527,6 +523,24 @@ class Edges:
             self.bad = True
 
 
+# -------------------------------------------------------------
+# jitted subsample func
+# -------------------------------------------------------------
+
+@njit
+def subsample(snpsmap):
+    """
+    Subsample snps, one per locus, using snpsmap
+    """
+    sidxs = np.unique(snpsmap[:, 0])
+    subs = np.zeros(sidxs.size, dtype=np.int64)
+    idx = 0
+    for sidx in sidxs:
+        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
+        site = np.random.choice(sites)
+        subs[idx] = site
+        idx += 1
+    return subs
 
 
 # -------------------------------------------------------------

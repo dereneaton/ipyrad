@@ -97,7 +97,7 @@ class Step7:
         self.remote_build_arrays_and_write_loci()
 
         # send conversion jobs from array files to engines
-        #self.remote_write_outfiles()
+        self.remote_write_outfiles()
 
         # send jobs to build vcf
         # throttle job to avoid memory errors based on catg size
@@ -1323,20 +1323,6 @@ def get_fai_values(data, value):
 
 
 
-@njit
-def subsample(snpsmap):
-    """
-    Subsample snps, one per locus, using snpsmap
-    """
-    sidxs = np.unique(snpsmap[:, 0])
-    subs = np.zeros(sidxs.size, dtype=np.int64)
-    idx = 0
-    for sidx in sidxs:
-        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
-        site = np.random.choice(sites)
-        subs[idx] = site
-        idx += 1
-    return subs
 
 
 
@@ -1375,18 +1361,11 @@ following sample names are in the pop assignments but not in this Assembly:
 {}
 """
 POPULATION_REQUIRED = """\
-Warning: Skipping output format '{}'. Requires population assignments.\
+Warning: Skipping output format '{}'. Requires population assignments.
+You can alternatively create this type of file using ipyrad-analysis 
+after assembling your data.
+"""
 
-"""
-NEXHEADER = """#nexus
-begin data;
-  dimensions ntax={} nchar={};
-  format datatype=dna missing=N gap=- interleave=yes;
-  matrix
-"""
-NEXCLOSER = """  ;
-end;
-"""
 OUT_SUFFIX = {
     'l': ('.loci',),
     'p': ('.phy', '.phymap',),
@@ -1401,14 +1380,6 @@ OUT_SUFFIX = {
     't': ('.treemix',),
     'm': ('.migrate',),
     }
-STRDICT = {
-    'A': '0', 
-    'T': '1', 
-    'G': '2', 
-    'C': '3', 
-    'N': '-9', 
-    '-': '-9',
-}
 
 
 
@@ -1418,8 +1389,18 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_loglevel("DEBUG")
 
-    # self.data.hackersonly.declone_PCR_duplicates:
-    tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
-    # tdata.ipcluster['cores'] = 4
+    # tdata = ip.load_json("/tmp/test-simpairddrad.json")
+    # tdata.params.output_formats = "lpsnkaguvtm"
+    # tdata.run("7", auto=True, force=True)
+    # logger.info(tdata.stats.T)
+
+    tdata = ip.load_json("/tmp/test-amaranth.json")
     tdata.run("7", auto=True, force=True)
-    logger.info(tdata.stats.T)
+    print(tdata.stats)
+    # print(tdata.stats_dfs.s5)
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.ipcluster['cores'] = 4
+    # tdata.run("7", auto=True, force=True)
+    # logger.info(tdata.stats.T)

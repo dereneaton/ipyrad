@@ -5,6 +5,10 @@ Converter class for writing output files formats from HDF5 input.
 """
 
 
+import h5py
+import numpy as np
+from ipyrad.assemble.write_outputs_helpers import subsample
+from ipyrad.assemble.utils import BTS, chroms2ints
 
 
 class Converter:
@@ -518,3 +522,29 @@ class Converter:
             minmap={i: j[0] for (i, j) in self.data.populations.items()},
             )
         mig.write_seqfile()
+
+
+
+##########################################
+# GLOBALS
+##########################################
+
+NEXHEADER = """#nexus
+begin data;
+  dimensions ntax={} nchar={};
+  format datatype=dna missing=N gap=- interleave=yes;
+  matrix
+"""
+
+NEXCLOSER = """  ;
+end;
+"""
+
+STRDICT = {
+    'A': '0', 
+    'T': '1', 
+    'G': '2', 
+    'C': '3', 
+    'N': '-9', 
+    '-': '-9',
+}
