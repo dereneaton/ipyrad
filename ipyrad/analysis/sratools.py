@@ -12,10 +12,10 @@ except ImportError:
 # standard
 import os
 import time
-import requests
 import subprocess as sps
 
 # third party
+import requests
 import pandas as pd
 from ..core.Parallel import Parallel
 from ..assemble.utils import IPyradError
@@ -27,8 +27,13 @@ MISSING_IMPORTS = """
 To use the ipa.sratools module you must install the sra-tools
 software, which you can do with the following conda command. 
 
-  conda install sra-tools -c bioconda 
+  conda install 'sra-tools>2.10' -c conda-forge -c bioconda 
+
+NB: The sra-tools software is updated frequently with changes that 
+are not backwards compatible, and thus break this wrapper tool. If 
+you encounter an error please let us know on gitter.
 """
+
 
 ACCESSION_ID = """
 Accession ID must be either a Run or Study accession, i.e., 
@@ -43,8 +48,7 @@ class SRA(object):
     def __init__(
         self, 
         accessions,
-        workdir="sra-fastq-data",
-        ):
+        workdir="sra-fastq-data"):
 
         # store attributes
         self.accessions = accessions
@@ -173,18 +177,23 @@ class SRA(object):
         dry_run,
         split_pairs, 
         gzip):
-        "Download files and fastq-dump them to workdir"
+        """
+        Download files and fastq-dump them to workdir
+        """
 
         # get run info and sort so largest samples are on top
-        df = self.fetch_runinfo(list(range(31)), quiet=True)
-        df = df.sort_values(by="spots", ascending=False).reset_index(drop=True)
+        rundf = self.fetch_runinfo(list(range(31)), quiet=True)
+        rundf = rundf.sort_values(
+            by="spots",
+            ascending=False,
+        ).reset_index(drop=True)
 
         # parallelize downloads
         if ipyclient:
             lbview = ipyclient.load_balanced_view()
 
         # make empty Accession field
-        df["Accession"] = ""
+        rundf["Accession"] = ""
 
         # choose spacer to replace spaces in names as different from name_sep
         otherspacer = ("_" if name_separator != "_" else "-")
@@ -196,44 +205,44 @@ class SRA(object):
             fields = [i - 1 for i in fields_checker(name_fields)]
 
             # set new accession name
-            for row in df.index:
-                df.loc[row, "Accession"] = (
+            for row in rundf.index:
+                rundf.loc[row, "Accession"] = (
                     name_separator.join(
-                        [df.iloc[row, i] for i in fields]
+                        [rundf.iloc[row, i] for i in fields]
                         )
                     ).replace(" ", otherspacer)
 
         # backup default naming scheme
         else:
-            if df.SampleName.value_counts().max() > 1:
+            if rundf.SampleName.value_counts().max() > 1:
                 # set new accession name
-                for row in df.index:
-                    df.loc[row, "Accession"] = (
+                for row in rundf.index:
+                    rundf.loc[row, "Accession"] = (
                         name_separator.join(
-                            [df.iloc[row, i] for i in [30, 1]]
+                            [rundf.iloc[row, i] for i in [30, 1]]
                             )
                         )
             else:
-                df.Accession = df.SampleName       
+                rundf.Accession = rundf.SampleName       
 
         # test run to see file names and location without download
         if dry_run:
             print(
                 "\rThe following files will be written to: {}\n"
                 .format(self.workdir))
-            print("{}\n".format(df.Accession))
+            print("{}\n".format(rundf.Accession))
             return
 
         # send download jobs
         nfinished = 0
-        ntotal = int(df.shape[0]) * 2
+        ntotal = int(rundf.shape[0]) * 2
         start = time.time()
         message = "downloading/extracting fastq data"
         download_asyncs = {}
-        for sidx in df.index:
+        for sidx in rundf.index:
             progressbar(nfinished, ntotal, start, message)
-            acc = df.Accession[sidx]
-            url = df.download_path[sidx]
+            acc = rundf.Accession[sidx]
+            url = rundf.download_path[sidx]
             out = os.path.join(self.workdir, acc) + ".sra"
             out = os.path.realpath(os.path.expanduser(out))
 
@@ -349,12 +358,12 @@ class SRA(object):
                     },
                 )
             time.sleep(3)
-            df = pd.read_csv(StringIO(res.text.strip()))
-            blocks.append(df)
+            rundf = pd.read_csv(StringIO(res.text.strip()))
+            blocks.append(rundf)
 
-        df = pd.concat(blocks)
-        df.reset_index(drop=True, inplace=True)
-        return df.iloc[:, [i - 1 for i in fields]]
+        rundf = pd.concat(blocks)
+        rundf.reset_index(drop=True, inplace=True)
+        return rundf.iloc[:, [i - 1 for i in fields]]
 
 
 
