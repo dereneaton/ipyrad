@@ -11,6 +11,13 @@ import subprocess
 import requests
 
 
+# py2/3 support for urllib
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
+
+    
 
 class Download:
     """
@@ -24,7 +31,9 @@ class Download:
     url (str):
         A valid URL destination of the file you wish to download.
     path (str):
-        A valid path on your computer to use as the file name.
+        A valid path on your computer to use as the file name. 
+        You should include the appropriate file suffix, including
+        .gz if it is gzipped.
     gunzip (bool):
         If the file ends with .gz and is gzipped then this will 
         write a copy that is decompressed without the .gz ending.
@@ -47,18 +56,33 @@ class Download:
         self.gunzip_file()
         # self.clean_data()
 
+        if self.url.endswith(".gz") and not self.path.endswith(".gz"):
+            self.path += ".gz"
+
 
     def download(self):
         "call the chunked download with requests"
         # only run if the reference doesn't already exist
-        if (not os.path.exists(self.path)) and (not self.force):
-    
+        if (not os.path.exists(self.path)) or self.force:
+
+            # if the URL startswith ftp then use urllib instead
+            if self.url.startswith("ftp:"):
+                with urlopen(self.url) as res:
+                    CHUNK = 1024 * 1024
+                    with open(self.path, 'wb') as out:
+                        while True:
+                            chunk = res.read(CHUNK)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+            
             # open a stream to url and write to file 1Mb at a time.
-            res = requests.get(self.url, stream=True)
-            with open(self.path, 'wb') as out:
-                for chunk in res.iter_content(chunk_size=1024*1024):
-                    if chunk:
-                        out.write(chunk)
+            else:
+                res = requests.get(self.url, stream=True)
+                with open(self.path, 'wb') as out:
+                    for chunk in res.iter_content(chunk_size=1024*1024):
+                        if chunk:
+                            out.write(chunk)
             print("successful download: {}".format(self.path))
         else:
             print("file already exists: {}".format(self.path))
@@ -68,7 +92,7 @@ class Download:
         "make a decompressed copy of the file"
         if self.gunzip:
             try:
-                if not os.path.exists(self.gunzip_name):
+                if not os.path.exists(self.gunzip_name) or self.force:
                     print('decompressing gzipped file')
                     with open(self.gunzip_name, 'w') as out:
                         with gzip.open(self.path, 'r') as stream:
