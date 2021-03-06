@@ -16,8 +16,8 @@ import traceback
 import subprocess
 from random import getrandbits
 
-import ipyrad as ip
 import ipyparallel as ipp
+import ipyrad as ip
 from ..assemble.utils import IPyradError, detect_cpus
 # from ipywidgets import HTML, Box
 # from IPython.display import display
@@ -213,9 +213,9 @@ class Parallel(object):
         except KeyboardInterrupt as inst:
             raise inst
 
-        except (IOError, OSError, ipp.TimeoutError, ipp.NoEnginesRegistered):
+        except (IOError, OSError, ipp.TimeoutError, ipp.NoEnginesRegistered) as inst:
             raise IPyradError(
-                "\nipcluster not found, use 'auto=True' or see docs.")
+                "\nipcluster not found, use 'auto=True' or see docs.") from inst
 
         finally:
             # no matter what we reset the stds
@@ -279,7 +279,7 @@ class Parallel(object):
         try:
             # check that ipyclient is running by connecting (3 seconds tries)
             if self.ipyclient:
-                for i in range(3):
+                for _ in range(3):
                     if len(self.ipyclient):
                         break
                     else:
