@@ -922,13 +922,13 @@ if __name__ == "__main__":
     SIM_PREFIX = os.path.join(CURDIR, "../../tests/ipsimdata/")
 
     # test DEMUX by loading SE fastq files
-    tdata = ip.Assembly("test-simrad")
-    tdata.params.project_dir = "/tmp"
-    tdata.params.raw_fastq_path = SIM_PREFIX + "rad_example_R*.gz"
-    tdata.params.barcodes_path = SIM_PREFIX + "rad_example_barcodes.txt"
-    tdata.params.datatype = "rad"
-    tdata.run("1", auto=True, force=True)
-    print(tdata.stats.head())
+    # tdata = ip.Assembly("test-simrad")
+    # tdata.params.project_dir = "/tmp"
+    # tdata.params.raw_fastq_path = SIM_PREFIX + "rad_example_R*.gz"
+    # tdata.params.barcodes_path = SIM_PREFIX + "rad_example_barcodes.txt"
+    # tdata.params.datatype = "rad"
+    # tdata.run("1", auto=True, force=True)
+    # print(tdata.stats.head())
 
 
     # # test DEMUX by loading PE-ddRAD fastq files
@@ -942,7 +942,7 @@ if __name__ == "__main__":
     # print(tdata.stats.head())
 
 
-    # test by loading messy PE-GBS fastq files
+    # test w/ empirical 3RAD dataset
     tdata = ip.Assembly("test-amaranth")
     tdata.params.project_dir = "/tmp"
     tdata.params.sorted_fastq_path = "/home/deren/Documents/kmerkit/data/amaranths/hybrid*.gz"
@@ -950,6 +950,7 @@ if __name__ == "__main__":
     tdata.params.datatype = "pair3rad"
     tdata.params.restriction_overhang = ("ATCGG", "TAGCTT")
     tdata.params.filter_adapters = 2
+    tdata.params.trim_reads = (2, 0, 1, 0)
     tdata.run("1", auto=True, force=True)
     print(tdata.stats.head())
    
