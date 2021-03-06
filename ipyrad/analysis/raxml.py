@@ -295,7 +295,7 @@ BINARY_ERROR = """
   RAxML binary not found. 
 
   Check that you have raxml installed. For example, with conda:
-  'conda install raxml -c bioconda'
+  'conda install raxml -c conda-forge -c bioconda'
 
   If you have a different binary installed you can select it using 
   the argument 'binary'. For example:
