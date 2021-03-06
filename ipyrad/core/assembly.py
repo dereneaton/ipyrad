@@ -679,7 +679,7 @@ class Assembly(object):
             "2": ip.assemble.trimreads.Step2, 
             "3": ip.assemble.clustmap.Step3,
             "4": ip.assemble.jointestimate.Step4, 
-            "5": ip.assemble.consens_se.Step5, 
+            "5": ip.assemble.consens_main.Step5, 
             "6": ip.assemble.clustmap_across.Step6, 
             "7": ip.assemble.write_outputs.Step7,
         }
