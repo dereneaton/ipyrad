@@ -1059,15 +1059,16 @@ class Rep(object):
 
                 elif popline:
                     ## check if sample is supervised...
+                    ## pidx not work when structure file contains pop data (but no popflags) for more than kpops
                     abc = line.strip().split()
-                    prop = ["0.000"] * self.kpop
-                    pidx = int(abc[3]) - 1
-                    prop[pidx] = "1.000"
+                    #prop = ["0.000"] * self.kpop
+                    #pidx = int(abc[3]) - 1
+                    #prop[pidx] = "1.000"
                     outstr = "{}{}{}".format(
                         " ".join([abc[0], abc[0], abc[2], 
-                                  abc[0].split('.')[0]]),
+                                  abc[3].split('.')[0]]),
                         " :  ",
-                        " ".join(prop)
+                        " ".join(abc[5:])
                     )
                     self.inds += 1
                     stable += outstr+"\n"
