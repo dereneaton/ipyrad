@@ -230,7 +230,7 @@ class Processor:
         self.names = piece[0::2]
         seqs = piece[1::2]
 
-        if not self.data.hackersonly.declone_PCR_duplicates:
+        if self.data.hackersonly.declone_PCR_duplicates:
             reps = [1 for i in self.names]
         else:
             reps = [int(n.split(";")[-2][5:]) for n in self.names]

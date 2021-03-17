@@ -61,7 +61,6 @@ class Step5:
             )
 
 
-
     def get_subsamples(self):
         """
         Apply state, ncluster, and force filters to select samples
@@ -128,7 +127,6 @@ class Step5:
         return checked_samples
 
 
-
     def setup_dirs(self):
         """
         setup directories, remove old tmp files
@@ -175,7 +173,6 @@ class Step5:
             self.ncpus = self.data.ipcluster["cores"]
         else:
             self.ncpus = len(self.ipyclient.ids)
-
 
 
     def run(self):
