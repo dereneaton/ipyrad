@@ -2,8 +2,8 @@
 
 """ 
 Modifies and/or trims reads based on quality scores, presence of adapters, 
-and user entered options to trim ends of reads. Uses the probabilistic trimming
-methods implemented in the 'cutadapt' software.
+and user entered options to trim ends of reads. Uses the trimming software
+'fastp'
 """
 
 from __future__ import print_function
@@ -11,12 +11,16 @@ from __future__ import print_function
 import os
 import io
 import time
-import numpy as np
 import subprocess as sps
-from .utils import IPyradError, fullcomp
+import numpy as np
+from ipyrad.assemble.utils import IPyradError, fullcomp
+
 
 
 class Step2(object):
+    """
+    Main class organization for adapter trimming with fastp
+    """
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.force = force
@@ -67,7 +71,7 @@ class Step2(object):
             else:
                 print("skipping {}; no reads found.")
         if not any(checked_samples):
-            raise IPyradError("no samples ready for step 3")
+            raise IPyradError("no samples ready for step 2")
 
         # sort samples so the largest is first
         checked_samples.sort(
@@ -727,3 +731,16 @@ NO_BARS_GBS_WARNING = """\
     that's OK, but we will apply a slightly more rigorous trimming of 3' edges 
     on R2 that results in more false positives (more bp trimmed off of R2). 
     """
+
+
+if __name__ == "__main__":
+
+
+    import ipyrad as ip
+    import ipyparallel as ipp
+
+    client = ipp.Client()
+    idata = ip.load_json("/home/deren/Documents/ipyrad/sandbox/oak-test.json")
+    tdata = idata.branch("test")
+    tool = Step2(tdata, True, client)
+    tool.run()
