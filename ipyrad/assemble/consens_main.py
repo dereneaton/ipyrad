@@ -135,14 +135,14 @@ class Step5:
         """
         # final results dir
         self.data.dirs.consens = os.path.join(
-            self.data.dirs.project, 
+            self.data.params.project_dir,
             "{}_consens".format(self.data.name))
         if not os.path.exists(self.data.dirs.consens):
             os.mkdir(self.data.dirs.consens)
 
         # tmpfile dir (zap it if it exists)
         self.data.tmpdir = os.path.join(
-            self.data.dirs.project, 
+            self.data.params.project_dir,            
             "{}-tmpdir".format(self.data.name))
         if os.path.exists(self.data.tmpdir):
             shutil.rmtree(self.data.tmpdir)
