@@ -149,7 +149,7 @@ class AssemblyProgressBar(object):
         for job in self.jobs:
             if not self.jobs[job].successful():
                 # raise the exception from the job and catch it
-                logger.debug(job, self.jobs)
+                logger.debug("error in : {}".format(job))
                 try:
                     self.results[job] = self.jobs[job].get()
                 except Exception as inst:
