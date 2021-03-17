@@ -121,7 +121,7 @@ class DigestGenome(object):
             scaffolds = fio.read().split(">")[1:]           
 
         # sort scaffolds by length
-        scaffolds = sorted(scaffolds, key=lambda x: len(x), reverse=True)
+        scaffolds = sorted(scaffolds, key=len, reverse=True)
 
         # iterate over scaffolds
         for scaff in scaffolds[:self.nscaffolds]:
