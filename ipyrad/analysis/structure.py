@@ -401,7 +401,10 @@ class Structure(object):
         # if not force then remove tups from jobs and use existing results
         else:
             for i in res:
-                jobs.remove(i)
+                # Handle run() called with different values of K than
+                # in the previous run. In such cases i will not be in jobs.
+                if i in jobs:
+                    jobs.remove(i)
 
         # track jobs
         njobs = len(jobs)
