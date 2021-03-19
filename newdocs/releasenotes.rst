@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.69
+------
+**March 19, 2021**
+
+- ipa.structure: handle edge case with running more jobs with different K values
+
 0.9.68
 ------
 **February 23, 2021**
