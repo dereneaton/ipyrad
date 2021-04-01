@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.70
+------
+**April 01, 2021**
+
+- Allow snps_extractor to handle snps.hdf5 files with names not encoded as bytes
+- Fixing mismatch of #SBATCH and command parameters (#440)
+
 0.9.69
 ------
 **March 19, 2021**
