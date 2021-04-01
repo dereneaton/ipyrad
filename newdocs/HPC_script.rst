@@ -111,7 +111,7 @@ And here is an example *sbatch* script:
     cd $HOME/ipyrad-analyses/
 
     ## call ipyrad on your params file
-    ipyrad -p params-test.txt -s 1234567 -c 20
+    ipyrad -p params-test.txt -s 1234567 -c ${SLURM_CPUS_PER_TASK}
 
 .. parsed-literal::
     ## submit the qsub script
@@ -178,7 +178,7 @@ And here is an example *sbatch* script:
     cd $HOME/ipyrad-analyses/
 
     ## call ipyrad on your params file
-    ipyrad -p params-test.txt -s 1234567 -c 80 --MPI
+    ipyrad -p params-test.txt -s 1234567 -c ${SLURM_NTASKS} --MPI
 
 .. parsed-literal::
     ## submit the qsub script
