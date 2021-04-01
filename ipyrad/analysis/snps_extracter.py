@@ -108,7 +108,12 @@ class SNPsExtracter(object):
         with h5py.File(self.data, 'r') as io5:
 
             # all names in database, maybe fewer in this analysis
-            self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
+            try:
+                self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
+            except AttributeError:
+                # If "names" aren't encoded as bytes then it's an older version
+                # of the snps.hdf5 file, so allow for this.
+                self.dbnames = [i for i in io5["snps"].attrs["names"]]
 
             # check for sample names not in the database file
             badnames = set(self.names).difference(self.dbnames)
