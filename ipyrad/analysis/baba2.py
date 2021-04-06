@@ -34,7 +34,6 @@ TODO:
 - sliding window analysis (wrap around SNPsExtracter...)
 """
 
-
 class Baba:
     """
     ipyrad.analysis Baba Class object.
@@ -66,6 +65,7 @@ class Baba:
         # results storage
         self.results_table = None
         self.taxon_table = None
+        self.boots = None
 
         # cluster attributes
         self.ipcluster = {
@@ -147,7 +147,7 @@ class Baba:
         dhat, abba, baba = self._get_dstat(barr)
         boots = self._get_boots(imap, nboots)
         zstat = abs(dhat) / boots.std()
-        return dhat, boots.std(), zstat, abba, baba  # .sum(), baba.sum()
+        return dhat, boots.std(), zstat, abba, baba, boots  # .sum(), baba.sum()
 
 
 
@@ -264,7 +264,7 @@ class Baba:
 
 
 
-    def run_test(self, imap, minmap=None, nboots=100, quiet=False):
+    def run_test(self, imap, minmap=None, nboots=100, quiet=False, retain_boots=False):
         """
         Return D-statistic results for a single test. 
 
@@ -287,7 +287,10 @@ class Baba:
             measure Z-score for significance testing.
 
         quiet (bool):
-            Verbosity of SNP filtering.       
+            Verbosity of SNP filtering.    
+
+        retain_boots (bool)
+            Add a column with all bootstrap results.   
 
         Returns
         -------
@@ -309,6 +312,7 @@ class Baba:
 
         # get test results and arrange in dataframe
         res = self._get_test_results(imap, nboots)
+        boots_reduced = [f"{i:.4f}" for i in res[5]]
         res = pd.DataFrame({
             "D": res[0],
             "bootstd": res[1],
@@ -317,12 +321,18 @@ class Baba:
             "BABA": res[4],
             "nSNPs": self.snex.snpsmap.shape[0],
             "nloci": len(set(self.snex.snpsmap[:, 0])),
+            # "boots": ",".join(boots_reduced),
         }, index=[0])
+
+        # add boots results as column
+        if retain_boots:
+            res["boots"] = ",".join(boots_reduced)
+
         return res
 
 
 
-    def _run(self, imaps, minmaps, nboots, ipyclient):
+    def _run(self, imaps, minmaps, nboots, ipyclient, retain_boots=False):
 
         # load-balancer
         lbview = ipyclient.load_balanced_view()
@@ -344,7 +354,7 @@ class Baba:
         rasyncs = {}
         idx = 0
         for imap, minmap in zip(imaps, minmaps):
-            args = (self.data, imap, minmap, nboots, True)
+            args = (self.data, imap, minmap, nboots, True, retain_boots)
             rasync = lbview.apply(remote_run, *args)
             rasyncs[idx] = rasync
             idx += 1
@@ -378,7 +388,7 @@ class Baba:
 
 
 
-    def run(self, imaps, minmaps=None, nboots=100, auto=True, ipyclient=None, show_cluster=False):
+    def run(self, imaps, minmaps=None, nboots=100, auto=True, ipyclient=None, show_cluster=False, retain_boots=False):
         """
         Run a batch of dstat tests in parallel on a list of test dictionaries.
         The list of tests can either be set on the .tests attribute of the
@@ -406,7 +416,7 @@ class Baba:
             ipyclient=ipyclient,
             show_cluster=show_cluster,
             auto=auto,
-            rkwargs={'imaps': imaps, 'minmaps': minmaps, 'nboots': nboots},
+            rkwargs={'imaps': imaps, 'minmaps': minmaps, 'nboots': nboots, 'retain_boots': retain_boots},
             )
         pool.wrap_run()
 
@@ -943,10 +953,10 @@ class TreeParser:
 
 
 
-def remote_run(data, imap, minmap, nboots, quiet):
+def remote_run(data, imap, minmap, nboots, quiet, remote_run):
     "to be called on ipengine"
     self = Baba(data)
-    res = self.run_test(imap, minmap, nboots, quiet)
+    res = self.run_test(imap, minmap, nboots, quiet, remote_run)
     return res
 
 
