@@ -361,7 +361,11 @@ class Demultiplexer:
                 blens = [
                     len(i.split("+")[1]) for i in self.data.barcodes.values()
                 ]
-                self.longbar = (self.longbar[0], self.longbar[1], max(blens))
+                # Record if bar1 and bar2 are different lengths
+                if self.longbar[0] != max(blens):
+                    self.longbar = (self.longbar[0], 'diff', max(blens))
+                else:
+                    self.longbar = (self.longbar[0], 'same', max(blens))
 
         # gather raw sequence filenames (people want this to be flexible ...)
         if 'pair' in self.data.params.datatype:
@@ -842,8 +846,8 @@ class BarMatch:
             else:
                 # COMBINATORIAL BARCODES (BCODE1+BCODE2)
                 if '3rad' in self.data.params.datatype:
-                    barcode1 = find3radbcode(self.cutters, self.longbar, read1)
-                    barcode2 = find3radbcode(self.cutters, self.longbar, read2)
+                    barcode1 = find3radbcode(self.cutters, self.longbar[0], read1)
+                    barcode2 = find3radbcode(self.cutters, self.longbar[2], read2)
                     barcode = barcode1 + "+" + barcode2
 
                 # USE BARCODE PARSER: length or splitting
@@ -1060,7 +1064,7 @@ def find3radbcode(cutters, longbar, read):
             # If the cutter is unambiguous there will only be one.
             if not cutter:
                 continue
-            search = read[1][:int(longbar[0] + len(cutter) + 1)]
+            search = read[1][:int(longbar + len(cutter) + 1)]
             splitsearch = search.decode().rsplit(cutter, 1)
             if len(splitsearch) > 1:
                 return splitsearch[0]
