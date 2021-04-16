@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.71
+------
+**April 15, 2021**
+
+- demultiplex: Properly handle 3rad barcodes of different length
+
 0.9.70
 ------
 **April 01, 2021**
