@@ -32,6 +32,7 @@ later if you install some software dependencies with
 or without it. 
 
 .. code:: bash
+
     conda config --add channels conda-forge
     conda config --set channel_priority strict
 

@@ -271,7 +271,7 @@ Why am I getting the 'empty varcounts' error during step 7?
 -----------------------------------------------------------
 Occasionally during step 7 you will see this error:
 
-.. code-block::
+.. code-block:: bash
 
     Exception: empty varcounts array. This could be because no samples                                                                                                    
     passed filtering, or it could be because you have overzealous filtering.                                                                                              
