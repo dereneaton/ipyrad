@@ -156,7 +156,7 @@ class FileLinker:
     def check_files(self):
         # Assert files are not .bz2 format
         if any([i.endswith(".bz2") for i in self.fastqs]):
-            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(self.sfiles))
+            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(self.input))
 
         # filter out any files without proper file endings. Raise if None
         endings = ("gz", "fastq", "fq")
