@@ -28,6 +28,7 @@ Documentation
    API-assembly/index.rst
    API-analysis/index.rst
 
+   faq.rst
    releasenotes.rst
 
 Citation

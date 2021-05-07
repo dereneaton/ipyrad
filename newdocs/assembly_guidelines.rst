@@ -40,12 +40,12 @@ Key strengths of `ipyrad`:
 
 How can choices made during genotyping or filtering affect downstream analyses and summary statistics (e.g., Fst, demographic analyses, phylogenetics)?
 -------------------------------------------------------------------------------------------------------------------------------------------------------
-* Misspecified `clust_threshold`: This will have obvious consequences for
+Misspecified `clust_threshold`: This will have obvious consequences for
 over/under-estimating popgen sumstats (Fst, pi, etc). Similarly with demographic
 analysis, if heterozygosity is inflated/deflated because of misspecified clust_threshold
 then estimates of Ne, divergence time, and migration rates will all be skewed.
 
-* Missing data and `min_samples_locus`: This gets tricky because you can wind up
+Missing data and `min_samples_locus`: This gets tricky because you can wind up
 in hot water one way or the other depending on how permissive/conservative the
 setting of this parameter is. If `min_samples_locus` is very high, then it will
 remove many/most loci with missing data. This will do two things: 1) it will bias
