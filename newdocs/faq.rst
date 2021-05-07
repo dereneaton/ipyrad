@@ -4,6 +4,9 @@
 Frequenty Asked Questions
 =========================
 
+Some very general :ref:`assembly guidelines<assembly_guidelines>` offer
+insights into choosing parameters and interpreting assembly statistics.
+
 Troubleshooting Procedures
 ==========================
 
