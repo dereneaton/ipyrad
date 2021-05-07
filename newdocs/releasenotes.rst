@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.72
+------
+**May 07, 2021**
+
+- Docs: add some assembly guidelines
+- Docs: update sharing and popgen sumstats
+- Step1.FileLinker fix oops with trapping bz2 formatted input files.
+
 0.9.71
 ------
 **April 15, 2021**
