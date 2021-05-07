@@ -105,7 +105,7 @@ Mac install instructions for *conda*
 
     # The curl command is used to download the installer from the web.
     # Take note that the -O flag is a capital o not a zero.
-    curl -O https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+    curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 
     # Install miniconda into $HOME/miniconda3
     #  * Type 'yes' to agree to the license
@@ -125,7 +125,7 @@ Linux install instructions for conda
 .. code-block:: bash
 
     # Fetch the miniconda installer with wget
-    wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
     # Install miniconda into $HOME/miniconda3
     #  * Type 'yes' to agree to the license
