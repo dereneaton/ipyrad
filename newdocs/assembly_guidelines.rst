@@ -30,6 +30,7 @@ high or low values indicate `clust_threshold` misspecification.
 What are the relevant differences between the RADseq pipelines for someone choosing to do their first RADseq analysis?
 ----------------------------------------------------------------------------------------------------------------------
 Key strengths of `ipyrad`:
+
 * Simple, easy to use CLI interface
 * Numerous statistics and reporting on assembly quality at each step of the process
 * Powerful API mode for jupyter notebook assemblies and reproducibility
