@@ -9,7 +9,7 @@ import sys as _sys
 import subprocess as _sps
 
 # Dunders
-__version__ = "0.9.74"
+__version__ = "0.9.75"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
