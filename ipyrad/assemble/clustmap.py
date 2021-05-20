@@ -654,6 +654,7 @@ class Step3:
         self.data._print("")
 
 
+
     def remote_run(self, printstr, function, args, threaded=False):
         """
         General remote distributor
@@ -2365,7 +2366,6 @@ def split_endtoend_reads(data, sample):
     # close handles
     splitderep1.close()
     splitderep2.close()
-
 
 
 def join_arrays(arr1, arr2):

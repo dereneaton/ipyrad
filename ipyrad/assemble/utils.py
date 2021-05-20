@@ -5,26 +5,15 @@ Various sequence manipulation util functions used by different
 parts of the pipeline
 """
 
-from __future__ import print_function
-try:
-    from itertools import izip, takewhile
-except ImportError:
-    from itertools import takewhile
-    izip = zip
-
 import os
-import sys
-import time
 import socket
 import string
-import tempfile
-import datetime
-
-from loguru import logger
+from itertools import takewhile
 import pandas as pd
 import numpy as np
 
 
+# used in demux_raw.py and demux_sorted.py to fix sample names.
 BADCHARS = (
     string.punctuation
     .replace("_", "")
@@ -32,180 +21,57 @@ BADCHARS = (
     .replace(".", "") + " "
 )
 
+# used in demux_raw.py to resolve ambiguous cutters
+AMBIGS = {
+    "R": ("G", "A"),
+    "K": ("G", "T"),
+    "S": ("G", "C"),
+    "Y": ("T", "C"),
+    "W": ("T", "A"),
+    "M": ("C", "A"),
+}
+
+# used in consens_utils
+DCONS = {
+    82: (71, 65),
+    75: (71, 84),
+    83: (71, 67),
+    89: (84, 67),
+    87: (84, 65),
+    77: (67, 65),
+    78: (9, 9),
+    45: (9, 9),
+    67: (67, 67),
+    65: (65, 65),
+    84: (84, 84),
+    71: (71, 71),
+}
+
+# used in consens_utils to encode IUPAC ints 
+TRANS = {
+    (71, 65): 82,
+    (71, 84): 75,
+    (71, 67): 83,
+    (84, 67): 89,
+    (84, 65): 87,
+    (67, 65): 77,
+    (65, 67): 77,
+    (65, 84): 87,
+    (67, 84): 89,
+    (67, 71): 83,
+    (84, 71): 75,
+    (65, 71): 82,
+}
 
 
-
-class AssemblyProgressBar(object):
-    """
-    Print pretty progress bar with printings specific to Assembly object
-
-    Parameters:
-    -----------
-    jobs: dict
-    start: time.time()
-    message: str
-    data: ipyrad.Assembly
-    """       
-    def __init__(self, jobs, start, message, data):
-        self.jobs = jobs
-        self.start = (start if start else time.time())
-        self.message = message
-        self.cli = data._cli
-        self.spacer = data._spacer
-        self.finished = 0
-
-        # filled by check_success
-        self.results = {}
+CIGARDICT = {
+    '-': "I",
+    '.': "S",
+}
 
 
-    @property
-    def progress(self):
-        "returns the percent progress as a float"
-        if not self.jobs:
-            return 0
-        return 100 * (self.finished / float(len(self.jobs)))
+CDICT = dict(zip("CATG", "0123"))
 
-    @property
-    def elapsed(self):
-        "returns the elapsed time in nice format"
-        return datetime.timedelta(seconds=int(time.time() - self.start))
-
-
-    def update(self):
-        "flushes progress bar at current state to STDOUT"
-        # build the bar
-        hashes = '#' * int(self.progress / 5.)
-        nohash = ' ' * int(20 - len(hashes))
-
-        # print to stderr
-        if self.cli:
-            print("\r{}[{}] {:>3}% {} | {:<12} ".format(
-                self.spacer,
-                hashes + nohash,
-                int(self.progress),
-                self.elapsed,
-                self.message[0],
-            ), end="")
-        else:
-            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
-                self.spacer,
-                hashes + nohash,
-                int(self.progress),
-                self.elapsed,
-                self.message[0],
-                self.message[1],
-            ]), end="")
-        sys.stdout.flush()
-
-
-    def block(self):
-        """
-        Tracks completion of asynchronous result objects in a while 
-        loop until they are finished, checking every 0.5 seconds.
-        Prints progress either continuously or occasionally, depending
-        on TTY output type.
-        """
-        # get TTY output type of STDOUT
-        isatty = os.isatty(1)
-
-        # store the current value
-        cur_finished = 0
-
-        # loop until all jobs are finished
-        while 1:
-            self.finished = sum([i.ready() for i in self.jobs.values()])
-            time.sleep(1)
-            
-            # flush progress and end
-            if self.finished == len(self.jobs):
-                self.update()
-                print("")
-                break
-
-            # -- decide whether to flush based on tty ---
-            # if value changed then print
-            if cur_finished != self.finished:
-                self.update()
-
-            # else, only print every 10 minutes if not in tty
-            elif not isatty:
-                if not int(self.elapsed.seconds) % 60:
-                    self.update()
-            
-            # normal tty print every second
-            else:
-                self.update()
-
-            # update cur_finished to match finished
-            cur_finished = self.finished
-
-
-
-    def check(self):
-        """
-        Will log and raise an error with traceback.
-        """
-        # check for failures:
-        for job in self.jobs:
-            if not self.jobs[job].successful():
-                # raise the exception from the job and catch it
-                logger.debug("error in : {}".format(job))
-                try:
-                    self.results[job] = self.jobs[job].get()
-                except Exception as inst:
-                    # report it to the logger file.
-                    # logger.exception("exception on remote engine:")
-                    # raise
-                    # report it to stdout
-                    raise IPyradError("Exception on remote engine:") from inst
-
-
-
-class VsearchProgressBar(AssemblyProgressBar):
-    """
-    Subset Progress bar for step 6 clustering progress.
-    """
-    @property
-    def progress(self):
-        "get progress from vsearch stdout"
-        logger.warning(self.jobs)
-        logger.warning(self.jobs[0])
-        logger.warning(self.jobs[0].stdout)        
-        if self.jobs[0].stdout:
-            return int(self.jobs[0].stdout.split()[-1])
-        return 0
-
-
-
-LOGFORMAT = (
-    "{time:hh:mm:ss} <level>{level: <7}</level> <white>|</white> "
-    "<magenta>PID:{process.id}</magenta> <white>|</white> "
-    "<cyan>{file}:{line}</cyan> <white>|</white> "
-    "<level>{message}</level>"
-)
-
-
-def set_loglevel(loglevel="DEBUG", logfile=None):
-    """
-    Config and start the logger
-    """
-    if logfile is None:
-        logfile = os.path.join(tempfile.gettempdir(), "ipyrad-log.txt")
-
-    config = {
-        "handlers": [
-            dict(
-                sink=logfile,
-                rotation="50 MB",
-                format=LOGFORMAT,
-                level=loglevel,
-                enqueue=True,
-                colorize=False,
-            ),
-        ]
-    }
-    logger.configure(**config)
-    logger.enable("ipyrad")
 
 
 
@@ -215,90 +81,99 @@ class IPyradError(Exception):
         Exception.__init__(self, *args, **kwargs)
 
 
-# class IPyradError(Exception):
-#     """
-#     Exception handler that does clean exit for CLI, but also prints
-#     the traceback and cleaner message for API.
-#     """
-#     def __init__(self, *args, **kwargs):
-#         # raise the exception with this string message and a traceback
-#         Exception.__init__(self, *args, **kwargs)
+# used by clustmap
+def comp(seq):
+    """ returns a seq with complement. Preserves little n's for splitters."""
+    ## makes base to its small complement then makes upper
+    return seq.replace("A", 't')\
+              .replace('T', 'a')\
+              .replace('C', 'g')\
+              .replace('G', 'c')\
+              .replace('n', 'Z')\
+              .upper()\
+              .replace("Z", "n")
 
-#         # but suppress traceback and exit on CLI
-#         if not ipyrad.__interactive__:
-#             # clean exit for CLI that still exits as an Error (e.g. for HPC)
-#             sys.tracebacklimit = 0
-#             SystemExit(1)
+# used by clustmap
+def bcomp(seq):
+    """ returns a seq with complement. Preserves little n's for splitters."""
+    ## makes base to its small complement then makes upper
+    return seq.replace(b"A", b't')\
+              .replace(b'T', b'a')\
+              .replace(b'C', b'g')\
+              .replace(b'G', b'c')\
+              .replace(b'n', b'Z')\
+              .upper()\
+              .replace(b"Z", b"n")
 
-
-## utility functions/classes
-class Params(object):
+# used by step4.stackarray, ..
+def clustdealer(pairdealer, optim):
     """ 
-    A dict-like object for storing params values with a custom repr
-    that shortens file paths, and which makes attributes easily viewable
-    through tab completion in a notebook while hiding other funcs, attrs, that
-    are in normal dicts. 
+    Return 'optim' clusters from 'pairdealer' iterators, and returns 
+    1 if this includes the end of the iterator, else returns 0.
     """
-    def __len__(self):
-        return len(self.__dict__)
+    ccnt = 0
+    chunk = []
+    while ccnt < optim:
+        # try refreshing taker, else quit
+        try:
+            taker = takewhile(lambda x: x[0] != "//\n", pairdealer)
+            oneclust = ["".join(next(taker))]
+        except StopIteration:
+            return 1, chunk
 
-    def __iter__(self):
-        for attr, value in self.__dict__.items():
-            yield attr, value
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __repr__(self):
-        _repr = ""
-        keys = sorted(self.__dict__.keys())
-        if keys:
-            _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-            for key in keys:
-                _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-                _repr += _printstr.format(key, _val)
-        return _repr
+        # load one cluster
+        while 1:
+            try:
+                oneclust.append("".join(next(taker)))
+            except StopIteration:
+                break
+        chunk.append("".join(oneclust))
+        ccnt += 1
+    return 0, chunk
 
 
-
-
-class ObjDict(dict):
+# used by cluster_across.build_clusters
+def fullcomp(seq):
+    """ 
+    returns complement of sequence including ambiguity characters,
+    and saves lower case info for multiple hetero sequences
     """
-    Object dictionary allows calling dictionaries in a more
-    pretty and Python fashion for storing Assembly data
-    """
-    def __getattr__(self, name):
-        if name in self:
-            return self[name]
-        else:
-            raise AttributeError("No such attribute: " + name)
+    ## this is surely not the most efficient...
+    seq = seq.replace("A", 'u')\
+             .replace('T', 'v')\
+             .replace('C', 'p')\
+             .replace('G', 'z')\
+             .replace('u', 'T')\
+             .replace('v', 'A')\
+             .replace('p', 'G')\
+             .replace('z', 'C')
 
-    def __setattr__(self, name, value):
-        self[name] = value
+    ## No complement for S & W b/c complements are S & W, respectively
+    seq = seq.replace('R', 'u')\
+             .replace('K', 'v')\
+             .replace('Y', 'b')\
+             .replace('M', 'o')\
+             .replace('u', 'Y')\
+             .replace('v', 'M')\
+             .replace('b', 'R')\
+             .replace('o', 'K')
 
-    def __delattr__(self, name):
-        if name in self:
-            del self[name]
-        else:
-            raise AttributeError("No such attribute: " + name)
-
-    def __repr__(self):
-        result = ""
-        if "outfiles" in self.keys():
-            dirs_order = ["fastqs", "edits", "clusts", "consens", "outfiles"]
-            for key in dirs_order:
-                result += key + " : " + self[key] + "\n"
-        else:
-            for key in sorted(self):
-                result += key + " : " + str(self[key]) + "\n"
-        return result
+    seq = seq.replace('r', 'u')\
+             .replace('k', 'v')\
+             .replace('y', 'b')\
+             .replace('m', 'o')\
+             .replace('u', 'y')\
+             .replace('v', 'm')\
+             .replace('b', 'r')\
+             .replace('o', 'k')
+    return seq
 
 
 
-CDICT = {i: j for i, j in zip("CATG", "0123")}
+
+# ================================================================
+# above here has been checked.
+# ================================================================
 
 
 # ## used for geno output
@@ -367,18 +242,6 @@ TRANSFULL = {
 # }
 
 
-## used for resolving ambiguities
-AMBIGS = {
-    "R": ("G", "A"),
-    "K": ("G", "T"),
-    "S": ("G", "C"),
-    "Y": ("T", "C"),
-    "W": ("T", "A"),
-    "M": ("C", "A"),
-    }
-
-
-
 
 def chroms2ints(data, intkeys):
     """
@@ -401,20 +264,6 @@ def chroms2ints(data, intkeys):
 
 
 
-def ambigcutters(seq):
-    """
-    Returns both resolutions of a cut site that has an ambiguous base in
-    it, else the single cut site
-    """
-    resos = []
-    if any([i in list("RKSYWM") for i in seq]):
-        for base in list("RKSYWM"):
-            if base in seq:
-                resos.append(seq.replace(base, AMBIGS[base][0]))
-                resos.append(seq.replace(base, AMBIGS[base][1]))
-        return resos
-    else:
-        return [seq, ""]
 
 
 
@@ -447,64 +296,6 @@ def splitalleles(consensus):
     return allele1, allele2
 
 
-# used by clustmap
-def comp(seq):
-    """ returns a seq with complement. Preserves little n's for splitters."""
-    ## makes base to its small complement then makes upper
-    return seq.replace("A", 't')\
-              .replace('T', 'a')\
-              .replace('C', 'g')\
-              .replace('G', 'c')\
-              .replace('n', 'Z')\
-              .upper()\
-              .replace("Z", "n")
-
-# used by clustmap
-def bcomp(seq):
-    """ returns a seq with complement. Preserves little n's for splitters."""
-    ## makes base to its small complement then makes upper
-    return seq.replace(b"A", b't')\
-              .replace(b'T', b'a')\
-              .replace(b'C', b'g')\
-              .replace(b'G', b'c')\
-              .replace(b'n', b'Z')\
-              .upper()\
-              .replace(b"Z", b"n")
-
-
-# used by rawedit
-def fullcomp(seq):
-    """ returns complement of sequence including ambiguity characters,
-    and saves lower case info for multiple hetero sequences"""
-    ## this is surely not the most efficient...
-    seq = seq.replace("A", 'u')\
-             .replace('T', 'v')\
-             .replace('C', 'p')\
-             .replace('G', 'z')\
-             .replace('u', 'T')\
-             .replace('v', 'A')\
-             .replace('p', 'G')\
-             .replace('z', 'C')
-
-    ## No complement for S & W b/c complements are S & W, respectively
-    seq = seq.replace('R', 'u')\
-             .replace('K', 'v')\
-             .replace('Y', 'b')\
-             .replace('M', 'o')\
-             .replace('u', 'Y')\
-             .replace('v', 'M')\
-             .replace('b', 'R')\
-             .replace('o', 'K')
-
-    seq = seq.replace('r', 'u')\
-             .replace('k', 'v')\
-             .replace('y', 'b')\
-             .replace('m', 'o')\
-             .replace('u', 'y')\
-             .replace('v', 'm')\
-             .replace('b', 'r')\
-             .replace('o', 'k')
-    return seq
 
 
 # used by consens
@@ -606,30 +397,7 @@ DCONS = {
 }
 
 
-def clustdealer(pairdealer, optim):
-    """ 
-    Return 'optim' clusters from 'pairdealer' iterators, and returns 
-    1 if this includes the end of the iterator, else returns 0.
-    """
-    ccnt = 0
-    chunk = []
-    while ccnt < optim:
-        # try refreshing taker, else quit
-        try:
-            taker = takewhile(lambda x: x[0] != b"//\n", pairdealer)
-            oneclust = [b"".join(next(taker))]
-        except StopIteration:
-            return 1, chunk
 
-        # load one cluster
-        while 1:
-            try:
-                oneclust.append(b"".join(next(taker)))
-            except StopIteration:
-                break
-        chunk.append(b"".join(oneclust))
-        ccnt += 1
-    return 0, chunk
 
 
 

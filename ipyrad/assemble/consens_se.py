@@ -1727,14 +1727,6 @@ def encode_alleles(consens, hidx, alleles):
 
 
 
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
 
 

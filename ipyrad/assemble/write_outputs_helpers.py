@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 
 """
-Helper classes for step7 (write_outputs.py) for filtering loci for the .loci output.
+Helper classes for step7 (write_outputs.py) for filtering loci for
+the .loci output.
 """
 
 import numpy as np
 from numba import njit
+
+
+
+AMBIGARR = np.array(list(bytes(b"RSKYWM"))).astype(np.uint8)
 
 
 
@@ -46,29 +51,9 @@ class ChunkProcessor(object):
         # (R1>, <R1, R2>, <R2)
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
 
-        # check filter settings
-        self.fmaxsnps = self.data.params.max_SNPs_locus
-        if isinstance(self.fmaxsnps, tuple):
-            self.fmaxsnps = self.fmaxsnps[0]
-        if isinstance(self.fmaxsnps, int):
-            self.fmaxsnps = 0.10  # backwards compatibility make as a float
-
-        self.fmaxhet = self.data.params.max_shared_Hs_locus
-        if isinstance(self.fmaxhet, tuple):
-            self.fmaxhet = self.fmaxhet[0]
-        # TODO: This backwards compatibility is hard coded. Maybe better to 
-        # just raise an error here, or really during parsing of the params
-        # file is best.
-        if isinstance(self.fmaxhet, int):
-            self.fmaxhet = 0.5  # backwards compatibility make as a float
-
-        self.maxinds = self.data.params.max_Indels_locus
-        if isinstance(self.maxinds, tuple):
-            self.maxinds = self.maxinds[0]  # backwards compatibility
-
         # store stats on sample coverage and locus coverage
-        self.scov = {i: 0 for i in self.data.snames}
-        self.lcov = {i: 0 for i in range(1, len(self.data.snames) + 1)}
+        self.scov = {i: 0 for i in self.data.samples}
+        self.lcov = {i: 0 for i in range(1, len(self.data.samples) + 1)}
         self.var = {i: 0 for i in range(5000)}
         self.pis = {i: 0 for i in range(5000)}
         self.nbases = 0
@@ -80,48 +65,50 @@ class ChunkProcessor(object):
         self.outarr = self.chunkfile + '.npy'
 
         # open a generator to the chunks
-        self.chunkio = open(self.chunkfile, 'rb')
-        self.loci = enumerate(iter(self.chunkio.read().split(b"//\n//\n")))
+        self.chunkio = open(self.chunkfile, 'rt')
+        self.loci = enumerate(iter(self.chunkio.read().split("//\n//\n")))
 
         # filled in each chunk
         self.names = []
         self.nidxs = []
-        self.aseqs = []
-        self.useqs = []
+        self.seqs = []
+        self.iloc: int = 0
 
 
     def next_locus(self):
+        """
+        grabs the next locus from the chunk file
+        """
         self.names = []
         self.nidxs = []
-        self.aseqs = []
-        self.useqs = []
+        self.seqs = []
 
         # advance locus to next, parse names and seqs
         self.iloc, lines = next(self.loci)
-        lines = lines.decode().strip().split("\n")
+        lines = lines.strip().split("\n")
         for line in lines:
             if line[0] == ">":
                 name, nidx = line[1:].rsplit("_", 1)
                 self.names.append(name)
                 self.nidxs.append(nidx)
             else:
-                self.aseqs.append(list(bytes(line.encode())))
-                self.useqs.append(list(bytes(line.upper().encode())))
+                self.seqs.append(list(line.encode()))
 
         # filter to include only samples in this assembly
-        mask = np.array([i in self.data.snames for i in self.names])
+        mask = np.array([i in self.data.samples for i in self.names])
         self.names = np.array(self.names)[mask].tolist()
 
         if not self.filter_dups():
             # [ref] store consens read start position as mapped to ref
             self.nidxs = np.array(self.nidxs)[mask].tolist()
-            self.useqs = np.array(self.useqs)[mask, :].astype(np.uint8)
-            self.aseqs = np.array(self.aseqs)[mask, :].astype(np.uint8)
+            self.seqs = np.array(self.seqs)[mask, :].astype(np.uint8)
 
 
 
     def run(self):
-
+        """
+        Iterate over loci in this chunk to apply filters.
+        """
         # iterate through loci in the chunk
         while 1:
             try:
@@ -134,7 +121,7 @@ class ChunkProcessor(object):
                 continue
 
             # apply filters 
-            edges = Edges(self.data, self.useqs)
+            edges = Edges(self.data, self.seqs)
             edges.get_edges()
             self.edges[self.iloc] = edges.edges
 
@@ -238,7 +225,7 @@ class ChunkProcessor(object):
 
     def to_locus(self, block, snparr, edg):
         """
-        write chunk to a loci string
+        write chunk to a .loci format string.
         """
         # store as a list 
         locus = []
@@ -330,8 +317,6 @@ class ChunkProcessor(object):
                     minfilters.append(pop)
             if any(minfilters):
                 self.filters[self.iloc, 4] = 1
-                # return True
-            # return False
 
 
     def filter_maxindels(self, ublock):
@@ -339,11 +324,9 @@ class ChunkProcessor(object):
         Max size of internal indels. Denovo vs. Ref, single versus paired.
         """
         # get max indels for read1, read2
-        inds = maxind_numba(ublock)        
-        if inds > self.maxinds:
+        inds = maxind_numba(ublock)
+        if inds > self.data.params.max_indels_locus:
             self.filters[self.iloc, 1] = 1
-            # return True
-        # return False
 
 
     def filter_maxvars(self, ublock, snpstring):
@@ -352,16 +335,13 @@ class ChunkProcessor(object):
         """
         # mask insert area
         if self.masked is not None:
-            if snpstring.sum() > (self.masked.shape[1] * self.fmaxsnps):
+            if snpstring.sum() > (self.masked.shape[1] * self.data.params.max_snps_locus):
                 self.filters[self.iloc, 2] = 1
-                # return True
 
         # use full locus
         else:
-            if snpstring.sum() > (ublock.shape[1] * self.fmaxsnps):
+            if snpstring.sum() > (ublock.shape[1] * self.data.params.max_snps_locus):
                 self.filters[self.iloc, 2] = 1
-                # return True
-        # return False
 
 
     def filter_maxshared(self, ublock):
@@ -369,10 +349,8 @@ class ChunkProcessor(object):
         Paralog detection based on shared heterozygosity across samples.
         """
         nhs = count_maxhet_numba(ublock)
-        if nhs > (self.fmaxhet * ublock.shape[0]):
+        if nhs > (self.data.params.max_shared_h_locus * ublock.shape[0]):
             self.filters[self.iloc, 3] = 1
-            # return True
-        # return False
 
 
     def get_snpsarrs(self, block, exclude_ref=False):
@@ -395,7 +373,7 @@ class Edges:
 
         # params
         self.bad = False
-        self.exclude_ref = self.data.hackersonly.exclude_reference
+        self.exclude_ref = self.data.hackers.exclude_reference
         self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
         self.trims = np.array([0, 0, 0, 0])  # self.seqs.shape[1]])
         self.minlen = self.data.params.filter_min_trim_len
@@ -406,11 +384,12 @@ class Edges:
 
     def get_edges(self):
         """
-
+        Find the proper edges of the locus based on sample coverage,
+        and trimming parameters.        
         """
         # -1 to site coverage if ref is excluded from the count
-        minsites_left = self.data.hackersonly.trim_loci_min_sites
-        minsites_right = self.data.hackersonly.trim_loci_min_sites
+        minsites_left = self.data.hackers.trim_loci_min_sites
+        minsites_right = self.data.hackers.trim_loci_min_sites
         if "reference" in self.data.params.assembly_method:
             if self.exclude_ref:
                 minsites_left -= 1
@@ -432,7 +411,8 @@ class Edges:
                 self.trim_param_trim_loci()
         except Exception:  # TypeError
             self.bad = True
-            # TODO: logger here for errors
+            # send to logger
+            print(f"bad trim edges:\n{self.seqs[:, :15]}")
 
         # check that locus has anything left
         self.trim_check()
@@ -449,8 +429,8 @@ class Edges:
         mincovs = np.sum((self.seqs != 78) & (self.seqs != 45), axis=0)
 
         # locus left trim
-        self.edges[0] = locus_left_trim(self.seqs, minsamp_left, mincovs)
-        self.edges[3] = locus_right_trim(self.seqs, minsamp_right, mincovs)
+        self.edges[0] = locus_left_trim(minsamp_left, mincovs)
+        self.edges[3] = locus_right_trim(minsamp_right, mincovs)
         if self.edges[3] <= self.edges[0]:
             self.bad = True
 
@@ -469,8 +449,8 @@ class Edges:
             if not cutter:
                 continue
 
-            # will be ints for py2/3
-            cutter = np.array(list(bytes(cutter.encode())))
+            # convert to integers
+            cutter = np.array(bytes(cutter.encode()))
 
             # compare match over cut size skipping Ns and allow .25 diffs
             slx = slice(0, cutter.shape[0])
@@ -548,14 +528,14 @@ def subsample(snpsmap):
 # -------------------------------------------------------------
 
 @njit
-def locus_left_trim(seqs, minsamp, mincovs):
+def locus_left_trim(minsamp, mincovs):
     leftmost = np.where(mincovs >= minsamp)[0]
     if leftmost.size:
         return leftmost.min()
     return 0
 
 @njit
-def locus_right_trim(seqs, minsamp, mincovs):
+def locus_right_trim(minsamp, mincovs):
     rightmost = np.where(mincovs >= minsamp)[0]
     if rightmost.size:
         return rightmost.max() + 1
@@ -650,6 +630,3 @@ def count_maxhet_numba(block):
         counts[fidx] = subcount
     return counts.max()
 
-
-
-AMBIGARR = np.array(list(bytes(b"RSKYWM"))).astype(np.uint8)

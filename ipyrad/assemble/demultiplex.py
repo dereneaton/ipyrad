@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-""" demultiplex raw sequence data given a barcode map."""
+"""
+Demultiplex raw sequence data given a barcode map.
+"""
 
 # py2/3 compatible imports
 from __future__ import print_function
@@ -19,13 +21,14 @@ import glob
 import time
 import shutil
 import pickle
-import numpy as np
 import subprocess as sps
 from collections import Counter
 
-# ipyrad imports
+from loguru import logger
+import numpy as np
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
+from ipyrad.assemble.utils import AssemblyProgressBar
 
 
 
@@ -46,6 +49,9 @@ class Step1:
 
 
     def run(self):
+        """ 
+        Select and run the step1 mode: loading or demux'ing data
+        """
         if not self.skip:
             if self.method == "link_fastqs":
                 FileLinker(self).run()
@@ -55,7 +61,9 @@ class Step1:
 
 
     def setup_dirs(self):
-        "create output directory, tmp directory."
+        """
+        create output directory, tmp directory.
+        """
         # assign fastq dir
         self.data.dirs.fastqs = os.path.join(
             self.data.params.project_dir,
@@ -117,11 +125,10 @@ class Step1:
                 raise IPyradError(
                     SAMPLES_EXIST.format(
                         len(self.data.samples), self.data.name))
+            if glob.glob(self.sfiles):
+                self.method = "link_fastqs"
             else:
-                if glob.glob(self.sfiles):
-                    self.method = "link_fastqs"
-                else:
-                    self.method = "demultiplex"                   
+                self.method = "demultiplex"                   
 
         # Creating new Samples
         else:
@@ -131,11 +138,13 @@ class Step1:
                 self.method = "demultiplex"
 
 
+
 class FileLinker:
     """
     Loads Samples from file names and check sample names for bad chars.
     """
     def __init__(self, step):
+        logger.debug("Loading fastq data with FileLinker")
         self.data = step.data
         self.input = step.sfiles
         self.fastqs = glob.glob(self.input)
@@ -147,6 +156,9 @@ class FileLinker:
 
 
     def run(self):
+        """
+        Run the core subfunctions of FileLinker
+        """
         # checks for bad names and fills self.ftuples with file handles
         self.check_files()
         # distributes jobs to parallel
@@ -154,9 +166,12 @@ class FileLinker:
 
 
     def check_files(self):
+        """
+        Check file endings, check for PE matching
+        """
         # Assert files are not .bz2 format
         if any([i.endswith(".bz2") for i in self.fastqs]):
-            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(self.sfiles))
+            raise IPyradError(NO_SUPPORT_FOR_BZ2.format(self.fastqs))
 
         # filter out any files without proper file endings. Raise if None
         endings = ("gz", "fastq", "fq")
@@ -201,7 +216,9 @@ class FileLinker:
 
 
     def remote_run_linker(self):
-        "read in fastq files and count nreads for stats and chunking in s2."
+        """
+        read in fastq files and count nreads for stats and chunking in s2.
+        """
 
         # local counters 
         createdinc = 0
@@ -235,16 +252,12 @@ class FileLinker:
                     *(sample.files.fastqs[0][0], gzipped)
                 )
 
-        # wait for link jobs to finish if parallel
-        start = time.time()
+        # wait for all to finish
         printstr = ("loading reads       ", "s1")
-        while 1:
-            fin = [i.ready() for i in rasyncs.values()]
-            self.data._progressbar(len(fin), sum(fin), start, printstr)
-            time.sleep(0.1)
-            if len(fin) == sum(fin):
-                self.data._print("")
-                break
+        prog = AssemblyProgressBar(
+            rasyncs, None, printstr, self.data._cli, self.data._spacer)
+        prog.block()
+        prog.check()
 
         # collect link job results           
         for sname in rasyncs:
@@ -281,8 +294,14 @@ class FileLinker:
                 .to_string(outfile))
 
 
+
 class Demultiplexer:
+    """
+    Uses barcode information and raw fastq path fastq files to assign
+    reads to separate samples for each sample in barcodes.
+    """
     def __init__(self, step):
+        logger.debug("Demuxing fastq data with Demultiplexer")
         self.data = step.data
         self.input = step.rfiles
         self.fastqs = glob.glob(self.input)
@@ -315,7 +334,11 @@ class Demultiplexer:
         # store stats for each file handle (grouped results of chunks)
         self.stats = Stats()
 
+
     def run(self):
+        """
+        Runs each sequential function in demux'ing
+        """
         # Estimate size of files to plan parallelization. 
         self.setup_for_splitting()
 
@@ -331,20 +354,22 @@ class Demultiplexer:
         # store stats and create Sample objects in Assembly
         self.store_stats()
 
-    # init functions -----------------------------------
-    def check_files(self):
-        "Check that data files are present and formatted correctly"
 
+    def check_files(self):
+        """
+        Check that data files are present and formatted correctly
+        """
         # check for data using glob for fuzzy matching
         if not self.fastqs:
             raise IPyradError(
-                NO_RAWS.format(self.data.params.raw_fastq_path))
+                "No data found in {}. Fix path to data files."
+                .format(self.data.params.raw_fastq_path))
 
         # find longest barcode
         if not os.path.exists(self.data.params.barcodes_path):
             raise IPyradError(
-                "Barcodes file not found. You entered: '{}'".format(
-                    self.data.params.barcodes_path))
+                "Barcodes file not found. You entered: '{}'"
+                .format(                    self.data.params.barcodes_path))
 
         # Handle 3rad multi-barcodes. Gets len of the first one. 
         blens = [len(i.split("+")[0]) for i in self.data.barcodes.values()]
@@ -417,11 +442,15 @@ class Demultiplexer:
 
 
     def splitfiles(self):
-        "sends raws to be chunked"
+        """
+        Sends rawfiles to be chunked so that demuxing can be done
+        in parallel on multiple files. This is only sometimes faster
+        than processing on a single file at a time, depending on I/O
+        limitations, which depends on the system.
+        """
 
         # send slices N at a time. The dict chunkfiles stores a tuple of 
         # rawpairs dictionary to store asyncresults for sorting jobs
-        printstr = ('chunking large files', 's1')
         start = time.time()
         done = 0
         njobs = (
@@ -445,15 +474,11 @@ class Demultiplexer:
         # track progress until finished
         # for each file submitted we expect it to create 16 or 32 files.
         if rasyncs:
-            while 1:
-                # break when all jobs are finished
-                if all([i.ready() for i in rasyncs.values()]):
-                    break
-
-                # ntemp files written or being written
-                done = len(glob.glob(os.path.join(self.tmpdir, "chunk*_*_*")))
-                self.data._progressbar(njobs, done, start, printstr)
-                time.sleep(0.5)
+            printstr = ('chunking large files', 's1')
+            prog = AssemblyProgressBar(
+                rasyncs, start, printstr, self.data._cli, self.data._spacer)
+            prog.block()
+            prog.check()
 
             # store results
             for key, val in rasyncs.items():
@@ -461,15 +486,15 @@ class Demultiplexer:
 
             # clean up                    
             self.ipyclient.purge_everything()                    
-            self.data._progressbar(10, 10, start, printstr)
-            self.data._print("")
 
         # return value
         self.chunksdict = chunksdict
 
 
     def remote_run_barmatch(self):
-        "Submit chunks to be sorted by barmatch() and collect stats"
+        """
+        Submit chunks to be sorted by barmatch() and collect stats
+        """
         # progress bar info
         start = time.time()
         printstr = ("sorting reads       ", "s1")
@@ -525,11 +550,6 @@ class Demultiplexer:
         different barcodes (i.e., they are technical replicates) then this
         will assign all the files to the same sample name file.
         """
-        # collate files progress bar
-        start = time.time()
-        printstr = ("writing/compressing ", "s1")
-        self.data._progressbar(10, 0, start, printstr) 
-
         # get all the files
         ftmps = glob.glob(os.path.join(
             self.data.dirs.fastqs, 
@@ -554,13 +574,14 @@ class Demultiplexer:
             else:
                 r2dict[sname].append(ftmp)
 
-        ## concatenate files
+        # concatenate files
         snames = []
         for sname in self.data.barcodes:
             if "-technical-replicate-" in sname:
                 sname = sname.rsplit("-technical-replicate", 1)[0]
             snames.append(sname)
 
+        # submit jobs to remote engines
         writers = []
         for sname in set(snames):
             tmp1s = sorted(r1dict[sname])
@@ -571,19 +592,20 @@ class Demultiplexer:
                     *(self.data, sname, tmp1s, tmp2s))
                 )
 
-        total = len(writers)
-        while 1:
-            ready = [i.ready() for i in writers]
-            self.data._progressbar(total, sum(ready), start, printstr)
-            time.sleep(0.1)
-            if all(ready):
-                self.data._print("")
-                break
+        # collate files progress bar
+        start = time.time()
+        printstr = ("writing/compressing ", "s1")
+        prog = AssemblyProgressBar(
+            writers, start, printstr, self.data._cli, self.data._spacer)
+        prog.block()
+        prog.check()
+
 
 
     def store_stats(self):
-        "Write stats and stores to Assembly object."
-
+        """
+        Write stats and stores to Assembly object.
+        """
         # out file
         self.data.stats_files.s1 = os.path.join(
             self.data.dirs.fastqs, 's1_demultiplex_stats.txt')
@@ -727,10 +749,10 @@ class Demultiplexer:
 # this class is created and run inside the barmatch function() that is run
 # on remote engines for parallelization.
 class BarMatch:
+    """
+    Sorts reads to samples based on barcodes and writes stats to a pickle.
+    """
     def __init__(self, data, ftuple, longbar, cutters, matchdict, fidx):
-        """
-        Sorts reads to samples based on barcodes and writes stats to a pickle.
-        """
         # store attrs
         self.data = data
         self.longbar = longbar
@@ -987,7 +1009,9 @@ def barmatch(args):
 
 # CALLED BY FILELINKER
 def get_name_from_file(fname, splitnames, fields):
-    "Grab Sample names from demultiplexed input fastq file names"
+    """
+    Grab Sample names from demultiplexed input fastq file names
+    """
 
     # allowed extensions
     file_extensions = [".gz", ".fastq", ".fq", ".fasta", ".clustS", ".consens"]
@@ -1068,47 +1092,6 @@ def find3radbcode(cutters, longbar, read):
     return splitsearch[0] 
 
 
-def getbarcode1(cutters, read1, longbar):
-    "find barcode for 2bRAD data"
-    #+1 is for the \n at the end of the sequence line
-    lencut = len(cutters[0][0]) + 1
-    return read1[1][:-lencut][-longbar[0]:]
-
-def getbarcode2(_, read1, longbar):
-    "finds barcode for invariable length barcode data"
-    return read1[1][:longbar[0]]
-
-
-def getbarcode3(cutters, read1, longbar):
-    "find barcode sequence in the beginning of read"
-    ## default barcode string
-    for cutter in cutters[0]:
-        ## If the cutter is unambiguous there will only be one.
-        if not cutter:
-            continue
-
-        # bytes-strings!
-        search = read1[1][:int(longbar[0] + len(cutter) + 1)]
-
-        try:
-            search = search.decode()
-        except (AttributeError, TypeError):
-            pass
-
-        try:
-            cutter = cutter.decode()
-        except (AttributeError, TypeError):
-            pass
-
-        try:
-            barcode = search.rsplit(cutter, 1)
-        except (AttributeError, TypeError):
-            barcode = search.decode().rsplit(cutter, 1)
-
-        if len(barcode) > 1:
-            return barcode[0]
-    ## No cutter found
-    return barcode[0] 
 
 
 
@@ -1201,7 +1184,9 @@ def collate_files(data, sname, tmp1s, tmp2s):
 
 
 def inverse_barcodes(data):
-    """ Build full inverse barcodes dictionary """
+    """ 
+    Build full inverse barcodes dictionary 
+    """
     matchdict = {}
     bases = set("CATGN")
     poss = set()
@@ -1390,10 +1375,6 @@ def zcat_make_temps(data, ftup, num, tmpdir, optim, start):
 
 
 ## GLOBALS
-NO_RAWS = """\
-    No data found in {}. Fix path to data files.
-    """
-
 OVERWRITING_FASTQS = """\
 {spacer}[force] overwriting fastq files previously created by ipyrad.
 {spacer}This _does not_ affect your original/raw data files."""
@@ -1436,3 +1417,42 @@ NAMES_LOOK_PAIRED_WARNING = """\
     option (e.g., pairddrad or pairgbs) and re-run step 1, which will require
     using the force flag (-f) to overwrite existing data.
     """
+
+
+
+if __name__ == "__main__":
+
+    import ipyrad as ip
+
+    # test by loading SE fastq files
+    tdata = ip.Assembly("test-simrad")
+    tdata.params.project_dir = "/tmp"
+    tdata.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1_.fastq.gz"
+    tdata.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    tdata.params.datatype = "rad"
+    tdata.run("1", auto=True, force=True)
+
+
+    # test by loading SE fastq files
+    # tdata = ip.Assembly("test")
+    # tdata.params.project_dir = "/tmp"
+    # tdata.params.sorted_fastq_path = "/home/deren/Documents/ipyrad/sandbox/oak-fastqs/*.gz"
+    # tdata.params.datatype = "rad"
+    # tdata.run("1", auto=True, force=True)
+
+
+    # test by loading PE fastq files
+
+
+
+    # test by demultiplexing SE data.
+    # tdata = ip.Assembly("test")
+    # tdata.params.project_dir = "/tmp"
+    # tdata.params.sorted_fastq_path = "/home/deren/Documents/ipyrad/sra-fastqs/*.fastq"
+    # tdata.params.datatype = "rad"
+    # tdata.run("1", auto=True, force=True)
+
+
+
+    # test by demultiplexing PE data.    
+
