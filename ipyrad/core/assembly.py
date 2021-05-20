@@ -7,9 +7,9 @@ Assembly class object as the main API for calling assembly steps.
 import os
 import sys
 import shutil
+import traceback
 from typing import List, Optional
 from loguru import logger
-import numpy as np
 import pandas as pd
 from ipyparallel import Client
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
@@ -271,8 +271,9 @@ class Assembly:
 
         # logger.exception logs the traceback
         except Exception as inst:
-            logger.error(f"An unexpected error occurred:\n{inst}")
-            print("An unexpected error occurred, see logfile and below.")
+            logger.error(
+                "An unexpected error occurred, see logfile "
+                f"and trace:\n{traceback.format_exc()}")
             raise
 
         finally:
