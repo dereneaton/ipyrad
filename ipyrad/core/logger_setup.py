@@ -48,7 +48,7 @@ def set_loglevel(loglevel="DEBUG", stderr=True, logfile=None):
         stderr_logger = dict(
             sink=sys.stderr, 
             format=STDFORMAT, 
-            level=loglevel,
+            level="WARNING",
             colorize=colorize(),
         )
         config["handlers"].append(stderr_logger)
