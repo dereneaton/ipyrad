@@ -167,6 +167,7 @@ class BarMatch:
                 self.sample_to_counts.update([sname_match])
                 self.barcode_counts.update([barcode])
                 self.nmatched += 1
+                print(f"{self.nreads}, {self.nmatched}")
 
                 # trim off barcode
                 lenbar1 = len(barcode)
@@ -208,7 +209,7 @@ class BarMatch:
                     self.misses.update("_")
 
             # Write to each sample file (pid's have different handles)
-            if not len(self.read1s) % int(2e5):
+            if not self.nmatched % int(2e5):
 
                 # tell logger stats
                 print(f"progress:\n{self.sample_to_counts}")
