@@ -180,7 +180,6 @@ class SimpleDemux:
                 self.longbar = (self.longbar[0], self.longbar[1], max(blens))
 
 
-
     def check_sample_names(self):
         """
         Replace sample names with bad characters
