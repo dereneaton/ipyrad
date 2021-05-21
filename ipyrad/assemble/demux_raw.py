@@ -413,7 +413,8 @@ class SimpleDemux:
 
         # progress bar info
         message = "sorting reads"
-        prog = AssemblyProgressBar(rasyncs, message, step=1, quiet=True)
+        prog = AssemblyProgressBar(rasyncs, message, step=1, quiet=self.quiet)
+        prog.update()
         prog.block()
         prog.check()
 

@@ -167,7 +167,6 @@ class BarMatch:
                 self.sample_to_counts.update([sname_match])
                 self.barcode_counts.update([barcode])
                 self.nmatched += 1
-                print(f"{self.nreads}, {self.nmatched}")
 
                 # trim off barcode
                 lenbar1 = len(barcode)
