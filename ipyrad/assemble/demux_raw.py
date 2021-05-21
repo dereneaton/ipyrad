@@ -135,15 +135,25 @@ class SimpleDemux:
         # store barcodes as a dict
         self.barcodes = dict(zip(bdf[0], bdf[1]))
 
+        # change dtype from 3RAD to pairddrad if i7 demuxing to avoid
+        # looking for a second barcode.
+        if self.data.hackers.demultiplex_on_i7_tags:
+            self.data.params.datatype = "pairddrad"
+            logger.info("setting datatype to pairrdrad for i7 demux.")
+
         # 3rad/seqcap use multiplexed barcodes
-        if "3rad" in self.data.params.datatype:
+        if "3rad" in self.data.params.datatype:           
             if not bdf.shape[1] == 3:
                 raise IPyradError(
-                    "pair3rad datatype should have two barcodes per sample.")
+                    "pair3rad datatype should have two barcodes "
+                    "per sample.")
         
             # We'll concatenate them with a plus and split them later
             bdf[2] = bdf[2].str.upper()
             self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+        else:
+            self.barcodes = dict(zip(bdf[0], bdf[1]))
+        logger.debug(f"barcodes: {self.barcodes}")
 
 
     def update_barcodes_for_i7(self):
@@ -156,6 +166,8 @@ class SimpleDemux:
             self.longbar = (blens[0], 'same')
         else:
             self.longbar = (max(blens), 'diff')
+        logger.debug("blens {}".format(blens))
+        logger.debug("longbar {}".format(self.longbar))
 
         # i7 tags there will be only one barcode, so this overrides "datatype"
         # so that if you are using pair3rad if doesn't cause problems.
@@ -166,6 +178,7 @@ class SimpleDemux:
                     len(i.split("+")[1]) for i in self.barcodes.values()
                 ]
                 self.longbar = (self.longbar[0], self.longbar[1], max(blens))
+
 
 
     def check_sample_names(self):
@@ -185,21 +198,50 @@ class SimpleDemux:
         """
         check for PE matching and extract sample names to ftuples
         """
+        def drop_from_right(chunks, idx):
+            "used in pair name parsing to sub out _ delim chunks"
+            return [j for i, j in enumerate(chunks[::-1]) if i != idx][::-1]
+
         # check if file names end with _ before the suffix and split
         # on two underscores, else split on last one.
-        if all(i.rsplit(".")[0].endswith("_") for i in self.fastqs):
-            _split = 2
-        else:
-            _split = 1
+        bases = [
+            os.path.basename(i).rstrip(".gz").rstrip(".fastq").rstrip(".fq")
+            for i in self.fastqs
+        ]
 
         # link pairs into tuples
         if 'pair' in self.data.params.datatype:
 
-            # check that names fit the paired naming convention
+            # try these in order until ngroups == nfiles / 2
+            idx = 0
+            while 1:
+                try:
+                    # get groups up to an underscore delimiter
+                    groups = itertools.groupby(
+                        bases, 
+                        key=lambda x: "_".join(drop_from_right(x.split("_"), idx))
+                    )
+                    groups = {i: list(j) for i, j in groups}
+                    assert len(groups) == len(self.fastqs) / 2
+                    assert all(len(j) == 2 for i, j in groups.items())
+                    logger.debug(f"using '_' rsplit = {idx}")
+                    break
+                except Exception:
+                    pass
+                # increase counter up to 5 _ back from end, then raise 
+                idx += 1
+                if idx > 5:
+                    raise IPyradError(
+                        "Cannot parse paired file names. File names must have "
+                        "matching name prefix followed by _1 _2, _R1 _R2, "
+                        "or _R1_ _R2_ with any subsequent suffix.")
+
+            # apply splitter to the full path names
             groups = itertools.groupby(
-                self.fastqs, 
-                key=lambda x: x.rsplit("_", _split)[0],
+                self.fastqs,
+                key=lambda x: "_".join(drop_from_right(x.split("_"), idx))
             )
+
             for fname, files in groups:
                 fname = os.path.basename(fname)
                 files = sorted(files)
@@ -218,8 +260,8 @@ class SimpleDemux:
             # print warning if _R2_ is in names when not paired
             endings = ("_R2", "_2", "_R2")
             warning = []
-            for fname in self.fastqs:
-                if any([fname.rsplit(".", 1)[0].endswith(i) for i in endings]):
+            for base in bases:
+                if any([base.endswith(i) for i in endings]):
                     warning.append(fname)
             if warning:
                 message = (
@@ -232,7 +274,7 @@ class SimpleDemux:
                 logger.warning(message)
 
             for i in self.fastqs:
-                fname = os.path.basename(i.rsplit("_", _split)[0])
+                fname = os.path.basename(i.rstrip('.gz').rstrip('.fastq').rstrip('.fq'))
                 self.ftuples[fname] = (i, "")
 
         logger.debug(f"ftuples: {self.ftuples}")
@@ -537,7 +579,7 @@ class SimpleDemux:
         bad_bars = Counter()
         for key in sorted(self.file_stats):
             bad_bars.update(self.file_stats[key][4])
-        bad_bar_obs = sorted(bad_bars, key=lambda x: bad_bars[x])
+        bad_bar_obs = sorted(bad_bars, key=lambda x: bad_bars[x], reverse=True)
         for barcode in bad_bar_obs:
             data.append(["no_match", "", barcode, bad_bars[barcode]])
         barcodes_df = pd.DataFrame(
