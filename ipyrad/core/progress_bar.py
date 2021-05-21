@@ -9,6 +9,7 @@ import sys
 import time
 import datetime
 import ipyparallel
+import IPython
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 
@@ -64,8 +65,8 @@ class AssemblyProgressBar:
         Prints progress either continuously or occasionally, depending
         on TTY output type.
         """
-        # get TTY output type of STDOUT
-        isatty = os.isatty(1)
+        # get TTY output type of STDOUT (or os.isatty(1))
+        isatty = sys.stdout.isatty() or bool(IPython.get_ipython())
 
         # store the current value
         cur_finished = 0
@@ -93,7 +94,7 @@ class AssemblyProgressBar:
 
             # else, only print every 1 minutes if not in tty
             elif not isatty:
-                if not int(self.elapsed.seconds) % 60:
+                if not int(self.elapsed.seconds) % 30:
                     self.update()
             
             # normal tty print every second
