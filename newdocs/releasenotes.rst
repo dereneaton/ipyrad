@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.78
+------
+**May 28, 2021**
+
+- #444: fix bytes to string comp oops
+
 0.9.77
 ------
 **May 11, 2021**
