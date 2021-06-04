@@ -70,6 +70,7 @@ The following Python packages are installed as dependencies of ipyrad:
     - pandas
     - h5py
     - mpi4py
+    - notebook
     - numba
     - ipyparallel
     - pysam
