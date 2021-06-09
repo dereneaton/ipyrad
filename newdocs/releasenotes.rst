@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.79
+------
+**June 09, 2021**
+
+- Step 2 - Do NOT take the complement for the p5 (R2) adapter sequence, otherwise the adapter trimming doesn't work.
+
 0.9.78
 ------
 **May 28, 2021**
