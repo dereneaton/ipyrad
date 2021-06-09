@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.80
+------
+**June 09, 2021**
+
+- samtools defaults to using the  flag to generate .csi index files, to allow for chrom size > 500Mb
+
 0.9.79
 ------
 **June 09, 2021**
