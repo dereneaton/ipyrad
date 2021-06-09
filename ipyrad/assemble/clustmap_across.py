@@ -577,6 +577,7 @@ class Step6:
             cmd3 = [
                 ipyrad.bins.samtools,
                 "index",
+                "-c",
                 os.path.join(
                     self.data.dirs.across,
                     "{}.cat.sorted.bam".format(self.data.name)

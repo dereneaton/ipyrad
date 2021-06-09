@@ -1932,7 +1932,10 @@ def mapping_reads(data, sample, nthreads, altref=False):
         "-o", bamout]
 
     # Later we're gonna use samtools to grab out regions using 'view'
-    cmd4 = [ip.bins.samtools, "index", bamout]
+    # https://github.com/dereneaton/ipyrad/issues/435
+    # If the bamfile has very large chromosomes (>500Mb) then the .bai
+    # index format can't handle it, just use the .csi format `-c`.
+    cmd4 = [ip.bins.samtools, "index", "-c", bamout]
 
     # convert unmapped reads to fastq
     cmd5 = [
@@ -1977,15 +1980,7 @@ def mapping_reads(data, sample, nthreads, altref=False):
     proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
     error4 = proc4.communicate()[0]
     if proc4.returncode:
-        # https://github.com/dereneaton/ipyrad/issues/435
-        # If the bamfile has very large chromosomes (>500Mb) then the .bai
-        # index format can't handle it. Try again with the .csi format `-c`.
-        if "hts_index_check_range" in error4.decode():
-            cmd4 = [ip.bins.samtools, "index", "-c", bamout]
-            proc4 = sps.Popen(cmd4, stderr=sps.STDOUT, stdout=sps.PIPE)
-            error4 = proc4.communicate()[0]
-            if proc4.returncode:
-                raise IPyradError(error4)
+        raise IPyradError(error4)
 
     # Running cmd5 writes to either edits/sname-refmap_derep.fa for SE
     # or it makes edits/sname-tmp-umap{12}.fastq for paired data, which
