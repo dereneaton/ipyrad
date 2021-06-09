@@ -16,17 +16,19 @@ ipyrad is available for Python >=3.5.
     conda install ipyrad -c conda-forge -c bioconda
 
 
-Recommended additional packages
--------------------------------
-The ipyrad API provides a powerful interface to using ipyrad for assembling and analyzing data inside of jupyter notebooks, a tool for reproducible science. Many of our downstream analysis tutorials are focused on using the API in jupyter. You can install jupyter easily with the conda command below. In addition, if you wish to distribute jobs over multiple nodes of a HPC cluster then you must install the additional tool mpi4py (more details in Parallelization section).
+Recommended additional conda settings 
+-------------------------------------
+
+We generally recommend installing ipyrad into a clean conda environment,
+which (after conda is installed) can be achieved like this:
 
 .. code:: bash
 
-    conda install notebook -c conda-forge
-    conda install mpi4py -c conda-forge
+    conda create -n ipyrad
+    conda activate ipyrad
+    conda install ipyrad -c conda-forge -c bioconda
 
-
-We generally recommend setting conda-forge as your default conda channel 
+We also recommend setting conda-forge as your default conda channel 
 as this reduces the likelihood that you will run into incompatibilities 
 later if you install some software dependencies with 
 or without it. 
@@ -41,7 +43,7 @@ Alternative: install from GitHub
 --------------------------------
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
 
-.. code::bash
+.. code:: bash
     
     # install external requirements first (e.g., using conda)
     conda install ipyrad -c conda-forge -c ipyrad 
@@ -57,7 +59,7 @@ You can alternatively install ipyrad from its source code on GitHub. This is not
 
 or alternatively (for version 0.9.56, for example):
 
-.. code::bash
+.. code:: bash
 
     pip install git+https://github.com/dereneaton/ipyrad.git@0.9.56
 
@@ -70,6 +72,7 @@ The following Python packages are installed as dependencies of ipyrad:
     - pandas
     - h5py
     - mpi4py
+    - notebook
     - numba
     - ipyparallel
     - pysam
