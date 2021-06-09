@@ -560,7 +560,7 @@ def cutadaptit_pairs(data, sample):
         if data.params.datatype != "pair3rad":
             print(NO_BARS_GBS_WARNING)
         adapter1 = data.hackersonly.p3_adapter
-        adapter2 = fullcomp(data.hackersonly.p5_adapter)
+        adapter2 = data.hackersonly.p5_adapter
 
     # parse trim_reads
     trim5r1 = trim5r2 = trim3r1 = trim3r2 = []
