@@ -449,6 +449,7 @@ class Processor:
         self.maxlen = self.data.hackersonly.max_fragment_length
         self.maxhet = self.data.params.max_Hs_consens
         self.maxn = self.data.params.max_Ns_consens
+        self.maxa = self.data.params.max_alleles_consens
         # not enforced for ref
         if self.isref:
             self.maxn = int(1e6)
@@ -467,6 +468,7 @@ class Processor:
             "depth": 0,
             "maxh": 0,
             "maxn": 0,
+            "maxa": 0,
         }
 
         # store data for writing
@@ -526,9 +528,9 @@ class Processor:
                                 # filter for max haplotypes...
                                 # self.get_alleles()
                                 # ...
-
-                                # store result
-                                self.store_data()
+                                if self.filter_max_alleles():
+                                    # store result
+                                    self.store_data()
 
         # cleanup close handle
         inclust.close()
@@ -664,7 +666,8 @@ class Processor:
         return 0
 
 
-    def get_alleles(self):
+    #def get_alleles(self):
+    def filter_max_alleles(self):
         """
         denovo only.
         Infer the number of alleles from haplotypes.
@@ -692,11 +695,16 @@ class Processor:
                 alleles = ccx.keys()
             self.nalleles = len(alleles)
 
-            if self.nalleles == 2:
-                try:
-                    self.consens = storealleles(self.consens, self.hidx, alleles)
-                except (IndexError, KeyError):
-                    pass
+        if self.nalleles > self.maxa:
+            self.filters['maxa'] += 1
+            return 0
+        return 1
+            # Do we need this still? iao 6/2021
+            #if self.nalleles == 2:
+            #    try:
+            #        self.consens = storealleles(self.consens, self.hidx, alleles)
+            #    except (IndexError, KeyError):
+            #        pass
 
 
     def store_data(self):
@@ -959,6 +967,7 @@ def store_sample_stats(data, sample, statsdicts):
         "depth": 0,
         "maxh": 0,
         "maxn": 0,
+        "maxa": 0,
     }
 
     # merge finished consens stats
@@ -981,6 +990,7 @@ def store_sample_stats(data, sample, statsdicts):
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
     sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
+    sample.stats_dfs.s5.filtered_by_maxAlleles = xfilters['maxa']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
     sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
     sample.stats_dfs.s5.heterozygosity = float(prop)
