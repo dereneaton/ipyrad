@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.81
+------
+**June 16, 2021**
+
+- Step5 add filter_max_alleles() function to honor the max_alleles_consens parameter.
+
 0.9.80
 ------
 **June 09, 2021**
