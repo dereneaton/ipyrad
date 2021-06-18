@@ -12,9 +12,11 @@ import itertools
 from loguru import logger
 import pandas as pd
 from ipyrad.core.progress_bar import AssemblyProgressBar
-from ipyrad.assemble.clustmap_within_utils import (
+from ipyrad.assemble.clustmap_within_reference_utils import (
     index_ref_with_bwa, 
     index_ref_with_sam,
+)
+from ipyrad.assemble.clustmap_within_denovo_utils import (
     concat_multiple_edits,
     merge_pairs_with_vsearch,
     merge_end_to_end,
@@ -328,6 +330,7 @@ class ClustMapDenovo:
         Run the core functions.
         """
         self.index_references()
+        # self.map_to_reference_filter()
         self.concat_trimmed_files_from_assembly_merge()
         self.pair_merge_with_vsearch()
         self.pair_join_unmerged_end_to_end()
