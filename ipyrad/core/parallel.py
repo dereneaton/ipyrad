@@ -70,6 +70,8 @@ class Cluster:
         # start an ipcluster with a local PID stored in workdir/pids
         self.auto_started = True
         self.start_ipcluster()
+        if not self.quiet:
+            print("\rEstablishing parallel cluster ...", end="")                        
 
         # It can sometimes take a long time for the ipcluster to startup
         # engines on some machines, especially HPC, so we check the 
@@ -79,7 +81,14 @@ class Cluster:
 
             # if ipcluster file is not made yet this will raise an
             # OSError, in which case just want to wait a tiny bit.
-            try: 
+            try:
+                # skip between try/except until ctlfile exists.
+                ctlfile = os.path.expanduser(
+                    "~/.ipython/profile_default/security/"
+                    f"ipcontroller-{self.name}-client.json")
+                if not os.path.exists(ctlfile):
+                    raise OSError(f"{ctlfile} not created yet.")
+
                 # connect to client
                 self.ipyclient = ipp.Client(cluster_id=self.name)
 
@@ -90,8 +99,6 @@ class Cluster:
                     break
 
                 # close it again (prevents too many open files)
-                if not self.quiet:
-                    print("\rEstablishing parallel cluster ...", end="")                        
                 self.ipyclient.close()
                 sys.stdout.flush()
                 time.sleep(0.2)
@@ -187,7 +194,7 @@ class Cluster:
                 time.sleep(1)
                 if not self.ipyclient.outstanding:
                     self.ipyclient.purge_everything()
-                self.ipyclient.close()  # do this?
+                # self.ipyclient.close()  # this prevents further use of client
 
         except KeyboardInterrupt:
             self.ipyclient.close()
