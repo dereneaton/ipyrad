@@ -208,6 +208,7 @@ class BarMatch:
                     self.misses.update("_")
 
             # Write to each sample file (pid's have different handles)
+            # print(self.nmatched)
             if not self.nmatched % int(2e5):
 
                 # tell logger stats
