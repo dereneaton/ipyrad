@@ -44,7 +44,7 @@ setup(
         "requests",
         "loguru",
     ],
-    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
+    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:CLI']},
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
