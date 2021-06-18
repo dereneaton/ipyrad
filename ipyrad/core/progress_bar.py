@@ -7,6 +7,7 @@ Progress bars
 import os
 import sys
 import time
+import traceback
 import datetime
 import ipyparallel
 import IPython
@@ -116,6 +117,10 @@ class AssemblyProgressBar:
             try:
                 self.results[job] = rasync.get()
             except ipyparallel.RemoteError as inst:
+                # logger.error(
+                #     "An error occurred, see logfile "
+                #     f"and trace:\n{traceback.format_exc()}"
+                # )
                 logger.error(
                     "An error occurred: SEE TRACE BELOW\n" + 
                     '\n'.join(inst.render_traceback())
