@@ -85,9 +85,7 @@ class Step2(BaseStep):
                     isgzip = ""
 
                 # write to new concat handle
-                conc1 = os.path.join(self.tmpdir, 
-                    sample.name + "_R1_concat.fastq"
-                )
+                conc1 = os.path.join(self.tmpdir, f"{sample.name}_R1_concat.fastq")
                 if sample.files.fastqs[0][0].endswith(".gz"):
                     conc1 += ".gz"
 
@@ -106,10 +104,9 @@ class Step2(BaseStep):
                 if "pair" in self.data.params.datatype:
             
                     # out _R2 filehandle
-                    conc2 = os.path.join(
-                        self.tmpdir,
-                        sample.name + "_R2_concat.fq{}".format(isgzip)
-                    )
+                    conc2 = os.path.join(self.tmpdir, f"{sample.name}_R2_concat.fastq")
+                    if sample.files.fastqs[0][0].endswith(".gz"):
+                        conc2 += ".gz"
 
                     # write concat results directly to _concat outfile.
                     cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
@@ -195,16 +192,21 @@ class Step2(BaseStep):
                     jdata['summary']['after_filtering'].get("read2_mean_length", None)),
                 reads_passed_filter=jdata['summary']['after_filtering']['total_reads'],
             )
+
+            # store reads numbers as unpaired count unlike in fastp
+            if "pair" in self.data.params.datatype:
+                for key in [
+                    "reads_raw", 
+                    "reads_filtered_by_Ns", 
+                    "reads_filtered_by_low_quality", 
+                    "reads_filtered_by_low_complexity", 
+                    "reads_filtered_by_minlen", 
+                    "reads_passed_filter"
+                    ]:
+                    setattr(stats, key, int(getattr(stats, key) / 2))
+
+            # store to Sample object
             self.samples[sname].stats_s2 = stats
-            # for key in [
-            #     "reads_raw", 
-            #     "reads_filtered_by_Ns", 
-            #     "reads_filtered_by_minlen", 
-            #     "reads_filtered_by_low_complexity", 
-            #     "reads_filtered_by_low_quality", 
-            #     "reads_passed_filter"
-            #     ]:
-            #     sample.stats_dfs.s2[key] = sample.stats_dfs.s2[key] / 2
 
 
     def write_json_file(self):
