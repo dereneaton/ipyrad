@@ -198,15 +198,25 @@ class SimpleDemux:
         check for PE matching and extract sample names to ftuples
         """
         def drop_from_right(chunks, idx):
-            "used in pair name parsing to sub out _ delim chunks"
-            return [j for i, j in enumerate(chunks[::-1]) if i != idx][::-1]
+            """
+            used in pair name parsing to sub out _ delim chunks
+            
+            Example:
+            ---------
+            if idx = 1 then:
+                name_prefix_001_R1_002.fastq.gz           # 1.
+                ['name_prefix', '001', 'R1', '002']       # 2.
+                ['name_prefix', '001', '002']             # 3.
+            """
+            sublist = [j for i, j in enumerate(chunks[::-1]) if i != idx][::-1]
+            return "_".join([i for i in sublist if i]).rstrip("_")
 
         # check if file names end with _ before the suffix and split
         # on two underscores, else split on last one.
-        bases = [
+        bases = sorted([
             os.path.basename(i).rstrip(".gz").rstrip(".fastq").rstrip(".fq")
             for i in self.fastqs
-        ]
+        ])
 
         # link pairs into tuples
         if 'pair' in self.data.params.datatype:
@@ -218,7 +228,7 @@ class SimpleDemux:
                     # get groups up to an underscore delimiter
                     groups = itertools.groupby(
                         bases, 
-                        key=lambda x: "_".join(drop_from_right(x.split("_"), idx))
+                        key=lambda x: drop_from_right(x.split("_"), idx),
                     )
                     groups = {i: list(j) for i, j in groups}
                     assert len(groups) == len(self.fastqs) / 2
@@ -233,12 +243,14 @@ class SimpleDemux:
                     raise IPyradError(
                         "Cannot parse paired file names. File names must have "
                         "matching name prefix followed by _1 _2, _R1 _R2, "
-                        "or _R1_ _R2_ with any subsequent suffix.")
+                        "or _R1_ _R2_ followed by any subsequent suffix. "
+                        f"Your data files look like this: {self.fastqs}"
+                        )
 
             # apply splitter to the full path names
             groups = itertools.groupby(
-                self.fastqs,
-                key=lambda x: "_".join(drop_from_right(x.split("_"), idx))
+                sorted(self.fastqs),
+                key=lambda x: drop_from_right(x.split("_"), idx),
             )
 
             for fname, files in groups:
@@ -261,15 +273,15 @@ class SimpleDemux:
             warning = []
             for base in bases:
                 if any([base.endswith(i) for i in endings]):
-                    warning.append(fname)
+                    warning.append(base)
             if warning:
                 message = (
-                    "Input file names look suspiciously like paired-end"
+                    "Input file names look suspiciously like paired-end "
                     "data but you selected single end. If so, you should "
                     "set the parameter 'datatype' to a paired option (e.g., "
                     "pairddrad or pairgbs) and re-run step 1, which will "
                     "require using the force flag (-f) to overwrite "
-                    "existing data.\n{}".format(",".join(warning)))
+                    "existing data.\n{}".format(self.fastqs))
                 logger.warning(message)
 
             for i in self.fastqs:
