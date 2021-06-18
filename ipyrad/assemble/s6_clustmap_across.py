@@ -24,6 +24,7 @@ class Step6(BaseStep):
         self.lbview = self.ipyclient.load_balanced_view()
         self.data.ncpus = len(self.ipyclient.ids)
         self.data.tmpdir = self.tmpdir
+        self.data.stepdir = self.stepdir        
         self.regions = []
 
 
@@ -36,7 +37,9 @@ class Step6(BaseStep):
             ClustMapAcrossDenovo(self).run()
         else:
             ClustMapAcrossReference(self).run()
-
+        for sname in self.samples:
+            self.samples[sname].state = 6
+        self.data.save_json()
 
 
 if __name__ == "__main__":
