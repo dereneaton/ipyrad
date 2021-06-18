@@ -42,23 +42,27 @@ class Step5(BaseStep):
 
         # sample paths to be used
         for sname in self.samples:
-            self.samples[sname].files.database = (
-                os.path.join(self.stepdir, sname+".catg.hdf5"))
-            self.samples[sname].files.consens = (
-                os.path.join(self.stepdir, sname+".consens.gz"))
+            self.samples[sname].files.depths = (
+                os.path.join(self.stepdir, f"{sname}.catg.hdf5"))
+            if self.is_ref:
+                self.samples[sname].files.consens = (
+                    os.path.join(self.stepdir, f"{sname}.bam"))
+            else:
+                self.samples[sname].files.consens = (
+                    os.path.join(self.stepdir, f"{sname}.consens.gz"))
 
     def run(self):
         """
         Submit jobs to run either denovo, reference, or complex.
         """
-        self.calculate_depths()
+        self.calculate_depths_and_max_frag()
         self.make_chunks()
         self.process_chunks()
         self.concatenate_chunks()
         self.data.save_json()
 
 
-    def calculate_depths(self):
+    def calculate_depths_and_max_frag(self):
         """
         Checks whether mindepth has changed and calc nclusters and maxlen
         """
@@ -204,8 +208,8 @@ class Step5(BaseStep):
                 jobs2[sname] = self.lbview.apply(
                     concat_denovo_consens, *(self.data, self.samples[sname]))
             else:
-                raise NotImplementedError("todo")
-                # concat_reference_consens(...)
+                jobs2[sname] = self.lbview.apply(
+                    concat_reference_consens, *(self.data, self.samples[sname]))               
 
         jobs = list(jobs1.values()) + list(jobs2.values())
         jobs = dict(enumerate(jobs))
