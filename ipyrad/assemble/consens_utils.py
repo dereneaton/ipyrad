@@ -747,7 +747,7 @@ def concat_catgs(data, sample, isref):
             .format(sample.name, nrows, maxlen))
 
     # fill in the chunk array
-    with h5py.File(sample.files.database, 'w') as ioh5:
+    with h5py.File(sample.files.depths, 'w') as ioh5:
         dcat = ioh5.create_dataset(
             name="catg",
             shape=(nrows, maxlen, 4),
@@ -795,7 +795,7 @@ def concat_denovo_consens(data, sample):
     combs1.sort(key=lambda x: int(x.split(".")[-1]))
 
     # stream through file renaming consens reads and write out
-    idx = 0
+    idx = 0    
     with gzip.open(sample.files.consens, 'wt') as out:
         for fname in combs1:
             cstack = []
