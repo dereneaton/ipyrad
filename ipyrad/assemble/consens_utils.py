@@ -5,8 +5,10 @@ Utilities for s5_consensus
 """
 
 import os
+import sys
 import glob
 import gzip
+import subprocess as sps
 from collections import Counter
 import h5py
 import numpy as np
@@ -17,10 +19,14 @@ from ipyrad.assemble.utils import (
 )
 
 
+BIN_SAMTOOLS = os.path.join(sys.prefix, "bin", "samtools")
+
+
 class Processor:
     """
     The consensus calling process that calls alleles and genotypes and
-    applies filters to consens seqs.
+    applies filters to consens seqs. It writes results to two files
+    for each chunk, tmpcons (SAM) and tmpcats (HDF5). 
     """
     def __init__(self, data, sample, chunkfile, is_ref):
 
@@ -31,7 +37,6 @@ class Processor:
         self.is_ref = is_ref
 
         # set max limits and params from data
-        self.nalleles = 1
         self.tmpnum = int(self.chunkfile.split(".")[-1])
         self.optim = int(self.chunkfile.split(".")[-2])
 
@@ -45,13 +50,14 @@ class Processor:
         self.counters = {}
         self.filters = {}
 
-        # tmp attrs to be filled
+        # tmp attrs to be filled on each cluster
         self.names = None
         self.seqs = None
         self.ref_position = None
         self.consens = None
         self.hidx = None
         self.nheteros = None
+        self.nalleles = 1
 
         # local copies to use to fill the arrays
         self.catarr = np.zeros((self.optim, self.data.max_frag, 4), dtype=np.uint32)
@@ -77,7 +83,9 @@ class Processor:
         # store data for writing
         self.storeseq = {}
 
-        # if reference-mapped then parse the fai to get index number of chroms
+        # if reference-mapped then parse the fai (TSV) to get all scaffs.
+        # Names and order of scaffs is not predictable so we create a 
+        # dict to map {int: scaffname} and {scaffname: int}
         if self.is_ref:
             fai = pd.read_csv(
                 self.data.params.reference_sequence + ".fai",
@@ -159,7 +167,7 @@ class Processor:
 
             # Infer haplotypes from reads at variable geno sites
             # filter[maxalleles] + 1
-            if self.nheteros > 1:
+            if self.nheteros:
                 if self.filter_alleles():
                     continue
 
@@ -348,7 +356,7 @@ class Processor:
         """
         if self.nheteros > (self.consens.size * self.maxhet):
             self.filters['maxh'] += 1
-            print(bytes(self.consens).decode())
+            # print(bytes(self.consens).decode())
             return 1
         return 0
 
@@ -392,6 +400,11 @@ class Processor:
         - T
         ---------
         """
+        # if only one hetero site then there are only two bi-alleles
+        if self.nheteros == 1:
+            self.nalleles = 2
+            return 0
+
         # array of hetero sites (denovo: this can include Ns)
         harray = self.seqs[:, self.hidx]
 
@@ -434,50 +447,9 @@ class Processor:
         self.filters['maxalleles'] += 1            
         self.nalleles = len(ccx)
 
-        # debugging: this cluster was filtered
-        print('filtered by max-alleles\n', ccx)
+        # debugging to logger: this cluster was filtered
+        # print(f"filtered by max-alleles\n{ccx}")
         return 1
-
-        # # or if all bi-alleles are not still present
-        # try:
-        #     if np.any(np.all(arr == arr[0], axis=1)):
-        #         # logger.debug(
-        #             # "dropped lowcov alleles but remaining do not cover "
-        #             # "genotype calls, so filter is applied."
-        #             # )
-        #         self.filters['maxalleles'] += 1
-        #         self.nalleles = len(ccx)
-        #         return 1
-        # except Exception as inst:
-        #     logger.warning(ccx)
-        #     logger.warning(arr)
-        #     logger.exception(inst)
-        #     raise IPyradError from inst
-
-        # # if passed filter-filter, how many alleles now?
-        # if len(alleles) <= self.maxalleles:
-        #     self.nalleles = len(alleles)
-        #     return 0
-
-        # # too many alleles
-        # self.filters['maxalleles'] += 1        
-        # self.nalleles = len(ccx)
-        # return 1
-
-        # # require that remaining alleles contain hetero calls.
-
-        # # if max-alleles or fewer, then great, move on.
-        # if len(ccx) <= self.maxalleles:
-        #     self.nalleles = len(ccx)
-        #     return 0
-
-        # # if max-alleles or fewer, then great, move on.
-        # if len(alleles) <= self.maxalleles:
-        #     self.nalleles = len(alleles)
-        #     return 0
-
-        #if self.nalleles == 2:
-        #    self.consens = encode_alleles(self.consens, self.hidx, alleles)
 
 
     def store_data(self):
@@ -721,7 +693,7 @@ def make_cigar(arr):
     mcount = 0
     tcount = 0
     lastbit = arr[0]
-    for i, j in enumerate(arr):
+    for _, j in enumerate(arr):
 
         # write to cigarstring when state change
         if j != lastbit:
@@ -734,7 +706,7 @@ def make_cigar(arr):
             mcount = 0
             
         # increase counters
-        if (j == '.' or j == '-'):
+        if j in ('.', '-'):
             tcount += 1
         else:
             mcount += 1
@@ -845,14 +817,13 @@ def concat_reference_consens(data, sample):
     Concatenates consens bits into SAM for reference assemblies
     """
     # write sequences to SAM file
-    combs1 = glob.glob(os.path.join(
-        data.tmpdir,
-        "{}_tmpcons.*".format(sample.name)))
-    combs1.sort(key=lambda x: int(x.split(".")[-1]))
+    chunks = glob.glob(os.path.join(data.tmpdir, f"{sample.name}_tmpcons.*"))
+    chunks.sort(key=lambda x: int(x.split(".")[-1]))
 
     # open sam handle for writing to bam
-    samfile = sample.files.consens.replace(".bam", ".sam")    
-    with open(samfile, 'w') as outf:
+    bamfile = os.path.join(data.stepdir, f"{sample.name}.bam")
+    samfile = os.path.join(data.tmpdir, f"{sample.name}.sam")
+    with open(samfile, 'wt') as outf:
 
         # parse fai file for writing headers
         fai = "{}.fai".format(data.params.reference_sequence)
@@ -866,7 +837,7 @@ def concat_reference_consens(data, sample):
 
         # write to file with sample names imputed to line up with catg array
         counter = 0
-        for fname in combs1:
+        for fname in chunks:
             with open(fname) as infile:
                 # impute catg ordered seqnames 
                 data = infile.readlines()
@@ -880,17 +851,12 @@ def concat_reference_consens(data, sample):
                 outf.write("".join(fdata) + "\n")
 
     # convert to bam
-    cmd = [ip.bins.samtools, "view", "-Sb", samfile]
-    with open(sample.files.consens, 'w') as outbam:
+    cmd = [BIN_SAMTOOLS, "view", "-Sb", samfile]
+    with open(bamfile, 'w') as outbam:
         proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=outbam)
         comm = proc.communicate()[1]
     if proc.returncode:
         raise IPyradError("error in samtools: {}".format(comm))
-    else:
-        pass
-        #os.remove(samfile)
-        #for fname in combs1:
-        #    os.remove(fname)
 
 
 
