@@ -15,8 +15,8 @@ from pydantic import BaseModel, Field, validator
 
 class HackersSchema(BaseModel):
     random_seed: int = 42
-    max_fragment_length: int = 50
-    max_inner_mate_distance: int = 500
+    max_fragment_length: int = Field(50, help="limits maxlen of loci by tiling")
+    max_inner_mate_distance: int = Field(None, help="used to delimit loci in ref assemblies")
     p5_adapter: str = "AGATCGGAAGAGC"
     p5_adapters_extra: List[str] = Field(None)
     p3_adapter: str = "AGATCGGAAGAGC"
@@ -29,14 +29,13 @@ class HackersSchema(BaseModel):
     exclude_reference: bool = True
     trim_loci_min_sites: int = 4
 
-class AssemblyMethod(Enum):
-    "supported assembly methods"
+class AssemblyMethod(str, Enum):
+    "supported assembly method categories"
     denovo = "denovo"
     reference = "reference"
-    # denovo_minus = "denovo-reference"  # use reference_filter param
 
-class DataType(Enum):
-    "supported datatypes"
+class DataType(str, Enum):
+    "supported datatypes categories"
     rad = "rad"
     ddrad = "ddrad"
     pairddrad = "pairddrad"
