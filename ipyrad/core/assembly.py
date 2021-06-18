@@ -5,7 +5,6 @@ Assembly class object as the main API for calling assembly steps.
 """
 
 import os
-import sys
 import shutil
 import traceback
 from typing import List, Optional
@@ -67,9 +66,16 @@ class Assembly:
         Returns a dataframe with *summarized stats* extracted from the 
         project JSON file given the current completed assembly steps.
         To see more detailed stats from specific steps see instead 
-        the self.stats_dfs 
+        the self.stats_dfs.
         """
-        proj = Project.parse_file(self.json_file)
+        # TODO: add step7 stats like nloci?
+
+        # using self object (any cases where we need to load from json?)
+        # self.save_json
+        # proj = Project.parse_file(self.json_file)
+        proj = self
+
+        # dataframe to fill
         stats = pd.DataFrame(
             index=sorted(proj.samples),
             columns=[
@@ -181,11 +187,70 @@ class Assembly:
         return branch
 
 
-    def write_params(self) -> None:
+    def write_params(self, force:bool=False) -> None:
         """
-        Write a CLI params file from the current params settings.
+        Write a CLI params file to <workdir>/params-<name>.txt with
+        the current params in this Assembly.
         """
-        # TODO
+        outfile = f"params-{self.name}.txt"
+
+        # Test if params file already exists?
+        # If not forcing, test for file and bail out if it exists
+        if not force:
+            if os.path.exists(outfile):
+                raise IPyradError(
+                    f"file {outfile} exists, you must use force to overwrite")
+
+        params = self.params.dict()
+        with open(outfile, 'w') as out:
+            print("---------- ipyrad params file " + "-" * 80, file=out)
+            for idx, param in enumerate(params):
+                value = params.get(param)
+                if isinstance(value, (tuple, list)):
+                    value = ", ".join(map(str, value))
+                else:
+                    value = str(value) if value else ""
+                print(
+                    f"{value.ljust(40)}## [{idx}] {param}: {PARAMSINFO[idx]}",
+                    file=out,
+                )
+
+
+        # with open(outfile, 'w') as paramsfile:
+        #     # Write the header. Format to 80 columns
+        #     header = "------- ipyrad params file (v.{})".format(ip.__version__)
+        #     header += ("-" * (80 - len(header)))
+        #     paramsfile.write(header + "\n")
+
+        #     # Whip through the current params and write out the current
+        #     # param value, the ordered dict index number. Also,
+        #     # get the short description from paramsinfo. 
+        #     # Make it look pretty, with padding.
+        #     params_string = []
+        #     for key in self.params._keys:
+        #         val = getattr(self.params, key)
+
+        #         # If multiple elements, write them out comma separated
+        #         if isinstance(val, list) or isinstance(val, tuple):
+        #             paramvalue = ", ".join([str(i) for i in val])
+        #         else:
+        #             paramvalue = str(val)
+
+        #         padding = (" " * (30 - len(paramvalue)))
+        #         paramkey = self.params._keys.index(key)
+        #         paramindex = " ## [{}] ".format(paramkey)
+        #         name = "[{}]: ".format(paramname(paramkey))
+        #         description = paraminfo(paramkey, short=True)
+        #         params_string.append(
+        #             "".join([
+        #                 paramvalue,
+        #                 padding,
+        #                 paramindex,
+        #                 name,
+        #                 description])
+        #             )
+        #     # write the params string
+        #     paramsfile.write("\n".join(params_string) + "\n")        # TODO
 
 
     def save_json(self) -> None:
@@ -206,7 +271,7 @@ class Assembly:
     def run(
         self, 
         steps:str, 
-        force:bool=False, 
+        force:bool=False,
         quiet:bool=False,
         ipyclient:Optional[Client]=None,
         **kwargs,
@@ -229,10 +294,10 @@ class Assembly:
             of an HPC cluster. Otherwise, just configure the local 
             cluster parallelization using the .ipcluster attribute.
         """
-        # save a tmp backup copy of the JSON file.
-        # FIXME ...
+        # save the current JSON file (and a backup?)
+        self.save_json()
 
-        # ...
+        # the Class functions to run for each entered step.
         step_map = {
             "1": Step1,
             "2": Step2, 
@@ -247,18 +312,18 @@ class Assembly:
         # before starting the ipcluster?...
 
 
-        # start the cluster
-        cluster = Cluster()
+        # init the ipyparallel cluster class wrapper
+        cluster = Cluster(quiet=quiet)
         try:
-            # establish connection to a running ipyclient
+            # establish connection to a new or running ipyclient
             cores = kwargs.get('cores', self.ipcluster['cores'])
             cluster.start(cores=cores, ipyclient=ipyclient)
 
-            # use client for all steps of assembly 
+            # use client for any/all steps of assembly 
             for step in steps:
                 tool = step_map[step](self, force, quiet, cluster.ipyclient)
                 tool.run()
-                shutil.rmtree(tool.tmpdir)
+                # shutil.rmtree(tool.tmpdir)   # uncomment when not testing.
 
         except KeyboardInterrupt:
             logger.warning("keyboard interrupt by user, cleaning up.")
@@ -269,7 +334,7 @@ class Assembly:
             print("An error occurred, see logfile and below.")
             raise
 
-        # logger.exception logs the traceback
+        # logger.error logs the traceback
         except Exception as inst:
             logger.error(
                 "An unexpected error occurred, see logfile "
@@ -280,30 +345,67 @@ class Assembly:
             cluster.cleanup_safely(None)
 
 
+# PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
+PARAMSINFO = {
+    0: "Prefix name for output files",
+    1: "Output file path (created if absent)",
+    2: "Path to non-demultiplexed fastq data",
+    3: "Path to barcodes file",
+    4: "Path to a demultiplexed fastq data",
+    5: "Assembly method ('denovo' or 'reference')",
+    6: "Path to a reference genome fasta file",
+    7: "Datatype (rad, gbs, pairddrad, etc)",
+    8: "One or two sequences viewable in read data",
+    9: "Bases with Q<20",
+    10: "33 is default, much older data may be 64",
+    11: "Cutoff for making statistical base calls",
+    12: "Only used if < min_depth_statistical",
+    13: "Clusters with > max_depth are excluded",
+    14: "Sequence similarity cutoff for denovo clustering",
+    15: "Matching cutoff for demultiplexing",
+    16: "2=default, 1=only quality filtering, 0=no filtering",
+    17: "Reads shorter after trimming are excluded",
+    18: "Consensus quality filter (max integer)",
+    19: "Consensus quality filter (max proportion)",
+    20: "Consensus quality filter (max proportion)",
+    21: "Locus quality filter (min integer)",
+    22: "Locus quality filter (max proportion)",
+    23: "Locus quality filter (max integer)",    
+    24: "Locus quality filter (max proportion)",    
+    25: "Pre-align trim edges (R1>, <R1, R2>, <R2)",    
+    26: "Post-align trim edges (R1>, <R1, R2>, <R2)",
+    27: "See documentation",
+    28: "Path to population assignment file",
+    29: "Reads mapped to this reference fasta are removed",
+}
+
+
+
 
 if __name__ == "__main__":
     
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", stderr=False, logfile="/tmp/test.log")
+    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
 
-    # TEST = ip.Assembly("PEDIC")
-    # TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    TEST = ip.Assembly("PEDIC2")
+    TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    TEST.write_params(True)
     # TEST.params.project_dir = "/tmp"
     # TEST.run('12', force=True, quiet=True)
     # print(TEST.stats)
 
-    TEST = ip.Assembly("TEST1")
-    TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
-    TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
-    TEST.params.project_dir = "/tmp"
-    TEST.params.max_barcode_mismatch = 1
-    TEST.run('1', force=True, quiet=True)
+    # TEST = ip.Assembly("TEST1")
+    # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
+    # TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    # TEST.params.project_dir = "/tmp"
+    # TEST.params.max_barcode_mismatch = 1
+    # TEST.run('1', force=True, quiet=True)
 
-    data = ip.Assembly('TEST')
-    data.params.project_dir = "/tmp"
-    data.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.fastq.gz"
-    data.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
-    data.run("1", force=True, quiet=True)
-    print(data.stats)
+    # data = ip.Assembly('TEST')
+    # data.params.project_dir = "/tmp"
+    # data.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.fastq.gz"
+    # data.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    # data.run("1", force=True, quiet=True)
+    # print(data.stats)
 
