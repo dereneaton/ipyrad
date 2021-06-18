@@ -34,6 +34,10 @@ class BaseStep:
         self.tmpdir = None
         self.setup_dirs()
 
+        # parse population file for step 7
+        if step == 7:
+            self.parse_populations()
+
 
     def print_headers(self) -> None:
         """print the CLI header for this step"""
@@ -128,7 +132,7 @@ class BaseStep:
             1: "fastqs",
             2: "edits",
             3: "clustmap",
-            4: "consensus",
+            4: "estimates",
             5: "consensus",
             6: "across",
             7: "outfiles",
@@ -161,6 +165,15 @@ class BaseStep:
         # always make both dirs
         os.makedirs(self.tmpdir, exist_ok=True)
         os.makedirs(self.stepdir, exist_ok=True)
+
+
+    def parse_populations(self) -> None:
+        """
+        Parse the population file params input file. In the API
+        a user _could_ alternatively add a pop dictionary to the 
+        Assembly object as {popname: ([samps], minsamp), ...}
+        """
+        # TODO:
 
 
 
