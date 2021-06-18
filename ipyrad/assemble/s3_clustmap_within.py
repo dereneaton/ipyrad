@@ -7,6 +7,7 @@ or mapping to a reference.
 
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.clustmap_within_denovo import ClustMapDenovo
+from ipyrad.assemble.clustmap_within_reference import ClustMapReference
 
 
 class Step3(BaseStep):
@@ -28,20 +29,22 @@ class Step3(BaseStep):
         if self.data.params.assembly_method == "denovo":
             ClustMapDenovo(self).run()
         else:
-            pass
+            ClustMapReference(self).run()
 
 
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", stderr=False, logfile="/tmp/test.log")
+    ip.set_loglevel("DEBUG")#, logfile="/tmp/test.log")
    
     TEST = ip.Assembly("TEST1")
     TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
     TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
     TEST.params.project_dir = "/tmp"
     TEST.params.max_barcode_mismatch = 1
-    TEST.run('123', force=True, quiet=True)
+    TEST.params.assembly_method = "reference"   
+    TEST.params.reference_sequence = "../../tests/ipsimdata/rad_example_genome.fa"
+    TEST.run('3', force=True, quiet=True)
 
     # SE DATA
     # TEST = ip.load_json("/tmp/TEST1.json")
