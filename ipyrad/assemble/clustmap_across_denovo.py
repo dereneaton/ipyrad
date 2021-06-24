@@ -423,10 +423,11 @@ def muscle_align(clust):
         out, _ = proc.communicate(clust)
 
         # remove the newline breaks in the sequences
-        out = "\n>".join([
-            i[::-1].replace("\n", "", 1)[::-1] 
-            for i in out.strip().split("\n>")
-        ])
+        lines = out.strip().split("\n>")
+        pairs = [i.replace("\n", "@@@", 1) for i in lines]
+        out = [i.replace("\n", "") for i in pairs]
+        out = [i.replace("@@@", "\n") for i in out]
+        out = "\n>".join(out)
         return out
 
     # for paired data, split and align each separate, then rejoin
