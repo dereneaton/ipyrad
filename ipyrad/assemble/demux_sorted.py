@@ -114,7 +114,7 @@ class FileLinker:
         logger.info(bases)
 
         # link pairs into tuples
-        if 'pair' in self.data.params.datatype:
+        if self.data.is_pair:
 
             # try these in order until ngroups == nfiles / 2
             idx = 0
@@ -186,63 +186,6 @@ class FileLinker:
                 self.ftuples[fname] = (i, "")
 
         logger.debug(f"ftuples: {self.ftuples}")
-
-
-
-    # def parse_sample_names_and_pairs(self):
-    #     """
-    #     check for PE matching and extract sample names to ftuples
-    #     """
-    #     # check if file names end with _ before the suffix and split
-    #     # on two underscores, else split on last one.
-    #     if all(i.rsplit(".")[0].endswith("_") for i in self.fastqs):
-    #         _split = 2
-    #     else:
-    #         _split = 1
-
-    #     # link pairs into tuples
-    #     if 'pair' in self.data.params.datatype:
-
-    #         # check that names fit the paired naming convention
-    #         groups = itertools.groupby(
-    #             self.fastqs, 
-    #             key=lambda x: x.rsplit("_", _split)[0],
-    #         )
-    #         for sname, files in groups:
-    #             sname = os.path.basename(sname)
-    #             files = sorted(files)
-    #             logger.debug(f"detected paired files: {files}")
-    #             self.ftuples[sname] = (files[0], files[1])
-
-    #         # file checks
-    #         if not self.ftuples:
-    #             raise IPyradError(
-    #                 "No paired fastq files found. File names must have "
-    #                 "matching name prefix followed by _1 _2, _R1 _R2, "
-    #                 "or _R1_ _R2_.")
-
-    #     # data are not paired, create empty tuple pair
-    #     else:
-    #         # print warning if _R2_ is in names when not paired
-    #         endings = ("_R2", "_2", "_R2")
-    #         warning = []
-    #         for fname in self.fastqs:
-    #             if any([fname.rsplit(".", 1)[0].endswith(i) for i in endings]):
-    #                 warning.append(fname)
-    #         if warning:
-    #             message = (
-    #                 "Input file names look suspiciously like paired-end"
-    #                 "data but you selected single end. If so, you should "
-    #                 "set the parameter 'datatype' to a paired option (e.g., "
-    #                 "pairddrad or pairgbs) and re-run step 1, which will "
-    #                 "require using the force flag (-f) to overwrite "
-    #                 "existing data.\n{}".format(",".join(warning)))
-    #             logger.warning(message)
-
-    #         for i in self.fastqs:
-    #             sname = i.rsplit("_", _split)[0]
-    #             sname = os.path.basename(sname)
-    #             self.ftuples[sname] = (i, "")
 
 
     def check_sample_names(self):
