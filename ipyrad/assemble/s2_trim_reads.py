@@ -22,7 +22,8 @@ from ipyrad.core.schema import Stats2
 
 class Step2(BaseStep):
     """
-    Run Step2 read trimming and filtering using fastp.
+    Run Step2 read trimming and filtering using fastp. The program fastp
+    auto-detects the adapter sequences by analyzing the first 1M reads.
     """
     def __init__(self, data, force, quiet, ipyclient):
         super().__init__(data, step=2, quiet=quiet, force=force)
@@ -80,10 +81,6 @@ class Step2(BaseStep):
                 # cat command works for gzip or not. Index 0 of tuples is R1s.
                 cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
 
-                isgzip = ".gz"
-                if not sample.files.fastqs[0][0].endswith(".gz"):
-                    isgzip = ""
-
                 # write to new concat handle
                 conc1 = os.path.join(self.tmpdir, f"{sample.name}_R1_concat.fastq")
                 if sample.files.fastqs[0][0].endswith(".gz"):
@@ -101,7 +98,7 @@ class Step2(BaseStep):
 
                 # Only set conc2 if R2 actually exists
                 conc2 = 0
-                if "pair" in self.data.params.datatype:
+                if self.data.is_pair:
             
                     # out _R2 filehandle
                     conc2 = os.path.join(self.tmpdir, f"{sample.name}_R2_concat.fastq")
@@ -194,7 +191,7 @@ class Step2(BaseStep):
             )
 
             # store reads numbers as unpaired count unlike in fastp
-            if "pair" in self.data.params.datatype:
+            if self.data.is_pair:
                 for key in [
                     "reads_raw", 
                     "reads_filtered_by_Ns", 
@@ -318,7 +315,6 @@ class ReadTrimming:
             # step 3 to try both denovo and reference, so not doing it.
             # if self.data.params.assembly_method:
                 # cmd += ['-m', '--merged_out', self.out1 + ".merged"]
-
         else:
             cmd = [
                 self.fastp_binary,
@@ -345,6 +341,10 @@ class ReadTrimming:
         ])
 
         # turn off filters if settings are lower than 2
+        # hard coded fasta adapters file with Truseq and AAAAAAA
+        extra_adapters = os.path.join(os.path.dirname(__file__), "adapters.fa")
+        if self.data.params.filter_adapters == 2:
+            cmd.extend(["--adapter_fasta", str(extra_adapters)])
         if self.data.params.filter_adapters == 1:
             cmd.extend("-A")
         if self.data.params.filter_adapters == 0:
