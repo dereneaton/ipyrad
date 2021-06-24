@@ -34,7 +34,6 @@ class Step5(BaseStep):
         super().__init__(data, 5, quiet, force)
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
-        self.is_ref = "reference" in self.data.params.assembly_method
         self.max_frag = self.data.hackers.max_fragment_length
         self.nclusters_dict: Dict[str,int] = {}
         self.data.tmpdir = self.tmpdir
@@ -44,7 +43,7 @@ class Step5(BaseStep):
         for sname in self.samples:
             self.samples[sname].files.depths = (
                 os.path.join(self.stepdir, f"{sname}.catg.hdf5"))
-            if self.is_ref:
+            if self.data.is_ref:
                 self.samples[sname].files.consens = (
                     os.path.join(self.stepdir, f"{sname}.bam"))
             else:
@@ -112,9 +111,9 @@ class Step5(BaseStep):
         """
         Process the cluster chunks into arrays and consens or bam files
         """
-        def processor_wrap(data, sample, chunkfile, is_ref):
+        def processor_wrap(data, sample, chunkfile):
             "wrapper for class function"
-            proc = Processor(data, sample, chunkfile, is_ref)
+            proc = Processor(data, sample, chunkfile)
             proc.run()
             return proc.counters, proc.filters
 
@@ -134,7 +133,7 @@ class Step5(BaseStep):
             chunks = glob.glob(os.path.join(self.tmpdir, f"{sname}.chunk.*"))
             chunks.sort(key=lambda x: int(x.split('.')[-1]))
             for chunk in chunks:
-                args = (self.data, self.samples[sname], chunk, self.is_ref)
+                args = (self.data, self.samples[sname], chunk)
                 jobs[sname].append(self.lbview.apply(processor_wrap, *args))
 
         # send chunks to be processed
@@ -201,10 +200,10 @@ class Step5(BaseStep):
 
             # submit h5 counts concat
             jobs1[sname] = self.lbview.apply(
-                concat_catgs, *(self.data, self.samples[sname], self.is_ref))
+                concat_catgs, *(self.data, self.samples[sname]))
 
             # submit seq file concat
-            if not self.is_ref:
+            if not self.data.is_ref:
                 jobs2[sname] = self.lbview.apply(
                     concat_denovo_consens, *(self.data, self.samples[sname]))
             else:
