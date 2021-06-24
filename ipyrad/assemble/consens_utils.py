@@ -28,13 +28,12 @@ class Processor:
     applies filters to consens seqs. It writes results to two files
     for each chunk, tmpcons (SAM) and tmpcats (HDF5). 
     """
-    def __init__(self, data, sample, chunkfile, is_ref):
+    def __init__(self, data, sample, chunkfile):
 
         # input params
         self.data = data
         self.sample = sample
         self.chunkfile = chunkfile
-        self.is_ref = is_ref
 
         # set max limits and params from data
         self.tmpnum = int(self.chunkfile.split(".")[-1])
@@ -44,7 +43,9 @@ class Processor:
         self.maxhet = self.data.params.max_h_consens
         self.maxalleles = self.data.params.max_alleles_consens
         self.maxn = (
-            self.data.params.max_n_consens if not self.is_ref else int(1e6))
+            self.data.params.max_n_consens if not self.data.is_ref
+            else int(1e6)
+        )
 
         # target attrs to be filled
         self.counters = {}
@@ -86,7 +87,7 @@ class Processor:
         # if reference-mapped then parse the fai (TSV) to get all scaffs.
         # Names and order of scaffs is not predictable so we create a 
         # dict to map {int: scaffname} and {scaffname: int}
-        if self.is_ref:
+        if self.data.is_ref:
             fai = pd.read_csv(
                 self.data.params.reference_sequence + ".fai",
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
@@ -130,7 +131,7 @@ class Processor:
 
             # denovo only: mask repeats (drops lowcov sites w/ dashes) and
             # converts remaining dashes to Ns
-            if not self.is_ref:
+            if not self.data.is_ref:
                 # return 1 if entire seq was not masked
                 if self.mask_repeats():
                     continue
@@ -207,7 +208,7 @@ class Processor:
 
         # ref positions (chromint, pos_start, pos_end)
         self.ref_position = (-1, 0, 0)
-        if self.is_ref:
+        if self.data.is_ref:
             # parse position from name string
             rname = self.names[0].rsplit(";", 2)[0]
             chrom, posish = rname.rsplit(":")
@@ -505,7 +506,7 @@ class Processor:
             outfile = open(consenshandle, 'wt')
 
             # denovo just write the consens simple
-            if not self.is_ref:
+            if not self.data.is_ref:
                 seqlist = []
                 for key in self.storeseq:
                     seq = self.storeseq[key]
@@ -721,7 +722,7 @@ def make_cigar(arr):
 
 
 
-def concat_catgs(data, sample, isref):
+def concat_catgs(data, sample):
     """
     Concat catgs into a single sample catg and remove tmp files
     """
@@ -762,7 +763,7 @@ def concat_catgs(data, sample, isref):
             compression="gzip")
         
         # only create chrom for reference-aligned data
-        if isref:
+        if data.is_ref:
             dchrom = ioh5.create_dataset(
                 name="chroms",
                 shape=(nrows, 3),
@@ -778,7 +779,7 @@ def concat_catgs(data, sample, isref):
             io5 = h5py.File(icat, 'r')
             dcat[start:end] = io5['cats'][:]
             dall[start:end] = io5['alls'][:]
-            if isref:
+            if data.is_ref:
                 dchrom[start:end] = io5['chroms'][:]
             start = end
             io5.close()
