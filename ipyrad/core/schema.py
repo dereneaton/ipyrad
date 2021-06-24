@@ -106,27 +106,34 @@ class SampleSchema(BaseModel):
     stats_s7: Stats7 = Field(None)
     # stats: Stats = Field(None)
 
-class LocusStats(BaseModel):
-    total_prefiltered_loci: int
-    total_filtered_loci: int
+class FilterStats(BaseModel):
+    nloci_before_filtering: int
     filtered_by_rm_duplicates: int
+    filtered_by_min_sample_cov: int
+    filtered_by_max_indels: int    
     filtered_by_max_snps: int
     filtered_by_max_shared_h: int
-    filtered_by_min_sample_cov: int
+    nloci_after_filtering: int
 
-# class AssemblyStats(BaseModel):
-    # stats: LocusStats
-    # outfiles: List[str]
-    # sample_cov_stats: Dict[str, int]
-    # locus_cov_stats: Dict[int, int]
-    # sum_cov_stats: Dict[int, int]    
+class AssemblyStats(BaseModel):
+    filters: FilterStats
+    nsnps: int
+    nloci: int
+    nbases: int
+    nsamples: int
+    sample_cov: Dict[str, int]
+    locus_cov: Dict[int, int]
+    var_sites: Dict[int, int]
+    var_props: Dict[float, int]
+    pis_sites: Dict[int, int]
+    pis_props: Dict[float, int]
 
 class Project(BaseModel):
     version: str = str(get_distribution('ipyrad')).split()[1]
     params: ParamsSchema
     hackers: HackersSchema
     samples: Dict[str,SampleSchema]
-    assembly_stats: LocusStats = Field(None)
+    assembly_stats: AssemblyStats = Field(None)
     outfiles: Dict[str,str] = Field(None)
 
     def __str__(self):
