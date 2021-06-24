@@ -5,225 +5,219 @@ Helper classes for step7 (write_outputs.py) for filtering loci for
 the .loci output.
 """
 
+import pandas as pd
 import numpy as np
 from numba import njit
+from ipyrad.assemble.write_outputs_edge_trimming import Edges
 
 
-
-AMBIGARR = np.array(list(bytes(b"RSKYWM"))).astype(np.uint8)
-
+AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
 
 
-class ChunkProcessor(object):
+class ChunkProcess:
     """
-    Takes a chunk of aligned loci and (1) applies filters to it; 
-    (2) gets edges, (3) builds snpstring, (4) returns chunk and stats.
-    (5) writes 
+    Runs the remote step7 func apply_filters_and_trimming() to filter
+    and trim loci and return stats.
     """
     def __init__(self, data, chunksize, chunkfile):
-        # init data
+        
         self.data = data
         self.chunksize = chunksize
         self.chunkfile = chunkfile
-        self.isref = self.data.isref
-        self.ispair = self.data.ispair
-        self.minsamp = self.data.params.min_samples_locus
 
-        # Minsamp is calculated _before_ the reference sequence is removed
-        # and so if we want the minsamp param to be honored as it is written
-        # in the params file we need to _add_ 1 to the value, so that when
-        # the ref is excluded the minsamp value will be accurate.
-        # If the ref is _included_ then it counts toward minsample and no
-        # adjustment is necessary.
-        if self.isref:
-            if self.data.hackersonly.exclude_reference:
-                self.minsamp += 1
-
-        # filters (dups, minsamp, maxind, maxall, maxvar, maxshared)
-        self.filters = np.zeros((self.chunksize, 5), dtype=np.bool_)
-        self.filterlabels = (
-            'dups', 
-            'maxind',  
-            'maxvar', 
-            'maxshared',
-            'minsamp',
+        # returned results
+        self.filters = pd.DataFrame(
+            index=range(self.chunksize),
+            columns=[
+                "dups", 
+                "minsamp",
+                "maxind", 
+                "maxvar", 
+                "maxshared", 
+            ],
+            data=False,
         )
-        # (R1>, <R1, R2>, <R2)
+        # (R1>, <R1, R2>, <R2), currently only trims external edges.
         self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
-
-        # store stats on sample coverage and locus coverage
-        self.scov = {i: 0 for i in self.data.samples}
-        self.lcov = {i: 0 for i in range(1, len(self.data.samples) + 1)}
-        self.var = {i: 0 for i in range(5000)}
-        self.pis = {i: 0 for i in range(5000)}
-        self.nbases = 0
-
-        # tmp outfile list and filename
+        # stats storage.
+        self.stats = {
+            'nbases': 0,
+            'sample_cov': {i: 0 for i in self.data.samples},
+            'locus_cov': {i: 0 for i in range(1, len(self.data.samples) + 1)},
+            'var_sites': {i: 0 for i in range(2000)},
+            'pis_sites': {i: 0 for i in range(2000)},
+            'var_props': {},
+            'pis_props': {},
+        }
+        # updated each iteration
+        self.lidx: int = None
         self.outlist = []
-        self.outfile = self.chunkfile + '.loci'
-        self.outpickle = self.chunkfile + '.p'
-        self.outarr = self.chunkfile + '.npy'
-
-        # open a generator to the chunks
-        self.chunkio = open(self.chunkfile, 'rt')
-        self.loci = enumerate(iter(self.chunkio.read().split("//\n//\n")))
-
-        # filled in each chunk
-        self.names = []
-        self.nidxs = []
-        self.seqs = []
-        self.iloc: int = 0
-
-
-    def next_locus(self):
-        """
-        grabs the next locus from the chunk file
-        """
-        self.names = []
-        self.nidxs = []
-        self.seqs = []
-
-        # advance locus to next, parse names and seqs
-        self.iloc, lines = next(self.loci)
-        lines = lines.strip().split("\n")
-        for line in lines:
-            if line[0] == ">":
-                name, nidx = line[1:].rsplit("_", 1)
-                self.names.append(name)
-                self.nidxs.append(nidx)
-            else:
-                self.seqs.append(list(line.encode()))
-
-        # filter to include only samples in this assembly
-        mask = np.array([i in self.data.samples for i in self.names])
-        self.names = np.array(self.names)[mask].tolist()
-
-        if not self.filter_dups():
-            # [ref] store consens read start position as mapped to ref
-            self.nidxs = np.array(self.nidxs)[mask].tolist()
-            self.seqs = np.array(self.seqs)[mask, :].astype(np.uint8)
-
 
 
     def run(self):
         """
-        Iterate over loci in this chunk to apply filters.
+        Iterates over loci in the chunkfile trimming edges and 
+        calculating stats for each.
         """
-        # iterate through loci in the chunk
+        # Iterate over loci
+        io_chunk = open(self.chunkfile, 'rt')
+        io_loci = enumerate(iter(io_chunk.read().split("//\n//\n")))
+
+        # keep track of var and pis proportions for histogram at end
+        histos = {"pis": [], "var": []}
+
         while 1:
+            # get the next locus in the chunkfile and skips the reference
+            # sample if present in the locus and hackers.exclude_reference
+            # otherwise reference is first if ref datatype.
             try:
-                self.next_locus()
+                self.lidx, chunk = next(io_loci)
+                names, nidxs, seqs, dup = parse_locus(self.data, chunk)
             except StopIteration:
                 break
 
-            # fill filter 0
-            if self.filter_dups():
+            # check duplicates filter
+            if dup:
+                self.filters.loc[self.lidx, "dups"] = True
                 continue
 
-            # apply filters 
-            edges = Edges(self.data, self.seqs)
+            # check minsamp filter (optionally w/ popmins)
+            if self.filter_minsamp_pops(names):
+                self.filters.loc[self.lidx, "minsamp"] = True
+                continue
+
+            # trim edges and store the trimming lengths
+            edges = Edges(self.data, seqs)
             edges.get_edges()
-            self.edges[self.iloc] = edges.edges
+            self.edges[self.lidx] = edges.edges
 
-            # fill filter 4
-            self.filter_minsamp_pops()
-            self.filters[self.iloc, 4] += int(edges.bad)
-
-            # trim edges, need to use uppered seqs for maxvar & maxshared
-            edg = self.edges[self.iloc]
-            ublock = self.useqs[:, edg[0]:edg[3]]
-            ablock = self.aseqs[:, edg[0]:edg[3]]
-
-            # filter if are any empty samples after trimming
-            self.filters[self.iloc, 4] += np.sum(np.all(ublock == 45, axis=1))
-
-            # bail out of locus now if it is already bad...
-            if self.filters[self.iloc].sum():
+            # check overzealous edge trimming (saved as a minsamp effect)
+            if edges.bad:
+                self.filters.loc[self.lidx, "minsamp"] = True
                 continue
+
+            # apply the edge trimming 
+            trimseq = seqs[:, self.edges[self.lidx][0]:self.edges[self.lidx][3]]
+
+            # check if any samples have been overly trimmed (no data)
+            keepmask = np.zeros(len(names), dtype=np.bool_)
+            nseq = trimseq.copy()
+            nseq[nseq == 45] = 78
+            for sidx, _ in enumerate(names):
+                if np.all(nseq[sidx] == 78):
+                    keepmask[sidx] = False
+                else:
+                    keepmask[sidx] = True
+            trimseq = trimseq[keepmask, :]
+            names = [i for i, j in zip(names, keepmask) if j]
+            nidxs = [i for i, j in zip(nidxs, keepmask) if j]
+
+            # if trimming dropped all samples, then apply minsamp filter
+            # NOTE: pre v.1.0 we dropped the whole locus if any sample
+            # was removed here. That conservative approach may be safer...
+            if sum(keepmask == 0) == len(names):
+                self.filters.loc[self.lidx, "minsamp"] = True
+                continue
+
+            # create mask to hide sites from stats counts that are in insert
+            masked = None
 
             # [denovo]: store shift of left edge start position from 
             # alignment, this position is needed for pulling depths in VCF.
-            # [ref]: nidx string will be updated in to_locus() with edg
-            self.masked = None
-            if not self.isref:
+            if not self.data.is_ref:
 
                 # what is the leftmost consens edge (not -)
                 ishift = [
-                    np.where(self.aseqs[i] != 45)[0].min() 
-                    for i in range(self.aseqs.shape[0])
+                    np.where(trimseq != 45)[0].min() 
+                    for i in range(trimseq.shape[0])
                 ]
 
                 # fill nidxs with nidxs and shift info
                 inidxs = []
-                for idx, (i, j) in enumerate(zip(self.nidxs, ishift)):
+                for idx, (i, j) in enumerate(zip(nidxs, ishift)):
 
                     # add to ishift if trimmed region contains indels
-                    indshift = (self.aseqs[idx, j:edges.edges[0]] == 45).size
+                    indshift = (trimseq[idx, j:edges.edges[0]] == 45).size
                     inidxs.append("{}-{}".format(i, j + indshift))
-                self.nidxs = inidxs
+                nidxs = inidxs
 
                 # mask insert in denovo data
-                self.aseqs[:, edges.edges[1]:edges.edges[2]] = 110  # n
-                self.useqs[:, edges.edges[1]:edges.edges[2]] = 78   # N
+                trimseq[:, edges.edges[1]:edges.edges[2]] = 78   # N
+                # self.aseqs[:, edges.edges[1]:edges.edges[2]] = 110  # n
 
-            # for is-ref we need to mask the insert between pairs
+            # [ref]: nidx string will be updated in to_locus() with edg
+            # for is-ref we need to mask the insert between pairs, and
+            # for this we need to not check the 'reference' sample.
             else:
-                if self.ispair and self.data.params.min_samples_locus > 1:
-                    inserts = np.all(ublock[1:, :] == 78, axis=0)
-                    self.masked = ublock[:, np.invert(inserts)]
+                if self.data.is_pair and self.data.params.min_samples_locus > 1:
+                    if self.data.hackers.exclude_reference:
+                        inserts = np.all(seqs[1:, :] == 78, axis=0)
+                    else:
+                        inserts = np.all(seqs[:] == 78, axis=0)
+                    masked = seqs[:, np.invert(inserts)]
 
             # apply filters on edge trimmed reads
-            self.filter_maxindels(ublock)
+            if self.filter_maxindels(trimseq):
+                continue
 
             # get snpstring on trimmed reads
-            if self.isref and self.data.hackersonly.exclude_reference:
-                snparr = self.get_snpsarrs(ublock, True)
+            snparr = self.get_snpsarrs(trimseq)
+
+            # check for max % SNPs
+            var_prop, pis_prop, filt = self.filter_maxvars(trimseq, masked, snparr)
+            if filt:
+                continue
+
+            # store proportions variable for histograms
+            histos['pis'].append(pis_prop)
+            histos['var'].append(var_prop)
+
+            # check for paralogs (shared SNPs)
+            if self.filter_maxshared(trimseq):
+                continue
+
+            # store stats, locus passed all filters.
+            for name in names:
+                self.stats['sample_cov'][name] += 1
+            # refcount = int(self.data.hackers.exclude_reference)
+            self.stats['locus_cov'][trimseq.shape[0]] += 1
+            self.stats['var_sites'][snparr.sum()] += 1
+            self.stats['pis_sites'][snparr[:, 1].sum()] += 1
+            if masked is not None:
+                self.stats['nbases'] += masked.shape[1]
             else:
-                snparr = self.get_snpsarrs(ublock)                
-            self.filter_maxvars(ublock, snparr)
+                self.stats['nbases'] += trimseq.shape[1]
 
-            # apply filters on edge trimmed reads
-            self.filter_maxshared(ublock)
+            # convert to .loci format string.
+            locus = self.to_locus(trimseq, names, nidxs, snparr, edges.edges)
+            self.outlist.append(locus)
 
-            # store stats for the locus that passed filtering
-            if not self.filters[self.iloc, :].sum():
-                # do sample and locus counters
-                for name in self.names:
-                    self.scov[name] += 1
-
-                # advance locus counter
-                if self.isref and self.data.hackersonly.exclude_reference:
-                    self.lcov[self.useqs.shape[0] - 1] += 1
-                else:
-                    self.lcov[self.useqs.shape[0]] += 1
-
-                # do SNP distribution counter
-                if self.masked is None:
-                    self.nbases += ublock.shape[1]
-                else:
-                    self.nbases += self.masked.shape[1]
-                self.var[snparr[:, :].sum()] += 1
-                self.pis[snparr[:, 1].sum()] += 1                   
-
-                # write to .loci string
-                locus = self.to_locus(ablock, snparr, edg)
-                self.outlist.append(locus)
+        # drop keys where values = 0
+        self.stats['var_sites'] = {
+            i: j for (i, j) in self.stats['var_sites'].items() if j}
+        self.stats['pis_sites'] = {
+            i: j for (i, j) in self.stats['pis_sites'].items() if j}
 
         # If no loci survive filtering then don't write the files
-        if np.fromiter(self.lcov.values(), dtype=int).sum() > 0:
+        if self.outlist:
             # write the chunk to tmpdir
-            with open(self.outfile, 'w') as outchunk:
+            with open(self.chunkfile + ".loci", 'wt') as outchunk:
                 outchunk.write("\n".join(self.outlist) + "\n")
 
-            # thin edgelist to filtered loci and write to array
-            mask = np.invert(self.filters.sum(axis=1).astype(np.bool_))
-            np.save(self.outarr, self.edges[mask, 0])
+            # save filters df for only the loci that were filtered.
+            mask = self.filters.sum(axis=1).astype(np.bool_).values
+            self.filters.loc[mask, :].to_csv(self.chunkfile + ".csv")
 
-        # close file handle
-        self.chunkio.close()
+            # calculate histograms for stats
+            nice_bins = [0, 0.001] + [round(i, 2) for i in np.linspace(0.01, 0.25, 25)]
+            mags, bins = np.histogram(histos['var'], bins=nice_bins)
+            self.stats['var_props'] = dict(zip(bins, mags))
+            mags, bins = np.histogram(histos['pis'], bins=nice_bins)
+            self.stats['pis_props'] = dict(zip(bins, mags))
+        io_chunk.close()
 
 
-    def to_locus(self, block, snparr, edg):
+    def to_locus(self, trimseq, names, nidxs, snparr, edges):
         """
         write chunk to a .loci format string.
         """
@@ -234,22 +228,22 @@ class ChunkProcessor(object):
         snpstring = "".join([
             "-" if snparr[i, 0] else "*" if snparr[i, 1] else " " 
             for i in range(len(snparr))
-            ])
+        ])
 
         # get nidx string for getting vcf depths to match SNPs
-        if self.isref:
+        if self.data.is_ref:
             # get ref position from nidxs 
-            refpos = ":".join(self.nidxs[0].rsplit(":", 2)[-2:])
+            refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
 
             # trim ref position string for edge trims
             chrom, pos = refpos.split(":")
             ostart, end = pos.split("-")
-            start = int(ostart) + edg[0]
-            end = start + (edg[3] - edg[0])
+            start = int(ostart) + edges[0]
+            end = start + (edges[3] - edges[0])
 
             # get consens hit indexes and start positions
             nidbits = []
-            for bit in self.nidxs[1:]:
+            for bit in nidxs[1:]:
                 # handle multiple consens merged
                 bkey = []
                 for cbit in bit.split(";"):
@@ -269,238 +263,135 @@ class ChunkProcessor(object):
 
         # denovo stores start read start position in the nidx string
         else:
-            nidxstring = ",".join(self.nidxs)
+            nidxstring = ",".join(nidxs)
 
         # if not paired data (with an insert)
-        for idx, name in enumerate(self.names):
+        for idx, name in enumerate(names):
             locus.append(
                 "{}{}".format(
                     self.data.pnames[name],
-                    block[idx, :].tostring().decode())
+                    trimseq[idx, :].tostring().decode())
             )
         locus.append("{}{}|{}|".format(
             self.data.snppad, snpstring, nidxstring))
         return "\n".join(locus)
 
 
-    def filter_dups(self):
+    def filter_minsamp_pops(self, names):
         """
-        Filter a locus because it contains duplicate names. This happens
-        in denovo data if consens reads are slighly more similar to each 
-        other than the raw data were.
+        Returns True if the locus is filtered by min_samples_locus
         """
-        if len(set(self.names)) < len(self.names):
-            self.filters[self.iloc, 0] = 1
-            return True
-        return False
-
-
-    def filter_minsamp_pops(self):
-        """
-        filter by minsamp or by minsamp x populations.
-        """
+        minsamp = self.data.params.min_samples_locus
         # default: no population information
         if not self.data.populations:
-            if len(self.names) < self.minsamp:  # data.params.min_samples_locus:
-                # store locus filter
-                self.filters[self.iloc, 4] = 1
-                # return True
-            # return False
+            if len(names) < minsamp:
+                return True
+            return False
 
         # use populations 
-        else:
-            minfilters = []
-            for pop in self.data.populations:
-                samps = self.data.populations[pop][1]
-                minsamp = self.data.populations[pop][0]
-                if len(set(samps).intersection(set(self.names))) < minsamp:
-                    minfilters.append(pop)
-            if any(minfilters):
-                self.filters[self.iloc, 4] = 1
+        minfilters = []
+        for pop in self.data.populations:
+            samps = self.data.populations[pop][1]
+            minsamp = self.data.populations[pop][0]
+            if len(set(samps).intersection(set(names))) < minsamp:
+                minfilters.append(pop)
+        if any(minfilters):
+            return True
+        return False
+      
 
-
-    def filter_maxindels(self, ublock):
+    def filter_maxindels(self, trimseq):
         """
         Max size of internal indels. Denovo vs. Ref, single versus paired.
         """
         # get max indels for read1, read2
-        inds = maxind_numba(ublock)
+        inds = maxind_numba(trimseq)
         if inds > self.data.params.max_indels_locus:
-            self.filters[self.iloc, 1] = 1
+            self.filters.loc[self.lidx, "maxind"] = True
+            return True
+        return False
 
 
-    def filter_maxvars(self, ublock, snpstring):
-        """
-        Filter on the max allowed variants 
-        """
-        # mask insert area
-        if self.masked is not None:
-            if snpstring.sum() > (self.masked.shape[1] * self.data.params.max_snps_locus):
-                self.filters[self.iloc, 2] = 1
-
-        # use full locus
-        else:
-            if snpstring.sum() > (ublock.shape[1] * self.data.params.max_snps_locus):
-                self.filters[self.iloc, 2] = 1
-
-
-    def filter_maxshared(self, ublock):
-        """
-        Paralog detection based on shared heterozygosity across samples.
-        """
-        nhs = count_maxhet_numba(ublock)
-        if nhs > (self.data.params.max_shared_h_locus * ublock.shape[0]):
-            self.filters[self.iloc, 3] = 1
-
-
-    def get_snpsarrs(self, block, exclude_ref=False):
+    def get_snpsarrs(self, trimseq):
         """
         Count nsnps with option to exclude reference sample from count
         """
-        snpsarr = np.zeros((block.shape[1], 2), dtype=np.bool_)
-        return snpcount_numba(block, snpsarr, int(bool(exclude_ref)))
+        # flag = self.data.is_ref and self.data.hackers.exclude_reference
+        flag = 0
+        snpsarr = np.zeros((trimseq.shape[1], 2), dtype=np.bool_)
+        return snpcount_numba(trimseq, snpsarr, int(flag))
 
 
-
-
-class Edges:
-    """
-    Trims edges of overhanging sequences, cutsites, and pair inserts
-    """
-    def __init__(self, data, seqs):
-        self.data = data
-        self.seqs = seqs
-
-        # params
-        self.bad = False
-        self.exclude_ref = self.data.hackers.exclude_reference
-        self.edges = np.array([0, 0, 0, self.seqs.shape[1]])
-        self.trims = np.array([0, 0, 0, 0])  # self.seqs.shape[1]])
-        self.minlen = self.data.params.filter_min_trim_len
-
-        # to be filled
-        self.trimseq = None
-
-
-    def get_edges(self):
+    def filter_maxvars(self, trimseq, masked, snpstring):
         """
-        Find the proper edges of the locus based on sample coverage,
-        and trimming parameters.        
+        Filter on the max allowed variants while masking insert.
         """
-        # -1 to site coverage if ref is excluded from the count
-        minsites_left = self.data.hackers.trim_loci_min_sites
-        minsites_right = self.data.hackers.trim_loci_min_sites
-        if "reference" in self.data.params.assembly_method:
-            if self.exclude_ref:
-                minsites_left -= 1
-                minsites_right -= 1
+        nsnps = snpstring.sum()
+        # mask insert area
+        if masked is not None:
+            maxsnps = masked.shape[1] * self.data.params.max_snps_locus
+            if nsnps > maxsnps:
+                self.filters.loc[self.lidx, "maxvar"] = True
+                return 0, 0, True
+            var_prop = snpstring[:, 0].sum() / masked.shape[1]
+            pis_prop = snpstring[:, 1].sum() / masked.shape[1]
 
-        # get .edges of good locus or .bad
-        self.trim_for_coverage(
-            minsite_left=minsites_left,
-            minsite_right=minsites_right,
-        )
-
-        # fill trimseq with the trimmed sequence array
-        self.trimseq = self.seqs[:, self.edges[0]:self.edges[3]]
-
-        # apply edge filtering to locus
-        try:
-            if not self.bad:
-                self.trim_overhangs()
-                self.trim_param_trim_loci()
-        except Exception:  # TypeError
-            self.bad = True
-            # send to logger
-            print(f"bad trim edges:\n{self.seqs[:, :15]}")
-
-        # check that locus has anything left
-        self.trim_check()
+        # use full locus
+        else:
+            maxsnps = trimseq.shape[1] * self.data.params.max_snps_locus
+            if nsnps > maxsnps:
+                self.filters.loc[self.lidx, "maxvar"] = True
+                return 0, 0, True
+            var_prop = snpstring[:, 0].sum() / trimseq.shape[1]
+            pis_prop = snpstring[:, 1].sum() / trimseq.shape[1]
+        return var_prop, pis_prop, False
 
 
-    def trim_for_coverage(self, minsite_left=4, minsite_right=4):
-        "trim edges to where data is not N or -"
-
-        # what is the limit of site coverage for trimming?
-        minsamp_left = min(minsite_left, self.seqs.shape[0])
-        minsamp_right = min(minsite_right, self.seqs.shape[0])        
-
-        # how much cov is there at each site?
-        mincovs = np.sum((self.seqs != 78) & (self.seqs != 45), axis=0)
-
-        # locus left trim
-        self.edges[0] = locus_left_trim(minsamp_left, mincovs)
-        self.edges[3] = locus_right_trim(minsamp_right, mincovs)
-        if self.edges[3] <= self.edges[0]:
-            self.bad = True
-
-        # find insert region for paired data to mask it...
-        self.edges[1] = 0
-        self.edges[2] = 0
+    def filter_maxshared(self, trimseq):
+        """
+        Paralog detection based on shared heterozygosity across samples.
+        """
+        #print(trimseq.shape)
+        nhs = count_maxhet_numba(trimseq)
+        maxhs = self.data.params.max_shared_h_locus * trimseq.shape[0]
+        if nhs > maxhs:
+            self.filters.loc[self.lidx, "maxshared"] = True
+            return True
+        return False
 
 
-    def trim_overhangs(self):
-        "fuzzy match to trim the restriction_overhangs from r1 and r2"
+def parse_locus(data, chunk):
+    """
+    grabs the next locus from the chunk file
+    """
+    names = []
+    nidxs = []
+    seqs = []
 
-        # trim left side for overhang
-        for cutter in self.data.params.restriction_overhang:
+    # advance locus to next, parse names and seqs
+    lines = chunk.strip().split("\n")
+    for line in lines:
+        if line[0] == ">":
+            name, nidx = line[1:].rsplit("_", 1)
+            names.append(name)
+            nidxs.append(nidx)
+        else:
+            seqs.append(list(line.encode()))
 
-            # skip if None
-            if not cutter:
-                continue
+    # filter to include only samples in this assembly (including 'reference')
+    mask = [i in data.samples for i in names]
 
-            # convert to integers
-            cutter = np.array(bytes(cutter.encode()))
+    # select samples in locus to keep
+    names = [i for (i, j) in zip(names, mask) if j]
 
-            # compare match over cut size skipping Ns and allow .25 diffs
-            slx = slice(0, cutter.shape[0])
-            matching = self.trimseq[:, slx] == cutter
-            mask = np.where(
-                (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
-            matchset = matching[mask]
-            if float(matchset.sum()) / matchset.size >= 0.75:
-                self.trims[0] = len(cutter)
+    # if duplicates return True
+    if len(set(names)) < len(names):
+        return names, nidxs, seqs, True
 
-            # trim right side for overhang
-            if self.data.params.restriction_overhang[1]:
-                # revcomp the cutter (string not array)
-                # cutter = np.array(list(bcomp(cutter.encode())[::-1]))
-                slx = slice(
-                    self.trimseq.shape[1] - cutter.shape[0], self.trimseq.shape[1])
-                matching = self.trimseq[:, slx] == cutter
-                mask = np.where(
-                    (self.trimseq[:, slx] != 78) & (self.trimseq[:, slx] != 45))
-                matchset = matching[mask]
-                if float(matchset.sum()) / matchset.size >= 0.75:
-                    self.trims[3] = len(cutter)
-
-
-    def trim_param_trim_loci(self):
-        "user entered hard trims"
-        self.trims[0] = max([self.trims[0], self.data.params.trim_loci[0]])
-        self.trims[1] = (self.trims[1] - self.data.params.trim_loci[1]
-            if self.trims[1] else 0)
-        self.trims[2] = (self.trims[2] + self.data.params.trim_loci[2]
-            if self.trims[2] else 0)
-        self.trims[3] = max([self.trims[3], self.data.params.trim_loci[3]])
-
-
-    def trim_check(self):
-        self.edges[0] += self.trims[0]
-        self.edges[1] -= self.trims[1]
-        self.edges[2] += self.trims[2]
-        self.edges[3] -= self.trims[3]
-
-        # checks
-        if any(self.edges < 0):
-            self.bad = True
-        if self.edges[3] <= self.edges[0]:
-            self.bad = True
-        if self.edges[1] > self.edges[2]:
-            self.bad = True
-        # check total length including insert
-        if (self.edges[3] - self.edges[0]) < self.minlen:
-            self.bad = True
+    # get nidx (refpos/locid string) and sequences of unmasked samples
+    nidxs = [i for (i, j) in zip(nidxs, mask) if j]
+    seqs = np.array([i for (i, j) in zip(seqs, mask) if j], dtype=np.uint8)
+    return names, nidxs, seqs, False
 
 
 # -------------------------------------------------------------
@@ -524,27 +415,6 @@ def subsample(snpsmap):
 
 
 # -------------------------------------------------------------
-# jitted Edges functions (njit = nopython mode)
-# -------------------------------------------------------------
-
-@njit
-def locus_left_trim(minsamp, mincovs):
-    leftmost = np.where(mincovs >= minsamp)[0]
-    if leftmost.size:
-        return leftmost.min()
-    return 0
-
-@njit
-def locus_right_trim(minsamp, mincovs):
-    rightmost = np.where(mincovs >= minsamp)[0]
-    if rightmost.size:
-        return rightmost.max() + 1
-    return 0
-
-
-
-
-# -------------------------------------------------------------
 # jitted ChunkProcessor functions (njit = nopython mode)
 # -------------------------------------------------------------
 
@@ -564,8 +434,9 @@ def maxind_numba(block):
 
 @njit
 def snpcount_numba(block, snpsarr, rowstart):
-    "Used to count the number of unique bases in a site for snpstring."  
-
+    """
+    Used to count the number of unique bases in a site for snpstring.
+    """
     # iterate over all loci
     for site in range(block.shape[1]):
 
@@ -630,3 +501,11 @@ def count_maxhet_numba(block):
         counts[fidx] = subcount
     return counts.max()
 
+
+
+
+
+
+if __name__ == "__main__":
+
+    pass
