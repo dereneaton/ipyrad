@@ -61,6 +61,16 @@ class Assembly:
         )
 
     @property
+    def is_ref(self):
+        """shortcut attribute returns whether Assembly is reference method"""
+        return self.params.assembly_method == "reference"
+
+    @property
+    def is_pair(self):
+        """shortcut attribute returns whether Assembly is paired datatype"""        
+        return "pair" in self.params.datatype
+
+    @property
     def stats(self):
         """
         Returns a dataframe with *summarized stats* extracted from the 
@@ -68,16 +78,12 @@ class Assembly:
         To see more detailed stats from specific steps see instead 
         the self.stats_dfs.
         """
-        # TODO: add step7 stats like nloci?
-
         # using self object (any cases where we need to load from json?)
         # self.save_json
-        # proj = Project.parse_file(self.json_file)
-        proj = self
 
         # dataframe to fill
         stats = pd.DataFrame(
-            index=sorted(proj.samples),
+            index=sorted(self.samples),
             columns=[
                 'state', 
                 'reads_raw', 
@@ -88,10 +94,19 @@ class Assembly:
                 'reads_mapped_to_ref_prop',
                 'consensus_total',
                 'heterozygosity',
+                'nloci',
             ],
         )
         for sname in stats.index:
-            sample = proj.samples[sname]
+            sample = self.samples[sname]
+
+            # ref does only step7
+            if sname == "reference":
+                if sample.stats_s7:
+                    stats.loc[sname, 'nloci'] = sample.stats_s7.nloci
+                continue
+
+            # other samples do all steps.
             stats.loc[sname, 'state'] = sample.state
             stats.loc[sname, 'reads_raw'] = sample.stats_s1.reads_raw
 
@@ -137,10 +152,14 @@ class Assembly:
                 value = pd.NA
             stats.loc[sname, 'heterozygosity'] = value            
 
+            if sample.stats_s7:
+                value = sample.stats_s7.nloci
+            else:
+                value = pd.NA
+            stats.loc[sname, 'nloci'] = value
+
         # drop columns that are all NAN
         stats = stats.dropna(axis=1, how="all")
-
-        # FIXME: keep adding summary stats
         return stats
     
 
@@ -214,43 +233,6 @@ class Assembly:
                     f"{value.ljust(40)}## [{idx}] {param}: {PARAMSINFO[idx]}",
                     file=out,
                 )
-
-
-        # with open(outfile, 'w') as paramsfile:
-        #     # Write the header. Format to 80 columns
-        #     header = "------- ipyrad params file (v.{})".format(ip.__version__)
-        #     header += ("-" * (80 - len(header)))
-        #     paramsfile.write(header + "\n")
-
-        #     # Whip through the current params and write out the current
-        #     # param value, the ordered dict index number. Also,
-        #     # get the short description from paramsinfo. 
-        #     # Make it look pretty, with padding.
-        #     params_string = []
-        #     for key in self.params._keys:
-        #         val = getattr(self.params, key)
-
-        #         # If multiple elements, write them out comma separated
-        #         if isinstance(val, list) or isinstance(val, tuple):
-        #             paramvalue = ", ".join([str(i) for i in val])
-        #         else:
-        #             paramvalue = str(val)
-
-        #         padding = (" " * (30 - len(paramvalue)))
-        #         paramkey = self.params._keys.index(key)
-        #         paramindex = " ## [{}] ".format(paramkey)
-        #         name = "[{}]: ".format(paramname(paramkey))
-        #         description = paraminfo(paramkey, short=True)
-        #         params_string.append(
-        #             "".join([
-        #                 paramvalue,
-        #                 padding,
-        #                 paramindex,
-        #                 name,
-        #                 description])
-        #             )
-        #     # write the params string
-        #     paramsfile.write("\n".join(params_string) + "\n")        # TODO
 
 
     def save_json(self) -> None:
