@@ -9,6 +9,7 @@ import os
 import shutil
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
+from ipyrad.core.schema import SampleSchema
 
 
 class BaseStep:
@@ -36,6 +37,7 @@ class BaseStep:
 
         # parse population file for step 7
         if step == 7:
+            self.data.populations = {}            
             self.parse_populations()
 
 
@@ -83,7 +85,11 @@ class BaseStep:
         attribute. This is set at the end of each step if a sample
         completes successfully. If, for example, a sample recovered
         zero clusters at the end of step3 it will not advance to 
-        state=3, and will be skipped when runnign step 4.
+        state=3, and will be skipped when running step 4.
+
+        The 'reference' sample is created in step7 if not 
+        hackers.exclude_reference. This sample is dropped if running
+        any steps<7.
         """
         # no samples to get yet
         if self.step == 1:
@@ -94,12 +100,14 @@ class BaseStep:
         already_done = {}
         todo_samples = {}
         for sname in self.data.samples:
-            if self.data.samples[sname].state < self.step - 1:
-                not_ready[sname] = self.data.samples[sname]
-            elif self.data.samples[sname].state >= self.step:
-                already_done[sname] = self.data.samples[sname]
-            else:
-                todo_samples[sname] = self.data.samples[sname]
+            # drop the reference sample created in s7, if present
+            if sname != "reference":
+                if self.data.samples[sname].state < self.step - 1:
+                    not_ready[sname] = self.data.samples[sname]
+                elif self.data.samples[sname].state >= self.step:
+                    already_done[sname] = self.data.samples[sname]
+                else:
+                    todo_samples[sname] = self.data.samples[sname]
 
         # warn about skipped samples that are not ready
         if not_ready:
@@ -121,6 +129,10 @@ class BaseStep:
                     f"skipping samples already finished step {self.step}:\n"
                     f"{', '.join(list(already_done))}")
             self.samples = todo_samples
+
+        # if it is step7, add a 'reference' sample to collect stats for.
+        if (self.step == 7) and self.data.is_ref:
+            self.samples['reference'] = SampleSchema(name="reference", state=7)
 
 
     def setup_dirs(self) -> None:
@@ -156,7 +168,7 @@ class BaseStep:
             else:
                 raise IPyradError(
                     f"Directory {self.stepdir} already exists. "
-                    " use force to overwrite it.")
+                    "Use force to overwrite it.")
             
         # always clear tmpdir
         if os.path.exists(self.tmpdir):
@@ -172,8 +184,19 @@ class BaseStep:
         Parse the population file params input file. In the API
         a user _could_ alternatively add a pop dictionary to the 
         Assembly object as {popname: ([samps], minsamp), ...}
+
+        The populations file should be a tabular whitespace delimited
+        file with:...
         """
-        # TODO:
+        # TODO: just didn't get around to re-implementing and testing yet...
+        if self.data.params.pop_assign_file:
+            raise NotImplementedError(
+                "populations assignments during assembly are not "
+                "currently supported in this version. You can however "
+                "filter by population sampling using ipyrad-analysis "
+                "in the ipyrad API after finishing assembly."
+            )
+
 
 
 
