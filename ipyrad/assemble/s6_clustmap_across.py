@@ -32,7 +32,6 @@ class Step6(BaseStep):
         """
         Runs the set of methods for denovo or reference method
         """
-        # DENOVO
         if self.data.params.assembly_method == "denovo":
             ClustMapAcrossDenovo(self).run()
         else:
@@ -45,7 +44,7 @@ class Step6(BaseStep):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", stderr=False, logfile="/tmp/test.log")
+    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
    
     TEST = ip.load_json("/tmp/TEST1.json")
     TEST.run("6", force=True, quiet=False)
