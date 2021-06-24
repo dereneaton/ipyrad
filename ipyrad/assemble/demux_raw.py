@@ -219,7 +219,7 @@ class SimpleDemux:
         ])
 
         # link pairs into tuples
-        if 'pair' in self.data.params.datatype:
+        if self.data.is_pair:
 
             # try these in order until ngroups == nfiles / 2
             idx = 0
@@ -517,7 +517,7 @@ class SimpleDemux:
                 sample.files.fastqs = [(
                     os.path.join(self.data.stepdir, f"{sname}_R1.fastq.gz"),
                     os.path.join(self.data.stepdir, f"{sname}_R2.fastq.gz")
-                    if 'pair' in self.data.params.datatype else "",
+                    if self.data.is_pair else "",
                 )]
                 self.data.samples[sname] = sample
             else:
