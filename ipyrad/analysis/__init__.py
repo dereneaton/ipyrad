@@ -28,14 +28,24 @@ from ipyrad.core.logger_setup import set_loglevel
 # conda install bucky -c ipyrad
 # conda install bpp -c ipyrad
 
-# test in v.1.0 
-from .digest_genome import DigestGenome as digest_genome
+# tested in v.1.0 
 from .raxml import Raxml as raxml
 from .window_extracter import window_extracter
 from .tree_slider import TreeSlider as tree_slider
+from .digest_genome import DigestGenome as digest_genome
+from .sratools import SRA as sratools
+# from .astral import Astral as astral
+# from .bucky import Bucky as bucky
+# from .bpp import Bpp as bpp
+# from .fasttree import Fasttree as fasttree
 
 
-set_loglevel("WARNING")
+# analysis tools uses INFO logger by default.
+set_loglevel("INFO")
+
+
+
+
 
 # # tested in 0.9.10
 
@@ -47,7 +57,6 @@ set_loglevel("WARNING")
 # from .treeslider import TreeSlider as treeslider
 # from .distance import Distance as distance
 # from .structure import Structure as structure
-# from .sratools import SRA as sratools
 # from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 # from .download import Download as download
 
