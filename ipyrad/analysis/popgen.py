@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-"popgen tools"
+"""
+popgen tools 
+"""
 
-from __future__ import print_function, division
 from itertools import chain
 
 import os
@@ -14,9 +15,11 @@ from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
 
-class Popgen(object):
-    "Analysis functions for calculating theta, Fst, Fis, thetaW, etc."
 
+class Popgen(object):
+    """
+    Analysis functions for calculating theta, Fst, Fis, thetaW, etc.
+    """
     def __init__(self, name, data, workdir, mapfile=None):
         
         # i/o paths
@@ -189,3 +192,9 @@ class Popgen(object):
         ddenom = math.sqrt(e1*S + e2*S*(S-1))
         return ddenom
 
+
+if __name__ == "__main__":
+
+    # test an example
+    DATA = "../sandbox/refdata/refdata.snps.hdf5"
+    
