@@ -12,6 +12,7 @@ tests/*
 env/
 params-*.txt
 ipyrad_log.txt
+__pycache__
 	
 ## but not these files
 !tests/*.ipynb
