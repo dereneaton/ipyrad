@@ -1,60 +1,19 @@
 #!/usr/bin/env python
 
-"utility functions for the analysis tools"
+"""
+utility functions for the analysis tools
+"""
 
-# py2/3 compat
-from __future__ import print_function
-from builtins import range
-
-# standard lib
-import datetime
-import time
-import sys
 import os
-
-# third party
 import numpy as np
 from numba import njit, prange
 
 
-
-class ProgressBar(object):
-    """
-    Print pretty progress bar
-    """       
-    def __init__(self, njobs, start=None, message=""):
-        self.njobs = njobs
-        self.start = (start if start else time.time())
-        self.message = message
-        self.finished = 0
-
-    @property
-    def progress(self):
-        return 100 * (self.finished / float(self.njobs))
-
-    @property
-    def elapsed(self):
-        return datetime.timedelta(seconds=int(time.time() - self.start))
-
-    def update(self):
-        # build the bar
-        hashes = '#' * int(self.progress / 5.)
-        nohash = ' ' * int(20 - len(hashes))
-
-        # print to stderr
-        print("\r[{}] {:>3}% {} | {:<12} ".format(*[
-            hashes + nohash,
-            int(self.progress),
-            self.elapsed,
-            self.message,
-        ]), end="")
-        sys.stdout.flush()
-
-
-
 @njit
 def jsubsample_snps(snpsmap, seed):
-    "Subsample snps, one per locus, using snpsmap"
+    """
+    Subsample snps, one per locus, using snpsmap
+    """
     np.random.seed(seed)
     sidxs = np.unique(snpsmap[:, 0])
     subs = np.zeros(sidxs.size, dtype=np.int64)
@@ -154,6 +113,10 @@ def get_spans(maparr, spans):
 
 @njit
 def count_snps(seqarr):
+    """
+    Count the number of SNPs in a np.uint8 seq array. This is used
+    in window_extracter.
+    """
     nsnps = 0
     for site in range(seqarr.shape[1]):
         # make new array
@@ -197,21 +160,11 @@ def count_snps(seqarr):
 
 
 
-def progressbar(finished, total, start, message):
-    progress = 100 * (finished / float(total))
-    hashes = '#' * int(progress / 5.)
-    nohash = ' ' * int(20 - len(hashes))
-    elapsed = datetime.timedelta(seconds=int(time.time() - start))
-    print(
-        "\r[{}] {:>3}% {} | {:<12} "
-        .format(hashes + nohash, int(progress), elapsed, message),
-        end="")
-    sys.stdout.flush()    
-
-
-
-class Params(object):
-    "A dict-like object for storing params values with a custom repr"
+class Params:
+    """
+    A dict-like object for storing params values with a custom repr
+    and keys accessible as attributes for tab-completion.
+    """
     def __init__(self):
         self._i = 0
 
@@ -229,13 +182,12 @@ class Params(object):
         if self._i > len(keys) - 1:
             self._i = 0
             raise StopIteration
-        else:
-            self._i += 1
-            return keys[self._i - 1]
-    next = __next__  # Python 2        
+        self._i += 1
+        return keys[self._i - 1]
 
-    def update(self, dict):
-        self.__dict__.update(dict)
+    def update(self, dictionary):
+        "a dictionary-like update method"
+        self.__dict__.update(dictionary)
 
 
     def __repr__(self):
