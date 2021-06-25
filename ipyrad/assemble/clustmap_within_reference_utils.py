@@ -539,7 +539,7 @@ def mapping_reads(data, sample, nthreads):
     proc2.stdout.close()
 
     # setup cmd4 (index bam file)
-    cmd4 = [BIN_SAMTOOLS, "index", os.path.join(data.stepdir, f"{sample.name}.bam")]
+    cmd4 = [BIN_SAMTOOLS, "index", "-c", os.path.join(data.stepdir, f"{sample.name}.bam")]
 
     # run cmd4
     proc4 = sps.Popen(cmd4, stderr=sps.PIPE, stdout=sps.DEVNULL)

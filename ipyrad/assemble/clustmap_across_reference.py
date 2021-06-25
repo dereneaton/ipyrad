@@ -155,7 +155,7 @@ def concat_bams(data, samples):
     # index the bam file
     cmd3 = [
         BIN_SAMTOOLS,
-        "index", 
+        "index", "-c",
         os.path.join(data.tmpdir, f"{data.name}.cat.sorted.bam",
         ),           
     ]
