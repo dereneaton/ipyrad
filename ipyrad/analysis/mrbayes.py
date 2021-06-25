@@ -1,18 +1,16 @@
 #!/usr/bin/python 
 
-""" wrapper to make simple calls to mb """
+""" 
+Wrapper to make simple calls to mb 
+"""
 
 import os
 import sys
 import subprocess
 import pandas as pd
-from ipyrad.assemble.utils import Params
+import toytree
 from ipyrad.assemble.utils import IPyradError
 
-try:
-    import toytree
-except ImportError:
-    pass
 
 
 # template for standard tree inference
@@ -144,7 +142,7 @@ log stop filename={outname}.log append;
 
 
 
-class MrBayes(object):
+class MrBayes:
     """
     MrBayes analysis utility function for running simple commands. 
 
