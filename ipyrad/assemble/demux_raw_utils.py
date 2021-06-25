@@ -198,7 +198,7 @@ class BarMatch:
 
                 # append to sorted reads list
                 self.read1s[sname_match].append("".join(read1))
-                if 'pair' in self.data.params.datatype:
+                if self.data.is_pair:
                     self.read2s[sname_match].append("".join(read2))
 
             else:
@@ -216,7 +216,7 @@ class BarMatch:
 
                 # write reads to file
                 write_to_file(self.data, self.read1s, 1, self.fidx)
-                if 'pair' in self.data.params.datatype:
+                if self.data.is_pair:
                     write_to_file(self.data, self.read2s, 2, self.fidx)
 
                 # clear out lits of sorted reads
@@ -229,7 +229,7 @@ class BarMatch:
         print(f"progress: {self.sample_to_counts}")
         ## write the remaining reads to file
         write_to_file(self.data, self.read1s, 1, self.fidx)
-        if 'pair' in self.data.params.datatype:
+        if self.data.is_pair:
             write_to_file(self.data, self.read2s, 2, self.fidx)
 
 
@@ -356,7 +356,7 @@ def collate_files(data, sname, tmp1s, tmp2s):
         os.remove(tmpfile)
 
     # do R2 files
-    if 'pair' in data.params.datatype:     
+    if data.is_pair:
         # build cmd
         cmd1 = ['cat']
         for tmpfile in tmp2s:
