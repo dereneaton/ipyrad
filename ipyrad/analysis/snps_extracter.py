@@ -8,10 +8,6 @@ created subsampled SNP data sets for ipyrad.analysis tools.
         pca, structure, treemix, popgen, baba
 """
 
-# py2/3 compat
-from __future__ import print_function
-from builtins import range
-
 # standard lib
 import h5py
 import numpy as np
@@ -25,34 +21,36 @@ from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
 """
 
 
-class SNPsExtracter(object):
+class SNPsExtracter:
     """
-    Extract .snps and .snpsmap from snps.hdf5 after filtering for indels, 
-    bi-allelic, mincov, and minmap.
+    Extract .snps and .snpsmap from snps.hdf5 after filtering for 
+    indels, bi-allelic, mincov, and minmap.
 
     Parameters
     ------------
     data (str)
-        path to the .snps.hdf5 file produced by ipyrad (or created by converting a
-        vcf file to .snps.hdf5 using ipyrad.analysis).
-    imap: (dict)
-        a dictionary mapping population names to a list of sample names.
+        path to the .snps.hdf5 file produced by ipyrad (or created by 
+        converting a vcf file to .snps.hdf5 using ipyrad.analysis).
+    imap: dict[str, List[str]]
+        dictionary mapping population names to a list of sample names.
     minmap: (dict)
-        a dictionary mapping population names to a float or integer representing
-        the minimum samples required to be present for a SNP to be retained in the
-        filtered dataset.
+        a dictionary mapping population names to a float or integer 
+        representing the minimum samples required to be present for 
+        a SNP to be retained in the filtered dataset.
     mincov: int or float
-        the minimum samples required globally for a SNP to be retained in the dataset.
+        the minimum samples required globally for a SNP to be retained 
+        in the dataset.
     minmaf: int or float
-        minimum minor allele frequency. The minor allele at a variant must 
-        be present across at least n% of samples (haploid base calls with data)
-        at a SNP to retain the SNP in the dataset. The default is zero, meaning
-        that any SNP will be retained, greater values require minor variants 
-        to be shared across more samples. An int value of 1 will remove sites
-        heterozygous in a single diploid, whereas 2 would would remove a site
-        hetero in two samples, or homozygous in only one sample. Float values
-        take into account the proportion of samples with missing data in each
-        site so that it is a proportion of the alleles present.
+        minimum minor allele frequency. The minor allele at a variant 
+        must be present across at least n% of samples (haploid base 
+        calls with data) at a SNP to retain the SNP in the dataset. 
+        The default is zero, meaning that any SNP will be retained, 
+        greater values require minor variants to be shared across more
+        samples. An int value of 1 will remove sites heterozygous in 
+        a single diploid, whereas 2 would would remove a site hetero
+        in two samples, or homozygous in only one sample. Float values
+        take into account the proportion of samples with missing data
+        in each site so that it is a proportion of the alleles present.
     """
     def __init__(
         self, 
@@ -114,7 +112,10 @@ class SNPsExtracter(object):
         with h5py.File(self.data, 'r') as io5:
 
             # all names in database, maybe fewer in this analysis
-            self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
+            try:
+                self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
+            except AttributeError:
+                self.dbnames = [i for i in io5["snps"].attrs["names"]]
 
             # check for sample names not in the database file
             badnames = set(self.names).difference(self.dbnames)
