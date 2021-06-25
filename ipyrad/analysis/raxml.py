@@ -9,23 +9,20 @@ import subprocess
 from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
-# alias
-OPJ = os.path.join
 
-
-class Raxml(object):
+class Raxml:
     """
     RAxML analysis utility function. This tool makes it easy to build a 
-    raxml command line string and submit it as a job. It also makes it easy
-    to access the resulting tree files. Set params on the raxml object and 
-    print(<object>.command) to see raxml command string. Call .run() to 
-    submit the job running in background, or .run(block=True) to wait until
-    it finishes.
+    raxml command line string and submit it as a job. It also makes it 
+    easy to access the resulting tree files. Set params on the raxml 
+    object and print(<object>.command) to see raxml command string. 
+    Call .run() to start the job.
 
     Parameters:
     -----------
     data: str
-        The phylip formated sequence file (.phy from ipyrad). An alias for '-s'. 
+        The phylip formated sequence file (.phy from ipyrad). 
+        An alias for raxml command arg '-s'. 
     name: str
         The name for this run. An alias for '-n'.
     workdir: str
@@ -40,8 +37,9 @@ class Raxml(object):
     m: str
         (-m GTRGAMMA) The model to use.
     N: str
-        (-N 100) The number of distinct starting trees from which to run full
-        search, or number of bootstrap replicates to run if using -f a.
+        (-N 100) The number of distinct starting trees from which to 
+        run full search, or number of bootstrap replicates to run if 
+        using -f a.
     x: str
         (-x 12345) The bootstrap random seed.
     p: str
@@ -67,15 +65,13 @@ class Raxml(object):
     run()
         submits a raxml job to locally or on an ipyparallel client cluster. 
     """    
-
-    # init object for params
     def __init__(
         self,
-        data,
-        name="test",
-        workdir="analysis-raxml", 
-        *args, 
-        **kwargs):
+        data:str,
+        name:str="test",
+        workdir:str="analysis-raxml", 
+        **kwargs,
+        ):
 
         # path attributes
         self._kwargs = {
@@ -87,7 +83,7 @@ class Raxml(object):
             "p": 54321,
             "o": None,
             "binary": "",
-            }
+        }
 
         # update kwargs for user args and drop key if value is None
         self._kwargs.update(kwargs)
@@ -127,11 +123,11 @@ class Raxml(object):
 
         # results files        
         self.trees = Params()
-        self.trees.bestTree = OPJ(workdir, "RAxML_bestTree." + name)
-        self.trees.bipartitionsBranchLabels = OPJ(workdir, "RAxML_bipartitionsBranchLabels." + name)
-        self.trees.bipartitions = OPJ(workdir, "RAxML_bipartitions." + name)
-        self.trees.bootstrap = OPJ(workdir, "RAxML_bootstrap." + name)
-        self.trees.info = OPJ(workdir, "RAxML_info." + name)
+        self.trees.bestTree = os.path.join(workdir, "RAxML_bestTree." + name)
+        self.trees.bipartitionsBranchLabels = os.path.join(workdir, "RAxML_bipartitionsBranchLabels." + name)
+        self.trees.bipartitions = os.path.join(workdir, "RAxML_bipartitions." + name)
+        self.trees.bootstrap = os.path.join(workdir, "RAxML_bootstrap." + name)
+        self.trees.info = os.path.join(workdir, "RAxML_info." + name)
 
 
     @property
