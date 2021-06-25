@@ -1,25 +1,23 @@
 #!/usr/bin/env python
 
-"sra tools wrapper to download archived seq data"
-
-# py2/3
-from __future__ import print_function
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
+"""
+sra tools wrapper to download archived seq data. 
+"""
 
 # standard
 import os
 import time
+import traceback
 import subprocess as sps
+from io import StringIO
 
 # third party
 import requests
 import pandas as pd
-from ..core.Parallel import Parallel
-from ..assemble.utils import IPyradError
-from .utils import progressbar
+from loguru import logger
+from ipyrad.core.parallel import Cluster
+from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.assemble.utils import IPyradError
 
 
 # raise warning if missing imports
@@ -31,7 +29,8 @@ software, which you can do with the following conda command.
 
 NB: The sra-tools software is updated frequently with changes that 
 are not backwards compatible, and thus break this wrapper tool. If 
-you encounter an error please let us know on gitter.
+you encounter an error please let us know on gitter. But first check
+to find the versin of sra-tools that you have installed.
 """
 
 
@@ -43,31 +42,60 @@ it must have one the following prefixes:
 """
 
 
-class SRA(object):
-    """ ipyrad.analysis SRA download object"""
+class SRA:
+    """
+    Tool for downloading data from SRA, ERA, or DRA archives.
+
+    Example:
+    --------
+    tool = ipa.sratools(accessions="SRP065788")
+    metadata = tool.fetch_runinfo(fields=[1, 4, 6, 28, 29, 30])
+    tool.run()
+
+    Parameters:
+    ------------
+    name_fields: (int, str):
+        Provide the index (1-indexed) of the name fields to be used as a 
+        prefix for fastq output files. The default is (1,30), which is the 
+        accession + SampleName fields. Use sra.fetch_fields to see all 
+        available fields and their indices. 
+        If multiple are listed then they will be joined by a "_" 
+        character. For example (29,30) would yield something like:
+        latin-name_sample-name (e.g., mus_musculus-NR10123).
+
+    dry_run: (bool)
+        If True then a table of file names that _would_ be downloaded
+        will be shown, but the actual files will note be downloaded.
+
+    split_pairs: (bool or None)
+        If True then pairs are split, if False they are not split, if 
+        None then we will auto-detect if paired or not and split pairs
+        when detected. Forcing splitting can be helpful when the 
+        metadata was not set properly.
+
+    gzip: bool
+        Gzip compress fastq files.
+    """
     def __init__(
         self, 
         accessions,
-        workdir="sra-fastq-data"):
+        workdir="sra-fastq-data",
+        name_fields=(1, 30), 
+        name_separator="_", 
+        dry_run=False, 
+        split_pairs=None,
+        ):
 
         # store attributes
         self.accessions = accessions
         self.workdir = os.path.abspath(os.path.expanduser(workdir))
         self.is_sample = False
         self.is_project = False
-        self._oldtmpdir = None
-
-        # cluster attributes
-        self.ipcluster = {
-            "cluster_id": "", 
-            "profile": "default",
-            "engines": "Local", 
-            "quiet": 0, 
-            "timeout": 60, 
-            "cores": 0, 
-            "threads": 2,
-            "pids": {},
-            }
+        self.name_fields = name_fields
+        self.name_separator = name_separator
+        self.dry_run = dry_run
+        self.split_pairs = split_pairs
+        self.sra_tmpdir = None
 
         # if accession is a list then make it comma separated string
         if isinstance(self.accessions, (list, tuple)):
@@ -85,10 +113,14 @@ class SRA(object):
 
         # make sure required software if installed
         self.check_binaries()
+        self.check_vdb()        
 
 
-    def check_binaries(self):
-        # check imports
+    @classmethod
+    def check_binaries(cls):
+        """
+        Find the fastq-dump binary in user $PATH
+        """
         for binary in ['fastq-dump']:
             proc = sps.Popen(['which', binary], stdout=sps.PIPE)
             comm = proc.communicate()[0]
@@ -96,93 +128,90 @@ class SRA(object):
                 raise IPyradError(MISSING_IMPORTS)
 
 
+    def check_vdb(self):
+        """
+        Check that user has run vdb-config, and report the tmpdir
+        """
+        # try calling fastq-dump and catch not-configured error
+        proc = sps.Popen(['vdb-config', '-h'], stderr=sps.STDOUT, stdout=sps.PIPE)
+        out, _ = proc.communicate()
+        if "has not been configured" in out.decode():
+            raise IPyradError(
+                "To run sratools you must first configure the toolkit "
+                "by running 'vdb-config -i' (a requirement of the sra-tools "
+                "software).\n\nWhen doing so take note of the 'location of "
+                "user-repository' setting which is the location where tmp "
+                "files will be stored while downloading. Set this to a "
+                "place with sufficient disk space. ipa.sratools will "
+                "automatically remove any tmp files in this dir after it is "
+                "finished using it."
+            )
+        try:
+            vdb_path = os.path.expanduser("~/.ncbi/user-settings.mkfg")
+            with open(vdb_path, 'r') as indata:
+                lines = indata.readlines()
+                for line in lines:
+                    if line.startswith("/repository/user/default-path"):
+                        self.sra_tmpdir = line.strip().split()[-1].strip('"')
+        except Exception:
+            pass
+        if self.sra_tmpdir:
+            logger.info(f"vdb-config path (tmpdir) is {self.sra_tmpdir}")
+
+
     def run(
         self, 
-        name_fields=(1, 30), 
-        name_separator="_", 
-        dry_run=False, 
-        split_pairs=None,
-        gzip=False,
-        show_cluster=False,
+        cores=None,
         ipyclient=None,
-        force=False, 
-        auto=False,
         ):
         """
         Download the accessions as fastq files into a designated workdir. 
 
         Parameters
         ----------
+        cores: int
+            Number of cores for downloading files in parallel.
+
         ipyclient: (ipyparallel.Client)
             If provided, work will be distributed across a parallel
             client, otherwise download will be run on a single core.
-
-        force: (bool)
-            If force=True then existing files with the same name
-            will be overwritten. 
-
-        name_fields: (int, str):
-            Provide the index (1-indexed) of the name fields to be used as a 
-            prefix for fastq output files. The default is (1,30), which is the 
-            accession + SampleName fields. Use sra.fetch_fields to see all 
-            available fields and their indices. 
-            If multiple are listed then they will be joined by a "_" 
-            character. For example (29,30) would yield something like:
-            latin-name_sample-name (e.g., mus_musculus-NR10123).
-
-        dry_run: (bool)
-            If True then a table of file names that _would_ be downloaded
-            will be shown, but the actual files will note be downloaded.
-
-        split_pairs: (bool or None)
-            If True then pairs are split, if False they are not split, if None
-            then we will auto-detect if paired or not. Forcing splitting can 
-            be helpful when the data were not uploaded properly.
-
-        gzip: bool
-            Gzip compress fastq files.
-
-        auto: bool
-            Automatically launch new ipcluster for parallelization and 
-            shutdown when finished. See <object>.ipcluster for settings.
         """
-        # ensure output directory, also used as tmpdir
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
+        # ensure outdir exists
+        os.makedirs(self.workdir, exist_ok=True)
 
-        # distribute job wrapped in ipcluster cleanup
-        pool = Parallel(
-            tool=self, 
-            ipyclient=ipyclient,
-            show_cluster=show_cluster,
-            auto=auto,
-            rkwargs={
-                "force": force,
-                "name_fields": name_fields,
-                "name_separator": name_separator,
-                "dry_run": dry_run,
-                "split_pairs": split_pairs,
-                "gzip": gzip,
-            },
-        )
-        pool.wrap_run()
+        # init the ipyparallel cluster class wrapper
+        cluster = Cluster(quiet=True)
+        try:
+            # establish connection to a new or running ipyclient
+            cluster.start(cores=cores, ipyclient=ipyclient)
+            self._run(ipyclient)
+
+        except KeyboardInterrupt:
+            logger.warning("keyboard interrupt by user, cleaning up.")
+
+        # AssemblyProgressBar logs the traceback
+        except IPyradError as inst:
+            logger.error(f"An error occurred:\n{inst}")
+            print("An error occurred, see logfile and below.")
+            raise
+
+        # logger.error logs the traceback
+        except Exception as inst:
+            logger.error(
+                "An unexpected error occurred, see logfile "
+                f"and trace:\n{traceback.format_exc()}")
+            raise
+
+        finally:
+            cluster.cleanup_safely(None)            
 
 
-    def _run(
-        self, 
-        force, 
-        ipyclient, 
-        name_fields, 
-        name_separator, 
-        dry_run,
-        split_pairs, 
-        gzip):
+    def _run(self, ipyclient):
         """
         Download files and fastq-dump them to workdir
         """
-
         # get run info and sort so largest samples are on top
-        rundf = self.fetch_runinfo(list(range(31)), quiet=True)
+        rundf = self.fetch_runinfo(list(range(31)))
         rundf = rundf.sort_values(
             by="spots",
             ascending=False,
@@ -196,18 +225,18 @@ class SRA(object):
         rundf["Accession"] = ""
 
         # choose spacer to replace spaces in names as different from name_sep
-        otherspacer = ("_" if name_separator != "_" else "-")
+        otherspacer = ("_" if self.name_separator != "_" else "-")
 
         # select names for downloaded .sra files
-        if name_fields:
+        if self.name_fields:
 
             # indices of runinfo fields for names
-            fields = [i - 1 for i in fields_checker(name_fields)]
+            fields = [i - 1 for i in fields_checker(self.name_fields)]
 
             # set new accession name
             for row in rundf.index:
                 rundf.loc[row, "Accession"] = (
-                    name_separator.join(
+                    self.name_separator.join(
                         [rundf.iloc[row, i] for i in fields]
                         )
                     ).replace(" ", otherspacer)
@@ -218,7 +247,7 @@ class SRA(object):
                 # set new accession name
                 for row in rundf.index:
                     rundf.loc[row, "Accession"] = (
-                        name_separator.join(
+                        self.name_separator.join(
                             [rundf.iloc[row, i] for i in [30, 1]]
                             )
                         )
@@ -226,73 +255,28 @@ class SRA(object):
                 rundf.Accession = rundf.SampleName       
 
         # test run to see file names and location without download
-        if dry_run:
-            print(
-                "\rThe following files will be written to: {}\n"
-                .format(self.workdir))
-            print("{}\n".format(rundf.Accession))
+        if self.dry_run:
+            logger.info(
+                f"The following files will be written to: {self.workdir}\n"
+                f"{rundf.Accession}\n"
+            )
             return
 
         # send download jobs
-        nfinished = 0
-        ntotal = int(rundf.shape[0]) * 2
-        start = time.time()
-        message = "downloading/extracting fastq data"
-        download_asyncs = {}
+        msg = "downloading/extracting fastq data"
+        jobs = {}
         for sidx in rundf.index:
-            progressbar(nfinished, ntotal, start, message)
             acc = rundf.Accession[sidx]
-            url = rundf.download_path[sidx]
-            out = os.path.join(self.workdir, acc) + ".sra"
-            out = os.path.realpath(os.path.expanduser(out))
-
-            if ipyclient:
-                download_asyncs[acc] = lbview.apply(download_file, *(url, out)) 
-            else:
-                download_asyncs[acc] = download_file(url, out)
-                nfinished += 1
-            time.sleep(1.1)
-
-        # continue until all jobs finish
-        while 1:
-            # track progress and break
-            progressbar(nfinished, ntotal, start, message)
-            if nfinished == ntotal:
-                print("")
-                break
-
-            # submit conversion job on finished downloads
-            running = list(download_asyncs.keys())
-            for key in running:
-                if ipyclient:                
-                    job = download_asyncs[key]
-                    if job.ready():
-                        if job.successful():
-                            nfinished += 1  
-
-                            # submit new job
-                            srr = job.get()
-                            paired = bool(split_pairs)
-                            args = (srr, paired, gzip)
-                            self._call_fastq_dump_on_SRRs(*args)
-                            download_asyncs.pop(key)
-                            nfinished += 1
-                        else:
-                            raise IPyradError(job.get())
-                else:
-                    srr = download_asyncs[key]
-                    paired = bool(split_pairs)
-                    args = (srr, paired, gzip)
-                    self._call_fastq_dump_on_SRRs(*args)
-                    download_asyncs.pop(key)
-                    nfinished += 1
+            srr = rundf.Run[sidx]
+            jobs[sidx] = lbview.apply(
+                self._call_fastq_dump_on_srr, *(acc, srr, self.split_pairs)
+            )
+        prog = AssemblyProgressBar(jobs, msg, f"{len(jobs)} samples", False)
+        prog.block()
+        prog.check()
 
         # final report
-        self._report(int(ntotal / 2))
-
-
-    def _report(self, N):
-        print("\n{} fastq files downloaded to {}".format(N, self.workdir))
+        logger.info(f"\n{len(jobs)} fastq files downloaded to {self.workdir}")
 
 
     @property
@@ -310,13 +294,12 @@ class SRA(object):
         return fields
 
 
-    def fetch_runinfo(self, fields=None, quiet=False):
+    def fetch_runinfo(self, fields=None):
         """
         Query the RunInfo for a Sample or Run, returned as a DataFrame. 
         The fields can be subselected. See <self>.fields for options.
         """
-        if not quiet: 
-            print("\rFetching project data...", end="")
+        logger.info("Fetching project data...")
 
         if fields is None:
             fields = list(range(31))
@@ -331,7 +314,7 @@ class SRA(object):
                     "db": "sra",
                     "term": accession,
                     "tool": "ipyrad", 
-                    "email": "de2356@columbia.edu",
+                    "email": "ipyrad@gmail.com",
                     "retmax": 1000,
                     },
                 )
@@ -352,7 +335,7 @@ class SRA(object):
                     "db": "sra",
                     "id": ",".join(sra_ids[block:block + 20]),
                     "tool": "ipyrad", 
-                    "email": "de2356@columbia.edu",
+                    "email": "ipyrad@gmail.com",
                     "rettype": "runinfo", 
                     "retmode": "text",                
                     },
@@ -366,14 +349,12 @@ class SRA(object):
         return rundf.iloc[:, [i - 1 for i in fields]]
 
 
-
-    def _call_fastq_dump_on_SRRs(self, srr, paired, gzip):
+    def _call_fastq_dump_on_srr(self, acc, srr, paired):
         """
         calls fastq-dump on SRRs, relabels fastqs by their accession
         names, and writes them to the workdir. Saves temp sra files
         in the designated tmp folder and immediately removes them.
         """
-
         # build outname
         outname = os.path.split(srr)[-1]
         outname = outname.rsplit(".sra")[0]
@@ -381,21 +362,18 @@ class SRA(object):
         # build command for fastq-dumping
         fd_cmd = [
             "fastq-dump", srr,
-            "--accession", outname,
+            "--accession", acc,
             "--outdir", self.workdir, 
             # "--disable-multithreading",
             ]
-        if gzip:
-            fd_cmd += ["--gzip"]
         if paired:
-            fd_cmd += ["--split-files"]
+            fd_cmd += ["--split-spot"]
 
         # call fq dump command
         proc = sps.Popen(fd_cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        o, e = proc.communicate()
-
+        out, _ = proc.communicate()
         if proc.returncode:
-            raise IPyradError(o.decode())
+            raise IPyradError(out.decode())
 
         # delete the temp sra file from the place 
         if os.path.exists(srr):
@@ -404,7 +382,7 @@ class SRA(object):
 
 
 def download_file(url, outname):
-    " NOTE the stream=True parameter"
+    "NOTE the stream=True parameter"
     res = requests.get(url, stream=True)
     with open(outname, 'wb') as f:
         for chunk in res.iter_content(chunk_size=1024): 
