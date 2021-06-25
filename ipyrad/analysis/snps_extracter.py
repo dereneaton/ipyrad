@@ -8,7 +8,6 @@ created subsampled SNP data sets for ipyrad.analysis tools.
         pca, structure, treemix, popgen, baba
 """
 
-# standard lib
 import h5py
 import numpy as np
 import pandas as pd
@@ -252,7 +251,6 @@ class SNPsExtracter:
         if return_as_characters:
             self.snps = snps[self.sidxs, :][:, allmask].view("S1")
             # if the b'' bothers you then you can call .astype(str)
-
 
 
 
@@ -640,8 +638,6 @@ class SNPsExtracter:
             df = df.iloc[jsubsample_snps(self.snpsmap, seed), :]
 
         return df.T
-
-
 
 
 
