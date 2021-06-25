@@ -13,9 +13,9 @@ import glob
 import time
 import copy
 import tempfile
-import requests
 import itertools
 import subprocess as sps
+import requests
 
 import numpy as np
 import pandas as pd
@@ -46,11 +46,14 @@ DELIM = "___"
 
 class Bpp(object):
     """
-    BPP analysis utility function for creating input files, setting parameters, 
-    and submitting bpp jobs to run on a parallel cluster. Converts loci 
-    file format data to bpp file format, i.e., concatenated phylip-like
-    format, and produces imap and ctl input files for bpp. The main 
-    functions are 'write_bpp_files()' and 'run()'.
+    BPP analysis utility function for creating input files, 
+    setting parameters, and submitting bpp jobs to run on a parallel 
+    cluster using bpp v.4.3. 
+
+    Converts loci file format data to bpp file format, i.e., 
+    concatenated phylip-like format, and produces imap and ctl input 
+    files for bpp. The main functions are 'write_bpp_files()' and 
+    'run()'.
 
     Parameters:
     -----------
@@ -152,8 +155,6 @@ class Bpp(object):
         maxmissing=1.0,
         minlen=50,
         reps_resample_loci=False,
-        # load_existing_results=False,
-        *args, 
         **kwargs):
 
         # results files
@@ -174,7 +175,6 @@ class Bpp(object):
         self.maxmissing = maxmissing
         self.minlen = minlen
         self.reps_resample_loci = reps_resample_loci
-        # self.load_existing_results = load_existing_results
 
         # parallelization
         self.ipcluster = {
@@ -686,7 +686,6 @@ class Bpp(object):
         return ctlhandle
 
 
-
     def copy(self, name):
         """ 
         Returns a copy of the bpp object with the same parameter settings
@@ -713,7 +712,6 @@ class Bpp(object):
         return newself
 
 
-
     def summarize_results(self, algorithm, individual_results=False, quiet=False):
         """ 
         Prints a summarized table of results from replicate runs, or,
@@ -735,7 +733,6 @@ class Bpp(object):
             return self._summarize_10(individual_results)
         if algorithm == "01":
             return self._summarize_01(individual_results)
-
 
 
     def _summarize_00(self, individual_results, ):
@@ -824,7 +821,6 @@ class Bpp(object):
             return table, concat
 
 
-
     def _summarize_01(self, individual_results):
         dfs = []
         for ofile in self.files.outfiles:
@@ -849,7 +845,6 @@ class Bpp(object):
                 df["posterior"] += odf.posterior
             df["posterior"] /= len(dfs)
             return df
-
 
 
     def _summarize_10(self, individual_results):
@@ -905,12 +900,17 @@ class Bpp(object):
 
 
 
-    def draw_priors(self, gentime_min, gentime_max, mutrate_min, mutrate_max, invgamma=True, seed=123):
+    def draw_priors(self, gentime_min, gentime_max, mutrate_min, mutrate_max, seed=123):
         """
         For BPP 4.0+ the priors are described using an invgamma dist. and 
         so we expect that for the (a, b) input for thetaprior and tauprior
         that the b value will be very small, since the inverse of it describes
         the variance. 
+
+        To confirm that your priors make sense with your expectations for your
+        organism you can input a min,max range for gentime and mutrate 
+        parameters here, representing the 95% CI, and visualize the transformed
+        parameter expectations for root Tau and average Theta.
         """
         import toyplot
 
@@ -934,12 +934,21 @@ class Bpp(object):
         ax0.y.label.text = "density"
 
         # distribution of mutation_rates ---------------------------------
+        # here the user inputs min,max 95%CI and we select appropriate a,b
+        # to describe this distribution using an invgamma dist.
+        a, b = self.kwargs['tauprior']
+        xmin, xmax = ss.invgamma.ppf([0.025, 0.975], a=a, scale=b)
+        mean = b / (a - 1)
+        var = b**2 / ((a - 1)**2 * (a - 2))
+
         mean = (mutrate_max + mutrate_min) / 2.
         var = ((mutrate_max - mutrate_min) ** 2) / 16
         a = mean ** 2 / var
         b = mean / var
-        muts_rvs = ss.gamma.rvs(
-            a, **{"scale": 1 / b, 'random_state': 123, "size": 1000})
+
+        # random sampled values for the third column
+        muts_rvs = ss.gamma.rvs(a, scale=b, random_state=123, size=1000)
+            # a, **{"scale": 1 / b, 'random_state': 123, "size": 1000})
 
         # draw dist
         for cix in (0.99, 0.95, 0.5):
@@ -964,13 +973,7 @@ class Bpp(object):
         # var = (invgamma_b ** 2) / (((invgamma_a - 1) ** 2) * (invgamma_a - 2))
         # a = mean ** 2 / var
         # b = mean / var
-        a = self.kwargs["thetaprior"][0]
-        b = self.kwargs["thetaprior"][1]
-        if invgamma:
-            b = 1 / b
-
-        theta_rvs = ss.gamma.rvs(
-            a, **{"scale": 1 / b, 'random_state': 123, "size": 1000})
+        a, b = self.kwargs["thetaprior"]
 
         # draw dist
         for cix in (0.99, 0.95, 0.5):

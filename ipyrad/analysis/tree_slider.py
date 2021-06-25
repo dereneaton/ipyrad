@@ -6,7 +6,6 @@ Sliding window (or sampling window) for phylo inference
 
 # standard
 import os
-import time
 import glob
 import shutil
 import tempfile
