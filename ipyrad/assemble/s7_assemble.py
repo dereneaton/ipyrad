@@ -47,7 +47,7 @@ class Step7(BaseStep):
 
         # store step samples to data, and drop reference if not in hackers.
         self.data.samples = self.samples
-        if self.data.hackers.exclude_reference:
+        if self.data.hackers.exclude_reference and self.data.is_ref:
             self.data.samples.pop("reference")
 
         # info gathered from step6 results and ncpus
