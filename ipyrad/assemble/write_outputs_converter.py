@@ -4,7 +4,7 @@
 Converter class for writing output files formats from HDF5 input.
 """
 
-
+import os
 import h5py
 import numpy as np
 from ipyrad.assemble.write_outputs_helpers import subsample
@@ -16,27 +16,34 @@ class Converter:
     Functions for converting hdf5 arrays into output files
     """
     def __init__(self, data):
+
+        # store inputs        
         self.data = data
-        self.output_formats = self.data.params.output_formats
-        self.seqs_database = self.data.seqs_database
-        self.snps_database = self.data.snps_database        
-        self.exclude_ref = (
-            self.data.hackersonly.exclude_reference and self.data.isref)
+        self.seqs_database = os.path.join(
+            self.data.stepdir, f"{self.data.name}.seqs.hdf5")
+        self.snps_database = os.path.join(
+            self.data.stepdir, f"{self.data.name}.snps.hdf5")
+        # self.exclude_ref = (
+            # self.data.hackers.exclude_reference and self.data.is_ref)
+
+        # get sorted names
+        self.snames = sorted(self.data.samples)
+        if "reference" in self.snames:
+            self.snames.remove("reference")
+            self.snames = ["reference"] + self.snames
+        self.sidxs = {sample: i for (i, sample) in enumerate(self.snames)}
+
+        # get padded names
+        longname = max(len(i) for i in self.snames)
+        self.pnames = {
+            i: i.ljust(longname + 5) for i in self.snames
+        }
 
 
     def run(self, oformat):
         """
         Write outputs one the selected output format.
         """
-        # TODO: something like this would be prettier...
-        # rundict = {
-        #   "p": self.write_phy(),
-        #   "n": self.write_nex(),
-        #   "G": self.write_gphocs(),
-        #   # "m": pass
-        #   "s": self.write_snps()
-        # }
-
         # phy array outputs
         if oformat == "p":
             self.write_phy()
@@ -73,69 +80,80 @@ class Converter:
 
     def write_phy(self):
         """
-        TODO: replace with window_extracter.
+        Writes entire sequence matrix, names padded, with header.
+        10 100
+        taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
+        taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
+        taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+        taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
         """
         # write from hdf5 array
-        with open(self.data.outfiles.phy, 'w') as out:
+        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.phy")
+        with open(outfile, 'w') as out:
             with h5py.File(self.seqs_database, 'r') as io5:
+
                 # load seqarray 
                 seqarr = io5['phy']
                 arrsize = io5['phymap'][-1, 2]
 
                 # if reference then inserts are not trimmed from phy
-                #
-
-                # write dims 
-                if self.exclude_ref:
-                    out.write("{} {}\n".format(len(self.data.snames) - 1, arrsize))
-                    rowstart = 1
-                else:
-                    out.write("{} {}\n".format(len(self.data.snames), arrsize))
-                    rowstart = 0
+                out.write("{} {}\n".format(len(self.snames), arrsize))
 
                 # write to disk
-                for idx in range(rowstart, io5['phy'].shape[0]):
+                for idx in range(io5['phy'].shape[0]):
                     seq = seqarr[idx, :arrsize].view("S1")
                     out.write(
                         "{}{}".format(
-                            self.data.pnames[self.data.snames[idx]],
+                            self.pnames[self.snames[idx]],
                             b"".join(seq).decode().upper() + "\n",
                         )
                     )
+        return outfile
 
 
     def write_nex(self):
         """
-        TODO: check for writing positions with iqtree requirements.
+        Writes interleaved sequence matrix, names padded, with header.
+
+        #nexus
+        begin data;
+          dimensions ntax=10 nchar=100;
+          format datatype=dna missing=N gap=- interleave=yes;
+          matrix
+            taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
+            taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
+            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+            taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
+
+            taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
+            taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
+            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+            taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
+        end;
+        begin charset;
+          ...
+        end;
         """
-        # write from hdf5 array
-        with open(self.data.outfiles.nex, 'w') as out:
+        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.nex")
+        with open(outfile, 'w') as out:
             with h5py.File(self.seqs_database, 'r') as io5:
+
                 # load seqarray (this could be chunked, this can be >50Gb)
                 seqarr = io5['phy'][:]
                 arrsize = io5['phymap'][-1, 2]
 
-                # option: exclude reference sequence
-                if self.exclude_ref:
-                    # write nexus seq header
-                    out.write(NEXHEADER.format(seqarr.shape[0] - 1, arrsize))
-                    rstart = 1
-
-                else:
-                    # write nexus seq header
-                    out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
-                    rstart = 0
+                # write nexus seq header
+                out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
 
                 # get the name order for every block
                 xnames = [
-                    self.data.pnames[self.data.snames[i]] 
-                    for i in range(rstart, len(self.data.snames))
+                    self.pnames[self.snames[i]] for i in range(len(self.snames))
                 ]
 
                 # grab a big block of data
                 chunksize = 100000  # this should be a multiple of 100
                 for bidx in range(0, arrsize, chunksize):
-                    bigblock = seqarr[rstart:, bidx:bidx + chunksize]
+                    bigblock = seqarr[:, bidx:bidx + chunksize].view("S1")
                     lend = int(arrsize - bidx)
 
                     # store interleaved seqs 100 chars with longname+2 before
@@ -144,17 +162,13 @@ class Converter:
                         stop = min(block + 100, arrsize)
 
                         for idx, name in enumerate(xnames):  
-
-                            # py2/3 compat --> b"TGCGGG..."
-                            seqdat = bytes(bigblock[idx, block:stop])
+                            seqdat = bigblock[idx, block:stop]
                             tmpout.append("  {}{}\n".format(
                                 name,
                                 seqdat.decode().upper()))
                         tmpout.append("\n")
 
-                    # TODO, double check end of matrix...
-
-                    ## print intermediate result and clear
+                    # print intermediate result and clear
                     if any(tmpout):
                         out.write("".join(tmpout))
                 
@@ -181,39 +195,34 @@ class Converter:
                     )
                 charsetblock.append("END;")
                 out.write("\n".join(charsetblock))
+        return outfile
 
 
     def write_snps(self):
         """
-        TODO: replace with ipa.snps_extracter...
+        Write all SNPs as a phylip format file. Users should generally
+        use ipa.snps_extracter for more fine tuned SNP sampling/filtering.
         """
         # write from hdf5 array
-        with open(self.data.outfiles.snps, 'w') as out:
+        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.snps.phy")
+        with open(outfile, 'w') as out:
             with h5py.File(self.snps_database, 'r') as io5:
-                # load seqarray
                 seqarr = io5['snps']
-
-                # option to skip ref
-                if self.exclude_ref:
-                    nsamples = len(self.data.snames) - 1
-                    rstart = 1
-                else:
-                    nsamples = len(self.data.snames)
-                    rstart = 0
+                nsamples = len(self.snames)
 
                 # write dims
                 out.write("{} {}\n".format(nsamples, seqarr.shape[1]))
 
                 # write to disk one row at a time
-                # (todo: chunk optimize for this.)
-                for idx in range(rstart, io5['snps'].shape[0]):
+                for idx in range(io5['snps'].shape[0]):
                     seq = seqarr[idx, :].view("S1")
                     out.write(
                         "{}{}".format(
-                            self.data.pnames[self.data.snames[idx]],
+                            self.data.pnames[self.snames[idx]],
                             b"".join(seq).decode().upper() + "\n",
                         )
                     )
+        return outfile
 
 
     def write_usnps(self):
@@ -330,8 +339,9 @@ class Converter:
         it for their own validation.
         """
         counter = 1
-        with open(self.data.outfiles.snpsmap, 'w') as out:
-            with h5py.File(self.data.snps_database, 'r') as io5:
+        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.snpsmap.tsv")
+        with open(outfile, 'w') as out:
+            with h5py.File(self.snps_database, 'r') as io5:
                 # access array of data
                 maparr = io5["snpsmap"]
 
@@ -343,7 +353,7 @@ class Converter:
                     rdat = maparr[start:start + 10000, :]
 
                     # get chroms
-                    if self.data.isref:
+                    if self.data.is_ref:
                         revdict = chroms2ints(self.data, 1)
                         for i in rdat:
                             outchunk.append(
@@ -376,6 +386,7 @@ class Converter:
                     # write chunk to file
                     out.write("".join(outchunk))
                     outchunk = []
+        return outfile
                     
 
     def write_str(self):
