@@ -41,7 +41,6 @@ class ClustMapReference:
         self.quiet = step.quiet
         self.lbview = step.lbview
         self.thview = step.thview
-        self.is_paired = "pair" in self.data.params.datatype
 
 
     def index_references(self):
@@ -124,7 +123,7 @@ class ClustMapReference:
         i: tmpdir/[trim, concat, or unmapped].fastq[.gz]
         o: tmpdir/joined.fastq
         """
-        if 'pair' not in self.data.params.datatype:
+        if not self.data.is_pair:
             return
         jobs = {}
         for sname in self.samples:
@@ -206,7 +205,7 @@ class ClustMapReference:
         i: tmpdir/{}_[derep,tagged].fa
         o: tmpdir/{}_derep_split_R[1,2].fa
         """
-        if not 'pair' in self.data.params.datatype:
+        if not self.data.is_pair:
             return
         jobs = {}
         for sname in self.samples:

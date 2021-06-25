@@ -601,7 +601,7 @@ def build_clusters_from_cigars(data, sample):
         rdict = {}
 
         # paired-end data cluster building
-        if "pair" in data.params.datatype:
+        if data.is_pair:
 
             # match paired reads together in a dictionary (same qname)
             for read in reads:
@@ -816,7 +816,7 @@ def bedtools_merge(data, sample) -> List[str]:
     cmd2 = [BIN_BEDTOOLS, "merge", "-i", "-"]
 
     # If PE the -d flag to tell bedtools how far apart to allow mate pairs.
-    if 'pair' in data.params.datatype:
+    if data.is_pair:
 
         # uses the hackers dict value if user set one, else 350 as a 
         # reasonable max insert size.
