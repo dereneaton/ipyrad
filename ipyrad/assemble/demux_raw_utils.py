@@ -150,8 +150,8 @@ class BarMatch:
             else:
                 # COMBINATORIAL BARCODES (BCODE1+BCODE2)
                 if '3rad' in self.data.params.datatype:
-                    barcode1 = find3radbcode(self.cutters, self.longbar, read1)
-                    barcode2 = find3radbcode(self.cutters, self.longbar, read2)
+                    barcode1 = find3radbcode(self.cutters, self.longbar[0], read1)
+                    barcode2 = find3radbcode(self.cutters, self.longbar[2], read2)
                     barcode = barcode1 + "+" + barcode2
 
                 # USE BARCODE PARSER: length or splitting
@@ -279,14 +279,16 @@ def getbarcode3(cutters, read1, longbar):
 
 
 def find3radbcode(cutters, longbar, read):
-    "find barcode sequence in the beginning of read"
+    """
+    find barcode sequence in the beginning of read
+    """
     # default barcode string
     for ambigcuts in cutters:
         for cutter in ambigcuts:
             # If the cutter is unambiguous there will only be one.
             if not cutter:
                 continue
-            search = read[1][:int(longbar[0] + len(cutter) + 1)]
+            search = read[1][:int(longbar + len(cutter) + 1)]
             splitsearch = search.decode().rsplit(cutter, 1)
             if len(splitsearch) > 1:
                 return splitsearch[0]

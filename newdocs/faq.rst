@@ -4,6 +4,9 @@
 Frequenty Asked Questions
 =========================
 
+Some very general :ref:`assembly guidelines<assembly_guidelines>` offer
+insights into choosing parameters and interpreting assembly statistics.
+
 Troubleshooting Procedures
 ==========================
 
@@ -271,7 +274,7 @@ Why am I getting the 'empty varcounts' error during step 7?
 -----------------------------------------------------------
 Occasionally during step 7 you will see this error:
 
-.. code-block::
+.. code-block:: bash
 
     Exception: empty varcounts array. This could be because no samples                                                                                                    
     passed filtering, or it could be because you have overzealous filtering.                                                                                              
@@ -314,7 +317,7 @@ and finally reinstall ipyrad:
 
 .. code-block:: bash
 
-    conda install -c ipyrad ipyrad
+    conda install -c conda-forge -c bioconda ipyrad
     conda install toytree -c eaton-lab
 
 optional:
