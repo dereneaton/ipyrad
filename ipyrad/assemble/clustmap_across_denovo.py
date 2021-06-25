@@ -141,7 +141,7 @@ class ClustMapAcrossDenovo:
         globpath = os.path.join(self.tmpdir, "aligned_*.fa")
         alignbits = glob.glob(globpath)
         alignbits = sorted(
-            alignbits, 
+            alignbits,
             key=lambda x: int(os.path.basename(x).rsplit("_")[1].split(".")[0])
         )
 
@@ -507,11 +507,12 @@ def threaded_muscle(chunk):
     odir = os.path.dirname(chunk)
     alignfile = os.path.join(odir, "aligned_{}.fa".format(odx))
     with open(alignfile, 'wt') as outfile:
-        outfile.write("\n//\n//\n".join(stacks) + "\n//\n//\n")
+        outfile.write("\n//\n//\n".join(stacks))
 
 
 def align_to_array(data, samples, chunk):
     """
+    DEPRECATED FOR THREADED MUSCLE.
     Opens a tmp clust chunk and iterates over align jobs.
     """
     # data are already chunked, read in the whole thing
@@ -526,7 +527,7 @@ def align_to_array(data, samples, chunk):
 
     # iterate over clusters until finished
     allstack = []
-    for ldx in range(len(clusts)):
+    for ldx, _ in enumerate(clusts):
         istack = []
         lines = clusts[ldx].strip().split("\n")
         names = lines[::2]
@@ -535,7 +536,7 @@ def align_to_array(data, samples, chunk):
         # skip aligning and continue if duplicates present (locus too big)
         # but reshape locs to be same lengths by adding --- to end, this 
         # simplifies handling them in step7 (they're still always filtered)
-        unames = set([i.rsplit("_", 1)[0] for i in names])
+        unames = set(i.rsplit("_", 1)[0] for i in names)
         if len(unames) < len(names):
             longname = max([len(i) for i in seqs])
             seqs = [i.ljust(longname, "-") for i in seqs]
@@ -556,7 +557,7 @@ def align_to_array(data, samples, chunk):
             istack2 = muscle_it(proc, names, right)
 
             # combine in order
-            for sdx in range(len(istack1)):
+            for sdx, _ in enumerate(istack1):
                 n1, s1 = istack1[sdx].split("\n")
                 s2 = istack2[sdx].split("\n")[-1]
                 istack.append(n1 + "\n" + s1 + "nnnn" + s2)
@@ -583,9 +584,9 @@ def align_to_array(data, samples, chunk):
         outfile.write("\n//\n//\n".join(allstack) + "\n//\n//\n")
 
 
-
 def muscle_it(proc, names, seqs):
     """
+    DEPRECATED FOR THREADED MUSCLE
     Align with muscle, ensure name order, and return as string
     """  
     istack = []
@@ -638,7 +639,6 @@ def muscle_it(proc, names, seqs):
         istack.append(
             "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
     return istack
-
 
 
 # def store_alleles(seqs):
