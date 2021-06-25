@@ -281,6 +281,9 @@ class WindowExtracter(BaseWindowExtracter):
         fstats = []
         phymaps = []
 
+        # this COULD be parallelized, but we also want to support a serial
+        # version since wex itself is sometimes distributed in parallel,
+        # such as in treeslider. 
         for scaffidx in self.scaffold_idxs:
             phymap = self._extract_phymap_for_scaffidx(scaffidx)
             seqarr = self._extract_seqarr(phymap)
