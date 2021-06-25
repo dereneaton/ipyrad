@@ -39,7 +39,6 @@ class ClustMapDenovo:
         self.data = step.data
         self.data.tmpdir = step.tmpdir
         self.data.stepdir = step.stepdir
-        self.data.is_paired = "pair" in self.data.params.datatype
         self.data.max_indels = 8
 
         # job submitting, parallel, or progress bar relevant
@@ -51,16 +50,14 @@ class ClustMapDenovo:
 
     def index_references(self):
         """
-        Index reference_filter files.
+        Index reference_filter with BWA for mapping reads.
         """
         jobs = {}
         if not self.data.params.reference_as_filter:
             return
-        logger.debug("indexing reference_filter with bwa and samtools")            
+        logger.debug("indexing reference_filter with bwa")
         rasync1 = self.lbview.apply(index_ref_with_bwa, self.data, alt=1)
-        rasync2 = self.lbview.apply(index_ref_with_sam, self.data, alt=1)
         jobs['bwa_index_alt'] = rasync1
-        jobs['sam_index_alt'] = rasync2
         msg = "indexing reference"
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
@@ -96,7 +93,7 @@ class ClustMapDenovo:
         o: tmpdir/{sname}_merged.fastq, tmpdir/{sname}_nonmerged_R[1,2].fastq, 
         """
         # skip if not pairs
-        if not self.data.is_paired:
+        if not self.data.is_pair:
             return
         logger.info("merging paired reads with vsearch")
         jobs = {}
@@ -119,7 +116,7 @@ class ClustMapDenovo:
         Joins end-to-end the unmerged paired reads, and concats to the
         end of this file any merged reads from step2.
         """
-        if not self.data.is_paired:
+        if not self.data.is_pair:
             return
         logger.info("joining unmerged paired reads")            
         jobs = {}
@@ -138,7 +135,7 @@ class ClustMapDenovo:
         """
         Moves the tags from the index to the reads for decloning.
         """
-        if (not self.data.is_paired) or (not self.data.hackers.declone_PCR_duplicates):
+        if (not self.data.is_pair) or (not self.data.hackers.declone_PCR_duplicates):
             return
         # TODO:
 
