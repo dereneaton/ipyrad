@@ -604,6 +604,7 @@ def build_clusters_from_cigars(data, sample):
         if data.is_pair:
 
             # match paired reads together in a dictionary (same qname)
+            # for each mapped read in this region.
             for read in reads:
                 if read.qname not in rdict:
                     rdict[read.qname] = [read, None]
@@ -818,11 +819,11 @@ def bedtools_merge(data, sample) -> List[str]:
     # If PE the -d flag to tell bedtools how far apart to allow mate pairs.
     if data.is_pair:
 
-        # uses the hackers dict value if user set one, else 350 as a 
+        # uses the hackers dict value if user set one, else 500 as a 
         # reasonable max insert size.
         max_insert = data.hackers.max_inner_mate_distance
         if max_insert is None:
-            max_insert = 350
+            max_insert = 500
         cmd2.insert(2, str(max_insert))
         cmd2.insert(2, "-d")
 
