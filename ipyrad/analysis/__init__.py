@@ -34,14 +34,16 @@ from .window_extracter import window_extracter
 from .tree_slider import TreeSlider as tree_slider
 from .digest_genome import DigestGenome as digest_genome
 from .sratools import SRA as sratools
+from .snps_imputer import SNPsImputer as snps_imputer
+
 # from .astral import Astral as astral
 # from .bucky import Bucky as bucky
 # from .bpp import Bpp as bpp
 # from .fasttree import Fasttree as fasttree
 
 
-# analysis tools uses INFO logger by default.
-set_loglevel("INFO")
+# analysis tools uses WARNING logger by default.
+set_loglevel("WARNING")
 
 
 
@@ -53,7 +55,7 @@ set_loglevel("INFO")
 # from .treemix import Treemix as treemix
 # from .pca import PCA as pca
 # from .snps_extracter import SNPsExtracter as snps_extracter
-# from .snps_imputer import SNPsImputer as snps_imputer
+
 # from .treeslider import TreeSlider as treeslider
 # from .distance import Distance as distance
 # from .structure import Structure as structure
