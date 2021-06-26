@@ -10,6 +10,7 @@ import tempfile
 import h5py
 import numpy as np
 import pandas as pd
+import sys
 from .locus_extracter import LocusExtracter
 
 # import tested at init
@@ -21,7 +22,7 @@ _TOYPLOT_IMPORT = """
 This ipyrad analysis tool requires the following software
 that you can install with conda using this command:
 
-   conda install toytree -c eaton-lab
+   conda install toyplot -c conda-forge
 """
 
 

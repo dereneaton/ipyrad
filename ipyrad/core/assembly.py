@@ -45,12 +45,12 @@ class Assembly:
     def name(self):
         """shortcut to return the assembly_name from params"""
         return self.params.assembly_name
-    
+
     @property
     def json_file(self):
         """JSON file is project_dir/assembly_name.json"""
         return os.path.join(
-            self.params.project_dir, 
+            self.params.project_dir,
             self.params.assembly_name + ".json"
         )
 
@@ -61,15 +61,15 @@ class Assembly:
 
     @property
     def is_pair(self):
-        """shortcut attribute returns whether Assembly is paired datatype"""        
+        """shortcut attribute returns whether Assembly is paired datatype"""
         return "pair" in self.params.datatype
 
     @property
     def stats(self):
         """
-        Returns a dataframe with *summarized stats* extracted from the 
+        Returns a dataframe with *summarized stats* extracted from the
         project JSON file given the current completed assembly steps.
-        To see more detailed stats from specific steps see instead 
+        To see more detailed stats from specific steps see instead
         the self.stats_dfs.
         """
         # using self object (any cases where we need to load from json?)
@@ -79,8 +79,8 @@ class Assembly:
         stats = pd.DataFrame(
             index=sorted(self.samples),
             columns=[
-                'state', 
-                'reads_raw', 
+                'state',
+                'reads_raw',
                 'reads_passed_filter',
                 'clusters_total',
                 'clusters_hidepth',
@@ -138,13 +138,13 @@ class Assembly:
                 value = sample.stats_s5.consensus_total
             else:
                 value = pd.NA
-            stats.loc[sname, 'consensus_total'] = value            
+            stats.loc[sname, 'consensus_total'] = value
 
             if sample.stats_s5:
                 value = sample.stats_s5.heterozygosity
             else:
                 value = pd.NA
-            stats.loc[sname, 'heterozygosity'] = value            
+            stats.loc[sname, 'heterozygosity'] = value
 
             if sample.stats_s7:
                 value = sample.stats_s7.nloci
@@ -155,18 +155,18 @@ class Assembly:
         # drop columns that are all NAN
         stats = stats.dropna(axis=1, how="all")
         return stats
-    
+
 
     def branch(self, name:str, subsample:List[str]=None) -> 'Assembly':
         """
         Returns a new branched Assembly class instance.
 
-        The new object will have the same parameter settings as the 
-        current object, and inherits the same sample histories, but 
+        The new object will have the same parameter settings as the
+        current object, and inherits the same sample histories, but
         will write to a different name prefix path
-        going forward. 
+        going forward.
 
-        Creating a new branch does not write a JSON until you either 
+        Creating a new branch does not write a JSON until you either
         run an Assembly step by calling .run() or call .save_json()
 
         Examples:
@@ -191,7 +191,7 @@ class Assembly:
             }
         else:
             branch.samples = {
-                i: SampleSchema(**self.samples[i].dict()) 
+                i: SampleSchema(**self.samples[i].dict())
                 for i in self.samples if i in subsample
             }
             for i in subsample:
@@ -231,7 +231,7 @@ class Assembly:
 
     def save_json(self) -> None:
         """
-        Save the current Assembly object to the project JSON file  
+        Save the current Assembly object to the project JSON file
         (<project_dir>/<name>.json)
         """
         project = Project(
@@ -245,7 +245,7 @@ class Assembly:
 
 
     def run(
-        self, 
+        self,
         steps: str,
         cores: Optional[int]=None,
         force: bool=False,
@@ -272,28 +272,13 @@ class Assembly:
         # save the current JSON file (and a backup?)
         self.save_json()
 
-        # the Class functions to run for each entered step.
-        step_map = {
-            "1": Step1,
-            "2": Step2, 
-            "3": Step3,
-            "4": Step4,
-            "5": Step5, 
-            "6": Step6,
-            "7": Step7,
-        }
-
-        # could load the tool to check whether this job can be run 
-        # before starting the ipcluster?...
-
-
         # init the ipyparallel cluster class wrapper
         cluster = Cluster(quiet=quiet)
         try:
             # establish connection to a new or running ipyclient
             cluster.start(cores=cores, ipyclient=ipyclient)
 
-            # use client for any/all steps of assembly 
+            # use client for any/all steps of assembly
             for step in steps:
                 tool = step_map[step](self, force, quiet, cluster.ipyclient)
                 tool.run()
@@ -344,9 +329,9 @@ PARAMSINFO = {
     20: "Consensus quality filter (max proportion)",
     21: "Locus quality filter (min integer)",
     22: "Locus quality filter (max proportion)",
-    23: "Locus quality filter (max integer)",    
-    24: "Locus quality filter (max proportion)",    
-    25: "Pre-align trim edges (R1>, <R1, R2>, <R2)",    
+    23: "Locus quality filter (max integer)",
+    24: "Locus quality filter (max proportion)",
+    25: "Pre-align trim edges (R1>, <R1, R2>, <R2)",
     26: "Post-align trim edges (R1>, <R1, R2>, <R2)",
     27: "See documentation",
     28: "Path to population assignment file",
@@ -355,9 +340,7 @@ PARAMSINFO = {
 
 
 
-
 if __name__ == "__main__":
-    
 
     import ipyrad as ip
     ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
@@ -370,7 +353,7 @@ if __name__ == "__main__":
     # print(TEST.stats)
 
     # TEST = ip.Assembly("TEST1")
-    # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
+    # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"
     # TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
     # TEST.params.project_dir = "/tmp"
     # TEST.params.max_barcode_mismatch = 1

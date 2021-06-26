@@ -465,8 +465,13 @@ class Processor:
         self.est_het = self.data.stats.hetero_est.mean()
         self.maxlen = self.data.hackersonly.max_fragment_length
         self.maxhet = self.data.params.max_Hs_consens
+<<<<<<< HEAD
+        self.maxn = self.data.params.max_Ns_consens
+        self.maxa = self.data.params.max_alleles_consens
+=======
         self.maxalleles = self.data.params.max_alleles_consens
 
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         # not enforced for ref
         self.maxn = self.data.params.max_Ns_consens
         if self.isref:
@@ -503,7 +508,11 @@ class Processor:
             "depth": 0,
             "maxh": 0,
             "maxn": 0,
+<<<<<<< HEAD
+            "maxa": 0,
+=======
             "maxalleles": 0,
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         }
 
         # store data for writing
@@ -586,6 +595,17 @@ class Processor:
             if self.filter_max_n_min_len():
                 continue
 
+<<<<<<< HEAD
+                            # return 1 if not too many N or too short 
+                            if self.filter_maxN_minLen():
+                                
+                                # filter for max haplotypes...
+                                # self.get_alleles()
+                                # ...
+                                if self.filter_max_alleles():
+                                    # store result
+                                    self.store_data()
+=======
             # Infer haplotypes from reads at variable geno sites
             if self.nheteros > 1:
                 if self.filter_alleles():
@@ -593,6 +613,7 @@ class Processor:
 
             # store result
             self.store_data()
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
 
         # cleanup close handle
         inclust.close()
@@ -780,8 +801,13 @@ class Processor:
         return 0
 
 
+<<<<<<< HEAD
+    #def get_alleles(self):
+    def filter_max_alleles(self):
+=======
 
     def filter_alleles(self):
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         """
         Infer the number of alleles from haplotypes.
         
@@ -878,6 +904,19 @@ class Processor:
         #if self.nalleles == 2:
         #    self.consens = encode_alleles(self.consens, self.hidx, alleles)
 
+<<<<<<< HEAD
+        if self.nalleles > self.maxa:
+            self.filters['maxa'] += 1
+            return 0
+        return 1
+            # Do we need this still? iao 6/2021
+            #if self.nalleles == 2:
+            #    try:
+            #        self.consens = storealleles(self.consens, self.hidx, alleles)
+            #    except (IndexError, KeyError):
+            #        pass
+=======
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
 
 
     def store_data(self):
@@ -1245,6 +1284,7 @@ def store_sample_stats(data, sample, statsdicts):
         "depth": 0,
         "maxh": 0,
         "maxn": 0,
+        "maxa": 0,
     }
 
     # merge finished consens stats
@@ -1267,6 +1307,7 @@ def store_sample_stats(data, sample, statsdicts):
     sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
     sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
     sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
+    sample.stats_dfs.s5.filtered_by_maxAlleles = xfilters['maxa']
     sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
     sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
     sample.stats_dfs.s5.heterozygosity = float(prop)

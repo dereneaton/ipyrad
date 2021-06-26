@@ -59,7 +59,7 @@ class CLI:
 
         # check that -p is accompanied by an action (-s, -r, -b)
         self._flagparams()
-        
+
         # fill parsedict with params from paramsfile
         self.parse_params()
 
@@ -104,22 +104,22 @@ class CLI:
 
         # get keys in order from a tmp assembly
         keys = [i[1:] for i in ip.Assembly('null').params]
-        
+
         # store as a dict
         self.parsedict = {str(i): j for (i, j) in zip(keys, vals)}
 
 
     def parse_command_line(self):
-        """ 
+        """
         Parse CLI args.
         """
         # if no args then return help message
         if len(sys.argv) == 1:
             self.parser.print_help()
 
-        ## add arguments 
+        ## add arguments
         self.parser.add_argument(
-            '-v', '--version', 
+            '-v', '--version',
             action='version', 
             version=str(get_distribution('ipyrad')),
         )
@@ -132,7 +132,7 @@ class CLI:
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
-        self.parser.add_argument('-n', dest="new", type=str, default=None, 
+        self.parser.add_argument('-n', dest="new", type=str, default=None,
             help="create new file 'params-{new}.txt' in current directory")
 
         self.parser.add_argument('-p', dest="params", type=str, default=None,
@@ -141,7 +141,7 @@ class CLI:
         self.parser.add_argument('-s', dest="steps", type=str, default=None,
             help="Set of assembly steps to run, e.g., -s 123")
 
-        self.parser.add_argument('-b', dest="branch", type=str, default=None, 
+        self.parser.add_argument('-b', dest="branch", type=str, default=None,
             nargs="*",
             help="create new branch of Assembly as params-{branch}.txt, and " + \
             "can be used to drop samples from Assembly.")
@@ -318,7 +318,6 @@ class CLI:
 
         # Create new Assembly instead of loading if NEW 
         if self.args.steps:
-            
             # starting a new assembly
             if '1' in self.args.steps:
                 if self.args.force:
@@ -326,7 +325,7 @@ class CLI:
                 else:
                     if os.path.exists(json_file):
                         raise IPyradError(
-                        "Assembly already exists, use force to overwrite")
+                            "Assembly already exists, use force to overwrite")
                     data = ip.Assembly(assembly_name)
             else:
                 data = ip.load_json(json_file)
@@ -361,7 +360,7 @@ class CLI:
         print(
             "\nSummary stats of Assembly {}".format(data.name) +
             "\n------------------------------------------------")
-        
+
         if not data.stats.empty:
             print(data.stats)
             print("\n\nFull stats files" + 
@@ -373,7 +372,7 @@ class CLI:
                 key = "s" + str(i)
                 try:
                     val = data.stats_files[key]
-                    val = val.replace(fullcurdir, ".")                
+                    val = val.replace(fullcurdir, ".")
                     print("step {}: {}".format(i, val))
                 except (KeyError, AttributeError):
                     print("step {}: None".format(i))
@@ -383,7 +382,7 @@ class CLI:
 
 
     def branch_assembly(self):
-        """ 
+        """
         Load the passed in assembly and create a branch. Copy it
         to a new assembly, and also write out the appropriate params.txt
         """
@@ -429,7 +428,7 @@ class CLI:
                 raise IPyradError(
                     "\n  Failed: unrecognized names, check spelling:\n  {}"
                         .format("\n  ".join([i for i in fails])))
-            
+
             # if drop then get subtract list
             if remove:
                 print("  dropping {} samples".format(len(subsamples)))
@@ -454,7 +453,7 @@ class CLI:
 
 
     def run(self):
-        """ 
+        """
         main function to connect a cluster and run assembly steps
         """
         if self.args.steps:
@@ -486,10 +485,9 @@ class CLI:
                 ipyclient=cluster.ipyclient,
             )
 
-        # show results summary                 
+       # show results summary
         if self.args.results:
             self.show_stats()
-          
 
 
 HEADER = """
@@ -501,19 +499,19 @@ HEADER = """
 
 
 EPILOG = """
-  * Example command-line usage: 
-    ipyrad -n data                       ## create new file called params-data.txt 
+  * Example command-line usage:
+    ipyrad -n data                       ## create new file called params-data.txt
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
   * HPC parallelization across 32 cores
     ipyrad -p params-data.txt -s 3 -c 32 --MPI
 
-  * Print results summary 
-    ipyrad -p params-data.txt -r 
+  * Print results summary
+    ipyrad -p params-data.txt -r
 
   * Branch/Merging Assemblies
-    ipyrad -p params-data.txt -b newdata  
+    ipyrad -p params-data.txt -b newdata
     ipyrad -m newdata params-1.txt params-2.txt [params-3.txt, ...]
 
   * Subsample taxa during branching
@@ -529,8 +527,14 @@ EPILOG = """
 _WRONG_NUM_CLI_MERGE = """
   Error: Attempting to merge assemblies but wrong number of args.
   The format for the merging command is:
-  
+
   ipyrad -m new_assembly_name params-1.txt params-2.txt
+"""
+
+_STEP_1_ASSEMBLY_EXISTS = """
+    Looks like you're trying to re-run step 1 on an Assembly that already
+    exists. If you created a branch after step 1 you can simply proceed to step
+    2. If you wish to re-run step 1 you may use force to overwrite.
 """
 
 _WRONG_ORDER_CLI_MERGE = """

@@ -99,22 +99,18 @@ class Step2(object):
 
     def check_adapters(self):
         """
-        Allow extra adapters if filters=3, and add poly repeats if not 
-        in list of adapters. 
+        For filter_adapters == 3 add poly repeats if not in list of adapters.
+        Allow extra adapters to persist (these were getting blanked here
+        before).
         """
         if int(self.data.params.filter_adapters) == 3:
-            if not self.data.hackersonly.p3_adapters_extra:
-                for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                    self.data.hackersonly.p3_adapters_extra = (
-                        self.data.hackersonly.p3_adapters_extra + [poly])
+            for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
+                self.data.hackersonly.p3_adapters_extra = list(set(
+                    self.data.hackersonly.p3_adapters_extra + [poly]))
 
-            if not self.data.hackersonly.p5_adapters_extra:
-                for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
-                    self.data.hackersonly.p5_adapters_extra = (
-                        self.data.hackersonly.p5_adapters_extra + [poly])
-        else:
-            self.data.hackersonly.p5_adapters_extra = []
-            self.data.hackersonly.p3_adapters_extra = []        
+            for poly in ["A" * 8, "T" * 8, "C" * 8, "G" * 8]:
+                self.data.hackersonly.p5_adapters_extra = list(set(
+                    self.data.hackersonly.p5_adapters_extra + [poly]))
 
 
     def run(self):
@@ -568,7 +564,7 @@ def cutadaptit_pairs(data, sample):
         if data.params.datatype != "pair3rad":
             print(NO_BARS_GBS_WARNING)
         adapter1 = data.hackersonly.p3_adapter
-        adapter2 = fullcomp(data.hackersonly.p5_adapter)
+        adapter2 = data.hackersonly.p5_adapter
 
     # parse trim_reads
     trim5r1 = trim5r2 = trim3r1 = trim3r2 = []

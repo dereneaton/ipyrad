@@ -562,27 +562,60 @@ class Step6:
                 "error in: {}: {}".format(" ".join(cmd2), err))
         os.remove(catbam)
 
-        # index the bam file
-        cmd3 = [
-            ipyrad.bins.samtools, 
-            "index", 
-            os.path.join(
-                self.data.dirs.across, 
-                "{}.cat.sorted.bam".format(self.data.name)
-            ),           
-        ]
-        proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
+        try:
+            # index the bam file
+            cmd3 = [
+                ipyrad.bins.samtools,
+                "index",
+                "-c",
+                os.path.join(
+                    self.data.dirs.across,
+                    "{}.cat.sorted.bam".format(self.data.name)
+                ),
+            ]
+            proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
 
-        # progress bar
-        while not proc.poll() == 0:
-            self.data._progressbar(3, 2, start, printstr)
-            time.sleep(0.1)
+            # progress bar
+            while not proc.poll() == 0:
+                self.data._progressbar(3, 2, start, printstr)
+                time.sleep(0.1)
 
-        # parse result
-        err = proc.communicate()[0].decode()
-        if proc.returncode:
-            raise IPyradError(
-                "error in: {}: {}".format(" ".join(cmd3), err))
+            # parse result
+            err = proc.communicate()[0].decode()
+            if proc.returncode:
+                raise IPyradError(
+                    "error in: {}: {}".format(" ".join(cmd3), err))
+        except IPyradError as ipyerror:
+            # For bam files with large chromosomes (>~500Mb) the .bai indexing
+            # will fail with this exit message. Try again with .csi indexing.
+            # https://github.com/dereneaton/ipyrad/issues/435
+            # Will keep bai as default because this has never come up before
+            # but it doesn't hurt as a fallback.
+            if not "hts_idx_check_range" in str(ipyerror):
+                raise ipyerror
+
+            # index the bam file
+            cmd3 = [
+                ipyrad.bins.samtools,
+                "index", "-c",
+                os.path.join(
+                    self.data.dirs.across,
+                    "{}.cat.sorted.bam".format(self.data.name)
+                ),
+            ]
+            proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
+
+            # progress bar
+            while not proc.poll() == 0:
+                self.data._progressbar(3, 2, start, printstr)
+                time.sleep(0.1)
+
+            # parse result
+            err = proc.communicate()[0].decode()
+            if proc.returncode:
+                raise IPyradError(
+                    "error in: {}: {}".format(" ".join(cmd3), err))
+
         self.data._progressbar(3, 3, start, printstr)
         self.data._print("")
 

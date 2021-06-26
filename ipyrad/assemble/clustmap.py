@@ -363,7 +363,8 @@ class Step3:
             else:
                 self.data._print("skipping {}; no reads found.")
         if not any(checked_samples):
-            raise IPyradError("No samples ready for step 3.")
+            raise IPyradError("No samples ready for step 3. If branching, use"\
+                            + " the `-f` flag to force re-running step 3.")
 
         # sort samples so the largest is first
         checked_samples.sort(
@@ -1958,7 +1959,10 @@ def mapping_reads(data, sample, nthreads, altref=False):
         "-o", bamout]
 
     # Later we're gonna use samtools to grab out regions using 'view'
-    cmd4 = [ip.bins.samtools, "index", bamout]
+    # https://github.com/dereneaton/ipyrad/issues/435
+    # If the bamfile has very large chromosomes (>500Mb) then the .bai
+    # index format can't handle it, just use the .csi format `-c`.
+    cmd4 = [ip.bins.samtools, "index", "-c", bamout]
 
     # convert unmapped reads to fastq
     cmd5 = [
