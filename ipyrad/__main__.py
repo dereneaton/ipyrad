@@ -2,24 +2,25 @@
 
 """ the main CLI for calling ipyrad """
 
-from __future__ import print_function
-
-from ipyrad.assemble.utils import IPyradError, detect_cpus
-from pkg_resources import get_distribution
-import ipyparallel as ipp
-import ipyrad as ip
 import argparse
 import sys
 import os
 
-from .core.Parallel import Parallel
+from pkg_resources import get_distribution
+import ipyparallel as ipp
+from loguru import logger
+
+import ipyrad as ip
+from ipyrad.core.params_schema import ParamsSchema
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.core.parallel import get_num_cpus, Cluster
 
 
 class CLI:
+    """
+    Command line organization
+    """
     def __init__(self):
-
-        # turn off interactive flag
-        ip.__interactive__ = 0
 
         # the parser object will be used to fill args, parsedict, and load data
         self.args = None
@@ -29,19 +30,16 @@ class CLI:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog=EPILOG)
 
-        # check for a new version of ipyrad and warn user of upgrade
-        #self.check_for_new_version()
-
-        # parse the command line to get CLI args
-        self._parse_command_line()
-        self.args = self.parser.parse_args()
+        # args is filled by parse command line to get CLI args
+        self.args: dict = None
+        self.parse_command_line()
 
         # bail if no args for 'params' or 'new'
         self.check_args()
 
         # if args.debug turn on the debugger
-        if self.args.debug:
-            ip.__interactive__ = 1
+        if self.args.logger:
+            ip.set_loglevel("DEBUG", logfile="./ipyrad_log.txt")
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
@@ -61,12 +59,14 @@ class CLI:
 
         # check that -p is accompanied by an action (-s, -r, -b)
         self._flagparams()
-        
+
         # fill parsedict with params from paramsfile
         self.parse_params()
 
         # functions below here involve an Assembly object.
         self.get_assembly()
+
+        # create a branch and exit
         if self.args.branch:
             self.branch_assembly()
             sys.exit(0)
@@ -76,7 +76,9 @@ class CLI:
 
 
     def check_args(self):
-        "user must enter -p or -n as an argument"
+        """
+        User must enter -p or -n as an argument
+        """
         if not (self.args.params or self.args.new or self.args.download or self.args.merge):
             sys.exit("\n" + "\n".join([
                 "  ipyrad command must include either -p or -n ",
@@ -85,37 +87,39 @@ class CLI:
 
 
     def parse_params(self):
-        "Parse the params file args, create and return Assembly object."
-
+        """
+        Parse the params file to a dictionary, load the project from 
+        JSON, and type check any param changes on the Assembly object.
+        """
         # check that params.txt file is correctly formatted.
         if not self.args.params:
             raise IPyradError("\n  No params file found\n")
-        elif not os.path.exists(self.args.params):
+        if not os.path.exists(self.args.params):
             raise IPyradError("\n  No params file found\n")
-        else:
-            with open(self.args.params) as paramsin:
-                lines = paramsin.readlines()
+        with open(self.args.params, 'r') as paramsin:
+            lines = paramsin.readlines()
 
         # get values from the params file lines
         vals = [i.split("##")[0].strip() for i in lines[1:] if i.strip()]
 
         # get keys in order from a tmp assembly
-        keys = [i[1:] for i in ip.Assembly('null', quiet=True).params._keys]
-        
+        keys = [i[1:] for i in ip.Assembly('null').params]
+
         # store as a dict
         self.parsedict = {str(i): j for (i, j) in zip(keys, vals)}
 
 
-    def _parse_command_line(self):
-        """ Parse CLI args."""
-
+    def parse_command_line(self):
+        """
+        Parse CLI args.
+        """
         # if no args then return help message
         if len(sys.argv) == 1:
             self.parser.print_help()
 
-        ## add arguments 
+        ## add arguments
         self.parser.add_argument(
-            '-v', '--version', 
+            '-v', '--version',
             action='version', 
             version=str(get_distribution('ipyrad')),
         )
@@ -128,10 +132,7 @@ class CLI:
         self.parser.add_argument('-q', "--quiet", action='store_true',
             help="do not print to stderror or stdout.")
 
-        self.parser.add_argument('-d', "--debug", action='store_true',
-            help="print lots more info to ipyrad_log.txt.")
-
-        self.parser.add_argument('-n', dest="new", type=str, default=None, 
+        self.parser.add_argument('-n', dest="new", type=str, default=None,
             help="create new file 'params-{new}.txt' in current directory")
 
         self.parser.add_argument('-p', dest="params", type=str, default=None,
@@ -140,7 +141,7 @@ class CLI:
         self.parser.add_argument('-s', dest="steps", type=str, default=None,
             help="Set of assembly steps to run, e.g., -s 123")
 
-        self.parser.add_argument('-b', dest="branch", type=str, default=None, 
+        self.parser.add_argument('-b', dest="branch", type=str, default=None,
             nargs="*",
             help="create new branch of Assembly as params-{branch}.txt, and " + \
             "can be used to drop samples from Assembly.")
@@ -157,79 +158,51 @@ class CLI:
             type=int, default=2,
             help="tune threading of multi-threaded binaries (Default=2)")
 
-        self.parser.add_argument("--MPI", action='store_true',
-            help="connect to parallel CPUs across multiple nodes")
+        self.parser.add_argument("--logger", action="store_true",
+            help="print info to a logfile in ./ipyrad_log.txt.")
 
         self.parser.add_argument("--ipcluster", dest="ipcluster",
             type=str, nargs="?", const="default",
-            help="connect to running ipcluster, enter profile name or profile='default'")
+            help="connect to running ipcluster, enter profile name (default='default'")
 
         self.parser.add_argument("--download", dest="download", type=str, 
         nargs="*", default=None,  # const="default",
             help="download fastq files by accession (e.g., SRP or SRR)")
 
-
-    # def _hardlog_cli(self):
-
-    #     # Log the current version. End run around the LOGGER
-    #     # so it'll always print regardless of log level.
-    #     with open(ip.__debugfile__, 'a') as logfile:
-    #         logfile.write(HEADER)
-    #         logfile.write("\n  Begin run: {}".format(
-    #             time.strftime("%Y-%m-%d %H:%M")))
-    #         logfile.write("\n  Using args {}".format(vars(self.args)))
-    #         logfile.write("\n  Platform info: {}".format(os.uname()))
+        self.args = self.parser.parse_args()
 
 
-    # def _set_logger(self):
-
-    #     ## Turn the debug output written to ipyrad_log.txt up to 11!
-    #     ## Clean up the old one first, it's cleaner to do this here than
-    #     ## at the end (exceptions, etc)
-    #     #if os.path.exists(ip.__debugflag__):
-    #     #    os.remove(ip.__debugflag__)
-
-    #     if self.args.debug:
-    #         print("  ** Enabling debug mode ** ")
-    #         ip.set_logger_level("DEBUG")
-    #         #ip._debug_on()
-    #         #atexit.register(ip._debug_off)
-
-    #     ## Only blank the log file if we're actually going to run a new
-    #     ## assembly. This used to be in __init__, but had the side effect
-    #     ## of occasionally blanking the log file in an undesirable fashion
-    #     ## for instance if you run a long assembly and it crashes and
-    #     ## then you run `-r` and it blanks the log, it's crazymaking.
-    #     if os.path.exists(ip.__debugfile__):
-    #         if os.path.getsize(ip.__debugfile__) > 50000000:
-    #             with open(ip.__debugfile__, 'w') as clear:
-    #                 clear.write("file reset")
+    def _enable_logger(self):
+        """ set logger to debugging """
+        info = [
+            f"ipyrad: {ip.__version__}", 
+            f"system: {os.uname()}",
+            f"env: {sys.prefix}",
+            f"python: {sys.executable}",
+            f"params: {self.data.params}"
+        ]
+        logger.debug(info)
 
 
     def _flagnew(self):
-        # Create a tmp assembly, call write_params to make default params.txt
-        tmpassembly = ip.Assembly(
-            self.args.new, 
-            quiet=True, 
-            cli=True, 
-            force=self.args.force,
-        )
+        """
+        Creates a tmp assembly long enough to call write_params 
+        to make default params.txt file.
+        """
+        tmp = ip.Assembly(self.args.new)
 
         # write the new params file
-        tmpassembly.write_params(
-            "params-{}.txt".format(self.args.new), 
-            force=self.args.force,
-        )
+        tmp.write_params(force=self.args.force)
 
         # print log to screen
-        print("\n  New file 'params-{}.txt' created in {}\n".format(
-            self.args.new, 
-            os.path.realpath(os.path.curdir))
-        )
+        curdir = os.path.realpath(os.path.curdir)
+        print(f"New file 'params-{self.args.new}.txt' created in {curdir}\n")
 
 
     def _flagparams(self):
-        # if params then must provide action argument with it
+        """
+        If params then must provide action argument with it
+        """
         if self.args.params:
             if not any([self.args.branch, self.args.results, self.args.steps]):
                 print("""
@@ -245,7 +218,10 @@ class CLI:
 
 
     def _flagdownload(self):
-        ## if download data do it and then exit. Runs single core in CLI. 
+        """
+        if download data do it and then exit. Runs single core in CLI. 
+        Warns and exits if sratools is not installed.
+        """
         if len(self.args.download) == 1:
             downloaddir = "sra-fastqs"
         else:
@@ -318,13 +294,10 @@ class CLI:
             self.get_assembly()
             assemblies.append(self.data)
 
-        # Do the merge
+        # Do the merge and try to save it.
         merged_assembly = ip.merge(newname, assemblies)
-
-        ## Write out the merged assembly params file and report success
-        merged_assembly.write_params("params-{}.txt".format(newname), 
-            force=self.args.force)
-
+        merged_assembly.write_params(force=self.args.force)
+        merged_assembly.save_json()
         print("\n  Merging succeeded. New params file for merged assembly:")
         print("\n    params-{}.txt\n".format(newname))
         sys.exit(0)
@@ -332,49 +305,46 @@ class CLI:
 
     def get_assembly(self):
         """ 
-        loads assembly or creates a new one and set its params from 
-        parsedict. Does not launch ipcluster. 
-        """      
-        # Be nice if the user includes the extension.
+        Loads the Assembly from the <project>/<name>.json file, then 
+        updates json settings with params from the user-friendly params
+        file, and return the updated Assembly object.
+        """
+        print(self.parsedict)
         project_dir = self.parsedict['project_dir']
         assembly_name = self.parsedict['assembly_name']
         json_file = os.path.join(project_dir, assembly_name)
         if not json_file.endswith(".json"):
             json_file += ".json"
 
-        # make sure the working directory exists.
-        if not os.path.exists(project_dir):
-            os.mkdir(project_dir)
-
         # Create new Assembly instead of loading if NEW 
         if self.args.steps:
             # starting a new assembly
             if '1' in self.args.steps:
                 if self.args.force:
-                    data = ip.Assembly(assembly_name, cli=True)
+                    data = ip.Assembly(assembly_name)
                 else:
                     if os.path.exists(json_file):
-                        raise IPyradError(_STEP_1_ASSEMBLY_EXISTS)
-                    else:
-                        data = ip.Assembly(assembly_name, cli=True)
+                        raise IPyradError(
+                            "Assembly already exists, use force to overwrite")
+                    data = ip.Assembly(assembly_name)
             else:
-                data = ip.load_json(json_file, cli=True)
+                data = ip.load_json(json_file)
         else:
-            data = ip.load_json(json_file, cli=True)
+            data = ip.load_json(json_file)
 
         # Update json assembly with params in paramsfile in case they changed
-        for key, param in self.parsedict.items():
-            if key not in ["assembly_name"]:
-                data.set_params(key, param)
-
-        # store it.
+        paramsdict = data.params.dict()
+        paramsdict.update(self.parsedict)
+        data.params = ParamsSchema(**paramsdict)
         self.data = data
 
 
     def show_stats(self):
-        "loads assembly or dies, and print stats to screen"
-
+        """
+        loads assembly or dies, and print stats to screen
+        """
         # Be nice if the user includes the extension.
+        print(self.parsedict)
         project_dir = self.parsedict['project_dir']
         assembly_name = self.parsedict['assembly_name']
         json_file = os.path.join(project_dir, assembly_name)
@@ -386,11 +356,11 @@ class CLI:
                 "Cannot find assembly {}".format(json_file))
 
         # load the assembly 
-        data = ip.load_json(json_file, quiet=True, cli=True)
+        data = ip.load_json(json_file)
         print(
             "\nSummary stats of Assembly {}".format(data.name) +
             "\n------------------------------------------------")
-        
+
         if not data.stats.empty:
             print(data.stats)
             print("\n\nFull stats files" + 
@@ -402,7 +372,7 @@ class CLI:
                 key = "s" + str(i)
                 try:
                     val = data.stats_files[key]
-                    val = val.replace(fullcurdir, ".")                
+                    val = val.replace(fullcurdir, ".")
                     print("step {}: {}".format(i, val))
                 except (KeyError, AttributeError):
                     print("step {}: None".format(i))
@@ -412,10 +382,14 @@ class CLI:
 
 
     def branch_assembly(self):
-        """ 
+        """
         Load the passed in assembly and create a branch. Copy it
         to a new assembly, and also write out the appropriate params.txt
         """
+        # make sure the working directory exists in case this branch
+        # for writing new branch.
+        if not os.path.exists(self.data.params.project_dir):
+            os.mkdir(self.data.params.project_dir)
 
         # get arguments to branch command
         bargs = self.args.branch
@@ -454,7 +428,7 @@ class CLI:
                 raise IPyradError(
                     "\n  Failed: unrecognized names, check spelling:\n  {}"
                         .format("\n  ".join([i for i in fails])))
-            
+
             # if drop then get subtract list
             if remove:
                 print("  dropping {} samples".format(len(subsamples)))
@@ -479,51 +453,41 @@ class CLI:
 
 
     def run(self):
-        """ main function """
-
+        """
+        main function to connect a cluster and run assembly steps
+        """
         if self.args.steps:
-            # print header
             print(HEADER)
-
-            # set to print headers
-            self.data._headers = 1
 
             # set CLI ipcluster terms
             self.data.ipcluster["threads"] = self.args.threads
+
+            # connect to cluster
+            cluster = Cluster()
 
             # if ipyclient is running (and matched profile) then use that one
             if self.args.ipcluster:
                 ipyclient = ipp.Client(profile=self.args.ipcluster)
                 self.data.ipcluster["cores"] = len(ipyclient)
+                cluster.ipyclient = ipyclient
 
             # if not then we need to register and launch an ipcluster instance
             else:
                 # set CLI ipcluster terms
-                ipyclient = None
-                self.data.ipcluster["cores"] = (
-                    self.args.cores if self.args.cores else detect_cpus())
-                self.data.ipcluster["engines"] = "Local"
-                if self.args.MPI:
-                    self.data.ipcluster["engines"] = "MPI"
-                    if not self.args.cores:
-                        raise IPyradError("must provide -c argument with --MPI")
+                ncores = self.data.ipcluster.get("cores", get_num_cpus())
+                cluster.start(ncores)
 
-            # get pool object
-            pool = Parallel(
-                tool=self.data, 
-                rkwargs={"steps": self.args.steps,
-                        "force": self.args.force,
-                        "quiet": self.args.quiet},
-                ipyclient=ipyclient,
-                show_cluster=True,
-                auto=True,
-                )
-            pool.wrap_run()
-        
-        # show results summary                 
+            # run jobs
+            self.data.run(
+                self.args.steps, 
+                force=self.args.force, 
+                quiet=self.args.quiet,
+                ipyclient=cluster.ipyclient,
+            )
+
+       # show results summary
         if self.args.results:
             self.show_stats()
-          
 
 
 HEADER = """
@@ -531,24 +495,23 @@ HEADER = """
   ipyrad [v.{}]
   Interactive assembly and analysis of RAD-seq data
  -------------------------------------------------------------\
- """.format(str(get_distribution('ipyrad')).split()[1])
-# ip.__version__)
+""".format(str(get_distribution('ipyrad')).split()[1])
 
 
 EPILOG = """
-  * Example command-line usage: 
-    ipyrad -n data                       ## create new file called params-data.txt 
+  * Example command-line usage:
+    ipyrad -n data                       ## create new file called params-data.txt
     ipyrad -p params-data.txt -s 123     ## run only steps 1-3 of assembly.
     ipyrad -p params-data.txt -s 3 -f    ## run step 3, overwrite existing data.
 
   * HPC parallelization across 32 cores
     ipyrad -p params-data.txt -s 3 -c 32 --MPI
 
-  * Print results summary 
-    ipyrad -p params-data.txt -r 
+  * Print results summary
+    ipyrad -p params-data.txt -r
 
   * Branch/Merging Assemblies
-    ipyrad -p params-data.txt -b newdata  
+    ipyrad -p params-data.txt -b newdata
     ipyrad -m newdata params-1.txt params-2.txt [params-3.txt, ...]
 
   * Subsample taxa during branching
@@ -560,19 +523,11 @@ EPILOG = """
   * Documentation: http://ipyrad.readthedocs.io
     """
 
-VERSION_UPDATE = """
-  A new version of ipyrad is available (v.{}). To upgrade run:
-  $ conda install -c ipyrad ipyrad
-"""
-
-_MPI_CORES_ERROR = """
-  If using --MPI you must supply the number of cores with the -c argument.
-"""
 
 _WRONG_NUM_CLI_MERGE = """
   Error: Attempting to merge assemblies but wrong number of args.
   The format for the merging command is:
-  
+
   ipyrad -m new_assembly_name params-1.txt params-2.txt
 """
 
@@ -600,10 +555,5 @@ _DOES_NOT_EXIST_MERGE = """
 """
 
 
-
-def main():
-    CLI()
-
-
 if __name__ == "__main__": 
-    main()
+    CLI()

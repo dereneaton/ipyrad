@@ -1,36 +1,27 @@
 #!/usr/bin/env python
 
-""" Scikit-learn principal componenents analysis for missing data """
+""" 
+Scikit-learn principal componenents analysis for missing data
+Several options are available for filtering and imputation. 
+If no imputation argument is provided then missing data 
+(after filtering) is filled by the randomly sampling alleles at each 
+site based on their frequency in the entire sample. If imputation
+method is set to "sampled" then alleles are randomly sampled from 
+each population in the IMAP based on frequencies.
 
-from __future__ import print_function, division
+TODO: use sampled-all by default
+TODO: set PC0 label to PC1
+TODO: allow spacing to fit long names on legend.
+"""
 
 import os
 import sys
 import itertools
 import numpy as np
 import pandas as pd
-
-# ipyrad tools
-from .snps_extracter import SNPsExtracter
-from .snps_imputer import SNPsImputer
-from ipyrad.analysis.utils import jsubsample_snps
-from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
-from ipyrad.assemble.utils import IPyradError
-
-# missing imports to be raised on class init
-try:
-    import toyplot
-    import toyplot.svg
-    import toyplot.pdf
-except ImportError:
-    pass
-
-_MISSING_TOYPLOT = """
-This ipyrad tool requires the plotting library toyplot. 
-You can install it with the following command in a terminal.
-
-conda install toyplot -c conda-forge 
-"""
+import toyplot
+import toyplot.svg
+import toyplot.pdf
 
 try:
     from sklearn import decomposition 
@@ -40,6 +31,13 @@ try:
     from sklearn.neighbors import NearestCentroid   
 except ImportError:
     pass
+
+from ipyrad.analysis.utils import jsubsample_snps
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.snps_extracter import SNPsExtracter
+from ipyrad.analysis.snps_imputer import SNPsImputer
+from ipyrad.analysis.vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
+
 
 _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
@@ -58,7 +56,7 @@ this value.
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
 
 
-class PCA(object):
+class PCA:
     """
     Principal components analysis of RAD-seq SNPs with iterative
     imputation of missing data.
@@ -73,29 +71,33 @@ class PCA(object):
         Dictionary mapping population names to a list of sample names.
     minmap: (dict; default={})
         Dictionary mapping population names to float values (X).
-        If a site does not have data across X proportion of samples for
-        each population, respectively, the site is filtered from the data set.
+        If a site does not have data across X proportion of samples 
+        for each population, respectively, the site is filtered from
+        the data set.
     mincov: (float; default=0.5)
-        If a site does not have data across this proportion of total samples
-        in the data then it is filtered from the data set.
+        If a site does not have data across this proportion of total
+        samples in the data then it is filtered from the data set.
     minmaf: float or int
-        The minimum minor allele frequency for a SNP to be retained in the
-        dataset. 
+        The minimum minor allele frequency for a SNP to be retained
+        in the dataset. 
     impute_method: (str; default='sample')
-        None, "sample", or an integer for the number of kmeans clusters.
+        None, "sample", or an integer for the number of kmeans 
+        clusters. We recommend using the default 'sample' method.
     topcov: (float; default=0.9)
         Affects kmeans method only.    
-        The most stringent mincov used as the first iteration in kmeans 
-        clustering. Subsequent iterations (niters) are equally spaced between
-        topcov and mincov. 
+        The most stringent mincov used as the first iteration in 
+        kmeans clustering. Subsequent iterations (niters) are equally 
+        spaced between topcov and mincov. 
     niters: (int; default=5)
         Affects kmeans method only.        
-        Number of iterations of kmeans clustering with decreasing mincov 
-        thresholds used to refine population clustering, and therefore to 
-        refine the imap groupings used to filter and impute sites.
+        Number of iterations of kmeans clustering with decreasing 
+        mincov thresholds used to refine population clustering, and 
+        therefore to refine the imap groupings used to filter and 
+        impute sites.
     ld_block_size: (int; default=20000)
         Only used during conversion of data imported as vcf.
-        The size of linkage blocks (in base pairs) to split the vcf data into.
+        The size of linkage blocks (in base pairs) to split the vcf 
+        data into.
 
     Functions:
     ----------
@@ -118,8 +120,6 @@ class PCA(object):
         # only check import at init
         if not sys.modules.get("sklearn"):
             raise IPyradError(_MISSING_SKLEARN)
-        if not sys.modules.get("toyplot"):
-            raise IPyradError(_MISSING_TOYPLOT)
 
         # init attributes
         self.quiet = quiet

@@ -1,1110 +1,376 @@
 #!/usr/bin/env python
 
-""" ipyrad Assembly class object. """
+"""
+Assembly class object as the main API for calling assembly steps.
+"""
 
-from __future__ import print_function
 import os
-import glob
-import sys
-import copy
-import time
-import json
-import string
-import datetime
-import itertools
-import numpy as np
+import shutil
+import traceback
+from typing import List, Optional
+from loguru import logger
 import pandas as pd
-import ipyrad as ip
-
-from collections import OrderedDict
-from ipyrad.assemble.utils import IPyradError, ObjDict, BADCHARS
-from ipyrad.core.paramsinfo import paraminfo, paramname
-from ipyrad.core.Parallel import Parallel
-from ipyrad.core.params import Params, Hackers
-
-pd.set_option('display.max_colwidth', 250)
-    
-
-class Assembly(object):
-    """ 
-    An ipyrad Assembly class object.
-
-    The core object in ipyrad used to store and retrieve results, to
-    call assembly functions, and to link to Sample objects.
-
-    Parameters
-    ----------
-    name : str
-        A name should be passed when creating a new Assembly object.
-        This name will be used as a prefix for all files saved to disk
-        associated with this Assembly. It is automatically set as the
-        prefix name (parameter 14).
+from ipyparallel import Client
+from ipyrad.core.params_schema import ParamsSchema, HackersSchema
+from ipyrad.core.schema import Project, SampleSchema
+from ipyrad.core.parallel import Cluster
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.s1_demux import Step1
+from ipyrad.assemble.s2_trim_reads import Step2
+from ipyrad.assemble.s3_clustmap_within import Step3
+from ipyrad.assemble.s4_joint_estimate import Step4
+from ipyrad.assemble.s5_consensus import Step5
+from ipyrad.assemble.s6_clustmap_across import Step6
+from ipyrad.assemble.s7_assemble import Step7
 
 
-    Attributes
-    ----------
-    name : str
-        A name for the Assembly object. Used for all saved files on disk.
-    samples : dict
-        Returns a dict with Sample names as keys and Sample objects as values.
-    barcodes : dict
-        Returns a dictionary with Sample names as keys and barcodes as values.
-        The barcodes information is fetched from parameter 3
-        '[Assembly].params.barcodes_path'
-
-    Functions
-    ---------
-    run(step, force, ipyclient)
-        runs step x of assembly
-    write_params(filehandle, force)
-        writes params dictionary to params.txt file format
-
-
-    Returns
-    -------
-    object
-         A new assembly object is returned.
+class Assembly:
     """
-    def __init__(self, name, **kwargs):
+    Returns a new Assembly class instance with default parameter
+    settings. The first steps of an API analysis typically involves
+    initializing a new Assembly, setting params, and then calling
+    self.run() to start running assembly steps.
+    """
+    def __init__(self, name:str):
 
-        # If using CLI then "cli" is included in kwargs
-        self._cli = False
-        if kwargs.get("cli"):
-            self._cli = True           
-
-        # this is False and only updated during .run()
-        self.quiet = False
-
-        # No special characters in assembly name
-        check_name(name)      
-        self.name = name
-        if (not kwargs.get("quiet")) and (not self._cli):
-            self._print("New Assembly: {}".format(self.name))
-
-        # Default ipcluster launch info
-        self.ipcluster = {
-            "cluster_id": "",
-            "profile": "default",
-            "engines": "Local",
-            "quiet": 0,
-            "timeout": 120,
-            "cores": 0,  # detect_cpus(),
-            "threads": 2,
-            "pids": {},
-        }
-        # ipcluster settings can be set during init using kwargs
-        for key, val in kwargs.items():
-            if key in self.ipcluster:
-                self.ipcluster[key] = val
-
-        # statsfiles is a dict with file locations
-        # stats_dfs is a dict with pandas dataframes
-        self.stats_files = ObjDict({})
-        self.stats_dfs = ObjDict({})
-
-        # samples linked {sample-name: sample-object}
+        # core JSON file components
+        self.params = ParamsSchema(assembly_name=name)
+        self.hackers = HackersSchema()
         self.samples = {}
 
-        # populations {popname: poplist}
-        self.populations = {}
+        # optional dict for setting cluster config.
+        self.ipcluster = {
+            "cores": 0,
+            "threads": 2,
+        }
 
-        # multiplex files linked
-        self.barcodes = {}
-
-        # outfiles locations
-        self.outfiles = ObjDict()
-        self.outfiles.loci = ""
-
-        # storing supercatg file
-        self.clust_database = ""
-        self.snps_database = ""
-        self.seqs_database = ""
-
-        ## the default params dict
-        self.params = Params(self)
-        self.hackersonly = Hackers()
-
-        ## Store data directories for this Assembly. Init with default project
-        self.dirs = ObjDict({
-            "project": os.path.realpath(self.params.project_dir),
-            "fastqs": "",
-            "edits": "",
-            "clusts": "",
-            "consens": "",
-            "across": "",
-            "outfiles": "",
-        })
-
-
-    def __str__(self):
+    def __repr__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
 
     @property
-    def _spacer(self):
-        """ return print spacer for CLI versus API """
-        if self._cli:
-            return "  "
-        return ""
+    def name(self):
+        """shortcut to return the assembly_name from params"""
+        return self.params.assembly_name
 
+    @property
+    def json_file(self):
+        """JSON file is project_dir/assembly_name.json"""
+        return os.path.join(
+            self.params.project_dir,
+            self.params.assembly_name + ".json"
+        )
+
+    @property
+    def is_ref(self):
+        """shortcut attribute returns whether Assembly is reference method"""
+        return self.params.assembly_method == "reference"
+
+    @property
+    def is_pair(self):
+        """shortcut attribute returns whether Assembly is paired datatype"""
+        return "pair" in self.params.datatype
 
     @property
     def stats(self):
-        """ Returns a data frame with Sample data and state. """
-        nameordered = list(self.samples.keys())
-        nameordered.sort()
-
-        ## Set pandas to display all samples instead of truncating
-        pd.options.display.max_rows = len(self.samples)
-        statdat = pd.DataFrame(
-            data=[self.samples[i].stats for i in nameordered],
-            index=nameordered,
-        ).dropna(axis=1, how='all')
-        # ensure non h,e columns print as ints
-        for column in statdat:
-            if column not in ["hetero_est", "error_est"]:
-                statdat[column] = np.nan_to_num(statdat[column]).astype(int)
-
-        # build step 6-7 stats from database
-        # ...
-
-        return statdat
-
-
-    @property
-    def files(self):
-        """ Returns a data frame with Sample files. Not very readable... """
-        nameordered = list(self.samples.keys())
-        nameordered.sort()
-        ## replace curdir with . for shorter printing
-        sdf = pd.DataFrame(
-            data=[self.samples[i].files for i in nameordered],
-            index=nameordered,
-        ).dropna(axis=1, how='all')
-        return sdf
-
-
-    def save(self):
         """
-        Save the Assembly object in JSON format. Writes to [workdir][name].json
+        Returns a dataframe with *summarized stats* extracted from the
+        project JSON file given the current completed assembly steps.
+        To see more detailed stats from specific steps see instead
+        the self.stats_dfs.
         """
-        save_json(self)
+        # using self object (any cases where we need to load from json?)
+        # self.save_json
 
+        # dataframe to fill
+        stats = pd.DataFrame(
+            index=sorted(self.samples),
+            columns=[
+                'state',
+                'reads_raw',
+                'reads_passed_filter',
+                'clusters_total',
+                'clusters_hidepth',
+                'mean_depth_total',
+                'reads_mapped_to_ref_prop',
+                'consensus_total',
+                'heterozygosity',
+                'nloci',
+            ],
+        )
+        for sname in stats.index:
+            sample = self.samples[sname]
 
-    def _print(self, value):
-        if not self.quiet:
-            print("{}{}".format(self._spacer, value))
+            # ref does only step7
+            if sname == "reference":
+                if sample.stats_s7:
+                    stats.loc[sname, 'nloci'] = sample.stats_s7.nloci
+                continue
 
+            # other samples do all steps.
+            stats.loc[sname, 'state'] = sample.state
+            stats.loc[sname, 'reads_raw'] = sample.stats_s1.reads_raw
 
-    def _progressbar(self, njobs, finished, start, msg):
-
-        # bail
-        if self.quiet:
-            return
-        # measure progress
-        if njobs:
-            progress = 100 * (finished / float(njobs))
-        else:
-            progress = 100
-
-        # build the bar
-        hashes = '#' * int(progress / 5.)
-        nohash = ' ' * int(20 - len(hashes))
-
-        # timestamp
-        elapsed = datetime.timedelta(seconds=int(time.time() - start))
-
-        # print to stderr
-        if self._cli:
-            print("\r{}[{}] {:>3}% {} | {:<12} ".format(
-                self._spacer,
-                hashes + nohash,
-                int(progress),
-                elapsed,
-                msg[0],
-            ), end="")
-        else:
-            print("\r{}[{}] {:>3}% {} | {:<12} | {} |".format(*[
-                self._spacer,
-                hashes + nohash,
-                int(progress),
-                elapsed,
-                msg[0],
-                msg[1],
-            ]), end="")
-        sys.stdout.flush()
-
-
-    def _build_stat(self, idx):
-        """ 
-        Returns an Assembly stats data frame rom Sample stats data frames.
-        e.g., data.stats_dfs.s1 = self.build_stats("s1")
-        """
-        # build steps 1-5 stats from samples
-        nameordered = list(self.samples.keys())
-        nameordered.sort()
-        newdat = pd.DataFrame(
-            (self.samples[i].stats_dfs[idx] for i in nameordered),
-            index=nameordered,
-        ).dropna(axis=1, how='all')
-        return newdat
-
-
-    def _link_barcodes(self):
-        """
-        Parses Sample barcodes to a dictionary from 'barcodes_path'. This 
-        function is called whenever a barcode-ish param is changed. 
-        # This is called by Params()
-        """
-        # find barcodefile
-        barcodefile = glob.glob(self.params.barcodes_path)
-        if not barcodefile:
-            raise IPyradError(
-                "Barcodes file not found. You entered: {}"
-                .format(self.params.barcodes_path))
-
-        # read in the file
-        bdf = pd.read_csv(barcodefile[0], header=None, delim_whitespace=1)
-        bdf = bdf.dropna()
-
-        # make sure bars are upper case
-        bdf[1] = bdf[1].str.upper()
-
-        # if replicates are present
-        if bdf[0].value_counts().max() > 1:
-
-            # print a warning about dups if the data are not demultiplexed
-            if not self.samples:
-                self._print(
-                    "Warning: technical replicates (same name) present.")
-
-            # get duplicated names
-            repeated = (bdf[0].value_counts() > 1).index
-
-            # adds label to ONLY replicates which will stay permanently
-            if not self.hackersonly.merge_technical_replicates:
-                # labels technical reps in barcode dict
-                for rep in repeated:
-                    farr = bdf[bdf[0] == rep]
-                    if farr.shape[0] > 1:
-                        for idx, index in enumerate(farr.index):
-                            bdf.loc[index, 0] = (
-                                "{}-technical-replicate-{}".format(rep, idx))
-
-            # adds tmp label to ALL sample which will be removed by end of s1
+            if sample.stats_s2:
+                value = sample.stats_s2.reads_passed_filter
             else:
-                # labels technical reps in barcode dict
-                for rep in repeated:
-                    farr = bdf[bdf[0] == rep]
-                    for idx, index in enumerate(farr.index):
-                        bdf.loc[index, 0] = (
-                            "{}-technical-replicate-{}".format(rep, idx))
-                                
-        # make sure chars are all proper
-        if not all(bdf[1].apply(set("RKSYWMCATG").issuperset)):
-            raise IPyradError(BAD_BARCODE)
+                value = pd.NA
+            stats.loc[sname, 'reads_passed_filter'] = value
 
-        # store barcodes as a dict
-        self.barcodes = dict(zip(bdf[0], bdf[1]))
+            if sample.stats_s3:
+                value = sample.stats_s3.clusters_total
+            else:
+                value = pd.NA
+            stats.loc[sname, 'clusters_total'] = value
 
-        # 3rad/seqcap use multiplexed barcodes
-        if "3rad" in self.params.datatype:
-            if not bdf.shape[1] == 3:
-                raise IPyradError(
-                    "pair3rad datatype should have two barcodes per sample.")
-        
-            # We'll concatenate them with a plus and split them later
-            bdf[2] = bdf[2].str.upper()
-            self.barcodes = dict(zip(bdf[0], bdf[1] + "+" + bdf[2]))
+            if sample.stats_s3:
+                value = sample.stats_s3.clusters_hidepth
+            else:
+                value = pd.NA
+            stats.loc[sname, 'clusters_hidepth'] = value
 
-        # check barcodes sample names
-        backup = self.barcodes 
-        self.barcodes = {}
-        for key, value in backup.items():
-            key = "".join([
-                i.replace(i, "_") if i in BADCHARS else i for i in str(key)
-            ])
-            self.barcodes[key] = value
+            if sample.stats_s3:
+                value = sample.stats_s3.mean_depth_total
+            else:
+                value = pd.NA
+            stats.loc[sname, 'mean_depth_total'] = value
+
+            if sample.stats_s3:
+                value = sample.stats_s3.reads_mapped_to_ref_prop
+            else:
+                value = pd.NA
+            stats.loc[sname, 'reads_mapped_to_ref_prop'] = value
+
+            if sample.stats_s5:
+                value = sample.stats_s5.consensus_total
+            else:
+                value = pd.NA
+            stats.loc[sname, 'consensus_total'] = value
+
+            if sample.stats_s5:
+                value = sample.stats_s5.heterozygosity
+            else:
+                value = pd.NA
+            stats.loc[sname, 'heterozygosity'] = value
+
+            if sample.stats_s7:
+                value = sample.stats_s7.nloci
+            else:
+                value = pd.NA
+            stats.loc[sname, 'nloci'] = value
+
+        # drop columns that are all NAN
+        stats = stats.dropna(axis=1, how="all")
+        return stats
 
 
-    def _link_populations(self, popdict=None, popmins=None):
+    def branch(self, name:str, subsample:List[str]=None) -> 'Assembly':
         """
-        Creates self.populations dictionary to save mappings of individuals to
-        populations/sites, and checks that individual names match with Samples.
-        The self.populations dict keys are pop names and the values are lists
-        of length 2. The first element is the min number of samples per pop
-        for final filtering of loci, and the second element is the list of
-        samples per pop.
+        Returns a new branched Assembly class instance.
 
-        Population assigments are used for heirarchical clustering, for
-        generating summary stats, and for outputing some file types (.treemix
-        for example). Internally stored as a dictionary.
+        The new object will have the same parameter settings as the
+        current object, and inherits the same sample histories, but
+        will write to a different name prefix path
+        going forward.
 
-        Note
-        ----
-        By default a File is read in from `pop_assign_file` with one individual
-        per line and space separated pairs of ind pop:
+        Creating a new branch does not write a JSON until you either
+        run an Assembly step by calling .run() or call .save_json()
 
-            ind1 pop1
-            ind2 pop2
-            ind3 pop3
-            etc...
-
-        Parameters
-        ----------
-        popdict : dict
-            When using the API it may be easier to simply create a dictionary
-            to pass in as an argument instead of reading from an input file.
-            This can be done with the `popdict` argument like below:
-
-            pops = {'pop1': ['ind1', 'ind2', 'ind3'], 'pop2': ['ind4', 'ind5']}
-            [Assembly]._link_populations(popdict=pops).
-
-        popmins : dict
-            If you want to apply a minsamples filter based on populations
-            you can add a popmins dictionary. This indicates the number of 
-            samples in each population that must be present in a locus for 
-            the locus to be retained. Example:
-
-            popmins = {'pop1': 3, 'pop2': 2}
-
+        Examples:
+        ---------
+        data1 = ip.Assembly("data1")
+        data1.params.sorted_fastq_path = "./data/*.gz"
+        data1.run('1')
+        data2 = data1.branch("data2", subsample=['1A_0', '1B_0'])
+        data2.run('2')
         """
-        if not popdict:
-            ## glob it in case of fuzzy matching
-            popfile = glob.glob(self.params.pop_assign_file)[0]
-            if not os.path.exists(popfile):
-                raise IPyradError(
-                    "Population assignment file not found: {}"
-                    .format(self.params.pop_assign_file))
+        # create new names Assembly and copy over all params except name
+        branch = Assembly(name)
+        params = self.params.dict()
+        params['assembly_name'] = name
+        branch.params = ParamsSchema(**params)
+        branch.hackers = HackersSchema(**self.hackers.dict())
 
-            try:
-                ## parse populations file
-                popdat = pd.read_csv(
-                    popfile, header=None,
-                    delim_whitespace=1,
-                    names=["inds", "pops"], 
-                    comment="#",
-                    dtype=str)
-
-                popdict = {
-                    key: group.inds.values.tolist() for key, group in
-                    popdat.groupby("pops")}
-
-                ## parse minsamples per population if present (line with #)
-                mindat = [
-                    i.lstrip("#").lstrip().rstrip() for i in 
-                    open(popfile, 'r').readlines() if i.startswith("#")]
-
-                if mindat:
-                    popmins = {}
-                    for i in range(len(mindat)):
-                        minlist = mindat[i].replace(",", "").split()
-                        popmins.update({i.split(':')[0]: int(i.split(':')[1])
-                                        for i in minlist})
-                else:
-                    raise IPyradError(MIN_SAMPLES_PER_POP_MALFORMED)
-
-            except (ValueError, IOError):
-                raise IPyradError(
-                    "  Populations file malformed - {}".format(popfile))
-
+        # copy over all or just a subsamples of the samples.
+        if subsample is None:
+            branch.samples = {
+                i: SampleSchema(**self.samples[i].dict()) for i in self.samples
+            }
         else:
-            ## pop dict is provided by user
-            if not popmins:
-                popmins = {i: 1 for i in popdict}
-
-        # Validate sample names in popdict with respect to actual sample names
-        # in the assembly. If no self.samples this means we're in state 1, so
-        # just ignore for now.
-        if len(self.samples.keys()):
-            popdict_not_in_samples = [
-                i for i in itertools.chain(*popdict.values())
-                if i not in self.samples.keys()]
-
-            samples_not_in_popdict = [
-                i for i in self.samples.keys()
-                if i not in itertools.chain(*popdict.values())]
-            if len(popdict_not_in_samples) or len(samples_not_in_popdict):
-                raise IPyradError(POPDICT_SAMPLES_MISSPECIFIED.format(\
-                                                        popdict_not_in_samples,
-                                                        samples_not_in_popdict))
-
-        ## If popmins not set, just assume all mins are zero
-        if not popmins:
-            popmins = {i: 0 for i in popdict.keys()}
-
-        ## check popmins
-        ## cannot have higher min for a pop than there are samples in the pop
-        popmax = {i: len(popdict[i]) for i in popdict}
-        if not all([popmax[i] >= popmins[i] for i in popdict]):
-            raise IPyradError(
-                " minsample per pop value cannot be greater than the " +
-                " number of samples in the pop. Modify the populations file.")
-
-        ## return dict
-        self.populations = {i: (popmins[i], popdict[i]) for i in popdict}
+            branch.samples = {
+                i: SampleSchema(**self.samples[i].dict())
+                for i in self.samples if i in subsample
+            }
+            for i in subsample:
+                if i not in self.samples:
+                    logger.warning(f"sample name {i} does not exist.")
+        return branch
 
 
-    def get_params(self, param=""):
-        "Pretty prints parameter settings to stdout"
-        return self.params
-
-
-    def set_params(self, param, newvalue):
+    def write_params(self, force:bool=False) -> None:
         """
-        Set a parameter to a new value in a verbose way. 
-        Raises error if newvalue is wrong type.
-        Use .get_params() or .params to see current assembly parameters. 
-
-        Parameters
-        ----------
-        param : int or str
-            The index (e.g., 1) or string name (e.g., "project_dir")
-            for the parameter that will be changed.
-
-        newvalue : int, str, or tuple
-            The new value for the parameter selected for `param`. Use
-            `ipyrad.get_params_info()` to get further information about
-            a given parameter. If the wrong type is entered for newvalue
-            (e.g., a str when it should be an int), an error will be raised.
-            Further information about each parameter is also available
-            in the documentation.
-
-        Examples
-        --------
-        ## param 'project_dir' takes only a str as input
-        [Assembly].set_params('project_dir', 'new_directory')
-
-        ## param 'restriction_overhang' must be a tuple or str, if str it is
-        ## converted to a tuple with the second entry empty.
-        [Assembly].set_params('restriction_overhang', ('CTGCAG', 'CCGG')
-
-        ## param 'max_shared_Hs_locus' can be an int or a float:
-        [Assembly].set_params('max_shared_Hs_locus', 0.25)
-
-        ## Simpler alternative: set attribute directly
-        [Assembly].params.max_shared_Hs_locus = 0.25
+        Write a CLI params file to <workdir>/params-<name>.txt with
+        the current params in this Assembly.
         """
-        # check param in keys
-        if "_" + param not in self.params._keys:
-            raise IPyradError(
-                "Parameter key not recognized: {}".format(param))
+        outfile = f"params-{self.name}.txt"
 
-        # set parameter newvalue
-        setattr(self.params, param, newvalue)
-
-
-    def write_params(self, outfile=None, force=False):
-        """ 
-        Write out the parameters of this assembly to a file properly
-        formatted as input for `ipyrad -p <params.txt>`. A good and
-        simple way to share/archive parameter settings for assemblies.
-        This is also the function that's used by __main__ to
-        generate default params.txt files for `ipyrad -n`
-        """
-        if outfile is None:
-            outfile = "params-{}.txt".format(self.name)
-
-        ## Test if params file already exists?
-        ## If not forcing, test for file and bail out if it exists
+        # Test if params file already exists?
+        # If not forcing, test for file and bail out if it exists
         if not force:
-            if os.path.isfile(outfile):
-                raise IPyradError(PARAMS_EXISTS.format(outfile))
+            if os.path.exists(outfile):
+                raise IPyradError(
+                    f"file {outfile} exists, you must use force to overwrite")
 
-        with open(outfile, 'w') as paramsfile:
-            ## Write the header. Format to 80 columns
-            header = "------- ipyrad params file (v.{})".format(ip.__version__)
-            header += ("-" * (80 - len(header)))
-            paramsfile.write(header + "\n")
-
-            ## Whip through the current params and write out the current
-            ## param value, the ordered dict index number. Also,
-            ## get the short description from paramsinfo. Make it look pretty,
-            ## pad nicely if at all possible.
-            params_string = []
-            for key in self.params._keys:
-                val = getattr(self.params, key)
-
-                # If multiple elements, write them out comma separated
-                if isinstance(val, list) or isinstance(val, tuple):
-                    paramvalue = ", ".join([str(i) for i in val])
+        params = self.params.dict()
+        with open(outfile, 'w') as out:
+            print("---------- ipyrad params file " + "-" * 80, file=out)
+            for idx, param in enumerate(params):
+                value = params.get(param)
+                if isinstance(value, (tuple, list)):
+                    value = ", ".join(map(str, value))
                 else:
-                    paramvalue = str(val)
-
-                padding = (" " * (30 - len(paramvalue)))
-                paramkey = self.params._keys.index(key)
-                paramindex = " ## [{}] ".format(paramkey)
-                name = "[{}]: ".format(paramname(paramkey))
-                description = paraminfo(paramkey, short=True)
-                params_string.append(
-                    "".join([
-                        paramvalue,
-                        padding,
-                        paramindex,
-                        name,
-                        description])
-                    )
-            # write the params string
-            paramsfile.write("\n".join(params_string) + "\n")
+                    value = str(value) if value else ""
+                print(
+                    f"{value.ljust(40)}## [{idx}] {param}: {PARAMSINFO[idx]}",
+                    file=out,
+                )
 
 
-
-    def branch(self, newname, subsamples=None, force=False):
+    def save_json(self) -> None:
         """
-        Returns a copy of the Assembly object. Does not allow Assembly
-        object names to be replicated in namespace or path.
+        Save the current Assembly object to the project JSON file
+        (<project_dir>/<name>.json)
         """
-        # get full JSON file path of new name
-        exists = os.path.exists(os.path.join(
-            self.params.project_dir, 
-            "{}.json".format(newname)
-        ))
-
-        # Error if new name already exists and not forced overwrite
-        if (newname == self.name) & exists & (not force):
-            raise IPyradError(
-                "Assembly object {} already exists. Use force to overwrite."
-                .format(newname))
-
-        # Make sure the new name doesn't have any wacky characters
-        check_name(newname)
-
-        # Bozo-check. Carve off 'params-' if it's in the new name.
-        if newname.startswith("params-"):
-            newname = newname.split("params-")[1]
-
-        # create a copy of the Assembly obj
-        newobj = copy.deepcopy(self)
-        newobj.name = newname
-        newobj.params._assembly_name = newname
-
-        # create copies of each subsampled Sample obj
-        if subsamples:
-            for sname in subsamples:
-                if sname in self.samples:
-                    newobj.samples[sname] = copy.deepcopy(self.samples[sname])
-                else:
-                    if sname != "reference":
-                        print("Sample name not found: {}".format(sname))
-
-            # reload sample dict w/o non subsamples
-            newobj.samples = {
-                name: sample for name, sample in newobj.samples.items() 
-                if name in subsamples}
-
-        # create copies of each subsampled Sample obj
-        else:
-            for sample in self.samples:
-                newobj.samples[sample] = copy.deepcopy(self.samples[sample])
-
-        ## save json of new obj and return object
-        newobj.save()
-        return newobj
+        project = Project(
+            params=ParamsSchema(**self.params.dict()),
+            hackers=HackersSchema(**self.hackers.dict()),
+            samples={sname: self.samples[sname] for sname in self.samples},
+        )
+        with open(self.json_file, 'w') as out:
+            out.write(project.json(indent=4, exclude_none=True))
+        logger.debug(f"wrote to {self.json_file}")
 
 
-    def _compatible_params_check(self):
-        "check params that must be compatible at run time"
-
-        # do not allow statistical < majrule
-        val1 = self.params.mindepth_statistical
-        val2 = self.params.mindepth_majrule
-        if val1 < val2:
-            raise IPyradError(
-                "mindepth_statistical cannot be < mindepth_majrule")
-        # other params to check ...
-
-
-    def run(self, 
-        steps=None,
-        force=False,
-        ipyclient=None, 
-        quiet=False,
-        show_cluster=True, 
-        auto=False):
+    def run(
+        self,
+        steps:str,
+        force:bool=False,
+        quiet:bool=False,
+        ipyclient:Optional[Client]=None,
+        **kwargs,
+        ) -> None:
         """
-        Run assembly steps (1-7) of an ipyrad analysis.
-        
-        Parameters:
-        ===========
-        steps: (str, default=None)
-            The steps of assembly to run, e.g., "123", "1234567".
-        force: (bool, default=False)
-            Whether to overwrite an existing assembly with the same name.
-        ipyclient: (obj, default=None)
-            An ipyparallel.Client() object to tune parallelization. See
-            docs for details. Or, use auto=True. 
-        quiet: (bool, default=False)
-            Print progress information to stdout.
-        show_cluster: (bool, default=False)
-            Print parallelization information to stdout.
-        auto: (bool, default=False)
-            Automatically launch an ipcluster instance for parallelization 
-            of this run and shut it down when finished. 
+        Run one or more assembly steps (1-7) of an ipyrad assembly.
+
+        Parameters
+        ----------
+        steps: str
+            A string of steps to run, e.g., "1", or "123".
+        force: bool
+            Force overwrite of existing results for this step.
+        quiet: bool
+            Suppress printed outputs to stdout.
+        ipyclient: Optional[ipyparallel.Client]
+            Optional ipyparallel client to connect to for distributing
+            jobs in parallel. This option is generally only useful if
+            you start a Client using MPI to connect to multiple nodes
+            of an HPC cluster. Otherwise, just configure the local
+            cluster parallelization using the .ipcluster attribute.
         """
-        # save assembly at state of run start
-        self.save()
-        
-        # hide all messages/progress bars       
-        self.quiet = quiet
+        # save the current JSON file (and a backup?)
+        self.save_json()
 
-        # check that mindepth params are compatible, fix and report warning.
-        self._compatible_params_check()
-
-        # distribute filling jobs in parallel
-        pool = Parallel(
-            tool=self,
-            rkwargs={"steps": steps, "force": force},
-            ipyclient=ipyclient,
-            show_cluster=show_cluster,
-            auto=auto,
-            )
-        pool.wrap_run()
-
-
-    def _run(
-        self, 
-        steps=None, 
-        force=False, 
-        ipyclient=None, 
-        show_cluster=False,
-        auto=False,
-        quiet=False,
-        ):
-        """
-        Run subfunction run inside parallel wrapper.
-        """
-        # function dictionary
-        stepdict = {
-            "1": ip.assemble.demultiplex.Step1,
-            "2": ip.assemble.rawedit.Step2, 
-            "3": ip.assemble.clustmap.Step3,
-            "4": ip.assemble.jointestimate.Step4, 
-            "5": ip.assemble.consens_se.Step5, 
-            "6": ip.assemble.clustmap_across.Step6, 
-            "7": ip.assemble.write_outputs.Step7,
-        }
-         
-        # require steps
-        if steps is None:
-            print("You must enter one or more steps to run, e.g., '123'")
-            return 
-
-        # hide all messages/progress bars
-        self.quiet = quiet
-
-        # run step fuctions and save and clear memory after each
-        for step in steps:
-            stepdict[step](self, force, ipyclient).run()
-            self.save()
-            ipyclient.purge_everything()
-
-
-
-class Encoder(json.JSONEncoder):
-    """ 
-    Save JSON string with tuples embedded as described in stackoverflow
-    thread. Modified here to include dictionary values as tuples.
-    link: http://stackoverflow.com/questions/15721363/
-
-    This Encoder Class is used as the 'cls' argument to json.dumps()
-    """
-    def encode(self, obj):
-        """ function to encode json string"""
-        def hint_tuples(item):
-            """ embeds __tuple__ hinter in json strings """
-            if isinstance(item, tuple):
-                return {'__tuple__': True, 'items': item}
-            if isinstance(item, list):
-                return [hint_tuples(e) for e in item]
-            if isinstance(item, dict):
-                return {
-                    key: hint_tuples(val) for key, val in item.items()
-                }
-            else:
-                return item
-        return super(Encoder, self).encode(hint_tuples(obj))
-
-
-
-def default(o):
-    # https://stackoverflow.com/questions/11942364/
-    # typeerror-integer-is-not-json-serializable-when-
-    # serializing-json-in-python?utm_medium=organic&utm_
-    # source=google_rich_qa&utm_campaign=google_rich_qa
-    if isinstance(o, np.int64): 
-        return int(o)  
-    raise TypeError
-
-
-def save_json(data):
-    """ 
-    Save assembly and samples as json 
-    ## data as dict
-    #### skip ipcluster because it's made new
-    #### statsfiles save only keys
-    #### samples save only keys
-    """
-    # store params without the reference to Assembly object in params
-    paramsdict = data.params.__dict__
-    paramsdict = {i: j for (i, j) in paramsdict.items() if i != "_data"}
-
-    # store all other dicts
-    datadict = OrderedDict([
-        ("name", data.__dict__["name"]), 
-        ("dirs", data.__dict__["dirs"]),
-        ("paramsdict", paramsdict),
-        ("samples", list(data.__dict__["samples"].keys())),
-        ("populations", data.__dict__["populations"]),
-        ("clust_database", data.__dict__["clust_database"]),        
-        ("snps_database", data.__dict__["snps_database"]),
-        ("seqs_database", data.__dict__["seqs_database"]),
-        ("outfiles", data.__dict__["outfiles"]),
-        ("barcodes", data.__dict__["barcodes"]),
-        ("stats_files", data.__dict__["stats_files"]),
-        ("hackersonly", data.hackersonly._data),
-    ])
-
-    ## sample dict
-    sampledict = OrderedDict([])
-    for key, sample in data.samples.items():
-        sampledict[key] = sample._to_fulldict()
-
-    ## json format it using cumstom Encoder class
-    fulldumps = json.dumps({
-        "assembly": datadict,
-        "samples": sampledict
-    },
-        cls=Encoder,
-        sort_keys=False, indent=4, separators=(",", ":"),
-        default=default,
-    )
-
-    ## save to file
-    assemblypath = os.path.join(data.params.project_dir, data.name + ".json")
-    if not os.path.exists(data.dirs.project):
-        os.mkdir(data.dirs.project)
-    
-    ## protect save from interruption
-    done = 0
-    while not done:
+        # init the ipyparallel cluster class wrapper
+        cluster = Cluster(quiet=quiet)
         try:
-            with open(assemblypath, 'w') as jout:
-                jout.write(fulldumps)
-            done = 1
-        except (KeyboardInterrupt, SystemExit): 
-            print('.')
-            continue
-
-
-def merge(name, assemblies, rename_dict=None):
-    """
-    Creates and returns a new Assembly object in which samples from two or more
-    Assembly objects with matching names are 'merged'. Merging does not affect 
-    the actual files written on disk, but rather creates new Samples that are 
-    linked to multiple data files, and with stats summed. Rename dict should 
-    have each sample as a key and the new name for that sample as value. If 
-    two or more samples have the same new name (value) then they are merged.
-
-    # merge two assemblies
-    new = ip.merge('newname', (assembly1, assembly2))
-
-    # merge two assemblies and rename samples
-    rename = {"1A_0", "A", "1B_0", "A"}
-    new = ip.merge('newname', (assembly1, assembly2), rename_dict=rename)
-
-    """
-    # null rename dict if empty
-    if not rename_dict:
-        rename_dict = {}
-
-    # Correct bad character names in rename dict
-    for key, value in rename_dict.items():
-        value = "".join([
-            i.replace(i, "_") if i in BADCHARS else i for i in value
-        ])
-        rename_dict[key] = value
-
-    # create new Assembly
-    merged = Assembly(name)
-
-    # one or multiple assemblies?
-    try:
-        _ = len(assemblies)
-    except TypeError:
-        assemblies = [assemblies]
-
-    # inherit workdir
-    merged.params.project_dir = assemblies[0].params.project_dir
-
-    # inherit params setting from first assembly
-    for key in assemblies[0].params._keys[5:]:
-        value = getattr(assemblies[0].params, key)
-        setattr(merged.params, key, value)
-
-    # A flag to set if there are technical replicates among merging
-    # assemblies, so we can print a helpful message.
-    any_replicates = False
-
-    # iterate over all sample names from all Assemblies
-    for data in assemblies:
-
-        # make a deepcopy
-        ndata = copy.deepcopy(data)
-        for sname, sample in ndata.samples.items():
-
-            # rename sample if in rename dict
-            if sname in rename_dict:
-                sname = rename_dict[sname]
-                sample.name = sname
-
-            # is it in the merged assembly already
-            if sname in merged.samples:
-                msample = merged.samples[sname]
-
-                # update stats
-                msample.stats.reads_raw += sample.stats.reads_raw
-                if sample.stats.reads_passed_filter:
-                    msample.stats.reads_passed_filter += (
-                        sample.stats.reads_passed_filter)
-
-                # append files
-                if sample.files.fastqs:
-                    msample.files.fastqs += sample.files.fastqs
-                if sample.files.edits:
-                    msample.files.edits += sample.files.edits
-
-                # do not allow state >2 at merging (requires reclustering)
-                # if merging WITHIN samples. Set the flag so we can inform
-                # the user after all the samples have been handled
-                if sample.stats.state > 2:
-                    msample.stats.state = 2
-                    any_replicates = True
-
-            # merge its stats and files
-            else:
-                merged.samples[sname] = sample
-
-    # Merged assembly inherits max of hackers values (max frag length)
-    merged.hackersonly.max_fragment_length = max(
-        [i.hackersonly.max_fragment_length for i in assemblies])
-
-    # Set the values for some params that don't make sense inside mergers
-    merged_names = ", ".join([i.name for i in assemblies])
-    merged.params.raw_fastq_path = "Merged: " + merged_names
-    merged.params.barcodes_path = "Merged: " + merged_names
-    merged.params.sorted_fastq_path = "Merged: " + merged_names
-
-    if any_replicates:
-       print(MERGED_TECHNICAL_REPLICATES)
-
-    # return the new Assembly object
-    merged.save()
-    return merged
-
-
-def check_name(name):
-    invalid_chars = (
-        string.punctuation.replace("_", "").replace("-", "") + " ")
-    if any(char in invalid_chars for char in name):
-        raise IPyradError(BAD_ASSEMBLY_NAME.format(name))
-
-
-
-### ERROR MESSAGES ###################################
-UNKNOWN_EXCEPTION = """\
-{}Encountered an unexpected error (see ./ipyrad_log.txt)"+\
-{}Error message is below -------------------------------"+\
-{}
-"""
-
-IPYRAD_EXCEPTION = """\
-
-"""
-
-MISSING_PAIRFILE_ERROR = """\
-    Paired file names must be identical except for _R1_ and _R2_. 
-    Example, there are not matching files for samples: \n{}
-    """
-
-PAIRED_FILENAMES_ERROR = """\
-    Fastq filenames are malformed. R1 must contain the string _R1_ and
-    R2 must be identical to R1, excepting the replacement of _R2_ for _R1_.
-    """
-
-REF_NOT_FOUND = """\
-    "Warning: reference sequence file not found. This must be an absolute path
-    (/home/wat/ipyrad/data/reference.gz) or relative to the directory where
-    you're running ipyrad (./data/reference.gz). You entered:
-    {}
-    """
-
-SORTED_NOT_FOUND = """\
-    Error: fastq sequence files in sorted_fastq_path could not be found.
-    Please check that the location was entered correctly and that a wild
-    card selector (*) was used to select all or a subset of files.
-    You entered: {}
-    """
-
-SORTED_ISDIR = """\
-    Error: You entered the path to a directory for sorted_fastq_path. To
-    ensure the correct files in the directory are selected, please use a
-    wildcard selector to designate the desired files.
-    Example: /home/user/data/*.fastq   ## selects all files ending in '.fastq'
-    You entered: {}
-    """
-
-CANNOT_CHANGE_ASSEMBLY_NAME = """\
-    Warning: Assembly name is set at Assembly creation time and is an immutable
-    property: You may, however, branch the assembly which will create a copy
-    with a new name, but retain a copy of the original Assembly. Here's how:
-
-    Command Line Interface:
-        ipyrad -p params-old-name.txt -b new-name
-
-    API (Jupyter Notebook Users):
-        new_assembly = my_assembly.branch("new_name")
-    """
-
-REQUIRE_ASSEMBLY_NAME = """\
-    Assembly name _must_ be set. This is the first parameter in the params.txt
-    file, and will be used as a prefix for output files. It should be a short
-    string with no special characters, i.e., not a path (no \"/\" characters).
-    If you need a suggestion, name it after the organism you're working on.
-    """
-
-REQUIRE_REFERENCE_PATH = """\
-    Assembly method '{}' requires a 'reference_sequence' in parameter settings.
-    """
-
-BAD_ASSEMBLY_NAME = """\
-    No spaces or special characters of any kind are allowed in the assembly 
-    name. Special characters include all punctuation except dash '-' and 
-    underscore '_'. A good practice is to replace spaces with underscores '_'.
-    An example of a good assembly_name is: white_crowned_sparrows 
-    
-    Here's what you put:
-    {}
-    """
-
-MERGED_TECHNICAL_REPLICATES = """\
-    NB: One or more samples are present in one or more of the merged assemblies,
-    and are beyond step 3. Technical replicates need to be clustered within
-    samples so YOU MUST  re-run these samples from at least step 3.
-    """
-
-BAD_BARCODE = """\
-    One or more barcodes contain invalid IUPAC nucleotide code characters.
-    Barcodes must contain only characters from this list "RKSYWMCATG".
-    Doublecheck your barcodes file is properly formatted.
-    """
-
-POPDICT_SAMPLES_MISSPECIFIED = """\n\
-    The sample names in the assembly disagree with sample names in the
-    pop_assign_file. Sample names in the pop_assign_file must exactly match
-    sample names in the assembly, and you must specify a population for each
-    sample in the assembly.
-
-    Names in the pop_assign_file that do not appear in the assembly:
-        {}
-
-    Samples in the assembly that are not specified in the pop_assign_file:
-        {}
-
-    NB: If you recently branched and removed samples you need to create a _new_
-    pop_assign_file which contains only the samples you retained in the new
-    branch (see https://github.com/dereneaton/ipyrad/issues/375).
-    """
-
-MIN_SAMPLES_PER_POP_MALFORMED = """\n\
-    Population assignment file must include a line indicating the minimum
-    number of samples per population. This line should come at the end
-    of the file and should be preceded by a hash sign (#), e.g.:
-
-    # pop1:3 pop2:3 pop3:3
-    """
-
-BAD_PARAMETER = """\
-    Error setting parameter '{}'
-    {}
-    You entered: {}
-    """
-
-PARAMS_EXISTS = """
-    Error: Params file already exists: {}
-    Use force argument to overwrite.
-    """
-
-EDITS_EXIST = """\
-    Skipping: All {} selected Samples already edited.
-    (can overwrite with force argument)\
-    """
-
-CLUSTERS_EXIST = """\
-    Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)\
-    """
-JOINTS_EXIST = """\
-    Skipping: All {} selected Samples already joint estimated
-    (can overwrite with force argument)\
-    """
-
-CONSENS_EXIST = """\
-    Skipping: All {} selected Samples already consensus called
-    (can overwrite with force argument)\
-    """
-
-DATABASE_EXISTS = """\
-    Skipping: All {} selected Samples already clustered.
-    (can overwrite with force argument)\
-    """
-
-NOT_CLUSTERED_YET = """\
-    The following Samples do not appear to have been clustered in step6
-    (i.e., they are not in {}).
-    Check for typos in Sample names, or try running step6 including the
-    selected samples.
-
-    Missing: {}
-    """
-
-OUTPUT_EXISTS = """\
-    Output files already created for this Assembly in:
-    {}
-    To overwrite, rerun using the force argument. 
-    """
-
-FIRST_RUN_1 = """\
-    No Samples found. First run step 1 to load raw or demultiplexed fastq
-    files from the raw_fastq_path or sorted_fastq_path, respectively.
-    """
-
-FIRST_RUN_2 = """\
-    No Samples ready to be clustered. First run step 2.
-    """
-
-FIRST_RUN_3 = """\
-    No Samples ready for estimation. First run step 3.
-    """
-
-FIRST_RUN_4 = """\
-    No Samples ready for consensus calling. First run step 4.
-    """
-
-FIRST_RUN_5 = """\
-    No Samples ready for clustering. First run step 5.
-"""
-
-FIRST_RUN_6 = """\
-    Database file {} not found. First run step 6.
-"""
-
-########################################################
+            # establish connection to a new or running ipyclient
+            cores = kwargs.get('cores', self.ipcluster['cores'])
+            cluster.start(cores=cores, ipyclient=ipyclient)
+
+            # use client for any/all steps of assembly
+            for step in steps:
+                tool = step_map[step](self, force, quiet, cluster.ipyclient)
+                tool.run()
+                # shutil.rmtree(tool.tmpdir)   # uncomment when not testing.
+
+        except KeyboardInterrupt:
+            logger.warning("keyboard interrupt by user, cleaning up.")
+
+        # AssemblyProgressBar logs the traceback
+        except IPyradError as inst:
+            logger.error(f"An error occurred:\n{inst}")
+            print("An error occurred, see logfile and below.")
+            raise
+
+        # logger.error logs the traceback
+        except Exception as inst:
+            logger.error(
+                "An unexpected error occurred, see logfile "
+                f"and trace:\n{traceback.format_exc()}")
+            raise
+
+        finally:
+            cluster.cleanup_safely(None)
+
+
+# PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
+PARAMSINFO = {
+    0: "Prefix name for output files",
+    1: "Output file path (created if absent)",
+    2: "Path to non-demultiplexed fastq data",
+    3: "Path to barcodes file",
+    4: "Path to a demultiplexed fastq data",
+    5: "Assembly method ('denovo' or 'reference')",
+    6: "Path to a reference genome fasta file",
+    7: "Datatype (rad, gbs, pairddrad, etc)",
+    8: "One or two sequences viewable in read data",
+    9: "Bases with Q<20",
+    10: "33 is default, much older data may be 64",
+    11: "Cutoff for making statistical base calls",
+    12: "Only used if < min_depth_statistical",
+    13: "Clusters with > max_depth are excluded",
+    14: "Sequence similarity cutoff for denovo clustering",
+    15: "Matching cutoff for demultiplexing",
+    16: "2=default, 1=only quality filtering, 0=no filtering",
+    17: "Reads shorter after trimming are excluded",
+    18: "Consensus quality filter (max integer)",
+    19: "Consensus quality filter (max proportion)",
+    20: "Consensus quality filter (max proportion)",
+    21: "Locus quality filter (min integer)",
+    22: "Locus quality filter (max proportion)",
+    23: "Locus quality filter (max integer)",
+    24: "Locus quality filter (max proportion)",
+    25: "Pre-align trim edges (R1>, <R1, R2>, <R2)",
+    26: "Post-align trim edges (R1>, <R1, R2>, <R2)",
+    27: "See documentation",
+    28: "Path to population assignment file",
+    29: "Reads mapped to this reference fasta are removed",
+}
 
 
 
 if __name__ == "__main__":
-    ## test...
-    DATA = Assembly("test")
-    DATA.get_params()
-    DATA.set_params(1, "./")
-    DATA.get_params()
-    print(DATA.log)
+
+    import ipyrad as ip
+    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
+
+    TEST = ip.Assembly("PEDIC2")
+    TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    TEST.write_params(True)
+    # TEST.params.project_dir = "/tmp"
+    # TEST.run('12', force=True, quiet=True)
+    # print(TEST.stats)
+
+    # TEST = ip.Assembly("TEST1")
+    # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"
+    # TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    # TEST.params.project_dir = "/tmp"
+    # TEST.params.max_barcode_mismatch = 1
+    # TEST.run('1', force=True, quiet=True)
+
+    # data = ip.Assembly('TEST')
+    # data.params.project_dir = "/tmp"
+    # data.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.fastq.gz"
+    # data.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    # data.run("1", force=True, quiet=True)
+    # print(data.stats)
+

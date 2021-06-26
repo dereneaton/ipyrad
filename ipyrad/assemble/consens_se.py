@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-"call consensus base calls on paired or single-end stacks/contigs"
+"""
+Call consensus base calls on paired or single-end stacks/contigs
+"""
 
 # py2/3 compatible
 from __future__ import print_function
@@ -20,24 +22,58 @@ import warnings
 import subprocess as sps
 from collections import Counter
 
+from loguru import logger
 import numpy as np
 import pandas as pd
 import scipy.stats
 
 import ipyrad as ip
-from .jointestimate import recal_hidepth
-from .utils import IPyradError, clustdealer, PRIORITY
+from ipyrad.assemble.jointestimate import recal_hidepth
+from ipyrad.assemble.utils import IPyradError, clustdealer, PRIORITY
+from ipyrad.assemble.utils import AssemblyProgressBar
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=FutureWarning)
     import h5py
 
-# TODO NOTES
-# - chunksizes are too big on tortas test data when ncpus=4
+
+
+TRANS = {
+    (71, 65): 82,
+    (71, 84): 75,
+    (71, 67): 83,
+    (84, 67): 89,
+    (84, 65): 87,
+    (67, 65): 77,
+    (65, 67): 77,
+    (65, 84): 87,
+    (67, 84): 89,
+    (67, 71): 83,
+    (84, 71): 75,
+    (65, 71): 82,
+}
+
+
+DCONS = {
+    82: (71, 65),
+    75: (71, 84),
+    83: (71, 67),
+    89: (84, 67),
+    87: (84, 65),
+    77: (67, 65),
+    78: (9, 9),
+    45: (9, 9),
+    67: (67, 67),
+    65: (65, 65),
+    84: (84, 84),
+    71: (71, 71),
+}
+
 
 class Step5:
-    "Organized Step 5 functions for all datatype and methods"
-
+    """
+    Organized Step 5 functions for all datatype and methods
+    """
     def __init__(self, data, force, ipyclient):
         self.data = data
         self.force = force
@@ -50,6 +86,9 @@ class Step5:
 
 
     def print_headers(self):
+        """
+        print headers for the CLI
+        """
         if self.data._cli:
             self.data._print(
                 "\n{}Step 5: Consensus base/allele calling "
@@ -57,9 +96,11 @@ class Step5:
             )
 
 
-    def get_subsamples(self):
-        "Apply state, ncluster, and force filters to select samples"
 
+    def get_subsamples(self):
+        """
+        Apply state, ncluster, and force filters to select samples
+        """
         # bail out if no samples ready
         if not hasattr(self.data.stats, "state"):
             raise IPyradError("No samples ready for step 5")
@@ -122,9 +163,11 @@ class Step5:
         return checked_samples
 
 
-    def setup_dirs(self):
-        "setup directories, remove old tmp files"
 
+    def setup_dirs(self):
+        """
+        setup directories, remove old tmp files
+        """
         # final results dir
         self.data.dirs.consens = os.path.join(
             self.data.dirs.project, 
@@ -169,96 +212,88 @@ class Step5:
             self.ncpus = len(self.ipyclient.ids)
 
 
+
     def run(self):
-        "run the main functions on the parallel client"
-        # this isn't setup yet to allow restarting if interrupted mid run
-        try:
-            self.remote_calculate_depths()
-            self.remote_make_chunks()
-            statsdicts = self.remote_process_chunks()
-            self.remote_concatenate_chunks()
-            self.data_store(statsdicts)
-        except Exception as inst:
-            print("Exception in step 5: {}".format(inst))
-            raise
-        finally:
-            #shutil.rmtree(self.data.tmpdir)
-            self.data.save()
+        """
+        Run the main functions on the parallel client
+        """
+        self.remote_calculate_depths()
+        self.remote_make_chunks()
+        statsdicts = self.remote_process_chunks()
+        self.remote_concatenate_chunks()
+        self.data_store(statsdicts)
+        self.data.save()
+
 
 
     def remote_calculate_depths(self):
-        "checks whether mindepth has changed and calc nclusters and maxlen"
+        """
+        Checks whether mindepth has changed and calc nclusters and maxlen
+        """
         # send jobs to be processed on engines
         start = time.time()
         printstr = ("calculating depths  ", "s5")
+        prog = AssemblyProgressBar({}, start, printstr, self.data)
+        prog.update()
+
         jobs = {}
         maxlens = []
         for sample in self.samples:
-            jobs[sample.name] = self.lbview.apply(
-                recal_hidepth,
-                *(self.data, sample))
+            rasync = self.lbview.apply(recal_hidepth, *(self.data, sample))
+            jobs[sample.name] = rasync
 
         # block until finished
-        while 1:
-            ready = [i.ready() for i in jobs.values()]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                self.data._print("")
-                break
+        prog.jobs = jobs
+        prog.block()
+        prog.check()
 
         # check for failures and collect results
         for sample in self.samples:
             hidepth, maxlen, _, _ = jobs[sample.name].get()
-            # recal_hidepth(self.data, sample)
-            # (not saved) stat values are for majrule min
             sample.stats["clusters_hidepth"] = hidepth
             sample.stats_dfs.s3["clusters_hidepth"] = hidepth
             maxlens.append(maxlen)
         
         # update hackersdict with max fragement length
         self.data.hackersonly.max_fragment_length = max(maxlens)
+        logger.debug("max_fragment_length set to {}".format(max(maxlens)))
+
 
 
     def remote_make_chunks(self):
-        "split clusters into chunks for parallel processing"
-
-        # first progress bar
-        start = time.time()
+        """
+        split clusters into chunks for parallel processing
+        """
         printstr = ("chunking clusters   ", "s5")
+        prog = AssemblyProgressBar({}, None, printstr, self.data)
+        prog.update()
 
         # send off samples to be chunked
         jobs = {}
         for sample in self.samples:
-            jobs[sample.name] = self.lbview.apply(
-                make_chunks,
-                *(self.data, sample, len(self.ipyclient)))
+            args = (self.data, sample, len(self.ipyclient))
+            rasync = self.lbview.apply(make_chunks, *args)
+            jobs[sample.name] = rasync
 
         # block until finished
-        while 1:
-            ready = [i.ready() for i in jobs.values()]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                self.data._print("")
-                break
+        prog.jobs = jobs
+        prog.block()
+        prog.check()
 
-        # check for failures
-        for sample in self.samples:
-            if not jobs[sample.name].successful():
-                jobs[sample.name].get()
 
 
     def remote_process_chunks(self):
-        "process the cluster chunks into arrays and consens or bam files"
-
+        """
+        Process the cluster chunks into arrays and consens or bam files
+        """
         # send chunks to be processed
         start = time.time()
-        jobs = {sample.name: [] for sample in self.samples}
         printstr = ("consens calling     ", "s5")
-        self.data._progressbar(1, 0, start, printstr)
+        prog = AssemblyProgressBar({}, start, printstr, self.data)
+        prog.update()
 
         # submit jobs (10 per sample === can be hundreds of jobs...)
+        jobs = {sample.name: [] for sample in self.samples}
         for sample in self.samples:
             chunks = glob.glob(os.path.join(
                 self.data.tmpdir,
@@ -267,26 +302,16 @@ class Step5:
 
             # submit jobs
             for chunk in chunks:
-                jobs[sample.name].append(
-                    self.lbview.apply(
-                        process_chunks,
-                        *(self.data, sample, chunk, self.isref)))
-                self.data._progressbar(1, 0, start, printstr)
+                args = (self.data, sample, chunk, self.isref)
+                rasync = self.lbview.apply(process_chunks, *args)
+                jobs[sample.name].append(rasync)
                
         # track progress - just wait for all to finish before concat'ing
-        allsyncs = list(chain(*[jobs[i] for i in jobs]))
-        while 1:
-            ready = [i.ready() for i in allsyncs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.5)
-            if len(ready) == sum(ready):
-                self.data._print("")
-                break
-
-        # check for failures
-        for job in allsyncs:
-            if not job.successful():
-                job.get()
+        allsyncs = chain(*[jobs[i] for i in jobs])
+        prog.jobs = dict(enumerate(allsyncs))
+        prog.update()
+        prog.block()
+        prog.check()
 
         # collect all results for a sample and store stats 
         statsdicts = {}
@@ -295,63 +320,51 @@ class Step5:
         return statsdicts
 
 
+
     def remote_concatenate_chunks(self):
-        "concatenate chunks and relabel for joined chunks"
+        """
+        Concatenate chunks and relabel for joined chunks. This spends
+        most of its time storing CATG data that will probably not be used,
+        but is important for saving SNP depths info.
+        """
         # concatenate and store catgs
         start = time.time()
         printstr = ("indexing alleles    ", "s5")
-        self.data._progressbar(1, 0, start, printstr)
+        prog = AssemblyProgressBar({1:1}, start, printstr, self.data)
+        prog.update()
 
         # concat catgs for each sample
         asyncs1 = {}
         for sample in self.samples:
-            asyncs1[sample.name] = self.lbview.apply(
-                concat_catgs,                
-                *(self.data, sample, self.isref))
+            args = (self.data, sample, self.isref)
+            asyncs1[sample.name] = self.lbview.apply(concat_catgs, *args)
 
-        # collect all results for a sample and store stats 
+        # select the next job
         if self.isref:
             concat_job = concat_reference_consens
         else:
             concat_job = concat_denovo_consens
+
+        # collect all results for a sample and store stats 
         asyncs2 = {}
         for sample in self.samples:
-            asyncs2[sample.name] = self.lbview.apply(
-                concat_job,
-                *(self.data, sample))
+            args = (self.data, sample)
+            rasync = self.lbview.apply(concat_job, *args)
+            asyncs2[sample.name] = rasync
             
         # track progress of stats storage
         alljobs = list(asyncs1.values()) + list(asyncs2.values())
-        while 1:
-            ready = [i.ready() for i in alljobs]
-            self.data._progressbar(len(ready), sum(ready), start, printstr)
-            time.sleep(0.1)
-            if len(ready) == sum(ready):
-                self.data._print("")
-                break
+        prog.jobs = dict(enumerate(alljobs))
+        prog.update()
+        prog.block()
+        prog.check()
 
-        # check for failures:
-        # Don't die if only one or a couple samples fail
-        failjobs = []
-        for job in alljobs:
-            if not job.successful():
-                try:
-                    job.get()
-                except Exception as inst:
-                    # inst here is RemoteError, so unpack the content
-                    failjobs.append(inst.evalue)
-
-        if len(failjobs) == len(alljobs):
-            raise IPyradError("All failed:\n{}".format("\n".join(failjobs)))
-        elif len(failjobs) > 1:
-            print("{} failed step 5\n{}".format(len(failjobs), "\n".join(failjobs)))
-        else:
-            pass
 
 
     def data_store(self, statsdicts):
-        "store assembly object stats"
-        
+        """
+        Store assembly object stats
+        """       
         # store sample stats
         for sample in self.samples:
             store_sample_stats(self.data, sample, statsdicts[sample.name])
@@ -379,9 +392,12 @@ class Step5:
                 })
 
 
-def make_chunks(data, sample, ncpus):
-    "split job into bits and pass to the client"
 
+
+def make_chunks(data, sample, ncpus):
+    """
+    Split job into bits and pass to the client
+    """
     # counter for split job submission
     num = 0
 
@@ -414,47 +430,71 @@ def make_chunks(data, sample, ncpus):
                 with open(chunkhandle, 'wt') as outchunk:
                     outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
                 num += 1
+    logger.debug("chunked {} to {} files".format(sample.files.clusters, num))
+
 
 
 def process_chunks(data, sample, chunkfile, isref):
+    """
+    Remote callable function to use Processor class instance
+    """
     proc = Processor(data, sample, chunkfile, isref)
     proc.run()
     return proc.counters, proc.filters     
 
 
+
 class Processor:
+    """
+    The consensus calling process that calls alleles and genotypes and
+    applies filters to consens seqs.
+    """
     def __init__(self, data, sample, chunkfile, isref):
+
+        # input params
         self.data = data
         self.sample = sample
         self.chunkfile = chunkfile
         self.isref = isref
 
-        # prepare the processor
-        self.set_params()
-        self.init_counters()
-        self.init_arrays()        
-        self.chroms2ints()
-
-    def run(self):
-        self.process_chunk()
-        self.write_chunk()
-
-    def set_params(self):
-        # set max limits
+        # set max limits and params from data
         self.nalleles = 1
         self.tmpnum = int(self.chunkfile.split(".")[-1])
         self.optim = int(self.chunkfile.split(".")[-2])
-        self.este = self.data.stats.error_est.mean()
-        self.esth = self.data.stats.hetero_est.mean()
+        self.est_err = self.data.stats.error_est.mean()
+        self.est_het = self.data.stats.hetero_est.mean()
         self.maxlen = self.data.hackersonly.max_fragment_length
         self.maxhet = self.data.params.max_Hs_consens
+<<<<<<< HEAD
         self.maxn = self.data.params.max_Ns_consens
         self.maxa = self.data.params.max_alleles_consens
+=======
+        self.maxalleles = self.data.params.max_alleles_consens
+
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         # not enforced for ref
+        self.maxn = self.data.params.max_Ns_consens
         if self.isref:
             self.maxn = int(1e6)
-        
-    def init_counters(self):
+
+        # target attrs to be filled
+        self.counters = {}
+        self.filters = {}
+        self.storeseqs = {}
+
+        # tmp attrs to be filled
+        self.names = None
+        self.seqs = None
+        self.ref_position = None
+        self.consens = None
+        self.hidx = None
+        self.nheteros = None
+
+        # local copies to use to fill the arrays
+        self.catarr = np.zeros((self.optim, self.maxlen, 4), dtype=np.uint32)
+        self.nallel = np.zeros((self.optim, ), dtype=np.uint8)
+        self.refarr = np.zeros((self.optim, 3), dtype=np.int64)
+
         # store data for stats counters.
         self.counters = {
             "name": self.tmpnum,
@@ -468,19 +508,16 @@ class Processor:
             "depth": 0,
             "maxh": 0,
             "maxn": 0,
+<<<<<<< HEAD
             "maxa": 0,
+=======
+            "maxalleles": 0,
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         }
 
         # store data for writing
         self.storeseq = {}
 
-    def init_arrays(self):
-        # local copies to use to fill the arrays
-        self.catarr = np.zeros((self.optim, self.maxlen, 4), dtype=np.uint32)
-        self.nallel = np.zeros((self.optim, ), dtype=np.uint8)
-        self.refarr = np.zeros((self.optim, 3), dtype=np.int64)
-
-    def chroms2ints(self):
         # if reference-mapped then parse the fai to get index number of chroms
         if self.isref:
             fai = pd.read_csv(
@@ -491,37 +528,74 @@ class Processor:
             self.faidict = {j: i for i, j in enumerate(fai.scaffold)}
             self.revdict = {j: i for i, j in self.faidict.items()}
 
-    # ---------------------------------------------
+
+    def run(self):
+        """
+        The main function to run the processor
+        """
+        self.process_chunk()
+        self.write_chunk()
+
+
     def process_chunk(self):
-        # stream through the clusters
+        """
+        iterate over clusters processing each sequentially.
+        """
+        logger.debug("consens calling on {}".format(self.chunkfile))
+
+        # load 2 lines at a time to get <name> <sequence>
         inclust = open(self.chunkfile, 'rb')
         pairdealer = izip(*[iter(inclust)] * 2)
         done = 0
+
+        # stream through the clusters
         while not done:
+
+            # repeat pairdealer until an entire cluster is pulled in.
+            # returns 1 if it reaches the end of the file.
             done, chunk = clustdealer(pairdealer, 1)
-            if chunk:  
 
-                # fills .name and .seqs attributes
-                self.parse_cluster(chunk)
+            # if chunk was returned then process it.
+            if not chunk:
+                continue
 
-                # return 1 if enough reads at this locus position
-                if self.filter_mindepth():
+            # fills .name and .seqs attributes
+            # seqs is uint8 with missing as 78 or 45                
+            self.parse_cluster(chunk)
 
-                    # return 1 if enough overlapping bases for calls
-                    # and fills .consens and .arrayed attributes
-                    if self.build_consens_and_array():
+            # denovo only: mask repeats (drops lowcov sites w/ dashes) and
+            # converts remaining dashes to Ns
+            if not self.isref:
+                # return 1 if entire seq was not masked
+                if self.mask_repeats():
+                    continue
 
-                        # denovo only: mask repeats
-                        if not self.isref:
-                            # drops false columns from consens and arrayed
-                            self.mask_repeats()
+            # return 1 if cov > mindepth_mj (or >max), filter[depth] + 1
+            if self.filter_mindepth():
+                continue
 
-                        # fills .hidx and .nheteros
-                        self.get_heteros()
+            # fills .consens with genotype calls and trims .seqs
+            # consens is uint8 with all missing as Ns (78)
+            triallele = self.new_build_consens()
 
-                        # return 1 if not too many heterozygote calls
-                        if self.filter_maxhetero():
+            # simple 3rd-allele filter, filter[maxallele] + 1
+            # Returns 1 if allele not allowed. See also allele filter.
+            if self.filter_triallele(triallele):
+                continue
 
+            # fills .hidx and .nheteros
+            self.get_heteros()
+
+            # return 1 if too many heterozygote sites
+            if self.filter_maxhetero():
+                continue
+
+            # return 1 if too many N or too short
+            # maxN set arbitrarily high for REF to allow contig-building.
+            if self.filter_max_n_min_len():
+                continue
+
+<<<<<<< HEAD
                             # return 1 if not too many N or too short 
                             if self.filter_maxN_minLen():
                                 
@@ -531,22 +605,43 @@ class Processor:
                                 if self.filter_max_alleles():
                                     # store result
                                     self.store_data()
+=======
+            # Infer haplotypes from reads at variable geno sites
+            if self.nheteros > 1:
+                if self.filter_alleles():
+                    continue
+
+            # store result
+            self.store_data()
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
 
         # cleanup close handle
         inclust.close()
 
 
+
     def parse_cluster(self, chunk):
-        "read in cluster chunk to get .names & .seqs and ref position"
+        """
+        Read in cluster chunk to get .names & .seqs and ref position
+        """
         # get names and seqs
         piece = chunk[0].decode().strip().split("\n")
         self.names = piece[0::2]
-        self.seqs = piece[1::2]
+        seqs = piece[1::2]
+        reps = [int(n.split(";")[-2][5:]) for n in self.names]
 
-        # pull replicate read info from seqs
-        self.reps = [int(n.split(";")[-2][5:]) for n in self.names]
+        # fill array with copies of each seq
+        sarr = np.zeros((sum(reps), len(seqs[0])), dtype=np.uint8)
+        idx = 0
+        for ireps, iseq in zip(reps, seqs):
+            for _ in range(ireps):
+                sarr[idx] = np.array(list(iseq)).astype(bytes).view(np.uint8)
+                idx += 1
 
-        # ref positions
+        # trim array to allow maximum length
+        self.seqs = sarr[:, :self.maxlen]
+
+        # ref positions (chromint, pos_start, pos_end)
         self.ref_position = (-1, 0, 0)
         if self.isref:
             # parse position from name string
@@ -560,141 +655,256 @@ class Processor:
             self.ref_position = (int(chromint), int(pos0), int(pos1))
 
 
-    def filter_mindepth(self):
-        "return 1 if READ depth > minimum param"
-        bool1 = sum(self.reps) >= self.data.params.mindepth_majrule
-        bool2 = sum(self.reps) <= self.data.params.maxdepth
-        # return that this cluster passed filtering
-        if bool1 & bool2:       
-            return 1
-
-        # return that this cluster was filtered out
-        self.filters['depth'] += 1
-        return 0
-
-
-    def build_consens_and_array(self):
-        """
-        Makes base calls and converts - to N and trims terminal Ns. Setting 
-        internal - to Ns makes handling the insert of paired reference mapped
-        data much better... but puts N's into denovo data where we might other
-        wise choose to drop those columns... Think more about this...
-        """
-        # get stacks of base counts
-        sseqs = [list(seq) for seq in self.seqs]
-        arrayed = np.concatenate(
-            [[seq] * rep for (seq, rep) in zip(sseqs, self.reps)]
-        ).astype(bytes)
-
-        # ! enforce maxlen limit !
-        self.arrayed = arrayed[:, :self.maxlen]
-                    
-        # get unphased consens sequence from arrayed
-        self.consens = base_caller(
-            self.arrayed, 
-            self.data.params.mindepth_majrule, 
-            self.data.params.mindepth_statistical,
-            self.esth, 
-            self.este,
-        )
-
-        # trim Ns from the left and right ends
-        mask = self.consens.copy()
-        mask[mask == b"-"] = b"N"
-        trim = np.where(mask != b"N")[0]
-
-        # bail out b/c no bases were called 
-        if not trim.size:
-            self.filters['depth'] += 1
-            return 0
-
-        else:
-            ltrim, rtrim = trim.min(), trim.max()
-            self.consens = self.consens[ltrim:rtrim + 1]
-            self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
-
-            # update position for trimming
-            self.ref_position = (
-                self.ref_position[0], 
-                self.ref_position[1] + ltrim,
-                self.ref_position[1] + ltrim + rtrim + 1,
-            )
-            return 1
-
 
     def mask_repeats(self):
         """
         Removes mask columns with low depth repeats from denovo clusters.
         """
-        # get column counts of -s        
-        idepths = np.sum(self.arrayed == b"-", axis=0).astype(float)
+        # get column counts of dashes
+        idepths = np.sum(self.seqs == 45, axis=0).astype(float)
 
-        # get proportion of bases that are - at each site
-        props = idepths / self.arrayed.shape[0] 
+        # get proportion of bases that are dashes at each site
+        props = idepths / self.seqs.shape[0] 
 
-        # is proportion of - sites more than 0.8?
-        keep = np.invert(props >= 0.8)
+        # if proportion of dashes sites is more than 0.8?
+        keep = props < 0.9
 
-        # apply filter
-        self.consens = self.consens[keep]
-        self.arrayed = self.arrayed[:, keep]            
+        # report to logger
+        # if np.any(props >= 0.9):
+        #     logger.debug(
+        #         "repeat masked {}:\n{}"
+        #         .format(np.where(~keep)[0], self.seqs[:, ~keep])
+        #     )
 
+        # drop sites from seqs
+        self.seqs = self.seqs[:, keep]
+        self.seqs[self.seqs == 45] = 78
 
-    def get_heteros(self):
-        self.hidx = [
-            i for (i, j) in enumerate(self.consens) if 
-            j.decode() in list("RKSYWM")]
-        self.nheteros = len(self.hidx)
-
-
-    def filter_maxhetero(self):
-        "Return 1 if it PASSED the filter, else 0"
-        if self.nheteros > (len(self.consens) * self.maxhet):
-            self.filters['maxh'] += 1
-            return 0
-        return 1
-
-
-    def filter_maxN_minLen(self):
-        "Return 1 if it PASSED the filter, else 0"        
-        if self.consens.size >= self.data.params.filter_min_trim_len:
-            nns = self.consens[self.consens == b"N"].size
-            if nns > (len(self.consens) * self.maxn):
-                self.filters['maxn'] += 1
-                return 0
+        # apply filter in case ALL sites were dropped
+        if not self.seqs.size:
             return 1
         return 0
 
 
+
+    def filter_mindepth(self):
+        """
+        return 1 if READ depth < minimum
+        """
+        sumreps = self.seqs.shape[0]
+        bool1 = sumreps >= self.data.params.mindepth_majrule
+        bool2 = sumreps <= self.data.params.maxdepth
+        if bool1 & bool2:       
+            return 0
+
+        # return that this cluster was filtered out
+        self.filters['depth'] += 1
+        return 1
+
+
+
+    def new_build_consens(self):
+        """
+        Replace function below using int arrays. 
+        Returns 1 if evidence of a triallele.
+        """
+        # get unphased genotype call of this sequence
+        consens, triallele = new_base_caller(
+            self.seqs, 
+            self.data.params.mindepth_majrule, 
+            self.data.params.mindepth_statistical, 
+            self.est_het, 
+            self.est_err,
+        )
+
+        # TODO: for denovo we could consider trimming Ns from internal
+        # split near pair separator, applied here.
+        # ...
+
+        # trim Ns (uncalled genos) from the left and right
+        trim = np.where(consens != 78)[0]
+        ltrim = trim.min()
+        rtrim = trim.max() + 1
+        self.consens = consens[ltrim: rtrim]
+        self.seqs = self.seqs[:, ltrim: rtrim]
+
+        # update position for trimming
+        self.ref_position = (
+            self.ref_position[0], 
+            self.ref_position[1] + ltrim,
+            self.ref_position[1] + ltrim + rtrim,
+        )
+        return triallele
+
+
+
+    def filter_triallele(self, triallele):
+        """
+        A simple filter on 3rd alleles if only allowing max 2
+        """
+        if triallele:
+            if self.data.params.max_alleles_consens < 3:
+                self.filters['maxalleles'] += 1
+                return 1
+        return 0
+
+
+
+    def get_heteros(self):
+        """
+        Record the indices of heterozygous sites which will be used
+        to identify the number of alleles at this locus. Easier to 
+        redo this now after the seqs have been trimmed.
+
+        # ambiguous sites
+               R   K   S   Y   W   M
+        array([82, 75, 83, 89, 87, 77], dtype=uint8)
+        """
+        hsites = np.any([
+            self.consens == 82,
+            self.consens == 75,
+            self.consens == 83,
+            self.consens == 89,
+            self.consens == 87,
+            self.consens == 77,                                                            
+        ], axis=0)
+
+        self.hidx = np.where(hsites)[0]
+        self.nheteros = self.hidx.size
+
+
+
+    def filter_maxhetero(self):
+        """
+        Return 1 if it PASSED the filter, else 0
+        """
+        if self.nheteros > (self.consens.size * self.maxhet):
+            self.filters['maxh'] += 1
+            return 1
+        return 0
+
+
+
+    def filter_max_n_min_len(self):
+        """
+        Return 1 if it PASSED the filter, else 0. The minLen filter
+        here is treated the same as maxN since Ns compose the adjacent
+        edges of the locus that were uncalled.
+        """
+        # trimmed too short in size then count as maxN
+        if self.consens.size < self.data.params.filter_min_trim_len:
+            self.filters['maxn'] += 1
+            return 1
+        if (self.consens == 78).sum() > (self.consens.size * self.maxn):
+            self.filters['maxn'] += 1
+            return 1
+        return 0
+
+
+<<<<<<< HEAD
     #def get_alleles(self):
     def filter_max_alleles(self):
+=======
+
+    def filter_alleles(self):
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         """
-        denovo only.
         Infer the number of alleles from haplotypes.
+        
+        Easy case:
+        AAAAAAAAAATAAAAAAAAAACAAAAAAAA
+        AAAAAAAAAACAAAAAAAAAATAAAAAAAA
+
+        T,C
+        C,T
+
+        Challenging case:
+        AAAAAAAAAATAAAAAAAA-----------
+        AAAAAAAAAACAAAAAAAA-----------
+        -------------AAAAAAAACAAAAAAAA
+        -------------AAAAAAAATAAAAAAAA
+
+        T -
+        C -
+        - C
+        - T
+        ---------
         """
-        # if less than two Hs then there is only one allele
-        if len(self.hidx) < 2:
-            self.nalleles = 1
-        else:
-            # array of hetero sites
-            harray = self.arrayed[:, self.hidx]
-            # remove reads with - or N at variable site
-            harray = harray[~np.any(harray == b"-", axis=1)]
-            harray = harray[~np.any(harray == b"N", axis=1)]
-            # get counts of each allele (e.g., AT:2, CG:2)
-            ccx = Counter([tuple(i) for i in harray])
+        # array of hetero sites (denovo: this can include Ns)
+        harray = self.seqs[:, self.hidx]
 
-            # remove low freq alleles if more than 2, since they may reflect
-            # seq errors at hetero sites, making a third allele, or a new
-            # allelic combination that is not real.
-            if len(ccx) > 2:
-                totdepth = harray.shape[0]
-                cutoff = max(1, totdepth // 10)
-                alleles = [i for i in ccx if ccx[i] > cutoff]
-            else:
-                alleles = ccx.keys()
+        # remove varsites containing N
+        harray = harray[~np.any(harray == 78, axis=1)]
+
+        # remove alleles containing a site not called in bi-allele genos
+        calls0 = np.array([DCONS[i][0] for i in self.consens[self.hidx]])
+        calls1 = np.array([DCONS[i][1] for i in self.consens[self.hidx]])
+        bicalls = (harray == calls0) | (harray == calls1)
+        harray = harray[np.all(bicalls, axis=1), :]
+
+        # get counts of each allele (e.g., AT:2, CG:2)
+        ccx = Counter([tuple(i) for i in harray])
+
+        # if max-alleles or fewer, then great, move on.
+        if len(ccx) <= self.maxalleles:
+            self.nalleles = len(ccx)
+            return 0
+
+        # too many alleles, BUT, try dropping v. low cov alleles
+        alleles = []
+        for allele in ccx:
+            if (ccx[allele] / self.seqs.shape[0]) >= 0.1:
+                alleles.append(allele)  # ccx[allele]
+        
+        # then filter if all were not dropped as lowcov
+        arr = np.array(alleles)
+        if not arr.size:
+            self.filters['maxalleles'] += 1            
+            self.nalleles = len(ccx)
+            return 1
+
+        # or if all bi-alleles are not still present
+        try:
+            if np.any(np.all(arr == arr[0], axis=1)):
+                # logger.debug(
+                    # "dropped lowcov alleles but remaining do not cover "
+                    # "genotype calls, so filter is applied."
+                    # )
+                self.filters['maxalleles'] += 1
+                self.nalleles = len(ccx)
+                return 1
+        except Exception as inst:
+            logger.warning(ccx)
+            logger.warning(arr)
+            logger.exception(inst)
+            raise IPyradError from inst
+
+        # if passed filter-filter, how many alleles now?
+        if len(alleles) <= self.maxalleles:
             self.nalleles = len(alleles)
+            return 0
 
+        # too many alleles
+        self.filters['maxalleles'] += 1        
+        self.nalleles = len(ccx)
+        return 1
+
+        # # require that remaining alleles contain hetero calls.
+
+        # # if max-alleles or fewer, then great, move on.
+        # if len(ccx) <= self.maxalleles:
+        #     self.nalleles = len(ccx)
+        #     return 0
+
+        # # if max-alleles or fewer, then great, move on.
+        # if len(alleles) <= self.maxalleles:
+        #     self.nalleles = len(alleles)
+        #     return 0
+
+        #if self.nalleles == 2:
+        #    self.consens = encode_alleles(self.consens, self.hidx, alleles)
+
+<<<<<<< HEAD
         if self.nalleles > self.maxa:
             self.filters['maxa'] += 1
             return 0
@@ -705,9 +915,14 @@ class Processor:
             #        self.consens = storealleles(self.consens, self.hidx, alleles)
             #    except (IndexError, KeyError):
             #        pass
+=======
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
 
 
     def store_data(self):
+        """
+        Store the site count data for writing to HDF5, and stats.
+        """
         # current counter
         cidx = self.counters["nconsens"]
         self.nallel[cidx] = self.nalleles
@@ -715,17 +930,19 @@ class Processor:
 
         # store a reduced array with only CATG
         catg = np.array(
-            [np.sum(self.arrayed == i, axis=0) for i in
-             [b'C', b'A', b'T', b'G']],
-            dtype='uint16').T
+            [np.sum(self.seqs == i, axis=0) for i in (67, 65, 84, 71)],
+            dtype=np.uint16,
+        ).T
+
         # do not allow ints larger than 65535 (uint16)
         self.catarr[cidx, :catg.shape[0], :] = catg
 
         # store the seqdata and advance counters
-        self.storeseq[cidx] = b"".join(list(self.consens))
+        self.storeseq[cidx] = bytes(self.consens)
         self.counters["name"] += 1
         self.counters["nconsens"] += 1
         self.counters["heteros"] += self.nheteros
+
 
 
     def write_chunk(self):
@@ -735,8 +952,8 @@ class Processor:
         as a fasta file. For reference data it writes as a SAM file that is
         compatible to be converted to BAM (very stringent about cigars).
         """
-
-        # find last empty size
+        # the reference arr is bigger than the actual seqarr, so find the
+        # size of the actually filled data array (end)
         end = np.where(np.all(self.refarr == 0, axis=1))[0]
         if np.any(end):
             end = end.min()
@@ -746,46 +963,58 @@ class Processor:
         # write final consens string chunk
         consenshandle = os.path.join(
             self.data.tmpdir,
-            "{}_tmpcons.{}.{}".format(self.sample.name, end, self.tmpnum))
+            "{}_tmpcons.{}.{}".format(self.sample.name, end, self.tmpnum)
+        )
 
         # write chunk. 
         if self.storeseq:
-            with open(consenshandle, 'wt') as outfile:
+            outfile = open(consenshandle, 'wt')
 
-                # denovo just write the consens simple
-                if not self.isref:
-                    outfile.write(
-                        "\n".join(
-                            [">" + self.sample.name + "_" + str(key) + \
-                            "\n" + self.storeseq[key].decode() 
-                            for key in self.storeseq]))
+            # denovo just write the consens simple
+            if not self.isref:
+                seqlist = []
+                for key in self.storeseq:
+                    seq = self.storeseq[key].decode()
+                    cstring = ">{}_{}\n{}".format(self.sample.name, key, seq)
+                    seqlist.append(cstring)
+                outfile.write("\n".join(seqlist))
+                # constring = "\n".join(
+                    # [">" + self.sample.name + "_" + str(key) + \
+                    # "\n" + self.storeseq[key].decode() 
+                    # for key in self.storeseq])
+                # outfile.write(constring)
 
-                # reference needs to store if the read is revcomp to reference
-                else:
-                    outfile.write(
-                        "\n".join(
-                            ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
-                            .format(
-                                self.sample.name,
-                                self.refarr[i][0],
-                                self.refarr[i][1],
-                                self.refarr[i][1] + len(self.storeseq[i]),
-                                #self.refarr[i][2],
-                                0,
-                                self.revdict[self.refarr[i][0] - 1],
-                                self.refarr[i][1],
-                                0,
-                                make_cigar(
-                                    np.array(list(self.storeseq[i].decode()))
-                                    ),
-                                "*",
-                                0,
-                                #self.refarr[i][2] - self.refarr[i][1],
-                                len(self.storeseq[i]),
-                                self.storeseq[i].decode(),
-                                "*",
-                            ) for i in self.storeseq.keys()]
-                            ))
+            # reference needs to store if the read is revcomp to reference
+            else:
+                # seqlist = []
+                # for key in self.storeseq:
+                    # pass
+                constring = "\n".join(
+                    ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                    .format(
+                        self.sample.name,
+                        self.refarr[i][0],
+                        self.refarr[i][1],
+                        self.refarr[i][1] + len(self.storeseq[i]),
+                        #self.refarr[i][2],
+                        0,
+                        self.revdict[self.refarr[i][0] - 1],
+                        self.refarr[i][1],
+                        0,
+                        make_cigar(
+                            np.array(list(self.storeseq[i].decode()))
+                            ),
+                        "*",
+                        0,
+                        #self.refarr[i][2] - self.refarr[i][1],
+                        len(self.storeseq[i]),
+                        self.storeseq[i].decode(),
+                        "*",
+                    ) for i in self.storeseq]
+                )
+                outfile.write(constring)
+
+            outfile.close()
 
         # store reduced size arrays with indexes matching to keep indexes
         tmp5 = consenshandle.replace("_tmpcons.", "_tmpcats.")
@@ -809,13 +1038,99 @@ class Processor:
         del self.storeseq
 
 
-def concat_catgs(data, sample, isref):
-    "concat catgs into a single sample catg and remove tmp files"
 
-    # collect tmpcat files
+def new_base_caller(sarr, mindepth_mj, mindepth_st, est_het, est_err):
+    """
+    Call site genotypes from site counts. Uses scipy binomial.
+    """
+    # start with an array of Ns
+    cons = np.zeros(sarr.shape[1], dtype=np.uint8)
+    cons.fill(78)
+
+    # record if evidence of a tri-allele
+    triallele = 0
+
+    # iterate over columns
+    for cidx in range(sarr.shape[1]):
+
+        # get col, nmask, dashmask, and bothmask
+        col = sarr[:, cidx]
+        nmask = col == 78
+        dmask = col == 45
+        bmask = nmask | dmask
+
+        # if non-masked site depth is below mindepth majrule fill with N (78)
+        if np.sum(~bmask) < mindepth_mj:
+            cons[cidx] = 78
+            continue
+                
+        # if not variable (this will include the 'nnnn' pair separator (110))
+        if np.all(col == col[0]):
+            cons[cidx] = col[0]
+            continue
+
+        # make statistical base calls on allele frequencies
+        counts = np.bincount(col, minlength=79)
+        counts[78] = 0
+
+        # get allele freqs (first-most, second, third = p, q, r)
+        pbase = np.argmax(counts)
+        nump = counts[pbase]
+        counts[pbase] = 0
+
+        qbase = np.argmax(counts)
+        numq = counts[qbase]
+        counts[qbase] = 0
+
+        rbase = np.argmax(counts)
+        numr = counts[rbase]
+        counts[rbase] = 0
+
+        # if third allele occurs >X% then fill N and mark as paralog
+        if (numr / (nump + numq + numr)) > 0.2:
+            triallele = 1
+
+        # based on biallelic depth
+        bidepth = nump + numq
+        if bidepth < mindepth_mj:
+            cons[cidx] = 78
+            continue
+
+        # if depth is too high, reduce to sampled int
+        if bidepth > 500:
+            nump = int(500 * (nump / float(bidepth)))
+            numq = int(500 * (numq / float(bidepth)))
+
+        # make majority-rule call
+        if bidepth < mindepth_st:
+            if nump == numq:
+                cons[cidx] = TRANS[(pbase, qbase)]
+            else:
+                cons[cidx] = pbase        
+
+        # make statistical base call
+        ishet, prob = get_binom(nump, numq, est_err, est_het)
+        if prob < 0.95:
+            cons[cidx] = 78
+        else:
+            if ishet:
+                cons[cidx] = TRANS[(pbase, qbase)]
+            else:
+                cons[cidx] = pbase
+
+    return cons, triallele
+
+
+
+def concat_catgs(data, sample, isref):
+    """
+    Concat catgs into a single sample catg and remove tmp files
+    """
+    # collect tmpcat files written by write_chunks()
     tmpcats = glob.glob(os.path.join(
         data.tmpdir,
-        "{}_tmpcats.*".format(sample.name)))
+        "{}_tmpcats.*".format(sample.name))
+    )
     tmpcats.sort(key=lambda x: int(x.split(".")[-1]))
 
     # get full nrows of the new h5 from the tmpcat filenames
@@ -832,9 +1147,8 @@ def concat_catgs(data, sample, isref):
     if not all([nrows, maxlen]):
         raise IPyradError(
             "Error in concat_catgs both nrows and maxlen must be positive."
-            "\nsample: {}\tnrows: {}\tmaxlen: {}".format(sample.name,
-                                                         nrows,
-                                                         maxlen))
+            "\nsample: {}\tnrows: {}\tmaxlen: {}"
+            .format(sample.name, nrows, maxlen))
 
     # fill in the chunk array
     with h5py.File(sample.files.database, 'w') as ioh5:
@@ -876,8 +1190,9 @@ def concat_catgs(data, sample, isref):
 
 
 def concat_denovo_consens(data, sample):
-    "concatenate consens bits into fasta file for denovo assemblies"
-
+    """
+    Concatenate consens bits into fasta file for denovo assemblies
+    """
     # collect consens chunk files
     combs1 = glob.glob(os.path.join(
         data.tmpdir,
@@ -903,8 +1218,9 @@ def concat_denovo_consens(data, sample):
 
 
 def concat_reference_consens(data, sample):
-    "concatenates consens bits into SAM for reference assemblies"
-
+    """
+    Concatenates consens bits into SAM for reference assemblies
+    """
     # write sequences to SAM file
     combs1 = glob.glob(os.path.join(
         data.tmpdir,
@@ -955,8 +1271,9 @@ def concat_reference_consens(data, sample):
 
 
 def store_sample_stats(data, sample, statsdicts):
-    "not parallel, store the sample objects stats"
-
+    """
+    Not parallel, store the sample objects stats
+    """
     # record results
     xcounters = {
         "nconsens": 0,
@@ -1006,8 +1323,9 @@ def store_sample_stats(data, sample, statsdicts):
 
 
 def make_cigar(arr):
-    "writes a cigar string with locations of indels and lower case ambigs"
-
+    """
+    Writes a cigar string with locations of indels and lower case ambigs
+    """
     # simplify data
     arr[np.char.islower(arr)] = '.'
     indel = np.bool_(arr == "-")
@@ -1114,115 +1432,23 @@ def make_indel_cigar(seq, on='-', letter='I'):
     return cig
 
 
-def apply_filters_and_fill_arrs():
-    pass
-
-
-def base_caller(arrayed, mindepth_majrule, mindepth_statistical, estH, estE):
-    "call all sites in a locus array. Can't be jit'd yet b/c scipy"
-
-    # an array to fill with consensus site calls
-    cons = np.zeros(arrayed.shape[1], dtype=np.uint8)
-    cons.fill(78)
-    arr = arrayed.view(np.uint8)
-
-    # iterate over columns
-    for col in range(arr.shape[1]):
-        # the site of focus
-        carr = arr[:, col]
-
-        # if site is all dash then fill it dash (45)
-        if np.all(carr == 45):
-            cons[col] = 45
-            
-        # else mask all N and - sites for base call
-        else:
-            mask = carr == 45
-            mask += carr == 78
-            marr = carr[~mask]
-            
-            # call N if no real bases, or below majrule.
-            if marr.shape[0] < mindepth_majrule:
-                cons[col] = 78
-                
-            # if not variable
-            elif np.all(marr == marr[0]):
-                cons[col] = marr[0]
-
-            # estimate variable site call
-            else:
-                # get allele freqs (first-most, second, third = p, q, r)
-                counts = np.bincount(marr)
-
-                pbase = np.argmax(counts)
-                nump = counts[pbase]
-                counts[pbase] = 0
-
-                qbase = np.argmax(counts)
-                numq = counts[qbase]
-                counts[qbase] = 0
-
-                ## based on biallelic depth
-                bidepth = nump + numq
-                if bidepth < mindepth_majrule:
-                    cons[col] = 78
-
-                else:
-                    # if depth is too high, reduce to sampled int
-                    if bidepth > 500:
-                        base1 = int(500 * (nump / float(bidepth)))
-                        base2 = int(500 * (numq / float(bidepth)))
-                    else:
-                        base1 = nump
-                        base2 = numq
-
-                    # make statistical base call
-                    if bidepth >= mindepth_statistical:
-                        ishet, prob = get_binom(base1, base2, estE, estH)
-                        if prob < 0.95:
-                            cons[col] = 78
-                        else:
-                            if ishet:
-                                cons[col] = TRANS[(pbase, qbase)]
-                            else:
-                                cons[col] = pbase
-
-                    # make majrule base call
-                    else:
-                        if nump == numq:
-                            cons[col] = TRANS[(pbase, qbase)]
-                        else:
-                            cons[col] = pbase
-    return cons.view("S1")
 
 
 
-TRANS = {
-    (71, 65): 82,
-    (71, 84): 75,
-    (71, 67): 83,
-    (84, 67): 89,
-    (84, 65): 87,
-    (67, 65): 77,
-    (65, 67): 77,
-    (65, 84): 87,
-    (67, 84): 89,
-    (67, 71): 83,
-    (84, 71): 75,
-    (65, 71): 82,
-}
 
 
-def get_binom(base1, base2, estE, estH):
-    "return probability of base call"
-    prior_homo = (1. - estH) / 2.
-    prior_hete = estH
+def get_binom(base1, base2, est_err, est_het):
+    """
+    return probability of base call
+    """
+    prior_homo = (1. - est_het) / 2.
+    prior_hete = est_het
 
     ## calculate probs
     bsum = base1 + base2
     hetprob = scipy.special.comb(bsum, base1) / (2. ** (bsum))
-    homoa = scipy.stats.binom.pmf(base2, bsum, estE)
-    homob = scipy.stats.binom.pmf(base1, bsum, estE)
+    homoa = scipy.stats.binom.pmf(base2, bsum, est_err)
+    homob = scipy.stats.binom.pmf(base1, bsum, est_err)
 
     ## calculate probs
     hetprob *= prior_hete
@@ -1251,7 +1477,6 @@ def mask_repeats(consens, arrayed):
     consens and arrayed are both in bytes in entry. Consens is converted to
     unicode for operations, and both are returned as bytes.
     """
-
     ## default trim no edges
     consens[consens == b"-"] = b"N"
     consens = b"".join(consens)
@@ -1330,8 +1555,9 @@ def mask_repeats(consens, arrayed):
 
 
 def nfilter4(consens, hidx, arrayed):
-    "applies max haplotypes filter returns pass and consens"
-
+    """
+    Applies max haplotypes filter returns pass and consens
+    """
     # if less than two Hs then there is only one allele
     if len(hidx) < 2:
         return consens, 1
@@ -1381,8 +1607,10 @@ def nfilter4(consens, hidx, arrayed):
 
 
 
-def storealleles(consens, hidx, alleles):
-    """ store phased allele data for diploids """
+def encode_alleles(consens, hidx, alleles):
+    """ 
+    Store phased allele data for diploids 
+    """
     ## find the first hetero site and choose the priority base
     ## example, if W: then priority base in A and not T. PRIORITY=(order: CATG)
     bigbase = PRIORITY[consens[hidx[0]]]
@@ -1402,3 +1630,152 @@ def storealleles(consens, hidx, alleles):
 
     ## return consens
     return consens
+
+
+
+
+
+
+# DEPRECATED
+
+# def build_consens_and_array(self):
+#     """
+#     Makes base calls and converts - to N and trims terminal Ns. Setting 
+#     internal - to Ns makes handling the insert of paired reference mapped
+#     data much better... but puts N's into denovo data where we might other
+#     wise choose to drop those columns... Think more about this...
+#     """
+#     # get stacks of base counts
+#     sseqs = [list(seq) for seq in self.seqs]
+#     arrayed = np.concatenate(
+#         [[seq] * rep for (seq, rep) in zip(sseqs, self.reps)]
+#     ).astype(bytes)
+
+#     # ! enforce maxlen limit !
+#     self.arrayed = arrayed[:, :self.maxlen]
+                
+#     # get unphased consens sequence from arrayed
+#     self.consens = base_caller(
+#         self.arrayed, 
+#         self.data.params.mindepth_majrule, 
+#         self.data.params.mindepth_statistical,
+#         self.esth, 
+#         self.este,
+#     )
+
+#     # trim Ns from the left and right ends
+#     mask = self.consens.copy()
+#     mask[mask == b"-"] = b"N"
+#     trim = np.where(mask != b"N")[0]
+
+#     # bail out b/c no bases were called 
+#     if not trim.size:
+#         self.filters['depth'] += 1
+#         return 0
+
+#     ltrim, rtrim = trim.min(), trim.max()
+#     self.consens = self.consens[ltrim:rtrim + 1]
+#     self.arrayed = self.arrayed[:, ltrim:rtrim + 1]
+
+#     # update position for trimming
+#     self.ref_position = (
+#         self.ref_position[0], 
+#         self.ref_position[1] + ltrim,
+#         self.ref_position[1] + ltrim + rtrim + 1,
+#     )
+#     return 1
+
+
+
+# def base_caller(arrayed, mindepth_majrule, mindepth_statistical, est_het, est_err):
+#     """
+#     Call all sites in a locus array. Can't be jit'd yet b/c scipy
+#     """
+#     # an array to fill with consensus site calls
+#     cons = np.zeros(arrayed.shape[1], dtype=np.uint8)
+#     cons.fill(78)
+#     arr = arrayed.view(np.uint8)
+
+#     # iterate over columns
+#     for col in range(arr.shape[1]):
+#         # the site of focus
+#         carr = arr[:, col]
+
+#         # if site is all dash then fill it dash (45)
+#         if np.all(carr == 45):
+#             cons[col] = 45
+            
+#         # else mask all N and - sites for base call
+#         else:
+#             mask = carr == 45
+#             mask += carr == 78
+#             marr = carr[~mask]
+            
+#             # call N if no real bases, or below majrule.
+#             if marr.shape[0] < mindepth_majrule:
+#                 cons[col] = 78
+                
+#             # if not variable
+#             elif np.all(marr == marr[0]):
+#                 cons[col] = marr[0]
+
+#             # estimate variable site call
+#             else:
+#                 # get allele freqs (first-most, second, third = p, q, r)
+#                 counts = np.bincount(marr)
+
+#                 pbase = np.argmax(counts)
+#                 nump = counts[pbase]
+#                 counts[pbase] = 0
+
+#                 qbase = np.argmax(counts)
+#                 numq = counts[qbase]
+#                 counts[qbase] = 0
+
+#                 ## based on biallelic depth
+#                 bidepth = nump + numq
+#                 if bidepth < mindepth_majrule:
+#                     cons[col] = 78
+
+#                 else:
+#                     # if depth is too high, reduce to sampled int
+#                     if bidepth > 500:
+#                         base1 = int(500 * (nump / float(bidepth)))
+#                         base2 = int(500 * (numq / float(bidepth)))
+#                     else:
+#                         base1 = nump
+#                         base2 = numq
+
+#                     # make statistical base call
+#                     if bidepth >= mindepth_statistical:
+#                         ishet, prob = get_binom(base1, base2, est_err, est_het)
+#                         if prob < 0.95:
+#                             cons[col] = 78
+#                         else:
+#                             if ishet:
+#                                 cons[col] = TRANS[(pbase, qbase)]
+#                             else:
+#                                 cons[col] = pbase
+
+#                     # make majrule base call
+#                     else:
+#                         if nump == numq:
+#                             cons[col] = TRANS[(pbase, qbase)]
+#                         else:
+#                             cons[col] = pbase
+#     return cons.view("S1")
+
+
+
+
+if __name__ == "__main__":
+
+
+    import ipyrad as ip
+    ip.set_loglevel("DEBUG")
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.ipcluster['cores'] = 4
+    tdata.run("5", auto=True, force=True)
+    logger.info(tdata.stats.T)

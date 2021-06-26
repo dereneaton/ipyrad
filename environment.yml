@@ -1,0 +1,26 @@
+name: dev
+channels: 
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.6
+
+  - pydantic
+  - loguru
+  - requests
+  - h5py
+  - toyplot
+  - toytree
+  - pandas
+  - scipy
+  - numpy
+  - numba >=0.37
+  - ipyparallel >=6.0.2
+
+  - pysam >=0.15
+  - vsearch >=2.13
+  - bedtools
+  - muscle
+  - fastp
+  - bwa
+  - samtools

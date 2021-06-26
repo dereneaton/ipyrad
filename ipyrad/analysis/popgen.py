@@ -1,20 +1,22 @@
 #!/usr/bin/env python
 
-"popgen tools"
-
-from __future__ import print_function, division
-from itertools import chain
+"""
+popgen tools
+"""
 
 import glob
-import h5py
 import itertools
 import math
-import numpy as np
-import pandas as pd
 import os
 import pickle
 import time
 from collections import Counter
+from itertools import combinations, chain
+
+import h5py
+import numpy as np
+import pandas as pd
+from scipy.stats import entropy, hmean
 from ipyrad import Assembly
 from ipyrad.assemble.utils import IPyradError
 from itertools import combinations
@@ -24,6 +26,13 @@ from .locus_extracter import LocusExtracter
 from .utils import Params, ProgressBar
 from ..assemble.utils import DCONS
 
+from ipyrad.core.parallel import Cluster
+from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.analysis.locus_extracter import LocusExtracter
+from ipyrad.analysis.utils import Params
+from ipyrad.assemble.utils import DCONS
+
+
 _BAD_IMAP_ERROR = """
 Samples in imap not in the hdf5 file: {}"
 """
@@ -32,23 +41,22 @@ _SKIP_SAMPLES_WARN = """
 Skipping samples in hdf5 not present in imap: {}"
 """
 
-class Popgen(object):
+class Popgen:
     """
     Analysis functions for calculating theta, Fst, Fis, thetaW, etc.
 
-    Some functions follow Ferretti et al 2012 for calculating stats while
-    accounting for missing data:
+    Some functions follow Ferretti et al 2012 for calculating stats 
+    while accounting for missing data:
 
-    Ferretti, L., Raineri, E., & Ramos-Onsins, S. (2012). Neutrality tests for
-    sequences with missing data. Genetics, 191(4), 1397-1401.
+    Ferretti, L., Raineri, E., & Ramos-Onsins, S. (2012). Neutrality
+    tests for sequences with missing data. Genetics, 191(4), 1397-1401.
 
     Another useful resource for calculating sumstats with missing data:
 
-    Korunes, K., & Samuk, K. (2021). pixy: Unbiased estimation of nucleotide
-    diversity and divergence in the presence of missing data. Molecular Ecology
-    Resources.
+    Korunes, K., & Samuk, K. (2021). pixy: Unbiased estimation of 
+    nucleotide diversity and divergence in the presence of missing 
+    data. Molecular Ecology Resources.
     """
-
     def __init__(
         self,
         data,
@@ -57,7 +65,7 @@ class Popgen(object):
         workdir="analysis-popgen",
         quiet=False,
         ):
-        
+
         # set attributes
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 4 for i in self.imap})
@@ -75,7 +83,7 @@ class Popgen(object):
         self.snps = pd.DataFrame()
 
         # i/o paths
-        self.workdir=os.path.abspath(workdir)
+        self.workdir = os.path.abspath(workdir)
         self.mapfile = ""
         self._check_files(data)
         self._check_samples()
@@ -223,7 +231,9 @@ class Popgen(object):
 
 
     def _run(self, force=False, ipyclient=None):
-
+        """
+        The job run on a remote ipyparallel engine.
+        """
         self.asyncs = []
 
         lbview = ipyclient.load_balanced_view()
@@ -608,6 +618,7 @@ class Processor(object):
         e2 = c2/(a1**2+a2)
         ddenom = math.sqrt(e1*S + e2*S*(S-1))
         return ddenom
+<<<<<<< HEAD
 
 
     # The "public" methods are wholly independent and operate at the level
@@ -666,6 +677,66 @@ class Processor(object):
     # Between population summary statistics
     def _dxy(self, cts_a, cts_b, length):
         """
+=======
+
+
+    # The "public" methods are wholly independent and operate at the level
+    # of a given locus. They are also substantially redundant, so they may be
+    # called by hand, but the bulk of the work is done by the semi-private
+    # (single "_") methods above.
+    def pi(self, locus):
+        """
+        Calculate nucleotide diversity per site and also average per base.
+
+        :param array-like locus: An np.array or pd.DataFrame of aligned loci
+            as might be returned by calling LocusExtracter.get_locus(as_df=True).
+
+        :return tuple: Returns a tuple with raw pi, pi_per_base (averaged across
+            the length of the whole locus), and a dictionary containing values of
+            pi per site, with keys as the base positions.
+        """
+        cts, sidxs, length = self._process_locus(locus)
+        return self._pi(cts, sidxs, length)
+
+
+    def Watterson(self, locus):
+        """
+        Calculate Watterson's theta and optionally average over sequence length.
+    
+        :param array-like locus: The DNA sequence(s) over which to
+            calculate the statistic. This should be formatted in the same way
+            as the result from a call to LocusExtracter.get_locus(), i.e. as
+            an array or DataFrame with bases coded as int8 ascii values.
+    
+        :return tuple: The value of Watterson's estimator of theta, both the
+            raw value and scaled to per base.
+        """
+        n = len(locus)
+        cts, sidxs, length = self._process_locus(locus)
+        return self._Watterson(S=len(sidxs), n=n, length=length)
+
+
+    def TajimasD(self, locus):
+        """
+        Calculate Tajima's D for a given locus.
+
+        :param array-like locus: Locus data in the same format as the other
+            functions.
+
+        :return float: Tajima's D calculated on the data for this locus.
+        """
+        n = len(locus)
+        cts, sidxs, length = self._process_locus(locus)
+        S = len(sidxs)
+        pi = self._pi(cts, sidxs, length)["pi"]
+        w_theta = self._Watterson(S, n, length)["w_theta"]
+        return self._TajimasD(S, n, pi, w_theta)
+
+
+    # Between population summary statistics
+    def _dxy(self, cts_a, cts_b, length):
+        """
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         Calculate Dxy, the absolute sequence divergence, between two
         populations. The input are counts of each base within each population
         at sites that vary in either or both populations.
@@ -758,6 +829,7 @@ class Processor(object):
             diff = [locus.loc[i] != locus.loc[j] for (i, j) in betweens]
             sums = np.sum(diff, axis=0)
             b = np.sum(sums) / sums.shape[0]
+<<<<<<< HEAD
 
             # Fst - Hudson 1992 Eq 3
             farr.loc[pop1, pop2] = 1 - (a / b)
@@ -767,6 +839,17 @@ class Processor(object):
             # Nm adjusted for known # of subpops - Hudson 1992 Eq 7
             narr.loc[pop1, pop2] = (((d - 1) / d) * (1 / 2) * (a / (b - a)))
 
+=======
+
+            # Fst - Hudson 1992 Eq 3
+            farr.loc[pop1, pop2] = 1 - (a / b)
+            # Fst adjusted for known # of subpops - Hudson 1992 Eq 6
+            darr.loc[pop1, pop2] = 1 - (a / (((1 / d) * a) \
+                                        + (((d - 1) / d) * b)))
+            # Nm adjusted for known # of subpops - Hudson 1992 Eq 7
+            narr.loc[pop1, pop2] = (((d - 1) / d) * (1 / 2) * (a / (b - a)))
+
+>>>>>>> ff8f2462f57837696fa3c37046cbc7368d88b0d7
         return farr, darr, narr
 
 

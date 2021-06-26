@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-""" jointly infers heterozygosity and error rate from stacked sequences """
+""" 
+Jointly infers heterozygosity and error rate from stacked sequences
+"""
 
 # py2/3 compatible
 from __future__ import print_function
@@ -15,17 +17,21 @@ import time
 import gzip
 from collections import Counter
 
+from loguru import logger
 import scipy.optimize
 import scipy.stats
 import numpy as np
 import numba
 
-from .clustmap import get_quick_depths
-from .utils import IPyradError, clustdealer
+from ipyrad.assemble.clustmap import get_quick_depths
+from ipyrad.assemble.utils import IPyradError, clustdealer, AssemblyProgressBar
+
 
 
 class Step4:
-    "organized functions for step 4 of assembly"
+    """
+    Organized functions for step 4 of assembly
+    """
     def __init__(self, data, force, ipyclient):
 
         self.data = data
@@ -87,10 +93,10 @@ class Step4:
                 nodata_samples.append(sample)
         if not any(checked_samples):
             raise IPyradError("no samples ready for step 4")
-        else:
-            for sample in nodata_samples:
-                print("{}skipping {}; no clusters found."
-                    .format(self.data._spacer, sample))
+
+        for sample in nodata_samples:
+            print("{}skipping {}; no clusters found."
+                .format(self.data._spacer, sample))
 
         # sort samples so the largest is first
         checked_samples.sort(
@@ -107,7 +113,9 @@ class Step4:
 
 
     def remote_run_optim(self):
-        "call the optim function to run in parallel"
+        """
+        call the optim function to run in parallel
+        """
         # headers
         start = time.time()
         printstr = ("inferring [H, E]    ", "s4")
@@ -121,25 +129,20 @@ class Step4:
             jobs[sample.name] = lbview.apply(optim, *(self.data, sample))
 
         # progress bar
-        while 1:
-            fin = [i.ready() for i in jobs.values()]
-            self.data._progressbar(len(fin), sum(fin), start, printstr)
-            time.sleep(0.1)
-            if len(fin) == sum(fin):
-                break
+        prog = AssemblyProgressBar(jobs, start, printstr, self.data)
+        prog.block()
+        prog.check()
 
-        # cleanup
-        self.data._print("")        
+        # collect results and store to Sample objects
         for job in jobs:
-            # collect results
             hest, eest, success = jobs[job].get()
-            # store results to sample objects
             sample_cleanup(self.data.samples[job], hest, eest, success)
 
 
     def cleanup(self):
-        " assembly cleanup "
-
+        """
+        Update stats dfs, state, and 
+        """
         # store results
         self.data.stats_dfs.s4 = self.data._build_stat("s4")
 
@@ -283,7 +286,7 @@ def recal_hidepth(data, sample):
     maxlen = data.hackersonly.max_fragment_length
 
     # get arrays of data
-    maxlens, depths = get_quick_depths(data, sample)
+    maxlens, depths, _ = get_quick_depths(data, sample)
 
     # calculate how many are hidepth
     hidepths = depths >= majrdepth
@@ -358,8 +361,12 @@ def stackarray(data, sample):
             piece = chunk[0].decode().strip().split("\n")
             names = piece[0::2]
             seqs = piece[1::2]
+
             # pull replicate read info from seqs
-            reps = [int(sname.split("=")[-1][:-2]) for sname in names]
+            if data.hackersonly.declone_PCR_duplicates:
+                reps = [1 for i in names]
+            else:
+                reps = [int(sname.split("=")[-1][:-2]) for sname in names]
 
             ## get all reps
             sseqs = [list(seq) for seq in seqs]
@@ -401,7 +408,9 @@ def stackarray(data, sample):
 
 
 def optim(data, sample):
-    """ func scipy optimize to find best parameters"""
+    """ 
+    func scipy optimize to find best parameters
+    """
 
     hetero = 0.01
     errors = 0.001
@@ -487,3 +496,28 @@ def sample_cleanup(sample, hest, eest, success):
         basecalling. Setting default heterozygosity/error to 0.01/0.001.
         """.format(sample.name))
         print(msg)
+
+
+
+
+if __name__ == "__main__":
+
+    import ipyrad as ip
+    ip.set_loglevel("DEBUG")
+
+
+    tdata = ip.load_json("/tmp/test-amaranth-ref.json")
+    tdata.run("4", auto=True, force=True)
+    print(tdata.stats)
+    print(tdata.stats_dfs.s4)
+
+    # tdata = ip.load_json("/tmp/test-amaranth.json")
+    # tdata.run("4", auto=True, force=True)
+    # print(tdata.stats)
+    # print(tdata.stats_dfs.s4)
+
+
+    # self.data.hackersonly.declone_PCR_duplicates:
+    # tdata = ip.load_json("/tmp/test-amaranth-denovo.json")
+    # tdata.run("4", auto=True, force=True)
+    # logger.info(tdata.stats.T)

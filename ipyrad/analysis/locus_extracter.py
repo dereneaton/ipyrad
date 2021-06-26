@@ -2,7 +2,9 @@
 
 """
 Extract, filter, count SNPs and reorganize filtered loci into a 3-d array
-(with maxlen limit) for simple indexing. 
+(with maxlen limit) for simple indexing. Unlike window_extracter this does
+not attempt to concatenate loci and thus is just a faster simpler method
+of locus extraction based on assembled loci.
 """
 
 # py2/3 compat
@@ -10,17 +12,19 @@ from __future__ import print_function
 
 # standard lib
 import os
-import h5py
 import itertools
+from copy import copy
+
+import h5py
 import numpy as np
 import pandas as pd
-from copy import copy
+
 from numba import njit
 
 from .utils import count_snps
 from ..core.Parallel import Parallel
 from ..assemble.utils import IPyradError, GETCONS
-from ..assemble.write_outputs import NEXHEADER
+from ..assemble.write_outputs_converter import NEXHEADER
 
 
 

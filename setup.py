@@ -1,7 +1,17 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+"""
+Install ipyrad with:
+ `conda install ipyrad -c conda-forge -c bioconda`
+
+Or, for developers, install dependencies and then ipyrad w/ pip local:
+ `cd ipyrad/`
+ `conda env create -f environment.yml`
+ `pip install . --no-deps`
+"""
+
 import re
+from setuptools import setup, find_packages
 
 
 # Auto-update ipyrad version from git repo tag
@@ -22,23 +32,11 @@ setup(
     long_description=open('README.rst').read(),
     long_description_content_type='text/x-rst',
     packages=find_packages(),
-    install_requires=[
-        "future",
-        "ipyparallel",
-        "scipy",
-        "numpy",
-        "numba",
-        "pandas",
-        "pysam",
-        "h5py",
-        "cutadapt",  # THIS IS CAUSING PROBLEMS W/ XOPEN on PIP install!
-        "requests",
-    ],
-    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:main']},
+    install_requires=[],
+    entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:CLI']},
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
