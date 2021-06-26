@@ -251,7 +251,6 @@ class Assembly:
         force: bool=False,
         quiet: bool=False,
         ipyclient: Optional[Client]=None,
-        **kwargs,
         ) -> None:
         """
         Run one or more assembly steps (1-7) of an ipyrad assembly.
