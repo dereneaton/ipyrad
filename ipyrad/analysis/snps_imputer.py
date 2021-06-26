@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 
-""" Impute SNPs based on population allele frequencies"""
+""" 
+Impute SNPs based on population allele frequencies. This is used in
+PCA tool currently.
+"""
 
-from __future__ import print_function, division
 
 from copy import deepcopy
+from loguru import logger
 import numpy as np
+
 
 _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
@@ -15,18 +19,18 @@ conda install scikit-learn -c conda-forge
 """
 
 
-class SNPsImputer(object):
+class SNPsImputer:
     """
-    Imputation of missing data based on population allele frequencies. This
-    tool is generally meant to be used internally by ipyrad within other 
-    analysis tool methods. 
+    Imputation of missing data based on population allele frequencies. 
+    This tool is generally meant to be used internally by ipa
+    within other analysis tool methods. 
 
     Parameters:
     -----------
     data: (ndarray)
-        A uint8 ndarray of genotype calls that have already been filtered 
-        to remove any sites that are not wanted. Only 0,1,2,9 should be 
-        in matrix.
+        A uint8 ndarray of genotype calls that have already been 
+        filtered to remove any sites that are not wanted. Only 
+        0,1,2,9 should be in matrix.
     names: list
         Ordered names as extracted from the HDF5 database.
     imap: (dict; default=None)
@@ -34,7 +38,7 @@ class SNPsImputer(object):
     impute_method: (str; default='sample')
         None, "sample", "simple", "kmeans"
 
-    Functions:
+    Example:
     ----------
     ...
     """
@@ -44,11 +48,9 @@ class SNPsImputer(object):
         names,
         imap=None,
         impute_method="sample",
-        quiet=False,
         ):
 
         # init attributes
-        self.quiet = quiet
         self.snps = deepcopy(data)
         self._mvals = np.sum(self.snps == 9)        
 
@@ -60,10 +62,6 @@ class SNPsImputer(object):
         self.names = names
 
 
-    def _print(self, msg):
-        if not self.quiet:
-            print(msg)
-
     def run(self):
         """
         Impute data in-place updating self.snps by filling missing (9) values.
@@ -73,7 +71,7 @@ class SNPsImputer(object):
 
         else:
             self.snps[self.snps == 9] = 0
-            self._print(
+            logger.info(
                 "Imputation: 'None'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(100, 0, 0)            
             )
@@ -82,8 +80,10 @@ class SNPsImputer(object):
 
     def _impute_sample(self, imap=None):
         """
-        Sample derived alleles by their frequency for each population and 
-        assign to fill 9 in each column for each pop.
+        Sample derived alleles by their frequency for each population 
+        and assign to fill 9 in each column for each pop. Uses the 
+        object imap unless a different one is provided here (this 
+        option is used in kmeans pca where imap is updated iteratively)
         """
         # override imap
         if not imap:
@@ -91,7 +91,8 @@ class SNPsImputer(object):
 
         # impute data by mean value in each population
         newdata = self.snps.copy()
-        for pop, samps in imap.items():
+        for pop in imap:
+            samps = imap[pop]
 
             # sample pop data
             sidxs = sorted(self.names.index(i) for i in samps)
@@ -112,7 +113,7 @@ class SNPsImputer(object):
 
         # get all imputed values
         imputed = newdata[np.where(self.snps == 9)]
-        self._print(
+        logger.info(
             "Imputation: 'sampled'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
             .format(
                 100 * np.sum(imputed == 0) / imputed.size,
@@ -162,7 +163,7 @@ class SNPsImputer(object):
 
         # get all imputed values
         imputed = newdata[np.where(self.snps == 9)]
-        self._print(
+        logger.info(
             "Imputation: 'sampled'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
             .format(
                 100 * np.sum(imputed == 0) / imputed.size,
