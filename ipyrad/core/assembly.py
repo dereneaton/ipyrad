@@ -37,6 +37,10 @@ class Assembly:
         self.params = ParamsSchema(assembly_name=name)
         self.hackers = HackersSchema()
         self.samples = {}
+        self.ipcluster = {
+            'cores': None,
+            'threads': 2,
+        }
 
     def __repr__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
@@ -271,6 +275,21 @@ class Assembly:
         """
         # save the current JSON file (and a backup?)
         self.save_json()
+
+        # the Class functions to run for each entered step.
+        step_map = {
+            "1": Step1,
+            "2": Step2, 
+            "3": Step3,
+            "4": Step4,
+            "5": Step5, 
+            "6": Step6,
+            "7": Step7,
+        }
+
+        # could load the tool to check whether this job can be run 
+        # before starting the ipcluster?.
+        
 
         # init the ipyparallel cluster class wrapper
         cluster = Cluster(quiet=quiet)
