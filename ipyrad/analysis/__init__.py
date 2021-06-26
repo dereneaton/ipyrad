@@ -35,7 +35,8 @@ from .tree_slider import TreeSlider as tree_slider
 from .digest_genome import DigestGenome as digest_genome
 from .sratools import SRA as sratools
 from .snps_imputer import SNPsImputer as snps_imputer
-
+from .download import Download as download
+ 
 # from .astral import Astral as astral
 # from .bucky import Bucky as bucky
 # from .bpp import Bpp as bpp
@@ -60,8 +61,7 @@ set_loglevel("WARNING")
 # from .distance import Distance as distance
 # from .structure import Structure as structure
 # from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
-# from .download import Download as download
-
+#
 # # testing
 # from .locus_extracter import LocusExtracter as locus_extracter
 # from .tetrad import Tetrad as tetrad
