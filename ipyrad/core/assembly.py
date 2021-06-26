@@ -301,7 +301,7 @@ class Assembly:
             for step in steps:
                 tool = step_map[step](self, force, quiet, cluster.ipyclient)
                 tool.run()
-                # shutil.rmtree(tool.tmpdir)   # uncomment when not testing.
+                shutil.rmtree(tool.tmpdir)   # uncomment when not testing.
 
         except KeyboardInterrupt:
             logger.warning("keyboard interrupt by user, cleaning up.")
