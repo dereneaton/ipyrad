@@ -38,12 +38,6 @@ class Assembly:
         self.hackers = HackersSchema()
         self.samples = {}
 
-        # optional dict for setting cluster config.
-        self.ipcluster = {
-            "cores": 0,
-            "threads": 2,
-        }
-
     def __repr__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
 
@@ -252,10 +246,11 @@ class Assembly:
 
     def run(
         self,
-        steps:str,
-        force:bool=False,
-        quiet:bool=False,
-        ipyclient:Optional[Client]=None,
+        steps: str,
+        cores: Optional[int]=None,
+        force: bool=False,
+        quiet: bool=False,
+        ipyclient: Optional[Client]=None,
         **kwargs,
         ) -> None:
         """
@@ -273,8 +268,7 @@ class Assembly:
             Optional ipyparallel client to connect to for distributing
             jobs in parallel. This option is generally only useful if
             you start a Client using MPI to connect to multiple nodes
-            of an HPC cluster. Otherwise, just configure the local
-            cluster parallelization using the .ipcluster attribute.
+            of an HPC cluster. See ipyrad HPC docs for details.
         """
         # save the current JSON file (and a backup?)
         self.save_json()
@@ -283,7 +277,6 @@ class Assembly:
         cluster = Cluster(quiet=quiet)
         try:
             # establish connection to a new or running ipyclient
-            cores = kwargs.get('cores', self.ipcluster['cores'])
             cluster.start(cores=cores, ipyclient=ipyclient)
 
             # use client for any/all steps of assembly
