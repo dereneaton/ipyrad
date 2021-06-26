@@ -9,22 +9,24 @@ import os
 import gzip
 import subprocess
 import requests
-
+from loguru import logger
 
 
 class Download:
     """
-    Download a large file by streaming in chunks using the requests library.
-    The file from 'url' is downloaded to the location 'path'. The file will
-    not be downloaded if it already exists at this path, unless you overwrite
-    using the force option.
+    Download a large file by streaming in chunks using the requests 
+    library. The file from 'url' is downloaded to the location 'path'. 
+    The file will not be downloaded if it already exists at this path, 
+    unless you overwrite using the force option. You can optionally
+    decompress the downloaded file with gunzip after downloading.
 
     Parameters
     ===========
     url (str):
         A valid URL destination of the file you wish to download.
     path (str):
-        A valid path on your computer to use as the file name.
+        A valid path on your computer to use as the file name. If
+        the directory does not exist we will try to create it.
     gunzip (bool):
         If the file ends with .gz and is gzipped then this will 
         write a copy that is decompressed without the .gz ending.
@@ -35,7 +37,14 @@ class Download:
     ==========
     None
     """
-    def __init__(self, url, path, gunzip=False, force=False):
+    def __init__(
+        self, 
+        url: str, 
+        path: str, 
+        gunzip: bool=False, 
+        force: bool=False,
+        ):
+        
         self.url = url
         self.path = path
         self.force = force
@@ -49,7 +58,12 @@ class Download:
 
 
     def download(self):
-        "call the chunked download with requests"
+        """
+        Call the chunked download with requests
+        """
+        # attempt to create outdir if it doesn't exist
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+
         # only run if the reference doesn't already exist
         if (not os.path.exists(self.path)) and (not self.force):
     
@@ -59,17 +73,19 @@ class Download:
                 for chunk in res.iter_content(chunk_size=1024*1024):
                     if chunk:
                         out.write(chunk)
-            print("successful download: {}".format(self.path))
+            logger.info("successful download: {}".format(self.path))
         else:
-            print("file already exists: {}".format(self.path))
+            logger.warning("file already exists: {}".format(self.path))
 
 
     def gunzip_file(self):
-        "make a decompressed copy of the file"
+        """
+        Make a decompressed copy of the file
+        """
         if self.gunzip:
             try:
                 if not os.path.exists(self.gunzip_name):
-                    print('decompressing gzipped file')
+                    logger.info('decompressing gzipped file')
                     with open(self.gunzip_name, 'w') as out:
                         with gzip.open(self.path, 'r') as stream:
                             while 1:
@@ -79,14 +95,17 @@ class Download:
                                 enc = chunk.decode()
                                 out.write(enc)
                 else:
-                    print("decompressed file already exists: {}"
+                    logger.warning(
+                        "decompressed file already exists: {}"
                         .format(self.gunzip_name))
             except Exception:
-                print("error: couldn't gunzip file.")
+                logger.error("error: couldn't gunzip file.")
 
 
     def clean_data(self):
         """
+        NOT IMPLEMENTED
+
         Removes multi-allele and INDEL containing SNPs and all meta-data.
         The input must be bgzip, which requires the input to be non-zipped.
 
