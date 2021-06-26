@@ -32,10 +32,12 @@ class DigestGenome:
         site when creating fastq reads from the digested fragments.
 
     re1 (str):
-        First restriction enzyme recognition site.
+        First restriction enzyme recognition site. Note, this can be
+        different from the sequence you may provide in ipyrad assembly
+        which is the sequence after ligation to a compatible end.
 
     re2 (str):
-        Second restriction enzyme recognition site.
+        Second restriction enzyme recognition site. See re1 note.
 
     ncopies (int):
         The number of copies to make for every digested copy to write
@@ -52,8 +54,8 @@ class DigestGenome:
         fasta="genome.fa", 
         workdir="digested_genomes",
         name="quinoa",
-        re1="AATCGG",
-        re2="CCGG",
+        re1="CCGG",      # mspI
+        re2="AAGCTT",    # hindIII
         ncopies=5,
         readlen=150,
         paired=True,        
@@ -64,16 +66,16 @@ class DigestGenome:
     def __init__(
         self, 
         fasta: str, 
-        name:str="digested", 
-        workdir:str="digested_genomes",
-        re1:str="CTGCAG", 
-        re2:Optional[str]=None, 
-        ncopies:int=1,
-        readlen:int=150, 
-        paired:bool=True, 
-        min_size:Optional[int]=None, 
-        max_size:Optional[int]=None,
-        nscaffolds:Optional[int]=None,
+        name: str="digested", 
+        workdir: str="digested_genomes",
+        re1: str="CTGCAG", 
+        re2: Optional[str]=None, 
+        ncopies: int=1,
+        readlen: int=150, 
+        paired: bool=True, 
+        min_size: Optional[int]=None, 
+        max_size: Optional[int]=None,
+        nscaffolds: Optional[int]=None,
         ):
 
         self.fasta = fasta
@@ -122,11 +124,11 @@ class DigestGenome:
             scaffolds = fio.read().split(">")[1:]
 
         # add revcomp of every scaffold
-        rscaffs = []
-        for scaff in scaffolds:
-            name, seq = scaff.split("\n", 1)            
-            rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
-        scaffolds = scaffolds + rscaffs
+        # rscaffs = []
+        # for scaff in scaffolds:
+            # name, seq = scaff.split("\n", 1)            
+            # rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
+        # scaffolds = scaffolds + rscaffs
 
         # sort scaffolds by length
         scaffolds = sorted(scaffolds, key=len, reverse=True)
@@ -175,7 +177,8 @@ class DigestGenome:
 
                         lef = len(rbit)
                         if self.max_size >= lef >= self.min_size:                        
-                            res = comp(rbit)[::-1]
+                            #res = comp(rbit)[::-1]
+                            res = rbit
                             bits.append((res, pos, lef))
                             # bits.append((rbit, pos, lef))
 
@@ -194,8 +197,6 @@ class DigestGenome:
                     fastq = fastq.format(**{
                         'name': name,
                         'loc': iloc,
-                        # 'pos': pos,
-                        # 'end': end,
                         'copy': copy,
                         'read': read1, 
                         'qual': "B" * len(read1),
