@@ -75,15 +75,18 @@ def merge(
                 sname = rename_dict[sname]
                 sample.name = sname
 
-            # is it in the merged assembly already
+            # is it in the merged assembly already (technical replicate)
             if sname in merged.samples:
                 msample = merged.samples[sname]
 
-                # update stats
+                # update stats for steps 1-2
                 msample.stats_s1.reads_raw += sample.stats_s1.reads_raw
-                if sample.stats_s2.reads_passed_filter:
+                # if both are not step >=2 then set to state=1
+                if msample.stats_s2 and sample.stats_s2:
                     msample.stats_s2.reads_passed_filter += (
                         sample.stats_s2.reads_passed_filter)
+                else:
+                    msample.state = 1
 
                 # append files
                 if sample.files.fastqs:
