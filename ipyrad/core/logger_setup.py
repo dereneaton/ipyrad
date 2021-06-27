@@ -4,6 +4,7 @@
 Logger for stderr and optionally to file.
 """
 
+import os
 import sys
 from loguru import logger
 import IPython
@@ -37,7 +38,8 @@ def colorize():
 
 def set_loglevel(loglevel="DEBUG", logfile=None):
     """
-    Config and start the logger
+    Config and start the logger, create logfile dir if it doesn't
+    exist yet.
     """
     config = {'handlers': []}
 
@@ -53,6 +55,7 @@ def set_loglevel(loglevel="DEBUG", logfile=None):
 
     # logfile is optional, and shows the loglevel requested.
     if logfile:
+        os.makedirs(os.path.dirname(logfile), exist_ok=True)        
         file_logger = dict(
             sink=logfile,
             format=LOGFORMAT, 
