@@ -184,7 +184,7 @@ class SRA:
         try:
             # establish connection to a new or running ipyclient
             cluster.start(cores=cores, ipyclient=ipyclient)
-            self._run(ipyclient)
+            self._run(cluster.ipyclient)
 
         except KeyboardInterrupt:
             logger.warning("keyboard interrupt by user, cleaning up.")

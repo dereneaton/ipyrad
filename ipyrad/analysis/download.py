@@ -64,7 +64,7 @@ class Download:
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
 
         # only run if the reference doesn't already exist
-        if (not os.path.exists(self.path)) and (not force):
+        if (not os.path.exists(self.path)) or (not force):
     
             # open a stream to url and write to file 1Mb at a time.
             res = requests.get(self.url, stream=True)
