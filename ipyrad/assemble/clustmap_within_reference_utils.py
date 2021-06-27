@@ -500,7 +500,9 @@ def mapping_reads(data, sample, nthreads):
 
     # setup cmd1 (mapping w/ bwa)
     cmd1 = [BIN_BWA, "mem", "-t", str(max(1, nthreads)), "-M", reference]
-    cmd1 += [read1, read2 if read2 else ""]
+    cmd1.append(read1)
+    if read2:
+        cmd1.append(read2)
     if data.hackers.bwa_args:
         for arg in data.hackers.bwa_args.split()[::-1]:
             cmd1.insert(2, arg)
