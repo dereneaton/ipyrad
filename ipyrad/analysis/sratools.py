@@ -262,7 +262,7 @@ class SRA:
             return
 
         # send download jobs
-        msg = "downloading/extracting fastq data"
+        msg = "downloading fastq data"
         jobs = {}
         for sidx in rundf.index:
             acc = rundf.Accession[sidx]
