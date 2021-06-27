@@ -56,7 +56,7 @@ class Download:
         # self.clean_data()
 
 
-    def download(self):
+    def download(self, force):
         """
         Call the chunked download with requests
         """
@@ -72,9 +72,9 @@ class Download:
                 for chunk in res.iter_content(chunk_size=1024*1024):
                     if chunk:
                         out.write(chunk)
-            logger.info("successful download: {}".format(self.path))
+            logger.info(f"successful download: {self.path}")
         else:
-            logger.warning("file already exists: {}".format(self.path))
+            logger.warning(f"file already exists: {self.path}")
 
 
     def gunzip_file(self):
@@ -84,7 +84,8 @@ class Download:
         if self.gunzip:
             try:
                 if not os.path.exists(self.gunzip_name):
-                    logger.info('decompressing gzipped file')
+                    logger.info(
+                        f'decompressing gzipped file to: {self.gunzip_name}')
                     with open(self.gunzip_name, 'w') as out:
                         with gzip.open(self.path, 'r') as stream:
                             while 1:
@@ -95,8 +96,7 @@ class Download:
                                 out.write(enc)
                 else:
                     logger.warning(
-                        "decompressed file already exists: {}"
-                        .format(self.gunzip_name))
+                        f"decompressed file already exists: {self.gunzip_name}")
             except Exception:
                 logger.error("error: couldn't gunzip file.")
 
