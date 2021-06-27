@@ -25,12 +25,12 @@ MISSING_IMPORTS = """
 To use the ipa.sratools module you must install the sra-tools
 software, which you can do with the following conda command. 
 
-  conda install 'sra-tools>2.10' -c conda-forge -c bioconda 
+  conda install 'sra-tools>=2.11' -c conda-forge -c bioconda 
 
 NB: The sra-tools software is updated frequently with changes that 
-are not backwards compatible, and thus break this wrapper tool. If 
+are not backwards compatible, thus breaking this wrapper tool. If 
 you encounter an error please let us know on gitter. But first check
-to find the versin of sra-tools that you have installed.
+that you have installed a recent sra-tools version.
 """
 
 
@@ -218,8 +218,7 @@ class SRA:
         ).reset_index(drop=True)
 
         # parallelize downloads
-        if ipyclient:
-            lbview = ipyclient.load_balanced_view()
+        lbview = ipyclient.load_balanced_view()
 
         # make empty Accession field
         rundf["Accession"] = ""
