@@ -39,22 +39,19 @@ class Download:
         url: str, 
         path: str, 
         gunzip: bool=False, 
-        force: bool=False,
         ):
-        
         self.url = url
         self.path = path
-        self.force = force
         self.gunzip = gunzip
         self.gunzip_name = self.path.split(".gz")[0]
 
 
-    def run(self):
+    def run(self, force):
         """
         Runs the tool to download the file as a stream to the 
         specified path and optionally decompress.
         """
-        self.download()
+        self.download(force)
         self.gunzip_file()
         # self.clean_data()
 
@@ -67,7 +64,7 @@ class Download:
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
 
         # only run if the reference doesn't already exist
-        if (not os.path.exists(self.path)) and (not self.force):
+        if (not os.path.exists(self.path)) and (not force):
     
             # open a stream to url and write to file 1Mb at a time.
             res = requests.get(self.url, stream=True)
