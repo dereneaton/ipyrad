@@ -33,7 +33,19 @@ def merge(
 
     # merge two assemblies and rename samples
     rename = {"1A_0", "A", "1B_0", "A"}
-    new = ip.merge('newname', [assembly1, assembly2], rename_dict=rename)    
+    new = ip.merge('newname', [assembly1, assembly2], rename_dict=rename)
+
+    Parameters:
+    -----------
+    name: str
+        Name of the new merged Assembly object.
+    assemblies: List[Assembly]
+        A list of Assembly objects to merge.
+    rename_dict: Dict[str, str]
+        Dict mapping current sample names to new names as strings.
+        If two samples have the same new name they will be merged
+        as technical replicates into a single new sample. Otherwise,
+        this simply sets new sample names.
     """
     # update rename dict to avoid bad characters
     rename_dict = rename_dict if rename_dict is not None else {}
@@ -47,8 +59,25 @@ def merge(
                 "modifying {newname} to {newername} to avoid bad characters.")
         rename_dict[oldname] = newername
 
-    # ensure Assemblies is multiple
-    assert len(assemblies) >= 2, "must enter >1 assembly to be merged"
+    # send technical replicate info to logger
+    if rename_dict:
+        techs = {}
+        for i in rename_dict:
+            key = rename_dict[i]
+            if key not in techs:
+                techs[key] = [i]
+            else:
+                techs[key].append(i)   
+        techs = {i: j for (i, j) in techs.items() if len(j) > 1}
+        for tname in techs:
+            logger.info(
+                f"merging technical replicates into {tname}: {techs[tname]}")
+
+    # if only one assembly was entered, make it iterable. Users can
+    # enter a single assembly since the merge command can still be 
+    # used to merge technical replicates.
+    if isinstance(assemblies, Assembly):
+        assemblies = [assemblies]
 
     # create new Merged assembly that inherits params from the 1st assembly
     merged = Assembly(name)
