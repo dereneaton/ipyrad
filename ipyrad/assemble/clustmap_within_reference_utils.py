@@ -818,14 +818,13 @@ def bedtools_merge(data, sample) -> List[str]:
     cmd1 = [BIN_BEDTOOLS, "bamtobed", "-i", mappedreads]
     cmd2 = [BIN_BEDTOOLS, "merge", "-i", "-"]
 
+    # use hackers value if user set one, else 500 as a reasonable default
+    max_insert = data.hackers.max_inner_mate_distance
+    if max_insert is None:
+        max_insert = 500
+
     # If PE the -d flag to tell bedtools how far apart to allow mate pairs.
     if data.is_pair:
-
-        # uses the hackers dict value if user set one, else 500 as a 
-        # reasonable max insert size.
-        max_insert = data.hackers.max_inner_mate_distance
-        if max_insert is None:
-            max_insert = 500
         cmd2.insert(2, str(max_insert))
         cmd2.insert(2, "-d")
 
