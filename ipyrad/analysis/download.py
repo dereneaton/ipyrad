@@ -26,16 +26,13 @@ class Download:
         A valid URL destination of the file you wish to download.
     path (str):
         A valid path on your computer to use as the file name. If
-        the directory does not exist we will try to create it.
+        the directory does not exist we will try to create it. If
+        the file is gzipped then the path should end with .gz.
     gunzip (bool):
         If the file ends with .gz and is gzipped then this will 
-        write a copy that is decompressed without the .gz ending.
+        create a copy that is decompressed without the .gz ending.
     force (bool):
         Overwrite existing file with the same name as 'path'.
-
-    Returns
-    ==========
-    None
     """
     def __init__(
         self, 
@@ -51,7 +48,12 @@ class Download:
         self.gunzip = gunzip
         self.gunzip_name = self.path.split(".gz")[0]
 
-        # download the data
+
+    def run(self):
+        """
+        Runs the tool to download the file as a stream to the 
+        specified path and optionally decompress.
+        """
         self.download()
         self.gunzip_file()
         # self.clean_data()
