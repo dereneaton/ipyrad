@@ -73,6 +73,8 @@ class Step7(BaseStep):
             self.stepdir, f"{self.data.name}.seqs.hdf5")
         self.proj.outfiles['snps_database'] = os.path.join(
             self.stepdir, f"{self.data.name}.snps.hdf5")
+        for base in self.outformats:
+            self.proj.outfiles[OUT_SUFFIX[base]] = ""
 
 
     def check_database_files(self):
@@ -491,7 +493,8 @@ class Step7(BaseStep):
         # store results to project
         for key in prog.results:
             outfile = prog.results[key]
-            self.proj.outfiles[key] = outfile
+            outname = OUT_SUFFIX[key]
+            self.proj.outfiles[outname] = outfile
         print(self.proj.outfiles)
 
 
@@ -1152,19 +1155,19 @@ after assembling your data.
 """
 
 OUT_SUFFIX = {
-    'l': ('.loci',),
-    'p': ('.phy', '.phymap',),
-    's': ('.snps', '.snpsmap',),
-    'n': ('.nex',),
-    'k': ('.str',),
-    'a': ('.alleles',),
-    'g': ('.geno',),
-    'G': ('.gphocs',),
-    'u': ('.usnps', '.ustr', '.ugeno'),
-    'v': ('.vcf',),
-    't': ('.treemix',),
-    'm': ('.migrate',),
-    }
+    'l': ('loci',),
+    'p': ('phy',),
+    's': ('snps', 'snpsmap',),
+    'n': ('nex',),
+    'k': ('str',),
+    # 'a': ('alleles',),
+    'g': ('geno',),
+    'G': ('gphocs',),
+    'u': ('usnps', 'ustr', 'ugeno'),
+    'v': ('vcf',),
+    't': ('treemix',),
+    'm': ('migrate',),
+}
 
 
 if __name__ == "__main__":
