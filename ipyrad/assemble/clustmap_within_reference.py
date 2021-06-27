@@ -63,7 +63,7 @@ class ClustMapReference:
             jobs['sam_index_alt'] = rasync2
 
         # track job
-        msg = "indexing reference"
+        msg = "indexing reference          "
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
         prog.check()        
