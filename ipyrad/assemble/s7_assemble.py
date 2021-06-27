@@ -1155,18 +1155,18 @@ after assembling your data.
 """
 
 OUT_SUFFIX = {
-    'l': ('loci',),
-    'p': ('phy',),
-    's': ('snps', 'snpsmap',),
-    'n': ('nex',),
-    'k': ('str',),
-    # 'a': ('alleles',),
-    'g': ('geno',),
-    'G': ('gphocs',),
-    'u': ('usnps', 'ustr', 'ugeno'),
-    'v': ('vcf',),
-    't': ('treemix',),
-    'm': ('migrate',),
+    'l': 'loci',
+    'p': 'phy',
+    's': 'snps',  # 'snpsmap'
+    'n': 'nex',
+    'k': 'str',
+    'g': 'geno',
+    'G': 'gphocs',
+    'u': 'usnps',  # 'ustr', 'ugeno',
+    'v': 'vcf',
+    't': 'treemix',
+    'm': 'migrate',
+    # 'a' ('alleles',),
 }
 
 
