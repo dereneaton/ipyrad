@@ -55,13 +55,13 @@ class SRA:
     Parameters:
     ------------
     name_fields: (int, str):
-        Provide the index (1-indexed) of the name fields to be used as a 
-        prefix for fastq output files. The default is (1,30), which is the 
-        accession + SampleName fields. Use sra.fetch_fields to see all 
-        available fields and their indices. 
-        If multiple are listed then they will be joined by a "_" 
-        character. For example (29,30) would yield something like:
-        latin-name_sample-name (e.g., mus_musculus-NR10123).
+        Provide the index (1-indexed) of the name fields to be used 
+        as a prefix for fastq output files. The default is (1,30), 
+        which is the accession + SampleName fields. Use
+        sra.fetch_fields to see all available fields and their 
+        indices. If multiple are listed then they will be joined 
+        by a "_" character. For example (29,30) would yield something
+        like: latin-name_sample-name (e.g., mus_musculus-NR10123).
 
     dry_run: (bool)
         If True then a table of file names that _would_ be downloaded
@@ -352,12 +352,9 @@ class SRA:
         """
         calls fastq-dump on SRRs, relabels fastqs by their accession
         names, and writes them to the workdir. Saves temp sra files
-        in the designated tmp folder and immediately removes them.
+        in the designated vdb config tmp folder and immediately 
+        removes them.
         """
-        # build outname
-        outname = os.path.split(srr)[-1]
-        outname = outname.rsplit(".sra")[0]
-
         # build command for fastq-dumping
         fd_cmd = [
             "fastq-dump", srr,
@@ -374,9 +371,10 @@ class SRA:
         if proc.returncode:
             raise IPyradError(out.decode())
 
-        # delete the temp sra file from the place 
-        if os.path.exists(srr):
-            os.remove(srr)
+        # delete the temp sra file from the place
+        sra_file = os.path.join(self.sra_tmpdir, srr + ".sra")
+        if os.path.exists(sra_file):
+            os.remove(sra_file)
 
 
 
