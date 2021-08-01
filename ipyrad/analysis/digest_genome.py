@@ -40,8 +40,8 @@ class DigestGenome:
         Second restriction enzyme recognition site. See re1 note.
 
     ncopies (int):
-        The number of copies to make for every digested copy to write
-        to as fastq reads in the output files.
+        The number of sequenced copies to create for every digested 
+        fragment to write to fastq file.
 
     nscaffolds (int, None):
         Only the first N scaffolds (sorted in order from longest to 
@@ -124,11 +124,11 @@ class DigestGenome:
             scaffolds = fio.read().split(">")[1:]
 
         # add revcomp of every scaffold
-        # rscaffs = []
-        # for scaff in scaffolds:
-            # name, seq = scaff.split("\n", 1)            
-            # rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
-        # scaffolds = scaffolds + rscaffs
+        rscaffs = []
+        for scaff in scaffolds:
+            name, seq = scaff.split("\n", 1)
+            rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
+        scaffolds = scaffolds + rscaffs
 
         # sort scaffolds by length
         scaffolds = sorted(scaffolds, key=len, reverse=True)
@@ -151,7 +151,7 @@ class DigestGenome:
             # digest each fragment into second cut fragment
             if not self.re2:
                 bits1 = []
-                for fragment in bits:
+                for fragment in bits:             # 1----1
                     if len(fragment) > self.min_size:
                         # forward read on fragment
                         bits1.append((fragment[1:-1], 0, self.max_size))
