@@ -1,66 +1,57 @@
 #!/usr/bin/env python
 
 """
-Wrapper tool to conveniently call snaq from ipa
+Wrapper tool to conveniently call snaq from ipa.
 """
 
-# py2/3 compat
-from __future__ import print_function
-from builtins import range
-
+from typing import Optional
 import os
-import sys
 import subprocess as sps
+from loguru import logger
 import numpy as np
-from ..assemble.utils import IPyradError
+import toytree
+from ipyrad.assemble.utils import IPyradError
+from toytree.utils.network import parse_network
 
-# import toytree
-try:
-    import toytree
-except ImportError:
-    pass
-_MISSING_TOYTREE = """
-You are missing required packages to use ipa.snaq().
-First run the following conda install command:
-
-conda install toytree -c conda-forge
-"""
+# TODO: check pinky for previous examples.
 
 
 class Snaq:
     """
     Wrapper to run simple snaq analyses on a list of gene trees.
-    The input can be either a file with newick trees on separate lines, 
-    or a list of newick strings, or a list of toytree objects, or a DataFrame
-    containing a column labeled .tree.
+    The input can be either a file with newick trees on separate 
+    lines, or a list of newick strings, or a list of toytree 
+    objects, or a DataFrame containing a column labeled .tree.
 
     It is assumed that Julia is installed in your $PATH.
 
-    Parameters
-    ===========
-    data (str or list)
-
+    Parameters:
+    -----------
+    gtrees (str or list)
+        A tree table inferred from ipa.tree_slider as a Dataframe
+        or a filepath to a CSV file.
     name (str)
-
+        Name prefix for output files.
     workdir (str)
-
+        Directory for output files.
     bootsfile (str or None)
-
+    
     ...
     """
     def __init__(
         self, 
-        gtrees,
-        netin,
-        nedges,
-        name="test",
-        workdir="analysis-snaq",
-        seed=None,
-        nruns=4,
-        nproc=4,
+        gtrees: str,
+        netin: str,
+        nedges: int,
+        name: str="test",
+        workdir: str="analysis-snaq",
+        seed: Optional[int]=None,
+        nruns: int=4,
+        nproc: int=4,
         # cftable=None,
-        force=False,
-        **kwargs):
+        force: bool=False,
+        path_to_julia: Optional[str]=None
+        ):
 
         # params
         self.name = name
@@ -72,6 +63,7 @@ class Snaq:
         self.nproc = nproc
         self.seed = (np.random.randint(int(1e7)) if seed is None else seed)
         self.force = force
+        self.binary = path_to_julia
         # self.cftable = cftable
 
         # i/o
@@ -84,38 +76,36 @@ class Snaq:
         # final result
         self.out_log = os.path.join(self.workdir, self.name + '.snaq.log')
         self.out_net = os.path.join(self.workdir, self.name + '.snaq')
-
+        self.tree = None
+        self.admix = None
+        
         # prep
         self._check_binary()
         self._expand_script()
-
 
 
     def _check_binary(self):
         """
         Check that java is installed and get a tmp binary if needed.
         """
-        # check for toytree
-        if not sys.modules.get("toytree"):
-            raise ImportError(_MISSING_TOYTREE)
-
         # check for java
-        cmd = ["which", "julia"]
-        proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
-        comm = proc.communicate()
-        if proc.returncode:
-            print(comm[0])
-        if not comm[0]:
-            raise IPyradError("julia must be installed and in your $PATH")
-
-
+        if not self.binary:
+            cmd = ["which", "julia"]
+            proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+            comm = proc.communicate()
+            if proc.returncode:
+                raise IPyradError(f"julia not found: {comm[0].decode()}")
+            if not comm[0]:
+                raise IPyradError("julia must be installed and in your $PATH")
+            self.binary = comm[0].decode()
+            logger.info(f"julia path: {self.binary}")
 
 
     def _expand_script(self):
         """
         When the command is run we also save stderr to a log file.
         """
-
+        os.makedirs(self.workdir, exist_ok=True)
         expand = {
             "nproc": self.nproc,
             "nruns": self.nruns,
@@ -147,15 +137,17 @@ class Snaq:
 
 
     def _get_command(self):
-        # base command
-        cmd = ["julia", self.io_script]
+        """ base command """
+        cmd = [self.binary, self.io_script]
         return cmd
 
 
     def print_command(self):
+        """
+        Print the command line script
+        """
         self._expand_script()
         print(self._script)
-
 
 
     def run(self):
@@ -163,7 +155,7 @@ class Snaq:
         Call SNAQ julia script 
         """
         print("[SNAQ v.x.y]")
-        print("[nproc = {}]".format(self.nruns))
+        print("[nproc = {}]".format(self.nproc))
         print("julia {}".format(self.io_script))
 
         # setup the comamnd 
@@ -181,7 +173,7 @@ class Snaq:
         # try loading the tree result
         with open(self.out_log, 'r') as inlog:
             maxnet = inlog.read().split("MaxNet is ")[-1]
-        self.tree, self.admix = toytree.utils.parse_network(maxnet)
+        self.tree, self.admix = parse_network(maxnet)
 
         # report result file
         print("inferred network written to ({})".format(self.out_net))
@@ -201,12 +193,13 @@ using Distributed
 addprocs({nproc})
 
 # load packages
-using CSV
+using CSV, DataFrames
 @everywhere using PhyloNetworks
 
 # load quartet-CF object from table
-df_sp = CSV.read("{io_table}", categorical=false);
-d_sp = readTableCF!(df_sp);
+# df_sp = CSV.read("{io_table}", categorical=false);
+# d_sp = readTableCF!(df_sp);
+d_sp = readTableCF("{io_table}")
 
 # load starting network
 netin = readTopology("{in_net}")
