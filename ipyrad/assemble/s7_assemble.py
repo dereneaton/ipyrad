@@ -471,14 +471,15 @@ class Step7(BaseStep):
             Call the Converter class functions to write formatted output files
             from the HDF5 database inputs.
             """
-            try:
-                Converter(data).run(outf)
-            except Exception as inst:
-                # Allow one file to fail without breaking all step 7
-                msg = ("Error creating outfile: {}\n{}\t{}"
-                    .format(OUT_SUFFIX[outf], type(inst).__name__, inst))
-                logger.exception(msg)
-                raise IPyradError(msg) from inst
+            return Converter(data).run(outf)
+            # try:
+            #     return Converter(data).run(outf)
+            # except Exception as inst:
+            #     # Allow one file to fail without breaking all step 7
+            #     msg = ("Error creating outfile: {}\n{}\t{}"
+            #         .format(OUT_SUFFIX[outf], type(inst).__name__, inst))
+            #     logger.exception(msg)
+            #     raise IPyradError(msg) from inst
 
         msg = "writing conversions"
         jobs = {}
