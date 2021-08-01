@@ -63,7 +63,7 @@ class ClustMapReference:
             jobs['sam_index_alt'] = rasync2
 
         # track job
-        msg = "indexing reference          "
+        msg = "indexing reference             "
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
         prog.check()        
@@ -153,7 +153,7 @@ class ClustMapReference:
                 *(self.data, self.samples[sname])
             )
         if jobs:
-            msg = "tagging reads for decloning"
+            msg = "tagging reads for decloning    "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
             prog.check()            
@@ -172,7 +172,7 @@ class ClustMapReference:
                 *(self.data, self.samples[sname])
             )
         if jobs:
-            msg = "dereplicating reads"
+            msg = "dereplicating reads              "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
             prog.check()            
@@ -193,7 +193,7 @@ class ClustMapReference:
                 *(self.data, self.samples[sname])
             )
         if jobs:
-            msg = "tagging headers for decloning"
+            msg = "tagging headers for decloning  "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
             prog.check()            
