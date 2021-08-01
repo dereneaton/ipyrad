@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-"convert loci file to bpp format input files"
+"""
+Convert loci file to bpp format input files
+"""
 
 # py2/3 compat
 from __future__ import print_function
@@ -42,6 +44,33 @@ conda install toytree -c conda-forge
 
 DELIM = "___"
 
+
+@dataclass
+class BppBase:
+    """
+    Base class of BPP analysis tool parsing input args.
+    """
+    name: str
+    workdir: str
+    tree: Union['toytree.Toytree', str]
+    imap: Dict[str, List[str]]
+    minmap: Dict[str, int]
+    maxloci: int
+    seed: Optional[int]
+    burnin: int
+    nsample: int
+    sampfreq: int
+    theta_prior: Tuple[float, float]
+    tau_prior: Tuple[float, float]
+    use_data: bool=True
+    finetune: Optional[Tuple[float,float,float,float,float]]
+    phased: bool=False
+
+
+class Bpp00(BppBase):
+    """
+
+    """
 
 
 class Bpp(object):

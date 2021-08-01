@@ -9,6 +9,48 @@ import numpy as np
 from numba import njit, prange
 
 
+
+def popfile_to_imap(path: str):
+    """
+    Parse popfile into an imap dictionary. The popfile should be
+    formatted with whitespace separated samplename, popname lines.
+
+    Parameters:
+    -----------
+    path: str
+        The path to a popfile.
+
+    Example:
+    --------
+    imap = ipa.popfile_to_imap('popfile.txt')
+
+    popfile format example:
+    -----------------------
+    sample_A1   pop_A
+    sample_A2   pop_A
+    sample_B1   pop_B
+    sample_B2   pop_B
+
+    imap format example:
+    ---------------------
+    {
+        'pop_A': ['sample_A1', 'sample_A2'],
+        'pop_B': ['sample_B1', 'sample_B2'],
+    }
+    """
+    # TODO: support loading from a URL also.
+    popfile = os.path.realpath(os.path.expanduser(path))
+    imap = {}
+    with open(popfile) as indata:
+        data = [i.strip().split() for i in indata.readlines()]
+        for i in data:
+            if i[0] not in imap:
+                imap[i[0]] = [i[1]]
+            else:
+                imap[i[0]].append(i[1])
+    return imap
+
+
 @njit
 def jsubsample_snps(snpsmap, seed):
     """
