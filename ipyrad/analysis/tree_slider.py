@@ -24,7 +24,7 @@ from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError
 from .raxml import Raxml as raxml
 # from .mrbayes import MrBayes as mrbayes
-from .window_extracter import window_extracter
+from .window_extracter import window_extracter, NoDataInWindowError
 
 
 class TreeSlider:
@@ -93,7 +93,7 @@ class TreeSlider:
         mincov: int=0,
         imap: Dict[str, List[str]]=None,
         minmap: Dict[str, Union[float,int]]=None,
-        rmincov: Union[float, int]=0.0,
+        rmincov: Union[float, int]=0.0001,
         consensus_reduce: bool=False,
         inference_method: str="raxml",
         inference_args: Dict[str, str]=None,
@@ -124,7 +124,7 @@ class TreeSlider:
         self.imap = imap
         self.mincov = mincov
         self.minmap = minmap
-        self.rmincov = float(rmincov if rmincov else 0.0)
+        self.rmincov = max(rmincov, 0.0001)  # cannot allow rmincov=0
         self.consensus_reduce = consensus_reduce
         self.inference_method = inference_method
         self.inference_args = inference_args if inference_args is not None else {}
@@ -334,15 +334,21 @@ class TreeSlider:
 
         # iterate to submit jobs
         keepdir = os.path.join(self.workdir, f"{self.name}-tmpdir")
-        jobs = {}        
+        jobs = {}
+        nwin = self.tree_table.shape[0]
+        msg1 = f"inference in {nwin} sliding windows"
+        msg2 = f"{self.inference_method}"
+        prog = AssemblyProgressBar(jobs, msg1, msg2, quiet)
+
         for idx in self.tree_table.index:
 
             # setup window extracter tool for this window
+            scaff_idx = int(self.tree_table.scaffold[idx])
             wex = window_extracter(
                 data=self.data,
                 name=f"tree_slider_window-{idx}",
                 workdir=keepdir,
-                scaffold_idxs=int(self.tree_table.scaffold[idx]),
+                scaffold_idxs=scaff_idx,
                 start=self.tree_table.start[idx],
                 end=self.tree_table.end[idx],
                 mincov=self.mincov,
@@ -352,29 +358,33 @@ class TreeSlider:
                 rmincov=self.rmincov,
             )
 
-            # extract the window to a file in tmpdir
-            wex.run(nexus=bool(self.inference_method == "mb"))
+            # extract the window to a file in tmpdir unless there
+            # is no data in the window.
+            try:
+                wex.run(nexus=bool(self.inference_method == "mb"))
+            except NoDataInWindowError:
+                continue
 
             # fill table with filtered stats for window
-            self.tree_table.loc[idx, "snps"] = wex.stats.snps_post[0]
-            self.tree_table.loc[idx, "sites"] = wex.stats.sites_post[0]
-            self.tree_table.loc[idx, "missing"] = wex.stats.missing_post[0]
-            self.tree_table.loc[idx, "samples"] = wex.stats.samples_post[0]
+            self.tree_table.loc[idx, "snps"] = wex.stats.snps_post[scaff_idx]
+            self.tree_table.loc[idx, "sites"] = wex.stats.sites_post[scaff_idx]
+            self.tree_table.loc[idx, "missing"] = wex.stats.missing_post[scaff_idx]
+            self.tree_table.loc[idx, "samples"] = wex.stats.samples_post[scaff_idx]
 
             # if window has enough SNPS then submit inference job.
-            cond1 = wex.stats.snps_post[0] >= self.minsnps
-            cond2 = wex.stats.sites_post[0] >= self.minlen_alignment
+            cond1 = wex.stats.snps_post[scaff_idx] >= self.minsnps
+            cond2 = wex.stats.sites_post[scaff_idx] >= self.minlen_alignment
             if cond1 & cond2:
                 args = [wex.outfile, self.inference_args, keepdir]
                 if "raxml" in self.inference_method:
-                    jobs[idx] = lbview.apply(remote_raxml, *args)
+                    prog.jobs[idx] = lbview.apply(remote_raxml, *args)
                 elif "mb" in self.inference_method:
-                    jobs[idx] = lbview.apply(remote_mrbayes, *args)
+                    prog.jobs[idx] = lbview.apply(remote_mrbayes, *args)
+
+            # TODO...
+            prog.update()
 
         # submit jobs: (fname, scafidx, minpos, maxpos, minsnps, )
-        msg1 = f"{self.inference_method} inference in sliding windows"
-        msg2 = f"{self.tree_table.shape[0]} trees"
-        prog = AssemblyProgressBar(jobs, msg1, msg2, quiet)
         prog.block()
         prog.check()
 
@@ -442,7 +452,11 @@ def remote_mrbayes(nexfile, inference_args, keepdir=None):
 
 
 
-def remote_raxml(phyfile, inference_args, keepdir=None):
+def remote_raxml(
+    phyfile:str, 
+    inference_args:Dict[str,str], 
+    keepdir:Optional[str],
+    ):
     """
     Call raxml on phy and returned parse tree result
     """
@@ -455,7 +469,7 @@ def remote_raxml(phyfile, inference_args, keepdir=None):
     # call raxml on the input phylip file with inference args
     rax = raxml(
         data=phyfile,
-        name=os.path.basename(phyfile).rsplit(".phy")[0],  # "temp_" + str(os.getpid()),
+        name=os.path.basename(phyfile).rsplit(".phy")[0],
         workdir=workdir,
         **inference_args
     )
@@ -463,19 +477,17 @@ def remote_raxml(phyfile, inference_args, keepdir=None):
 
     # get newick string from result
     if os.path.exists(rax.trees.bipartitions):
-        tree = toytree.tree(rax.trees.bipartitions).newick
+        tree = toytree.tree(rax.trees.bipartitions).write(tree_format=0)
     else:
-        tree = toytree.tree(rax.trees.bestTree).newick
+        tree = toytree.tree(rax.trees.bestTree).write(tree_format=5)
 
-    # remote tree files
+    # keep all files if keepdir is True else remove them.
     if keepdir is None:
         for tfile in rax.trees:
             tpath = getattr(rax.trees, tfile)
             if os.path.exists(tpath):
                 os.remove(tpath)
-
-    # remove the TEMP phyfile in workdir/tmpdir
-    os.remove(phyfile)    
+    os.remove(phyfile)
 
     # return results
     return tree
