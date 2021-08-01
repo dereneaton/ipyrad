@@ -286,7 +286,7 @@ def tag_for_decloning(data, sample):
                 indices = read[0].split(":")[-1]
                 index = indices.split("+")[1].strip()
                 assert len(index) == 8
-            except AssertionError:
+            except (IndexError, AssertionError):
                 index = ""
             fake_quality = "B" * len(index)
 
