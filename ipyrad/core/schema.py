@@ -104,7 +104,6 @@ class SampleSchema(BaseModel):
     stats_s4: Stats4 = Field(None)
     stats_s5: Stats5 = Field(None)
     stats_s7: Stats7 = Field(None)
-    # stats: Stats = Field(None)
 
 class FilterStats(BaseModel):
     nloci_before_filtering: int
