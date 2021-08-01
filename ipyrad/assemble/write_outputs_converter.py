@@ -46,14 +46,14 @@ class Converter:
         """
         # phy array outputs
         if oformat == "p":
-            self.write_phy()
+            return self.write_phy()
 
         # phy array + phymap outputs
         if oformat == "n":
-            self.write_nex()
+            return self.write_nex()
         
         if oformat == "G":
-            self.write_gphocs()
+            return self.write_gphocs()
 
         # phy array + phymap + populations outputs
         if oformat == "m":
@@ -61,21 +61,22 @@ class Converter:
 
         # snps array + snpsmap outputs
         if oformat == "s":
-            self.write_snps()
-            self.write_snps_map()
+            snpsfile = self.write_snps()
+            snpsmapfile = self.write_snps_map()
+            return snpsfile, snpsmapfile
 
         # recommended to use analysis tools for unlinked sampling.
         if oformat == "u":
-            self.write_usnps()
+            return self.write_usnps()
 
         if oformat == "k":
-            self.write_str()
+            return self.write_str()
 
         if oformat == "g":
-            self.write_geno()
+            return self.write_geno()
 
         if oformat == "t":
-            self.write_treemix()
+            return self.write_treemix()
 
 
     def write_phy(self):
