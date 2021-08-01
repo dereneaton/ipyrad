@@ -36,8 +36,9 @@ from .digest_genome import DigestGenome as digest_genome
 from .sratools import SRA as sratools
 from .snps_imputer import SNPsImputer as snps_imputer
 from .download import Download as download
- 
-# from .astral import Astral as astral
+from .utils import popfile_to_imap
+from .astral import Astral as astral
+from .snaq import Snaq as snaq
 # from .bucky import Bucky as bucky
 # from .bpp import Bpp as bpp
 # from .fasttree import Fasttree as fasttree

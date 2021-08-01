@@ -4,67 +4,76 @@
 Wrapper tool to conveniently call astral from ipa
 """
 
-# py2/3 compat
-from __future__ import print_function
-from builtins import range
-
 import os
 import sys
 import subprocess as sps
+from typing import Dict, List, Union
 import pandas as pd
-from ..assemble.utils import IPyradError
-
-# import toytree
-try:
-    import toytree
-except ImportError:
-    pass
-_MISSING_TOYTREE = """
-You are missing required packages to use ipa.bpp().
-First run the following conda install command:
-
-conda install toytree -c conda-forge
-"""
+import toytree
+from ipyrad.assemble.utils import IPyradError
 
 
 class Astral:
     """
     Wrapper to run simple astral analyses on a list of gene trees.
-    The input can be either a file with newick trees on separate lines, 
-    or a list of newick strings, or a list of toytree objects, or a DataFrame
-    containing a column labeled .tree.
+    The input can be either a file with newick trees on separate 
+    lines, or a list of newick strings, or a list of toytree 
+    objects, or a DataFrame containing a column labeled .tree.
 
     Parameters
     ===========
     data (str or list)
+        An input list of trees, or file containing lists of trees.
 
     name (str)
+        Prefix name for result files.
 
     workdir (str)
+        Dir for ASTRAL result files (created if not exists).
 
-    bootsfile (str or None)
+    bootsfile: Optional[str]
+        A file with bootstrap replicate trees to allow ASTRAL to 
+        summarize over uncertainty in gene tree inference.
 
-    ...
+    imap: Dict[str, List[str]]
+        A dictionary mapping samples to clade names to infer a 
+        species tree with only clades as tips. Clades should 
+        typically contain samples from a population or species.
+
+    annotation: int=3
+        Instructions to ASTRAL for recording statistics in the
+        newick tree structure.
+
+    gene_resampling: bool=False
+        If True then genes are resampled with replacement to 
+        calculate supports.
+
+    nboots: Optional[int]
+        The number of bootstrap replicates to compute in ASTRAL.
+
+    binary: Optional[str]
+        Path to the ASTRAL binary (.jar) file. If None we will try 
+        to auto-detect its location, looking first in conda dir.
     """
     def __init__(
         self, 
-        data, 
-        name="test",
-        workdir="analysis-astral", 
-        bootsfile=None, 
-        imap=None,
-        annotation=3,
-        gene_resampling=False,
-        nboots=None,
-        binary=None,
-        **kwargs):
+        data: Union[str, List[str]], 
+        name: str="test",
+        workdir: str="analysis-astral", 
+        bootsfile: str=None, 
+        imap: Dict[str,List[str]]=None,
+        annotation: int=3,
+        gene_resampling: bool=False,
+        nboots: int=None,
+        binary: str=None,
+        ):
 
         # i/o
         self.name = name
         self.data = data
         self._tmptrees = None
         self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.binary = None
+        self.binary = binary
         self.mapfile = None
 
         # results 
@@ -166,6 +175,7 @@ class Astral:
 
 
     def print_command(self):
+        """returns the command to run ASTRAL binary with arguments"""
         print(" ".join(self._get_command()))
 
 
@@ -173,10 +183,6 @@ class Astral:
         """
         Check that java is installed and get a tmp binary if needed.
         """
-        # check for toytree
-        if not sys.modules.get("toytree"):
-            raise ImportError(_MISSING_TOYTREE)
-
         # check for java
         cmd = ["which", "java"]
         proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
@@ -208,7 +214,6 @@ class Astral:
         )
 
 
-
     def _parse_data_to_tmpfile(self):
         """
         Input can be a CSV file or DataFrame or list to 
@@ -229,8 +234,7 @@ class Astral:
             treelist = data[data.tree.notna()].tree.tolist()
 
             # or it could be a file with newicks on lines
-            # ...
-            
+            # ...          
 
         # assume this is the treeslider dataframe output with .tree column
         elif isinstance(data, pd.DataFrame):
@@ -243,7 +247,6 @@ class Astral:
         self._tmptrees = os.path.join(self.workdir, "tmptrees.txt")
         with open(self._tmptrees, 'w') as out:
             out.write("\n".join(treelist))
-
 
 
     def run(self):
