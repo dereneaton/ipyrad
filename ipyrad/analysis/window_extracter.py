@@ -24,6 +24,8 @@ from ipyrad.assemble.write_outputs_converter import NEXHEADER
 
 # pylint: disable=too-many-branches, too-many-statements, no-self-use
 
+class NoDataInWindowError(IPyradError):
+    pass
 
 
 class BaseWindowExtracter:
@@ -147,7 +149,7 @@ class BaseWindowExtracter:
             if self.imap is not None:
                 imapset = set(itertools.chain(*self.imap.values()))
                 self.exclude.update(set(snames).difference(imapset))
-                logger.info(
+                logger.debug(
                     "dropping samples that are either not in the imap dict, "
                     f"or are in the exclude list: {self.exclude}")
 
@@ -236,11 +238,12 @@ class BaseWindowExtracter:
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, seqarr.shape[1])
             for idx, name in enumerate(pnames):
-                seqdat = b"".join(seqarr[idx, block:stop].view("S1")).decode()
+                seqdata = b"".join(seqarr[idx, block:stop].view("S1")).decode()
                 lines.append(f"  {name}{seqdata}\n")
             lines.append("\n")
         lines.append("  ;\nend;")
         # print intermediate result and clear
+        ntaxa, nsites = seqarr.shape        
         self.outfile = os.path.join(self.workdir, self.name + ".nex")        
         with open(self.outfile, 'w') as out:
             out.write("".join(lines))
@@ -303,7 +306,8 @@ class WindowExtracter(BaseWindowExtracter):
 
         # bail if seqarr is empty
         if not blocks:
-            raise IPyradError("No data passed filtering in the selected region.")
+            raise NoDataInWindowError(
+                "No data passed filtering in the selected region.")
 
         # concat chunks
         self.stats = pd.concat(fstats)
@@ -503,7 +507,7 @@ class WindowExtracter(BaseWindowExtracter):
         stats.sites_post = fseqarr.shape[1]
         stats.snps_post = count_snps(fseqarr)
         stats.missing_post = round(np.sum(fseqarr == 78) / fseqarr.size, 2)
-        stats.samples_post = fseqarr.shape[0]
+        stats.samples_post = fseqarr.shape[0] - np.all(fseqarr == 78, axis=0).sum()
         return stats
 
 
@@ -597,7 +601,8 @@ class WindowExtracterConsensus(BaseWindowExtracter):
 
         # bail if seqarr is empty
         if not blocks:
-            raise IPyradError("No data passed filtering in the selected region.")
+            raise NoDataInWindowError(
+                "No data passed filtering in the selected region.")
 
         # concat chunks
         self.stats = pd.concat(fstats)
@@ -785,7 +790,7 @@ class WindowExtracterConsensus(BaseWindowExtracter):
         stats.sites_post = fseqarr.shape[1]
         stats.snps_post = count_snps(fseqarr)
         stats.missing_post = round(np.sum(fseqarr == 78) / fseqarr.size, 2)
-        stats.samples_post = fseqarr.shape[0]
+        stats.samples_post = fseqarr.shape[0] - np.all(fseqarr == 78, axis=0).sum()
         return stats
 
 
