@@ -1,22 +1,38 @@
 #!/usr/bin/python 
 
-""" wrapper to make simple calls to raxml """
+""" 
+Wrapper to make simple calls to raxml 
+"""
+
+from typing import Dict
 
 import os
 import sys
 import glob
 import subprocess
+from loguru import logger
 from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
 
 class Raxml:
     """
-    RAxML analysis utility function. This tool makes it easy to build a 
-    raxml command line string and submit it as a job. It also makes it 
-    easy to access the resulting tree files. Set params on the raxml 
-    object and print(<object>.command) to see raxml command string. 
-    Call .run() to start the job.
+    RAxML analysis utility function. This tool makes it easy to 
+    build a raxml command line string, check it, run it, and collect
+    the results. 
+
+    Example:
+    ---------
+    rax = ipa.raxml(
+        data="test.phy"
+        name="test",
+        workdir="./analysis-raxml",
+        T=20,
+        N=500,
+    )
+    print(rax.command)
+    rax.run()
+    tree = rax.trees.bipartitions
 
     Parameters:
     -----------
@@ -27,9 +43,15 @@ class Raxml:
         The name for this run. An alias for '-n'.
     workdir: str
         The output directory for results. An alias for '-w'. 
+    **kwargs
+        Any parameter can be entered here and will be added to the
+        raxml command string. Call self.command to see the command.
+        To remove a pre-set default argument set the value to None.
+        For example, N=None will remove the argument N from the 
+        raxml command line.
 
-    Additional optional parameters
-    -------------------------------
+    Common raxml command options
+    ----------------------------
     f: str
         (-f a) The raxml function. Default is 'a'.
     T: str
@@ -55,28 +77,30 @@ class Raxml:
 
     Attributes:
     -----------
-    params: dict
-        parameters for this raxml run
+    kwargs: dict
+        A dictionary with parameters for this raxml run
     command: 
-        returns the command string to run raxml
+        The command string that will be used to run raxml
 
     Functions:
     ----------
     run()
-        submits a raxml job to locally or on an ipyparallel client cluster. 
+        starts the raxml job running. You can submit to an 
+        ipyparallel cluster or run on the current kernel, and 
+        optionally block or not until job is finished.
     """    
     def __init__(
         self,
-        data:str,
-        name:str="test",
-        workdir:str="analysis-raxml", 
-        **kwargs,
+        data: str,
+        name: str="test",
+        workdir: str="analysis-raxml", 
+        **kwargs: Dict[str, str],
         ):
 
         # path attributes
-        self._kwargs = {
+        self.kwargs = {
             "f": "a", 
-            "T": 4,  # <- change to zero !?
+            "T": 4,
             "m": "GTRGAMMA",
             "N": 100,
             "x": 12345,
@@ -85,77 +109,63 @@ class Raxml:
             "binary": "",
         }
 
-        # update kwargs for user args and drop key if value is None
-        self._kwargs.update(kwargs)
-        self._kwargs = {i: j for (i, j) in self._kwargs.items() if j is not None}
+        # update default kwargs with user kwargs
+        self.kwargs.update(kwargs)
 
-        # check workdir
-        if workdir:
-            workdir = os.path.abspath(os.path.expanduser(workdir))
-        else:
+        # drop any kwargs that user set to None
+        self.kwargs = {i: j for (i, j) in self.kwargs.items() if j is not None}
+
+        # ensure workdir exists
+        if workdir is None:
             workdir = os.path.abspath(os.path.curdir)
-        if not os.path.exists(workdir):
-            os.makedirs(workdir)
+        workdir = os.path.abspath(os.path.expanduser(workdir))          
+        os.makedirs(workdir, exist_ok=True)
 
-        # store entered args in params object
-        self.params = Params()
-        self.params.n = name
-        self.params.w = workdir
-        self.params.s = os.path.abspath(os.path.expanduser(data))
+        # check name and data
+        name = "raxml" if name is None else name
+        data = os.path.abspath(os.path.expanduser(data))
 
-        # if arg append kwargs to top of list of binaries to search for
-        binaries = _get_binary_paths()
-        if self._kwargs["binary"]:
-            binaries = [self._kwargs["binary"]] + binaries
+        # data, name and workdir override args
+        self.kwargs['n'] = self.kwargs.get("n", name)
+        self.kwargs['w'] = self.kwargs.get("w", workdir)
+        self.kwargs['s'] = self.kwargs.get("s", data)
 
-        # sefind a binary from the list
-        self.params.binary = _check_binaries(binaries)
+        # get binary
+        binaries_list = _get_binary_paths()
+        if self.kwargs["binary"]:
+            binaries_list = [self.kwargs["binary"]] + binaries_list
+        self.kwargs['binary'] = _check_binaries(binaries_list)
 
-        # set params 
-        notparams = set(["workdir", "name", "data", "binary"])
-        for key in set(self._kwargs.keys()) - notparams:
-            self.params[key] = self._kwargs[key]
-
-        # attributesx
+        # attributes
         self.rasync = None
         self.stdout = None
         self.stderr = None
 
         # results files        
         self.trees = Params()
-        self.trees.bestTree = os.path.join(workdir, "RAxML_bestTree." + name)
-        self.trees.bipartitionsBranchLabels = os.path.join(workdir, "RAxML_bipartitionsBranchLabels." + name)
-        self.trees.bipartitions = os.path.join(workdir, "RAxML_bipartitions." + name)
-        self.trees.bootstrap = os.path.join(workdir, "RAxML_bootstrap." + name)
-        self.trees.info = os.path.join(workdir, "RAxML_info." + name)
+        self._paths = {
+            "info": os.path.join(workdir, "RAxML_info." + name),
+            "best": os.path.join(workdir, "RAxML_bestTree." + name),
+            "bipartitions": os.path.join(workdir, "RAxML_bipartitions." + name),
+            "bipart_blens": os.path.join(workdir, "RAxML_bipartitionsBranchLabels." + name),
+            "bootstrap": os.path.join(workdir, "RAxML_bootstrap." + name),
+        }
+        self.trees.info = self._paths['info']
 
 
     @property
     def _command_list(self):
-        """ build the command list """
-        cmd = [
-            self.params.binary, 
-            "-f", str(self.params.f), 
-            "-T", str(self.params.T), 
-            "-m", str(self.params.m),
-            "-n", str(self.params.n),
-            "-w", str(self.params.w),
-            "-s", str(self.params.s),
-            "-p", str(self.params.p),
-        ]
-        if 'N' in self.params:
-            cmd += ["-N", str(self.params.N)]
-        if "x" in self.params:
-            cmd += ["-x", str(self.params.x)]
+        """ 
+        build the command list 
+        """
+        cmd = [self.kwargs['binary']]
+        for key in self.kwargs:
+            if key not in ["binary", "o"]:
+                cmd.extend([f"-{key}", str(self.kwargs[key])])
 
-        # ultrafast boostrap and mapping with -f d
-        # If no bootstraps then run -f D not -f a, and drop -x and -N 
-        #        if "-f D":
-
-        # add ougroups
-        if 'o' in self.params:
-            cmd += ["-o"]
-            cmd += [",".join(self.params.o)]
+            # add ougroups from a list of taxa
+            if key == "o":
+                cmd.extend(["-o", ",".join(self.kwargs['o'])])
         return cmd
 
 
@@ -167,17 +177,17 @@ class Raxml:
 
     def run(
         self, 
-        ipyclient=None, 
-        quiet=False,
-        force=False,
-        block=False,
+        ipyclient: 'ipyparallel.Client'=None, 
+        quiet: bool=False,
+        force: bool=False,
+        block: bool=False,
         ):
         """
-        Submits raxml job to run. If no ipyclient object is provided then 
-        the function will block until the raxml run is finished. If an 
-        ipyclient is provided then the job is sent to a remote engine and an
-        asynchronous result object is returned which can be queried or awaited
-        until it finishes.
+        Submits raxml job to run. If no ipyclient object is provided
+        then the function will block until the raxml run is finished. 
+        If an ipyclient is provided then the job is sent to a remote
+        engine and an asynchronous result object is returned which
+        can be queried or awaited until it finishes.
 
         Parameters
         -----------
@@ -191,57 +201,64 @@ class Raxml:
             will block progress in notebook until job finishes, even if job
             is running on a remote ipyclient.
         """
-
         # force removes old files, a bit risky here if names are subsets
         if force:
-            opath = os.path.join(
-                self.params.w, "RAxML_*.{}".format(self.params.n))
+            opath = os.path.join(self.kwargs['w'], f"RAxML_*.{self.kwargs['n']}")
             oldfiles = glob.glob(opath)
             for oldfile in oldfiles:
                 if os.path.exists(oldfile):
                     os.remove(oldfile)
+
         if os.path.exists(self.trees.info):
-            print("Error Files Exist: set a new name or use Force flag.\n{}"
-                  .format(self.trees.info))
+            logger.error(
+                f"File Exists ({self.trees.info}): "
+                "set a new name or use force=True."
+            )
             return 
 
-        ## TODO: add a progress bar tracker here. It could even read it from
-        ## the info file that is being written. 
-        ## submit it
+        # non-remote execution (most common)
         if not ipyclient:
-            proc = _call_raxml(self._command_list)
-            self.stdout = proc[0]
-            self.stderr = proc[1]
+            self.stdout = _call_raxml(self._command_list)
+            if not quiet:
+                if "Overall" not in self.stdout:
+                    print("Error in raxml run\n" + self.stdout)
+                else:
+                    print(
+                        f"job {self.kwargs['n']} finished successfully.")
+
         else:
             # find all hosts and submit job to the host with most available engines
             lbview = ipyclient.load_balanced_view()
             self.rasync = lbview.apply(_call_raxml, self._command_list)
 
-        # initiate random seed
-        if not quiet:
-            if not ipyclient:
-                # look for errors
-                if "Overall execution time" not in self.stdout.decode():
-                    print("Error in raxml run\n" + self.stdout.decode())
-                else:
-                    print("job {} finished successfully".format(self.params.n))
-            else:               
+            # initiate random seed
+            if not quiet:
                 if block:
-                    print("job {} running".format(self.params.n))
+                    print("job {} running".format(self.kwargs['n']))
                     ipyclient.wait()
                     if self.rasync.successful():
                         print(
                             "job {} finished successfully"
-                            .format(self.params.n))
+                            .format(self.kwargs['n']))
                     else:
                         raise IPyradError(self.rasync.get())
                 else:
-                    print("job {} submitted to cluster".format(self.params.n))
+                    print("job {} submitted to cluster".format(self.kwargs['n']))
+
+        # make outfiles accessible if they exist
+        for key in self._paths:
+            path = self._paths[key]
+            if os.path.exists(path):
+                self.trees[key] = path
+            else:
+                self.trees[key] = ""
 
 
 
 def _get_binary_paths():
-    # check for binary
+    """
+    check for binary in PATH
+    """
     list_binaries = [
         "raxmlHPC-PTHREADS-AVX2",
         "raxmlHPC-PTHREADS-AVX",            
@@ -255,16 +272,17 @@ def _get_binary_paths():
 
 
 def _check_binaries(binaries):
-    """ find and return a working binary"""
-
+    """ 
+    find and return a working binary
+    """
     # check user binary first, then backups
     for binary in binaries:
 
         # call which to find 
         proc = subprocess.Popen(
             ["which", binary],
-            stdout=subprocess.PIPE, 
             stderr=subprocess.STDOUT,
+            stdout=subprocess.PIPE, 
         ).communicate()
 
         # if it exists then update the binary
@@ -276,14 +294,18 @@ def _check_binaries(binaries):
 
 
 def _call_raxml(command_list):
-    """ call the command as sps """
+    """ 
+    Call the command in subprocess
+    """
     proc = subprocess.Popen(
         command_list,
-        stderr=subprocess.STDOUT, 
-        stdout=subprocess.PIPE
-        )
-    comm = proc.communicate()
-    return comm
+        stderr=subprocess.STDOUT,
+        stdout=subprocess.PIPE,
+    )
+    comm, _ = proc.communicate()
+    if proc.returncode:
+        raise IPyradError(f"RAxML error:\n{comm.decode()}")
+    return comm.decode()
 
 
 
