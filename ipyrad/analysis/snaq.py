@@ -11,7 +11,7 @@ from loguru import logger
 import numpy as np
 import toytree
 from ipyrad.assemble.utils import IPyradError
-from toytree.utils.network import parse_network
+#from toytree.utils.network import parse_network
 
 # TODO: check pinky for previous examples.
 
