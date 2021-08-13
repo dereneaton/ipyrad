@@ -124,11 +124,11 @@ class DigestGenome:
             scaffolds = fio.read().split(">")[1:]
 
         # add revcomp of every scaffold
-        rscaffs = []
-        for scaff in scaffolds:
-            name, seq = scaff.split("\n", 1)
-            rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
-        scaffolds = scaffolds + rscaffs
+        # rscaffs = []
+        # for scaff in scaffolds:
+        #     name, seq = scaff.split("\n", 1)
+        #     rscaffs.append(f"{name}\n{comp(seq)[::-1]}")
+        # scaffolds = scaffolds + rscaffs
 
         # sort scaffolds by length
         scaffolds = sorted(scaffolds, key=len, reverse=True)
@@ -138,6 +138,7 @@ class DigestGenome:
 
             # get name 
             name, seq = scaff.split("\n", 1)
+            # print(name)
 
             # no funny characters in names plz
             name = name.replace(" ", "_").strip()
@@ -146,7 +147,17 @@ class DigestGenome:
             seq = seq.replace("\n", "").upper()
 
             # digest scaffold into fragments and discard scaff ends
-            bits = ["1{}1".format(i) for i in seq.split(self.re1)][1:-1]
+            bits = []
+            if self.re1 in seq:
+                chunks = seq.split(self.re1)
+                nchunks = len(chunks)
+                for idx, chunk in enumerate(chunks):
+                    if idx == 0:
+                        bits.append(f"{chunk}1")
+                    elif idx == nchunks - 1:
+                        bits.append(f"1{chunk}")
+                    else:
+                        bits.append(f"1{chunk}1")
 
             # digest each fragment into second cut fragment
             if not self.re2:
@@ -154,40 +165,50 @@ class DigestGenome:
                 for fragment in bits:             # 1----1
                     if len(fragment) > self.min_size:
                         # forward read on fragment
-                        bits1.append((fragment[1:-1], 0, self.max_size))
+                        bits1.append((fragment.strip("1"), 0, self.max_size))
                 bits = bits1
 
             else:
                 bits1 = bits
                 bits = []
-                pos = 0
                 for fragment in bits1:
-                    fbits = fragment.split(self.re2)
+                    # left chunk:   1----  ->   1---2  2----2 2-----
+                    # right chunk:  ----1  ->   ----2  2----2 2----1 
+                    # other chunks: 1---1  ->   1---2  2----2 2----1
+                    fbits = []
+                    if self.re2 in fragment:
+                        chunks = fragment.split(self.re2)
+                        nchunks = len(chunks)
+                        for idx, chunk in enumerate(chunks):
+                            if idx == 0:
+                                fbits.append(f"{chunk}2")
+                            elif idx == nchunks - 1:
+                                fbits.append(f"2{chunk}")
+                            else:
+                                fbits.append(f"2{chunk}2")
+                            #print(fbits[-1][:10], '...', fbits[-1][-10:])
 
-                    if len(fbits) > 1:
-                        # remove the 1
-                        fbit = fbits[0][1:]        # 1----2
-                        rbit = fbits[-1][:-1]      # 2----1
-
-                        lef = len(fbit)
-                        if self.max_size >= lef >= self.min_size:
-                            bits.append((fbit, pos, lef))
-                        # if (lef > self.min_size) and (lef <= self.max_size):
-                            #pos = seq.index(fbit)
-
-                        lef = len(rbit)
-                        if self.max_size >= lef >= self.min_size:                        
-                            #res = comp(rbit)[::-1]
-                            res = rbit
-                            bits.append((res, pos, lef))
-                            # bits.append((rbit, pos, lef))
+                    # check each bit for cutters and size
+                    for bit in fbits:
+                        if bit.count("1") == 1 and bit.count("2") == 1:
+                            if self.max_size >= len(bit) >= self.min_size:                                
+                                # orient for R1 adapter ligation to cut 1
+                                if bit.startswith("1"):
+                                    bits.append(self.re1 + bit[1:-1] + self.re2)
+                                    # bits.append(bit[1:-1])                                    
+                                else:
+                                    # rbit = comp(self.re2 + bit[1:-1] + self.re1)[::-1]
+                                    #rbit = comp(bit[1:-1])[::-1]                                    
+                                    #bits.append(rbit)
+                                    # bits.append(bit[1:-1])
+                                    bits.append(self.re2 + bit[1:-1] + self.re1)
 
             # turn fragments into (paired) reads
             fastq_r1s = []
             fastq_r2s = []            
 
             for fragment in bits:
-                fragment, pos, _ = fragment
+                # print(fragment[:10], '...', fragment[-10:])
                 read1 = fragment[:self.readlen]
                 read2 = comp(fragment[-self.readlen:])[::-1]
 
