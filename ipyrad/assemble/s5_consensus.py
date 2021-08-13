@@ -167,7 +167,10 @@ class Step5(BaseStep):
                 filtered_by_max_n=filter_dict['maxn'],
                 nsites=stat_dict['nsites'],
                 nhetero=stat_dict['heteros'],
-                heterozygosity=stat_dict['heteros'] / stat_dict['nsites'],
+                heterozygosity=(
+                    0. if stat_dict['nsites'] == 0 
+                    else stat_dict['heteros'] / stat_dict['nsites']
+                ),
                 min_depth_maj_during_step5=self.data.params.min_depth_majrule,
                 min_depth_stat_during_step5=self.data.params.min_depth_statistical,
             )
