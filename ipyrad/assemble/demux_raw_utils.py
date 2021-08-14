@@ -247,8 +247,10 @@ def getbarcode2(_, read1, longbar):
 
 
 def getbarcode3(cutters, read1, longbar):
-    "find barcode sequence in the beginning of read"
-    ## default barcode string
+    """
+    find barcode sequence in the beginning of read
+    """
+    # default barcode string
     for cutter in cutters[0]:
         ## If the cutter is unambiguous there will only be one.
         if not cutter:
@@ -284,12 +286,17 @@ def find3radbcode(cutters, longbar, read):
     """
     # default barcode string
     for ambigcuts in cutters:
+        # print("AMBIGCUTS", ambigcuts)            
         for cutter in ambigcuts:
+            # print("cutter", cutter)            
             # If the cutter is unambiguous there will only be one.
             if not cutter:
                 continue
             search = read[1][:int(longbar + len(cutter) + 1)]
-            splitsearch = search.decode().rsplit(cutter, 1)
+            try:
+                splitsearch = search.decode().rsplit(cutter, 1)
+            except (AttributeError, TypeError):
+                splitsearch = search.rsplit(cutter, 1)
             if len(splitsearch) > 1:
                 return splitsearch[0]
     # No cutter found
@@ -317,8 +324,8 @@ def write_to_file(data, dsort, read, pid):
         # append to this sample name
         with open(handle, 'a') as out:
             out.write("".join(dsort[sname]))
-        logger.debug("appending to {}".format(handle))
-        logger.complete()
+        # logger.debug("appending to {}".format(handle))
+        # logger.complete()
 
 
 def collate_files(data, sname, tmp1s, tmp2s):
