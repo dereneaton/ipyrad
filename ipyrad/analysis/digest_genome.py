@@ -7,6 +7,7 @@ In silico digest of a fasta genome file to fastq format data files.
 import os
 import gzip
 from typing import Optional
+import numpy as np
 from ipyrad.assemble.utils import comp
 
 
@@ -214,22 +215,26 @@ class DigestGenome:
 
                 # write reads to a file
                 for copy in range(self.ncopies):
-                    fastq = "@{name}_loc{loc}_rep{copy} 1:N:0:\n{read}\n+\n{qual}"
+                    fastq = "@{name}_loc{loc}_rep{copy} 1:N:0:{i5}+{i7}\n{read}\n+\n{qual}"
                     fastq = fastq.format(**{
                         'name': name,
                         'loc': iloc,
                         'copy': copy,
-                        'read': read1, 
+                        'i5': "AAAAAAAA",
+                        'i7': "".join(np.random.choice(list("ACGT"), 8)),
+                        'read': read1,
                         'qual': "B" * len(read1),
                     })
                     fastq_r1s.append(fastq)
 
                     if self.paired:                   
-                        fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:\n{read}\n+\n{qual}"
+                        fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:{i5}+{i7}\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
                             'name': name,
                             'loc': iloc, 
                             'copy': copy,
+                            'i5': "AAAAAAAA",
+                            'i7': "".join(np.random.choice(list("ACGT"), 8)),
                             'read': read2,
                             'qual': "B" * len(read2),
                         })
@@ -250,3 +255,21 @@ class DigestGenome:
 
         # report stats
         print("extracted reads from {} positions".format(iloc))
+
+
+if __name__ == "__main__":
+
+    import ipyrad.analysis as ipa
+
+    GENOME = "../../sandbox/ama3rad/data_genomes/Ahypochondriacus_459_v2.0.fa"
+
+    tool = ipa.digest_genome(
+        fasta=GENOME,
+        workdir="/tmp",
+        name="test",
+        ncopies=2,
+        nscaffolds=2,
+        re1="CTGCAG",
+        re2="AATTC",
+    )
+    tool.run()
