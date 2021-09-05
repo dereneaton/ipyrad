@@ -269,7 +269,7 @@ class PCA(object):
                 se.snps, se.names, kmeans_imap, "sample", self.quiet).run()
 
             # x. On final iteration return this imputed array as the result
-            if it == 4:
+            if it == niters - 1:
                 return impdata
 
             # 3. subsample unlinked SNPs
