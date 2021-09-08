@@ -29,13 +29,13 @@ try:
 except ImportError:
     pass
 
-from ipyrad.analysis.utils import jsubsample_snps
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.snps_extracter import SNPsExtracter
 from ipyrad.analysis.snps_imputer import SNPsImputer
 from ipyrad.analysis.vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 from ipyrad.analysis.pca_drawing import Drawing
 
+logger.bind(ipa=True)
 
 _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
@@ -255,7 +255,7 @@ class PCA:
         )
 
         # run snp extracter to load SNP data to .genos, .names, .snpsmap
-        self._ext.parse_genos_from_hdf5(log_level="INFO")
+        self._ext.run(log_level="INFO")
         self.names = self._ext.names
         self.genos = self._ext.genos
 
@@ -485,6 +485,7 @@ class PCA:
         outfile: str=None,
         imap: Optional[Dict[str,List[str]]]=None,
         axes: Optional['toyplot.coordinates.Cartesian']=None,
+        centroids_only: bool=False,
         ):
         """Draw a scatterplot for data along two PC axes.
 
@@ -516,6 +517,7 @@ class PCA:
             width=width,
             height=height,
             axes=axes,
+            centroids_only=centroids_only,
         )
         canvas, axes, marks = drawing.run()
 
