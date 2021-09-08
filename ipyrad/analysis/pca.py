@@ -1,34 +1,31 @@
 #!/usr/bin/env python
 
-""" 
-Scikit-learn principal componenents analysis for missing data
-Several options are available for filtering and imputation. 
-If no imputation argument is provided then missing data 
-(after filtering) is filled by the randomly sampling alleles at each 
-site based on their frequency in the entire sample. If imputation
-method is set to "sampled" then alleles are randomly sampled from 
-each population in the IMAP based on frequencies.
+"""Scikit-learn based dimensionality reduction analysis of SNP data.
 
-TODO: use sampled-all by default
-TODO: set PC0 label to PC1
-TODO: allow spacing to fit long names on legend.
+This tool implements PCA, tSNE, and (maybe others in the future).
+
+The ipyrad-analysis PCA tool is especially designed for working with
+missing data that is common to RAD-seq datasets. Several options are
+available for filtering and imputation. If no imputation argument is
+provided then missing data (after filtering) is filled by the
+randomly sampling alleles at each site based on their frequency in
+the entire sample. If imputation method is set to "sampled" then
+alleles are randomly sampled from each population in the IMAP based
+on frequencies.
 """
 
 import os
 import sys
-import itertools
+from typing import Optional, Dict, List, Union
+import toyplot
 import numpy as np
 import pandas as pd
-import toyplot
-import toyplot.svg
-import toyplot.pdf
+from loguru import logger
 
 try:
-    from sklearn import decomposition 
+    from sklearn import decomposition
     from sklearn.cluster import KMeans
     from sklearn.manifold import TSNE
-    from sklearn.linear_model import LinearRegression
-    from sklearn.neighbors import NearestCentroid   
 except ImportError:
     pass
 
@@ -37,13 +34,14 @@ from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.snps_extracter import SNPsExtracter
 from ipyrad.analysis.snps_imputer import SNPsImputer
 from ipyrad.analysis.vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
+from ipyrad.analysis.pca_drawing import Drawing
 
 
 _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
 You can install it with the following command in a terminal.
 
-conda install scikit-learn -c conda-forge 
+>>> conda install scikit-learn -c conda-forge
 """
 
 _IMPORT_VCF_INFO = """
@@ -53,50 +51,70 @@ You can use the ld_block_size parameter of the PCA() constructor to change
 this value.
 """
 
-# TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
-
 
 class PCA:
-    """
-    Principal components analysis of RAD-seq SNPs with iterative
-    imputation of missing data.
+    """Principal components analysis of RAD-seq SNPs.
 
-    Parameters:
-    -----------
-    data: (str, several options)
+    The PCA analysis tool in ipyrad-analysis can be used to subsample
+    SNPs based on genetic linkage (e.g., 1 SNP per locus or linkage
+    block), as well as to reduce missing data (e.g., set mincov and
+    imap/minmap arguments). Because no missing data is allowed in a
+    PCA analysis, it enforces *imputation* of missing genotypes, which
+    when combined with stringent filtering can be quite accurate.
+
+    Imputation is performed using a population allele sampling method.
+    Two alleles are sampled at missing SNP calls to get a new genotype
+    as 0, 1, or 2, based on the frequency of derived alleles at that
+    site in the population to which the sample belongs. 
+
+    Population assignments can be entered as an imap dictionary
+
+    An optional K-means clustering approach is available to reduce
+    the bias that may come from a-priori population assignments. TODO.
+
+    Parameters
+    ----------
+    data: str (hdf5 or vcf file path)
         A general .vcf file or a .snps.hdf5 file produced by ipyrad.
-    workdir: (str; default="./analysis-pca")
-        A directory for output files. Will be created if absent.
-    imap: (dict; default=None)
+    imap: dict or None
         Dictionary mapping population names to a list of sample names.
-    minmap: (dict; default={})
-        Dictionary mapping population names to float values (X).
-        If a site does not have data across X proportion of samples 
-        for each population, respectively, the site is filtered from
-        the data set.
-    mincov: (float; default=0.5)
+        The population assignments will be used for imputation.
+    minmap: dict, int, float, or None
+        Dict mapping population names to int or float values. If an
+        int or float is entered then it is treated as a dict mapping 
+        all pop names in the imap dict to that value. If a site does
+        not have data for (value) number of samples in each population, 
+        respectively, the site is filtered from the data set. If None
+        then all populations are set to 1 (require at least one 
+        individual to have data from every population at every site.)
+    mincov: float or integer
         If a site does not have data across this proportion of total
         samples in the data then it is filtered from the data set.
-    minmaf: float or int
+    minmaf: float
         The minimum minor allele frequency for a SNP to be retained
-        in the dataset. 
-    impute_method: (str; default='sample')
-        None, "sample", or an integer for the number of kmeans 
-        clusters. We recommend using the default 'sample' method.
-    topcov: (float; default=0.9)
-        Affects kmeans method only.    
-        The most stringent mincov used as the first iteration in 
-        kmeans clustering. Subsequent iterations (niters) are equally 
-        spaced between topcov and mincov. 
-    niters: (int; default=5)
-        Affects kmeans method only.        
-        Number of iterations of kmeans clustering with decreasing 
-        mincov thresholds used to refine population clustering, and 
-        therefore to refine the imap groupings used to filter and 
-        impute sites.
-    ld_block_size: (int; default=20000)
+        in the dataset.
+    kmeans_clusters: int
+        The number of imap populations to cluster samples into using
+        the kmeans clustering method. If None then kmeans clustering is
+        not performed. The estimated imap dict from this operation 
+        will override any user input imap dict. However, the imap arg
+        can still be used to subsample which samples will be included
+        in this analysis. Only the minimum minmap 
+        value is used (since imap pops are estimated you cannot set 
+        diff values for each pop here), so you should set minmap as 
+        just an int or float value when using this option.
+    kmeans_niters: int
+        Number of iterations of kmeans clustering with decreasing
+        mincov thresholds used to refine population clustering, and
+        therefore to refine the imap groupings. Iterations use mincovs
+        equally spaced between `kmeans_maxcov` and `mincov` to
+        filter the dataset for which SNPs to include.
+    kmeans_mincov_max: float
+        The most stringent mincov used as the first iteration in
+        kmeans clustering. This value must be > mincov arg.
+    ld_block_size: int
         Only used during conversion of data imported as vcf.
-        The size of linkage blocks (in base pairs) to split the vcf 
+        The size of linkage blocks (in base pairs) to split the vcf
         data into.
 
     Functions:
@@ -104,16 +122,16 @@ class PCA:
     ...
     """
     def __init__(
-        self, 
-        data, 
-        impute_method=None,
-        imap=None,
-        minmap=None,
-        mincov=0.1,
-        minmaf=0.0,
-        quiet=False,
-        topcov=0.9,
-        niters=5,
+        self,
+        data,
+        imap: Optional[Dict[str,List[str]]]=None,
+        minmap: Union[int, Dict[str,float]]=None,
+        mincov: Union[int,float]=0.1,
+        minmaf: float=0.0,
+        random_seed: Optional[int]=None,
+        kmeans_clusters: Optional[int]=None,
+        kmeans_mincov_max: Optional[float]=0.8,
+        kmeans_niters: Optional[int]=5,
         ld_block_size=0,
         ):
 
@@ -122,381 +140,466 @@ class PCA:
             raise IPyradError(_MISSING_SKLEARN)
 
         # init attributes
-        self.quiet = quiet
         self.data = os.path.realpath(os.path.expanduser(data))
-
-        # data attributes
-        self.impute_method = impute_method
-        self.mincov = mincov        
+        """Path to the snps HDF5 file."""
+        self.mincov = mincov
+        """The minimum required sample coverage across all samples."""
         self.minmaf = minmaf
-        self.imap = (imap if imap else {})
-        self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
-        self.topcov = topcov
-        self.niters = niters
-        self.ld_block_size = ld_block_size
+        """The minimum frequency of the minor allele else SNP is filtered."""
+        self.imap = imap
+        """Dict mapping population names to a list of samples names."""
+        self.minmap = minmap
+        """The minimum required sample coverage in each imap population."""
+        self._kmeans_mincov_max = kmeans_mincov_max
+        """The highest mincov level to use in iterative kmeans imputation method."""
+        self._kmeans_clusters = kmeans_clusters
+        """The target number of imap populations to cluster samples into."""
+        self._kmeans_niters = kmeans_niters
+        """The number of iterations to perform iterative kmeans imputation."""
+        self._random_seed = random_seed
+        """Seed of random generator for 'sample' imputation method."""
+        self._ld_block_size = ld_block_size
+        """SNPs farther apart then the block size in bp are treated as unlinked."""
 
-        # where the resulting data are stored.
-        self.pcaxes = None  # "No results, you must first call .run()"
-        self.variances = None  # "No results, you must first call .run()"
-
-        # to be filled
-        self.snps = np.array([])
+        # attributes to be filled.
+        self._loadings: np.ndarray=None
+        """Dict of loadings for each replicate run on the PC axes."""
+        self._variances: np.ndarray=None
+        """Array of variances explained by each PC axis."""
+        self.names: List[str]=None
+        """List of names in the subsampled dataset (imap or full)."""
+        self.genos: np.ndarray=None
+        """Array of (nsamples, nsnps) as dtype=uint8 that passed filtering."""
         self.snpsmap = np.array([])
-        self.nmissing = 0
+        """Array of (nsnps, 2) with SNP linkage information."""
+        self.missing_cells: int=0
+        """The number of missing cells in the SNP matrix before imputation."""
+        self.missing_percent: float=0
+        """The percentage of missing cells int he SNP matrix before imputation."""
+        self.missing_per_sample: pd.Series=None
+        """A pandas Series with percentage missing per sample."""
 
-        # Works now. ld_block_size will have no effect on RAD data
+        # hidden attributes used internally
+        self._model: str="PCA"
+        """Stores the name of dimensionality reduction method last performed."""
+        self._drawn_imap: Dict=None
+        """Stores the imap used in the last drawing."""
+        self._drawn_pstyles: List=None
+        """Stores the marker styles used in the last drawing."""
+        self._ext: 'ipa.snps_extracter'=None
+
+        # initialize functions: parse data and impute.
+        self._check_map_args()
+        self._check_for_vcf_conversion()
+        if not self._kmeans_clusters:
+            self._load_snps_hdf5()            
+            self._impute_data()
+        else:
+            self._iterative_kmeans()
+        self._calculate_missing()
+
+    def _check_map_args(self):
+        """Expand minmap to a dict and check."""
+        if isinstance(self.minmap, (int, float)):
+            self.minmap = {i: self.minmap for i in self.imap}
+        elif isinstance(self.minmap, dict):
+            assert self.minmap.keys() == self.imap.keys(), (
+                "imap and minmap must have same keys.")
+        elif self.minmap is None:
+            self.minmap = {i: 1 for i in self.imap}
+        else:
+            raise IPyradError("minmap arg not recognized.")
+
+    def _check_for_vcf_conversion(self):
+        """Writes a new HDF5 file from VCF and sets self.data to HDF5.
+
+        ld_block_size has no effect on RAD data (RAD loci are already
+        delimited) and instead only works to split *other* types of
+        input VCF data, such as from shotgun re-sequencing.
+        """
         if self.data.endswith((".vcf", ".vcf.gz")):
-            if not ld_block_size:
-                self.ld_block_size = 20000
-                if not self.quiet: 
-                    print(_IMPORT_VCF_INFO.format(self.ld_block_size))
+            # requires a block size int
+            if not self._ld_block_size:
+                self._ld_block_size = 20000
+                logger.warning(_IMPORT_VCF_INFO.format(self._ld_block_size))
 
+            # run the converter and update self.data to new file path.
             converter = vcf_to_hdf5(
-                name=data.split("/")[-1].split(".vcf")[0],
+                name=self.data.split("/")[-1].split(".vcf")[0],
                 data=self.data,
-                ld_block_size=self.ld_block_size,
-                quiet=quiet,
+                ld_block_size=self._ld_block_size,
             )
-            # run the converter
             converter.run()
-            # Set data to the new hdf5 file
             self.data = converter.database
 
-        # load .snps and .snpsmap from HDF5
-        first = (True if isinstance(self.impute_method, int) else quiet)
-        ext = SNPsExtracter(
-            self.data, self.imap, self.minmap, self.mincov, self.minmaf, quiet=first,
+    def _load_snps_hdf5(self):
+        """Load .snps and .snpsmap arrays from HDF5 and calc missingness.
+
+        This is the initial loading of the data. The data in .genos
+        will be updated by imputation. Also, the data extraction will
+        be repeated and overwritten in the kmeans method if performed.
+        """
+        self._ext = SNPsExtracter(
+            data=self.data,
+            imap=self.imap,
+            minmap=self.minmap,
+            mincov=self.mincov,
+            minmaf=self.minmaf,
         )
 
-        # run snp extracter to parse data files
-        ext.parse_genos_from_hdf5()       
-        self.snps = ext.snps
-        self.snpsmap = ext.snpsmap
-        self.names = ext.names
-        self._mvals = ext._mvals
+        # run snp extracter to load SNP data to .genos, .names, .snpsmap
+        self._ext.parse_genos_from_hdf5(log_level="INFO")
+        self.names = self._ext.names
+        self.genos = self._ext.genos
 
-        # make imap for imputing if not used in filtering.
-        if not self.imap:
-            self.imap = {'1': self.names}
-            self.minmap = {'1': 0.5}
+        # raise an error if not data passed filtering
+        if not self.genos.size:
+            raise IPyradError("No data passed filtering.")
 
-        # record missing data per sample
-        self.missing = pd.DataFrame({
-            "missing": [0.],
-            },
-            index=self.names,
+    def _calculate_missing(self):
+        """record missing data per sample."""
+        self.missing_per_sample = pd.Series(
+            index=self.names, name="missing", data=0
         )
-        miss = np.sum(self.snps == 9, axis=1) / self.snps.shape[1]
         for name in self.names:
-            self.missing.missing[name] = round(miss[self.names.index(name)], 2)
-
-        # impute missing data
-        if (self.impute_method is not False) and self._mvals:
-            self._impute_data()
-
-
-    def _seed(self):   
-        return np.random.randint(0, 1e9)        
-
-
-    def _print(self, msg):
-        if not self.quiet:
-            print(msg)
-
+            nmissing = sum(self.genos[self.names.index(name)] == 9)
+            self.missing_per_sample.loc[name] = (
+                round(nmissing / self.genos.shape[1], 3))
 
     def _impute_data(self):
+        """Impute self.genos in-place by filling missing (9) values."""
+        SNPsImputer(
+            data=self.genos,
+            names=self.names,
+            imap=self.imap,
+            impute_method="sample",
+            inplace=True,
+            random_seed=self._random_seed,
+        ).run()
+
+    def _iterative_kmeans(self):
+        """Perform iterative PCA-Kmeans clustering to filter and imputate.
+
+        This iteratively performs imputation first allowing for very
+        little missing data, and then later allowing for more missing
+        data. Through the iterative steps it aims to estimate the best
+        imap grouping of samples. This method thus reduces the bias
+        of the user defining the imap a priori in the 'sample' method.
+
+        # TODO:, actually keeps K=int the whole time
+        This runs imputation first using a global IMAP (all same pop.)
+        and allowing the `mincov` level of missing data (e.g., 0.5).
+        A PCA is then performed on this data and samples projected
+        into PC space. A K-means clustering is performed to assign
+        samples to groups based on their distance in PC space. Next,
+        this process is repeated using an IMAP estimated by kmeans
+        clustering of samples into 2 groups. This is repeated until
+        kmeans_niters steps have been performed (the number of imap
+        populations in the final iter), and using the highest micov
+        threshold (`kmeans_topcov`, e.g., 0.9) in the final iteration.
         """
-        Impute data in-place updating self.snps by filling missing (9) values.
-        """
-        # simple imputer method
-        # if self.impute_method == "simple":
-        # self.snps = SNPsImputer(
-        # self.snps, self.names, self.imap, None).run()
-
-        if self.impute_method == "sample":
-            self.snps = SNPsImputer(
-                self.snps, self.names, self.imap, "sample", self.quiet).run()
-
-        elif isinstance(self.impute_method, int):
-            self.snps = self._impute_kmeans(
-                self.topcov, self.niters, self.quiet)
-
-        else:
-            #self.snps[self.snps == 9] = 0
-            missing = self.snps == 9
-            self.snps[self.snps == 9] = 0
-            self.snps[missing] += np.random.choice([0,1,2], self.snps.shape)[missing].astype(np.uint64)
-            self._print(
-                "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
-                .format(100, 0, 0)            
-            )
-
-
-    def _impute_kmeans(self, topcov=0.9, niters=5, quiet=False):
+        # require minmap to not be a dict.
+        minmap = min(self.minmap.values())
 
         # the ML models to fit
-        pca_model = decomposition.PCA(n_components=None)  # self.ncomponents)
-        kmeans_model = KMeans(n_clusters=self.impute_method)
+        pca_model = decomposition.PCA()
+        kmeans_model = KMeans(n_clusters=self._kmeans_clusters)
+
+        # get the subsample of names to include in this analysis
+        self.names = SNPsExtracter(self.data, imap=self.imap).names        
 
         # start kmeans with a global imap
         kmeans_imap = {'global': self.names}
 
-        # iterate over step values
-        iters = np.linspace(topcov, self.mincov, niters)
-        for it, kmeans_mincov in enumerate(iters):
-
-            # start message
-            kmeans_minmap = {i: self.mincov for i in kmeans_imap}
-            self._print(
-                "Kmeans clustering: iter={}, K={}, mincov={}, minmap={}"
-                .format(it, self.impute_method, kmeans_mincov, kmeans_minmap))
+        # get global mincov as a float.
+        gmincov = (
+            self.mincov if isinstance(self.mincov, float) 
+            else self.mincov / len(self.names)
+        )
+        
+        # iterate over mincovs evenly spaced over iterations
+        iters = np.linspace(self._kmeans_mincov_max, gmincov, self._kmeans_niters)
+        for idx, kmeans_mincov in enumerate(iters):
+            logger.info(
+                f"Kmeans clustering: iter={idx}, "
+                f"K={self._kmeans_clusters}, "
+                f"mincov={kmeans_mincov:.2f}, "
+                f"minmap={minmap},"
+            )
 
             # 1. Load orig data and filter with imap, minmap, mincov=step
-            se = SNPsExtracter(
-                self.data, 
-                imap=kmeans_imap, 
-                minmap=kmeans_minmap, 
+            self._ext = SNPsExtracter(
+                data=self.data,
+                imap=kmeans_imap,
+                minmap={i: minmap for i in kmeans_imap}, 
                 mincov=kmeans_mincov,
-                quiet=self.quiet,
             )
-            se.parse_genos_from_hdf5()
-
-            # update snpsmap to new filtered data to use for subsampling            
-            self.snpsmap = se.snpsmap
+            self._ext.parse_genos_from_hdf5(log_level="INFO" if not idx else "DEBUG")
+            self.names = self._ext.names
+            self.genos = self._ext.genos
+            if not self.genos.size:
+                raise IPyradError(
+                    "No data passed filtering, try different settings, such "
+                    "as a lower `minmap` or `kmeans_mincov_max`. To view "
+                    "filtering details in each kmeans iteration set "
+                    "ipa.set_loglevel('DEBUG') at the top of your notebook."
+                )
 
             # 2. Impute missing data using current kmeans clusters
-            impdata = SNPsImputer(
-                se.snps, se.names, kmeans_imap, "sample", self.quiet).run()
+            SNPsImputer(
+                data=self._ext.genos,
+                names=self.names,
+                imap=kmeans_imap,
+                impute_method="sample",
+                inplace=True,
+                random_seed=self._random_seed,
+            ).run()
 
             # x. On final iteration return this imputed array as the result
-            if it == 4:
-                return impdata
+            if idx == len(iters) - 1:
+                logger.info("imap dict inferred by iterative PCA and KMeans.")                
+                continue
 
             # 3. subsample unlinked SNPs
-            subdata = impdata[:, jsubsample_snps(se.snpsmap, self._seed())]
+            subdata = self._ext.subsample_genos(log_level="INFO")
 
             # 4. PCA on new imputed data values
             pcadata = pca_model.fit_transform(subdata)
 
             # 5. Kmeans clustering to find new imap grouping
             kmeans_model.fit(pcadata)
-            labels = np.unique(kmeans_model.labels_)           
-            kmeans_imap = {
-                i: [se.names[j] for j in 
-                    np.where(kmeans_model.labels_ == i)[0]] for i in labels
-            }
-            self._print(kmeans_imap)
-            self._print("")
+            labels = np.unique(kmeans_model.labels_)
+            kmeans_imap = {}
+            for lab in labels:
+                group = np.where(kmeans_model.labels_ == lab)[0]
+                kmeans_imap[lab] = [self.names[j] for j in group]
+            logger.debug(f"imap in iter {idx}: {kmeans_imap}")
 
+        
 
-    def _run(self, seed, subsample, quiet):
-        """
-        Called inside .run(). A single iteration. 
-        """
-        # sample one SNP per locus
+    def loadings(self, rep=0):
+        """Return a dataframe with the PC loadings for a specific rep."""
+        try:
+            data = pd.DataFrame(self._loadings[rep], index=self.names)
+        except ValueError as err:
+            raise IPyradError(
+                "You must call run() before accessing the pcs.") from err
+        return data
+
+    def variances(self, rep=0):
+        """Return a dataframe with the PC loadings for a specific rep."""
+        try:
+            data = pd.DataFrame(self._variances[rep], index=self.names)
+        except ValueError as err:
+            raise IPyradError(
+                "You must call run() before accessing the pcs.") from err
+        return data
+
+    def _run(self, subsample: bool, random_seed: int, log_level: str):
+        """A single iteration of possibly many performed by .run."""
         if subsample:
-            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
-            if not quiet:
-                print(
-                    "Subsampling SNPs: {}/{}"
-                    .format(data.shape[1], self.snps.shape[1])
-                )
+            data = self._ext.subsample_genos(random_seed, log_level)
         else:
-            data = self.snps
+            data = self.genos
 
         # decompose pca call
-        model = decomposition.PCA(None)  # self.ncomponents)
+        model = decomposition.PCA()
         model.fit(data)
-        newdata = model.transform(data)
+        loadings = model.transform(data)
         variance = model.explained_variance_ratio_
         self._model = "PCA"
 
         # return tuple with new coordinates and variance explained
-        return newdata, variance
+        return loadings, variance
 
-
-    def run_and_plot_2D(self, ax0, ax1, seed=None, nreplicates=1, subsample=True, quiet=None):
+    def run(
+        self,
+        nreplicates: int=1,
+        random_seed: Optional[int]=None,
+        subsample: bool=True,
+        ):
         """
-        Call .run() and .draw() in one single call. This is for simplicity. 
-        In generaly you will probably want to call .run() and then .draw()
-        as two separate calls. This way you can generate the results with .run()
-        and then plot the stored results in many different ways using .draw().
-        """
-        # combine run and draw into one call for simplicity
-        self.run(nreplicates=nreplicates, seed=seed, subsample=subsample, quiet=quiet)
-        c, a, m = self.draw(ax0=ax0, ax1=ax1)
-        return c, a, m
+        Decompose genotype array (.snps) into n_components axes.
 
-
-    def run(self, nreplicates=1, seed=None, subsample=True, quiet=None):
-        """
-        Decompose genotype array (.snps) into n_components axes. 
-
-        Parameters:
-        -----------
-        nreplicates: (int)
+        Parameters
+        ----------
+        nreplicates: int
             Number of replicate subsampled analyses to run. This is useful
             for exploring variation over replicate samples of unlinked SNPs.
             The .draw() function will show variation over replicates runs.
-        seed: (int)
+        random_seed: int
             Random number seed used if/when subsampling SNPs.
-        subsample: (bool)
+        subsample: bool
             Subsample one SNP per RAD locus to reduce effect of linkage.
-        quiet: (bool)
-            Print statements           
+        log_level: str
+            DEBUG is most verbose, less for INFO, and then WARNING.
 
-        Returns:
-        --------      
-        Two dctionaries are stored to the pca object in .pcaxes and .variances. 
-        The first is the new data decomposed into principal coordinate space; 
-        the second is an array with the variance explained by each PC axis. 
+        Returns
+        -------
+        None
+            The loadings on each axis can be viewed with the .loadings()
+            function, and .variances attribute.
         """
         # default to 1 rep
-        nreplicates = (nreplicates if nreplicates else 1)
+        nreplicates = max(nreplicates, 1)
 
-        # option to override self.quiet for this run
-        quiet = (quiet if quiet else self.quiet)
-
-        # update seed. Numba seed cannot be None, so get random int if None
-        seed = (seed if seed else self._seed())
-        rng = np.random.RandomState(seed)
+        # get random generator.
+        rng = np.random.default_rng(random_seed)
 
         # get data points for all replicate runs
         datas = {}
         vexps = {}
-        datas[0], vexps[0] = self._run(
-            subsample=subsample, 
-            seed=rng.randint(0, 1e15), 
-            quiet=quiet,
-        )
-
-        for idx in range(1, nreplicates):
+        for idx in range(nreplicates):
             datas[idx], vexps[idx] = self._run(
-                subsample=subsample, 
-                seed=rng.randint(0, 1e15),
-                quiet=True)
+                subsample=subsample,
+                random_seed=rng.integers(2**31),
+                log_level="DEBUG" if idx else "INFO",
+            )
 
         # store results to object
-        self.pcaxes = datas
-        self.variances = vexps
-
-
+        self._loadings = datas
+        self._variances = vexps
 
     def draw(
-        self, 
-        ax0=0,
-        ax1=1,
-        cycle=8,
-        colors=None,
-        opacity=None,
-        shapes=None,
-        size=10,
-        legend=True,
-        label='',
-        outfile='',
-        imap=None,
-        width=400, 
-        height=300,
-        axes=None,
-        **kwargs):
-        """
-        Draw a scatterplot for data along two PC axes. 
-        """
-        self.drawing = Drawing(
-            self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
-            label, outfile, imap, width, height, axes,
-            **kwargs)
-        return self.drawing.canvas, self.drawing.axes  # , drawing.axes._children
+        self,
+        ax0: int=0,
+        ax1: int=1,
+        width: int=300,
+        height: int=300,
+        cycle: int=8,
+        colors: List[str]=None,
+        opacity: float=None,
+        shapes: str=None,
+        size: int=10,
+        legend: bool=True,
+        legend_width: int=100,
+        label: str=None,
+        outfile: str=None,
+        imap: Optional[Dict[str,List[str]]]=None,
+        axes: Optional['toyplot.coordinates.Cartesian']=None,
+        ):
+        """Draw a scatterplot for data along two PC axes.
 
+        This function will draw a plot for data generated from the
+        last call to `.run()`. Options are used to style the drawing.
+        If an IMAP dict was used for imputation then samples will be
+        grouped by color into the IMAP groups. An optional imap can
+        be provided here to override the one used previously, which
+        only affects the color mapping, not the already imputed data.
 
+        Parameters
+        ----------
+        ...TODO.
+        """
+        drawing = Drawing(
+            tool=self,
+            ax0=ax0,
+            ax1=ax1,
+            cycle=cycle,
+            colors=colors,
+            opacity=opacity,
+            shapes=shapes,
+            size=size,
+            legend=legend,
+            legend_width=legend_width,
+            label=label,
+            outfile=outfile,
+            imap=imap,
+            width=width,
+            height=height,
+            axes=axes,
+        )
+        canvas, axes, marks = drawing.run()
+
+        # store information of last drawing for optional added legend.
+        self._drawn_imap = drawing.imap
+        self._drawn_pstyles = drawing.pstyles
+        return canvas, axes, marks
 
     def draw_legend(self, axes, **kwargs):
+        """Draw legend on a cartesian axes.
+
+        This is intended to be added to a custom setup canvas and
+        axes configuration in toyplot. It is often simpler to just
+        use the legend=True argument in the .draw() function.
+
+        Example
+        -------
+        >>> import toyplot
+        >>> canvas = toyplot.Canvas(width=1000, height=300)
+        >>> ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
+        >>> ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
+        >>> ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
+        >>> ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+
+        >>> pca.draw(0, 1, axes=ax0, legend=False)
+        >>> pca.draw(0, 2, axes=ax1, legend=False)
+        >>> pca.draw(1, 3, axes=ax2, legend=False);
+        >>> pca.draw_legend(ax3, **{"font-size": "14px"})
         """
-        Draw legend on a cartesian axes. This is intended to be added to a 
-        custom setup canvas and axes configuration in toyplot. Example below:
-
-        import toyplot
-        canvas = toyplot.Canvas(width=1000, height=300)
-        ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
-        ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
-        ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
-        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
-
-        pca.draw(0, 1, axes=ax0, legend=False)
-        pca.draw(0, 2, axes=ax1, legend=False)
-        pca.draw(1, 3, axes=ax2, legend=False);
-        pca.draw_legend(ax3, **{"font-size": "14px"})
-        """
-
-        # bail out if axes are not empty
-        # if axes._children:
-        #     print(
-        #         "Warning: draw_legend() should be called on empty cartesian"
-        #         " axes.\nSee the example in the docstring."
-        #         )
-        #     return
-
         # bail out if no drawing exists to add legend to.
-        if not hasattr(self, "drawing"):
-            print("You must first call .draw() to store a drawing.")
+        if not hasattr(self, "_drawn_pstyles"):
+            logger.warning("You must first call .draw() to store a drawing.")
             return
 
         style = {
-            "fill": "#262626", 
-            "text-anchor": "start", 
+            "fill": "#262626",
+            "text-anchor": "start",
             "-toyplot-anchor-shift": "15px",
             "font-size": "14px",
         }
         style.update(kwargs)
-
-
-        skeys = sorted(self.drawing.imap)
+        skeys = sorted(self._drawn_imap, reverse=True)
         axes.scatterplot(
-            np.repeat(0, len(self.drawing.imap)),
-            np.arange(len(self.drawing.imap)),
-            marker=[self.drawing.pstyles[i] for i in skeys],
+            np.repeat(0, len(self._drawn_imap)),
+            np.arange(len(self._drawn_imap)),
+            marker=[self._drawn_pstyles[i] for i in skeys],
         )
         axes.text(
-            np.repeat(0, len(self.drawing.imap)),
-            np.arange(len(self.drawing.imap)),
-            [i for i in skeys],
+            np.repeat(0, len(self._drawn_imap)),
+            np.arange(len(self._drawn_imap)),
+            list(skeys), #[i for i in skeys],
             style=style,
         )
         axes.show = False
 
-
-
     def draw_panels(self, pc0=0, pc1=1, pc2=2, **kwargs):
-        """
-        A convenience function for drawing a three-part panel plot with the 
-        first three PC axes. To do this yourself and further modify the layout
-        you can start with the code below.
+        """A convenience function for drawing a three-part panel plot.
 
-        Parameters (ints): three PC axes to plot.
-        Returns: canvas
+        Three 2-way comparisons are shown among three selected axes.
 
-        ------------------------
-        import toyplot
-        canvas = toyplot.Canvas(width=1000, height=300)
-        ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
-        ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
-        ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
-        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+        Parameters
+        -----------
+        pc0: int
+        pc1: int
+        pc2: int
+        **kwargs: dict of style arguments to .draw() function.
 
-        pca.draw(0, 1, axes=ax0, legend=False)
-        pca.draw(0, 2, axes=ax1, legend=False)
-        pca.draw(1, 3, axes=ax2, legend=False);
-        pca.draw_legend(ax3, **{"font-size": "14px"})        
+        Example
+        -------
+        >>> pca.draw_panels();
+
+        Or, the same can be accomplished with:
+        >>> import toyplot
+        >>> canvas = toyplot.Canvas(width=1000, height=300)
+        >>> ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
+        >>> ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
+        >>> ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
+        >>> ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+        >>> pca.draw(0, 1, axes=ax0, legend=False)
+        >>> pca.draw(0, 2, axes=ax1, legend=False)
+        >>> pca.draw(1, 3, axes=ax2, legend=False);
+        >>> pca.draw_legend(ax3, **{"font-size": "14px"})
         """
         if self._model != "PCA":
-            print("You must first call .run() to infer PC axes.")
-            return
+            logger.warning("You must first call .run() to infer PC axes.")
+            return None
 
         canvas = toyplot.Canvas(width=1000, height=300)
         ax0 = canvas.cartesian(bounds=(50, 250, 50, 250))
         ax1 = canvas.cartesian(bounds=(350, 550, 50, 250))
         ax2 = canvas.cartesian(bounds=(650, 850, 50, 250))
-        ax3 = canvas.cartesian(bounds=(875, 950, 50, 250))
+        ax3 = canvas.cartesian(bounds=(870, 950, 50, 250))
 
         self.draw(pc0, pc1, axes=ax0, legend=False, **kwargs)
         self.draw(pc0, pc2, axes=ax1, legend=False, **kwargs)
@@ -504,400 +607,109 @@ class PCA:
         self.draw_legend(ax3, **{"font-size": "14px"})
         return canvas
 
+    def run_and_draw(
+        self,
+        ax0: int=0,
+        ax1: int=1,
+        nreplicates: int=1,
+        subsample: bool=True,
+        random_seed: Optional[int]=None,
+        ):
+        """Performs PCA analysis and returns a 2D plot of results.
 
-    def run_umap(self, subsample=True, seed=123, n_neighbors=15, **kwargs):
+        Calls .run() and .draw() in one single call. This is simply
+        a shortcut for to two. In general you will probably want to
+        call them separately since there are more options.
         """
+        self.run(
+            nreplicates=nreplicates,
+            subsample=subsample,
+            random_seed=random_seed,
+        )
+        return self.draw(ax0=ax0, ax1=ax1)
 
+    def run_umap(
+        self,
+        subsample: bool=True,
+        random_seed: Optional[int]=None,
+        n_neighbors: int=15,
+        **kwargs,
+        ):
+        """
+        Run UMAP dimensionality reduction method.
 
+        Parameters
+        ----------
+        subsample: bool
+            Subsamples SNPs to keep only 1 random SNP per linkage block.
+        random_seed: int
+            Seed of random number generator.
+        n_neighbors: int
+            Key parameter of UMAP clustering. Try several values.
+        **kwargs: dict
+            Other parameters supported by UMAP function. See UMAP docs.
         """
         # check just-in-time install
         try:
             import umap
-        except ImportError:
+        except ImportError as err:
             raise ImportError(
-                "to use this function you must install umap with:\n"
-                "  conda install umap-learn -c conda-forge "
-                )
+                "to use this function you must first install umap with:\n"
+                "  >>> conda install umap-learn -c conda-forge "
+                ) from err
 
         # subsample SNPS
-        seed = (seed if seed else self._seed())
         if subsample:
-            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
-            print(
-                "Subsampling SNPs: {}/{}"
-                .format(data.shape[1], self.snps.shape[1])
-            )
+            data = self._ext.subsample_genos(random_seed)
         else:
-            data = self.snps
+            data = self.genos
 
         # init TSNE model object with params (sensitive)
         umap_kwargs = {
             'n_neighbors': n_neighbors,
-            'init': 'spectral', 
-            'random_state': seed,
+            'init': 'spectral',
+            'random_state': random_seed,
         }
         umap_kwargs.update(kwargs)
         umap_model = umap.UMAP(**umap_kwargs)
 
         # fit the model
         umap_data = umap_model.fit_transform(data)
-        self.pcaxes = {0: umap_data}
-        self.variances = {0: [-1.0, -2.0]}
+        self._loadings = {0: umap_data}
+        self._variances = {0: np.array([-1.0, -2.0])}
         self._model = "UMAP"
 
+    def run_tsne(
+        self,
+        subsample: bool=True,
+        perplexity: float=5.0,
+        n_iters=1e6,
+        random_seed=None,
+        **kwargs,
+        ):
+        """Runs t-SNE model from scikit-learn on SNP data.
 
-    def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None, **kwargs):
+        Perplexity is the primary parameter affecting the TSNE, but
+        any additional params supported by scikit-learn can be
+        supplied as kwargs (see sklearn docs).
         """
-        Calls TSNE model from scikit-learn on the SNP or subsampled SNP data
-        set. The 'seed' argument is used for subsampling SNPs. Perplexity
-        is the primary parameter affecting the TSNE, but any additional 
-        params supported by scikit-learn can be supplied as kwargs.
-        """
-        seed = (seed if seed else self._seed())
         if subsample:
-            data = self.snps[:, jsubsample_snps(self.snpsmap, seed)]
-            print(
-                "Subsampling SNPs: {}/{}"
-                .format(data.shape[1], self.snps.shape[1])
-            )
+            data = self._ext.subsample_genos(random_seed)
         else:
-            data = self.snps
+            data = self.genos
 
         # init TSNE model object with params (sensitive)
         tsne_kwargs = {
             'perplexity': perplexity,
-            'init': 'pca', 
-            'n_iter': int(n_iter), 
-            'random_state': seed,
+            'init': 'pca',
+            'n_iter': int(n_iters),
+            'random_state': random_seed,
         }
         tsne_kwargs.update(kwargs)
         tsne_model = TSNE(**tsne_kwargs)
 
         # fit the model
         tsne_data = tsne_model.fit_transform(data)
-        self.pcaxes = {0: tsne_data}
-        self.variances = {0: [-1.0, -2.0]}
+        self._loadings = {0: tsne_data}
+        self._variances = {0: np.array([-1.0, -2.0])}
         self._model = "TSNE"
-
-
-    def pcs(self, rep=0):
-        "return a dataframe with the PC loadings."
-        try:
-            df = pd.DataFrame(self.pcaxes[rep], index=self.names)
-        except ValueError:
-            raise IPyradError("You must call run() before accessing the pcs.")
-        return df
-
-
-class Drawing:
-    def __init__(
-        self,
-        pcatool,
-        ax0=0,
-        ax1=1,
-        cycle=8,
-        colors=None,
-        opacity=None,
-        shapes=None,
-        size=12,
-        legend=True,
-        label='',
-        outfile='',
-        imap=None,
-        width=400, 
-        height=300,
-        axes=None,
-        **kwargs):
-        """
-        See .draw() function above for docstring.
-        """
-        self.pcatool = pcatool
-        self.datas = self.pcatool.pcaxes
-        self.names = self.pcatool.names
-        self.imap = (imap if imap else self.pcatool.imap)
-        self.ax0 = ax0
-        self.ax1 = ax1
-        self.axes = axes
-
-        # checks on user args
-        self.cycle = cycle
-        self.colors = colors
-        self.shapes = shapes
-        self.opacity = opacity
-        self.size = size
-        self.legend = legend
-        self.label = label
-        self.outfile = outfile
-        self.height = height
-        self.width = width
-
-        # parse attrs from the data
-        self.nreplicates = None
-        self.variance = None
-        self._parse_replicate_runs()
-        self._regress_replicates()
-
-        # setup canvas and axes or use user supplied axes
-        self.canvas = None
-        self.axes = axes
-        self._setup_canvas_and_axes()
-
-        # add markers to the axes
-        self.rstyles = {}
-        self.pstyles = {}
-        self._get_marker_styles()
-        self._assign_styles_to_marks()
-        self._draw_markers()
-
-        # add the legend
-        if self.legend and (self.canvas is not None):
-            self._add_legend()
-
-        # Write to pdf/svg
-        if self.outfile and (self.canvas is not None):
-            if self.outfile.endswith(".pdf"):
-                toyplot.pdf.render(self.canvas, self.outfile)
-            elif self.outfile.endswith(".svg"):
-                toyplot.svg.render(self.canvas, self.outfile)
-            else:
-                raise IPyradError("outfile only supports pdf/svg.")
-
-
-    def _setup_canvas_and_axes(self):
-        """
-        Setup and style the Canvas size and Cartesian axes styles.
-        """
-        # get axis labels for PCA or TSNE plot
-        if self.variance[self.ax0] >= 0.0:
-            xlab = "PC{} ({:.1f}%) explained".format(
-                self.ax0, self.variance[self.ax0] * 100)
-            ylab = "PC{} ({:.1f}%) explained".format(
-                self.ax1, self.variance[self.ax1] * 100)
-        else:
-            xlab = "{} component 1".format(self.pcatool._model)
-            ylab = "{} component 2".format(self.pcatool._model)
-
-
-        if not self.axes:
-            self.canvas = toyplot.Canvas(self.width, self.height)  # 400, 300)
-            self.axes = self.canvas.cartesian(
-                grid=(1, 5, 0, 1, 0, 4),  # <- leaves room for legend
-                xlabel=xlab,
-                ylabel=ylab,
-            )
-        else:
-            self.axes.x.label.text = xlab
-            self.axes.y.label.text = ylab
-
-        # style axes
-        self.axes.x.spine.style["stroke-width"] = 2.
-        self.axes.y.spine.style["stroke-width"] = 2.    
-        self.axes.x.ticks.labels.style["font-size"] = "12px"
-        self.axes.y.ticks.labels.style["font-size"] = "12px"
-        self.axes.x.label.style['font-size'] = "14px"
-        self.axes.y.label.style['font-size'] = "14px"         
-
-        if self.label:
-            self.axes.label.text = self.label
-            self.axes.label.style['font-size'] = "20px"
-
-
-    def _parse_replicate_runs(self):
-
-        # raise error if run() was not yet called.
-        if self.datas is None:
-            raise IPyradError(
-                "You must first call run() before calling draw().")          
-
-        try:
-            # check for replicates in the data
-            self.nreplicates = len(self.datas)
-            self.variance = np.array(
-                [i for i in self.pcatool.variances.values()]
-            ).mean(axis=0)
-        except AttributeError:
-            raise IPyradError(
-                "You must first call run() before calling draw().")
-
-        # check that requested axes exist
-        assert max(self.ax0, self.ax1) < self.datas[0].shape[1], (
-            "data set only has {} axes.".format(self.datas[0].shape[1]))
-
-
-    def _regress_replicates(self):
-        """
-        test reversions of replicate axes (clumpp like) so that all plot
-        in the same orientation as replicate 0.
-        """
-        model = LinearRegression()
-        for i in range(1, len(self.pcatool.pcaxes)):
-            for ax in [self.ax0, self.ax1]:
-                orig = self.datas[0][:, ax].reshape(-1, 1)
-                new = self.datas[i][:, ax].reshape(-1, 1)
-                swap = (self.datas[i][:, ax] * -1).reshape(-1, 1)
-
-                # get r^2 for both model fits
-                model.fit(orig, new)
-                c0 = model.coef_[0][0]
-                model.fit(orig, swap)
-                c1 = model.coef_[0][0]
-
-                # if swapped fit is better make this the data
-                if c1 > c0:
-                    self.datas[i][:, ax] = self.datas[i][:, ax] * -1
-
-
-    def _get_marker_styles(self):
-        """
-        Build marker styles for individual or replicate marker plotting, 
-        and able to cycle over few or many categories of IMAP.
-        """
-        # make reverse imap dictionary
-        self.irev = {}
-        for pop, vals in self.imap.items():
-            for val in vals:
-                self.irev[val] = pop
-
-        # the max number of pops until color cycle repeats
-        # If the passed in number of colors is big enough to cover
-        # the number of pops then set cycle to len(colors)
-        # If colors == None this first `if` falls through (lazy evaluation)
-        if (self.colors is not None) and len(self.colors) >= len(self.imap):
-            self.cycle = len(self.colors)
-        else:
-            self.cycle = min(self.cycle, len(self.imap))
-
-        # get color list repeating in cycles of cycle
-        if not self.colors:
-            self.colors = itertools.cycle(
-                toyplot.color.broadcast(
-                    toyplot.color.brewer.map("Spectral"), shape=self.cycle,
-                )
-            )
-        else:
-            self.colors = itertools.cycle(self.colors)
-            # assert len(colors) == len(imap), "len colors must match len imap"
-
-        # get shapes list repeating in cycles of cycle up to 5 * cycle
-        if not self.shapes:
-            self.shapes = itertools.cycle(np.concatenate([
-                np.tile("o", self.cycle),
-                np.tile("s", self.cycle),
-                np.tile("^", self.cycle),
-                np.tile("d", self.cycle),
-                np.tile("v", self.cycle),
-                np.tile("<", self.cycle),
-                np.tile("x", self.cycle),            
-            ]))
-        else:
-            self.shapes = itertools.cycle(self.shapes)
-        # else:
-            # assert len(shapes) == len(imap), "len colors must match len imap"            
-
-        # assign styles to populations and to legend markers (no replicates)
-        for idx, pop in enumerate(self.imap):
-
-            icolor = next(self.colors)
-            ishape = next(self.shapes)
-
-            try:
-                color = toyplot.color.to_css(icolor)
-            except Exception:
-                color = icolor
-
-            self.pstyles[pop] = toyplot.marker.create(
-                size=self.size, 
-                shape=ishape,
-                mstyle={
-                    "fill": color,
-                    "stroke": "#262626",
-                    "stroke-opacity": 1.0,
-                    "stroke-width": 1.5,
-                    "fill-opacity": (self.opacity if self.opacity else 0.75),
-                },
-            )
-
-            self.rstyles[pop] = toyplot.marker.create(
-                size=self.size, 
-                shape=ishape,
-                mstyle={
-                    "fill": color,
-                    "stroke": "none",
-                    "fill-opacity": (
-                        self.opacity / self.nreplicates if self.opacity 
-                        else 0.9 / self.nreplicates
-                    ),
-                },
-            )
-
-
-    def _assign_styles_to_marks(self):
-        # assign styled markers to data points
-        self.pmarks = []
-        self.rmarks = []
-        for name in self.names:
-            pop = self.irev[name]
-            pmark = self.pstyles[pop]
-            self.pmarks.append(pmark)
-            rmark = self.rstyles[pop]
-            self.rmarks.append(rmark)        
-
-
-    def _draw_markers(self):
-        """
-
-        """
-
-        # if not replicates then just plot the points
-        if self.nreplicates < 2:
-            mark = self.axes.scatterplot(
-                self.datas[0][:, self.ax0],
-                self.datas[0][:, self.ax1],
-                marker=self.pmarks,
-                title=self.names,
-            )
-
-        else:
-            # add the replicates cloud points       
-            for i in range(self.nreplicates):
-                # get transformed coordinates and variances
-                mark = self.axes.scatterplot(
-                    self.datas[i][:, self.ax0],
-                    self.datas[i][:, self.ax1],
-                    marker=self.rmarks,
-                )
-
-            # compute centroids
-            Xarr = np.concatenate([
-                np.array(
-                    [self.datas[i][:, self.ax0], self.datas[i][:, self.ax1]]).T 
-                for i in range(self.nreplicates)
-            ])
-            yarr = np.tile(np.arange(len(self.names)), self.nreplicates)
-            clf = NearestCentroid()
-            clf.fit(Xarr, yarr)
-
-            # draw centroids
-            mark = self.axes.scatterplot(
-                clf.centroids_[:, 0],
-                clf.centroids_[:, 1],
-                title=self.names,
-                marker=self.pmarks,
-            )
-
-
-    def _add_legend(self, corner=None):
-        """
-        Default arg:
-        corner = ("right", 35, 100, min(250, len(self.pstyles) * 25))
-        """
-        if corner is None:
-            corner = ("right", 35, 100, min(250, len(self.pstyles) * 25))
-
-        # add a legend
-        if len(self.imap) > 1:
-            marks = [(pop, marker) for pop, marker in self.pstyles.items()]
-            self.canvas.legend(
-                marks, 
-                corner=corner,
-            )
