@@ -10,6 +10,9 @@ from loguru import logger
 import numpy as np
 
 
+logger = logger.bind(ipa=True)
+
+
 class SNPsImputer:
     """Imputation of missing SNP data based on population allele frequencies.
 
@@ -61,7 +64,7 @@ class SNPsImputer:
         else:
             self.genos = data
         self.names = names
-        self.imap = imap
+        self.imap = imap if imap is not None else {'all': self.names}
         self.impute_method = impute_method
         self.rng = np.random.default_rng(random_seed)
 
@@ -151,52 +154,3 @@ class SNPsImputer:
             )
         # return genos for convenience.
         return self.genos
-
-
-    # def _impute_sample_hier(self, imap=None):
-    #     """DEPRECATED.
-    #     Sample derived alleles by their frequency for each population and
-    #     assign to fill 9 in each column for each pop. IF a population has
-    #     no samples meeting the minmap requirement in the first round of
-    #     imputation, then a second round is applied in which they sample
-    #     a genotype based on the overall (non-IMAP) genotype frequencies.
-    #     """
-    #     if 1:
-    #         raise NotImplementedError()
-
-    #     # override imap
-    #     if not imap:
-    #         imap = self.imap
-
-    #     # impute data by mean value in each population
-    #     newdata = self.snps.copy()
-    #     for pop, samps in imap.items():
-
-    #         # sample pop data
-    #         sidxs = sorted(self.names.index(i) for i in samps)
-    #         data = newdata[sidxs, :].copy()
-
-    #         # number of alleles at each site that are not 9
-    #         nallels = np.sum(data != 9, axis=0) * 2
-
-    #         # get prob derived at each site using tmp array w/ missing to zero
-    #         tmp = data.copy()
-    #         tmp[tmp == 9] = 0
-    #         fderived = tmp.sum(axis=0) / nallels
-
-    #         # sampler
-    #         sampled = np.random.binomial(n=2, p=fderived, size=data.shape)
-    #         data[data == 9] = sampled[data == 9]
-    #         newdata[sidxs, :] = data
-
-    #     # get all imputed values
-    #     imputed = newdata[np.where(self.snps == 9)]
-    #     logger.info(
-    #         "Imputation: 'sampled'; (0, 1, 2) = {:.1f}%, {:.1f}%, {:.1f}%"
-    #         .format(
-    #             100 * np.sum(imputed == 0) / imputed.size,
-    #             100 * np.sum(imputed == 1) / imputed.size,
-    #             100 * np.sum(imputed == 2) / imputed.size,
-    #         )
-    #     )
-    #     return newdata
