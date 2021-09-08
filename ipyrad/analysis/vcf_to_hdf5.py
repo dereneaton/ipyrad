@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-"""
-convert VCF to HDF5 database format for SNP analyses.
+"""Convert VCF to HDF5 database format for SNP analyses.
+
 This stores 'snps', 'snpsmap', and 'genos' arrays in the HDF5.
 
 snpsmap columns:
@@ -12,56 +12,53 @@ snpsmap columns:
     4. genomic position on original chrom (1-indexed); OR global snp counter.
 """
 
-# py2/3 compat
-from __future__ import print_function, division
-from builtins import range
-
 import os
 import gzip
 import tempfile
 
+from loguru import logger
 import h5py
 import numpy as np
 import pandas as pd
 from numba import njit
 
-from ipyrad.analysis.utils import ProgressBar
+from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import GETCONS, IPyradError
 
 
+class VCFtoHDF5:
+    """Create a snps.hdf5 file conversion from a VCF file.
 
-class VCFtoHDF5(object):
-    """
-    Creates a temporary snps.hdf5 file conversion of the VCF file.
     For ipyrad assembled RAD seq data this will use RAD loci as the
-    grouping of SNPs into linkage blocks for subsampling. If VCF is from
-    some other assembly (e.g., WGS) then you can use the ld_block_size arg to
-    group SNPs into linkage blocks for subsampling analyses.
+    grouping of SNPs into linkage blocks for subsampling. If VCF is 
+    from some other assembly (e.g., WGS) then you can use the 
+    ld_block_size arg to group SNPs into linkage blocks for subsampling
+    analyses.
 
     Parameters
-    ===========
-    data (str):
+    ----------
+    data: str
         Path to input VCF file.
-    name (str):
+    name: str
         Prefix name for output files.
-    workdir (str):
+    workdir: str
         Directory name for output files. Will be created if absent.
-    ld_block_size (int):
+    ld_block_size: int
         By default each scaffold will be treated as an unlinked locus.
         To assign SNPs on the same locus to be on different "loci" you can
         set a block size. For example, 50000 will assign SNPs to 50Kb windows
         and then analyses will use this information to subsample SNPs.
-    scaffolds (list):
+    scaffolds: array-like
         A list of the VCF scaffold (CHROM) names as strings that you want to 
         include in the HDF5 database. Default is None which means use all 
         scaffolds. If you are not sure of the CHROM names then take a look
         at the VCF file you are trying to convert.
-    chunksize (int):
+    chunksize: int
         The size of VCF chunks to read in at one time. This only affects 
         memory usage and speed. Default value is 5000. Use larger values 
         if the number of SNPs is super large to increase speed greatly.
-    quiet (bool):
-        suppress print statements to stdout.
+    log_level: str
+        DEBUG is most verbose, INFO is less, and WARNING least.
     """
     def __init__(
         self,
@@ -71,7 +68,6 @@ class VCFtoHDF5(object):
         ld_block_size=None,
         scaffolds=None,
         chunksize=2500,
-        quiet=False,
         ):
 
         # attrs
@@ -85,7 +81,6 @@ class VCFtoHDF5(object):
         self.ld_block_size = ld_block_size
         self.chunksize = chunksize
         self.database = ""
-        self.quiet = quiet
         self.scaffolds = ([] if not scaffolds else [str(i) for i in scaffolds])
 
         # check for data file
@@ -101,14 +96,10 @@ class VCFtoHDF5(object):
 
 
     def run(self, force=False):
-        """
-        Parse and convert data to HDF5 file format.
-        """
-        # print message
-        self._print("Indexing VCF to HDF5 database file")
-
+        """Parse and convert data to HDF5 file format."""
+        logger.info("Indexing VCF to HDF5 database file")
         if os.path.exists(self.database) and not force:
-            self._print("hdf5 file exists. Use `force=True` to overwrite.")
+            logger.error("hdf5 file exists. Use `force=True` to overwrite.")
             return
 
         # get sample names, count header lines and nsnps
@@ -123,36 +114,19 @@ class VCFtoHDF5(object):
         # report on new database
         with h5py.File(self.database, 'r') as io5:
             self.nscaffolds = io5["snpsmap"][-1, 0]
-
-        self._print(
-            "HDF5: {} SNPs; {} linkage groups"
-            .format(
-                self.nsnps,
-                self.nscaffolds,
-            )
-        )
-        self._print(
-            "SNP database written to {}"
-            .format(self.database)
-        )
-
-
-    def _print(self, msg):
-        if not self.quiet:
-            print(msg)
+        logger.info(f"HDF5: {self.nsnps} SNPs; {self.nscaffolds} linkage groups")
+        logger.info(f"SNP database written to {self.database}")
 
 
     def get_meta(self):
-        """
-        Skip and count ## lines, and get names from first # line in VCF.
-        """
+        """Skip and count ## lines, and get names from first # line in VCF."""
         # store a list of chrom names
         chroms = set()
 
         if self.data.endswith(".gz"):
-            infile = gzip.open(self.data)
+            infile = gzip.open(self.data, 'r')
         else:
-            infile = open(self.data)
+            infile = open(self.data, 'r')
 
         # get data header line
         for dat in infile:
@@ -179,7 +153,6 @@ class VCFtoHDF5(object):
 
             # meta snps data
             else:
-
                 # only store SNP and CHROM if CHROM is in self.scaffolds
                 if not self.scaffolds:
                     self.nsnps += 1
@@ -193,7 +166,7 @@ class VCFtoHDF5(object):
         infile.close()
 
         # convert chroms into a factorized list
-        self._print("VCF: {} SNPs; {} scaffolds".format(self.nsnps, len(chroms)))        
+        logger.info("VCF: {} SNPs; {} scaffolds".format(self.nsnps, len(chroms)))        
 
 
     def init_database(self):
@@ -215,9 +188,7 @@ class VCFtoHDF5(object):
 
 
     def build_chunked_matrix(self):
-        """
-        Fill HDF5 database with VCF data in chunks at a time.
-        """
+        """Fill HDF5 database with VCF data in chunks at a time."""
         # chunk retriever
         vcfchunker = pd.read_csv(
             self.data, 
@@ -240,8 +211,8 @@ class VCFtoHDF5(object):
         }
 
         # progress bar 
-        prog = ProgressBar(self.nsnps, 0, "converting VCF to HDF5")
-        prog.finished = 0
+        prog = AssemblyProgressBar(
+            jobs={}, message="converting VCF to HDF5", quiet=False)
         prog.update()
 
         # open h5
