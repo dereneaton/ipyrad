@@ -35,6 +35,7 @@ from ipyrad.analysis.snps_imputer import SNPsImputer
 from ipyrad.analysis.vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 from ipyrad.analysis.pca_drawing import Drawing
 
+
 logger.bind(ipa=True)
 
 _MISSING_SKLEARN = """
@@ -139,7 +140,8 @@ class PCA:
         kmeans_clusters: Optional[int]=None,
         kmeans_mincov_max: Optional[float]=0.8,
         kmeans_niters: Optional[int]=5,
-        ld_block_size=0,
+        ld_block_size: int=0,
+        cores: int=0,
         ):
 
         # only check import at init
@@ -167,6 +169,8 @@ class PCA:
         """Seed of random generator for 'sample' imputation method."""
         self._ld_block_size = ld_block_size
         """SNPs farther apart then the block size in bp are treated as unlinked."""
+        self._cores = cores
+        """Number of cores used to parallelize SNP filtering."""
 
         # attributes to be filled.
         self._loadings: np.ndarray=None
@@ -255,7 +259,7 @@ class PCA:
         )
 
         # run snp extracter to load SNP data to .genos, .names, .snpsmap
-        self._ext.run(log_level="INFO")
+        self._ext.run(log_level="INFO", cores=self._cores)
         self.names = self._ext.names
         self.genos = self._ext.genos
 
@@ -342,7 +346,7 @@ class PCA:
                 mincov=kmeans_mincov,
             )
             log = ("INFO" if idx in (0, len(iters) - 1) else "DEBUG")
-            self._ext.parse_genos_from_hdf5(log_level=log)
+            self._ext.run(log_level=log, cores=self._cores)
             self.names = self._ext.names
             self.genos = self._ext.genos
             if not self.genos.size:
