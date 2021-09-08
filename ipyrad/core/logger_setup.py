@@ -10,19 +10,21 @@ from loguru import logger
 import IPython
 
 
-STDFORMAT = (
+ASSEMBLY_STDERR_LOGGER_FORMAT = (
     "<cyan>{time:hh:mm:ss}</cyan> <white>|</white> "
     "<level>{level: <7}</level> <white>|</white> "
     "<magenta>{file:<18}</magenta> <white>|</white> "
     "<level>{message}</level>"
 )
 
-LOGFORMAT = (
+ASSEMBLY_FILE_LOGGER_FORMAT = (
     "{time:YYYY/MM/DD} | {time:hh:mm:ss} | "
     "{level:<7} | "
     "{function:>18}:{line:<4} | "
     "{message}"
 )
+
+IP_LOGGERS = []
 
 
 def colorize():
@@ -36,38 +38,45 @@ def colorize():
     return tty1 or tty2
 
 
-def set_loglevel(loglevel="DEBUG", logfile=None):
-    """
-    Config and start the logger, create logfile dir if it doesn't
-    exist yet.
-    """
-    config = {'handlers': []}
+def set_log_level(log_level="DEBUG", log_file=None):
+    """Add logger for ipyrad to stderr and optionally to file.
 
-    # stderr is always set to WARNING if logfile is in use else it 
-    # uses the specified loglevel
-    stderr_logger = dict(
-        sink=sys.stderr, 
-        format=STDFORMAT, 
-        level=loglevel if logfile is None else "WARNING",
+    The IDs of the loggers are stored in a global variable
+    IP_LOGGERS so they can be removed and updated, not duplicated.
+
+    These loggers are bound to the 'extra' keyword 'ip'. Thus, any
+    module in assembly that aims to use this formatted logger should
+    put `logger = logger.bind(ip=True)` at the top of the module.
+    """
+    # remove any previously assigned loggers for ip and ipa. This uses
+    # try/except in case run it multiple times in a row.
+    for log_id in IP_LOGGERS:
+        try:
+            logger.remove(log_id)
+        except ValueError:
+            pass
+
+    # add a logger for assembly
+    log_id = logger.add(
+        sink=sys.stderr,
+        level=log_level,
         colorize=colorize(),
+        format=ASSEMBLY_STDERR_LOGGER_FORMAT,
+        filter=lambda x: x['extra'].get("ip"),
     )
-    config["handlers"].append(stderr_logger)
+    IP_LOGGERS.append(log_id)
 
-    # logfile is optional, and shows the loglevel requested.
-    if logfile:
-        os.makedirs(os.path.dirname(logfile), exist_ok=True)        
-        file_logger = dict(
-            sink=logfile,
-            format=LOGFORMAT, 
-            level=loglevel,
+    if log_file:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        log_id = logger.add(
+            sink=log_file,
+            level=log_level,
+            colorize=False,
+            format=ASSEMBLY_FILE_LOGGER_FORMAT,
+            filter=lambda x: x['extra'].get("ipa"),
             enqueue=True,
             rotation="50 MB",
-            backtrace=True, 
+            backtrace=True,
             diagnose=True,
         )
-        config["handlers"].append(file_logger)
-
-    logger.configure(**config)
-    logger.enable("ipyrad")
-    logger.debug("")
-    logger.debug(f"ipyrad logging enabled at loglevel={loglevel}")
+        IP_LOGGERS.append(log_id)
