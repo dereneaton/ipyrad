@@ -41,6 +41,7 @@ class Drawing:
     outfile: Optional[str]=None
     imap: Optional[Dict[str,List[str]]]=None
     axes: Optional['toyplot.coordinates.Cartesian']=None
+    centroids_only: bool=False
 
     # non param attributes to be filled
     nreplicates: int = field(default=None, init=False)
@@ -274,15 +275,16 @@ class Drawing:
             )
             return mark
 
-        # add the replicates cloud points
-        for rep in range(self.nreplicates):
+        # add the replicates cloud points unless centroids_only=True
+        if not self.centroids_only:
+            for rep in range(self.nreplicates):
 
-            # get transformed coordinates and variances
-            _ = self.axes.scatterplot(
-                self.tool._loadings[rep][:, self.ax0],
-                self.tool._loadings[rep][:, self.ax1],
-                marker=rmarks,
-            )
+                # get transformed coordinates and variances
+                _ = self.axes.scatterplot(
+                    self.tool._loadings[rep][:, self.ax0],
+                    self.tool._loadings[rep][:, self.ax1],
+                    marker=rmarks,
+                )
 
         # compute centroids
         xarr = np.concatenate([
