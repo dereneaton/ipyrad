@@ -31,11 +31,19 @@ class SNPsImputer:
         This is used to group samples for imputation so that allele
         frequencies can be sampled within population for each site.
     impute_method: str
-        None, "sample", "simple", "kmeans"
+        "sample" or "simple". (See PCA tool for alternative "kmeans" 
+        sample method.)
+    inplace: bool
+        Updates the data array in place vs. returning a copy.
+    random_seed: int
+        Random number generator used for sample imputation.
 
-    Example:
-    ----------
-    ...
+    Example
+    -------
+    >>> tool = ipa.snps_extracter(data)
+    >>> tool.parse_genos_from_hdf5()
+    >>> ipa.snps_imputer(data=tool.genos, name=tool.names).run()
+    >>> tool.genos
     """
     def __init__(
         self,

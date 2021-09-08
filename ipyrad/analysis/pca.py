@@ -117,9 +117,16 @@ class PCA:
         The size of linkage blocks (in base pairs) to split the vcf
         data into.
 
-    Functions:
-    ----------
-    ...
+    Examples
+    --------
+    >>> tool = ipa.pca(data="/tmp/data.snps.hdf5", mincov=0.5)
+    >>> tool.run(nreplicates=20, random_seed=123)
+    >>> tool.draw();
+
+    >>> imap = ipa.popfile_to_imap("/tmp/data.popfile.tsv")
+    >>> tool = ipa.pca(data="/tmp/data.snps.hdf5", mincov=0.5, imap=imap)
+    >>> tool.run(nreplicates=20, random_seed=123)
+    >>> tool.draw();
     """
     def __init__(
         self,
@@ -334,7 +341,8 @@ class PCA:
                 minmap={i: minmap for i in kmeans_imap}, 
                 mincov=kmeans_mincov,
             )
-            self._ext.parse_genos_from_hdf5(log_level="INFO" if not idx else "DEBUG")
+            log = ("INFO" if idx in (0, len(iters) - 1) else "DEBUG")
+            self._ext.parse_genos_from_hdf5(log_level=log)
             self.names = self._ext.names
             self.genos = self._ext.genos
             if not self.genos.size:
