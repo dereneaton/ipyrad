@@ -1,133 +1,159 @@
 #!/usr/bin/env python
 
 """
-Load SNPs array and SNPsMAP from ipyrad SNPs HDF5 database for use in 
-created subsampled SNP data sets for ipyrad.analysis tools. 
+Load SNPs array and SNPsMAP from ipyrad SNPs HDF5 database for use in
+created subsampled SNP data sets for ipyrad.analysis tools.
 
-    Examples:
-        pca, structure, treemix, popgen, baba
+This tool is used in: pca, structure, treemix, popgen, baba
+
+Note
+----
+snpsmap columns:
+    0: 1-indexed scaff id
+    1: 0-indexed snpidx
+    2: 1-indexed scaffpos
+    3: 0-indexed orig. scaffidx
+    4: snpcounter]
 """
+
+from typing import Optional, Dict, List, Union
 
 import h5py
 import numpy as np
 import pandas as pd
+from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
 
-"""
-.snps should be returned as dtype=... int8, int64?
-.check imap for the user, e.g., no dups.
-"""
 
 
 class SNPsExtracter:
-    """
-    Extract .snps and .snpsmap from snps.hdf5 after filtering for 
-    indels, bi-allelic, mincov, and minmap.
+    """Extract SNP data from HDF5 after filtering.
+
+    This tool is used to subsample and filter SNPs for linkage and
+    missingness. The filtered SNPs are accessible as a numpy array.
+    This tool is primarily for internal use by ipyrad-analysis, and
+    is used in other tools such as ipa.pca, ipa.popgen, etc.
 
     Parameters
-    ------------
-    data (str)
-        path to the .snps.hdf5 file produced by ipyrad (or created by 
+    ----------
+    data: str
+        path to the .snps.hdf5 file produced by ipyrad (or created by
         converting a vcf file to .snps.hdf5 using ipyrad.analysis).
     imap: dict[str, List[str]]
-        dictionary mapping population names to a list of sample names.
-    minmap: (dict)
-        a dictionary mapping population names to a float or integer 
-        representing the minimum samples required to be present for 
-        a SNP to be retained in the filtered dataset.
+        dict mapping population names to a list of sample names. This
+        is used to select which samples from the data will be 
+        included in the filtered dataset. 
+    minmap: dict
+        dict mapping population names to a float or integer
+        representing the minimum samples required to be present per
+        population for a SNP to be retained in the filtered dataset.
     mincov: int or float
-        the minimum samples required globally for a SNP to be retained 
-        in the dataset.
+        the minimum samples required globally for a SNP to be retained
+        in the dataset. Int is treated as a min number of samples, 
+        float is treated as a min proportion of samples.
     minmaf: int or float
-        minimum minor allele frequency. The minor allele at a variant 
-        must be present across at least n% of samples (haploid base 
-        calls with data) at a SNP to retain the SNP in the dataset. 
-        The default is zero, meaning that any SNP will be retained, 
+        minimum minor allele frequency. The minor allele at a variant
+        must be present across at least n% of samples (haploid base
+        calls with data) at a SNP to retain the SNP in the dataset.
+        The default is zero, meaning that any SNP will be retained,
         greater values require minor variants to be shared across more
-        samples. An int value of 1 will remove sites heterozygous in 
+        samples. An int value of 1 will remove sites heterozygous in
         a single diploid, whereas 2 would would remove a site hetero
         in two samples, or homozygous in only one sample. Float values
         take into account the proportion of samples with missing data
         in each site so that it is a proportion of the alleles present.
     """
     def __init__(
-        self, 
-        data, 
-        imap=None,
-        minmap=None,
-        mincov=0.0,
-        minmaf=0.0,
-        quiet=False,
+        self,
+        data: str,
+        imap: Optional[Dict]=None,
+        minmap: Optional[Dict]=None,
+        mincov: Union[float,int]=0.0,
+        minmaf: Union[float,int]=0.0,
         ):
 
         # store params
         self.data = data
-        self.imap = imap
-        self.imap = (imap if imap else {})
-        self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
+        """String file path to a snps HDF5 file."""       
+        self.imap = imap if imap else {}
+        """Dict mapping population names to a list of existing sample names."""        
+        self.minmap = minmap if minmap else {i: 1 for i in self.imap}
+        """Dict mapping population names to mincov numbers or proportions per population."""
         self.mincov = mincov
-        self.quiet = quiet
+        """The minimum sample coverage across all samples or subsamples (if imap)."""
         self.maf = minmaf
+        """The minimum frequency of the minor allele else SNP is filtered."""
 
-        # get names from imap, else will be filled/checked against db
+        # attributes to be filled
+        self.nsnps: int=None
+        """Number of SNPs before filters are applied."""
+        self.dbnames: np.ndarray=None
+        """Array of ordered names in the HDF5 snps array."""
+        self.names: List[str]=None
+        """List of ordered names in the IMAP dict (may be subset of dbnames)."""
+        self.sidxs: np.ndarray=None
+        """Array of int indices of names in .dbnames that are in .names."""
+        self.mask: np.ndarray=None
+        """Array of (nsnps,) where True=filtered."""
+        self.snps: np.ndarray=None
+        """Array of (nsamples, nsnps) w/ diploid genotype calls as uint8."""
+        self.genos: np.ndarray=None
+        """Array of (nsamples, nsnps) w/ diploid genotype calls as integers."""
+        self.snpsmap: np.ndarray=None
+        """Array of shape=(nsnps, 2) with locus and site indices."""
+        self.stats: pd.Series=None
+        """DataFrame with filtering statistics."""
+
+        self._get_names_from_imap()
+        self._check_h5_files()
+        self._check_h5_names()
+
+    def _check_params(self):
+        """Checks validity of some params."""
+
+    def _get_names_from_imap(self):
+        """Fill names, nsnps, and check input H5 file."""
         self.names = []
         for key in self.imap:
             if isinstance(self.imap[key], (list, tuple, np.ndarray)):
                 self.names.extend(self.imap[key])
             elif isinstance(self.imap[key], str):
                 self.names.append(self.imap[key])
+        # report repeated names
+        for name in self.names:
+            if self.names.count(name) > 1:
+                raise IPyradError(f"Name {name} is repeated in imap.")
 
-        # boolean mask of sites that are filtered
-        self.supermask = None
-        # array of (ntaxa, nsnps) as int8, only samples in imap
-        self.snps = None
-        # array of (nsnps, 2) for subsampling SNPs with subsample_snps()
-        self.snpsmap = None
-
-        # check input data
+    def _check_h5_files(self):
+        """Check input data is proper format, and get nsnps."""
         if self.data.endswith(".seqs.hdf5"):
             raise IPyradError("data should be .snps.hdf5 file not .seqs.hdf5.")
         if self.data.endswith(".vcf"):
             raise IPyradError("input should be hdf5, see the vcf_to_hdf5 tool.")
-        self.parse_names_from_hdf5()
-
-        # get number of snps
+        # get number of snps while we're here.
         with h5py.File(self.data, 'r') as io5:
             self.nsnps = io5['snpsmap'].shape[0]
 
-
- 
-    def _print(self, message):
-        if not self.quiet:
-            print(message)
-
-
-    def parse_names_from_hdf5(self):
-        """
-        Parse ordered sample names from HDF5 and check agains imap names.
-        """
-        # load arrays from hdf5; could be more efficient.
+    def _check_h5_names(self):
+        """Check names in h5 file match those in imap dict."""
         with h5py.File(self.data, 'r') as io5:
 
-            # all names in database, maybe fewer in this analysis
+            # all names in database
             try:
                 self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
             except AttributeError:
-                # If "names" aren't encoded as bytes then it's an older version
-                # of the snps.hdf5 file, so allow for this.
-                self.dbnames = [i for i in io5["snps"].attrs["names"]]
+                self.dbnames = list(io5["snps"].attrs["names"])
 
             # check for sample names not in the database file
             badnames = set(self.names).difference(self.dbnames)
             if badnames:
                 raise IPyradError(
-                    "Samples [{}] are not in data file: {}"
-                    .format(badnames, self.data))
+                    f"Samples [{badnames}] are not in data file: {self.data}")
 
             # if no names then use database names, else order imap in dborder
             if not self.names:
-                self.names = self.dbnames 
+                self.names = self.dbnames
             else:
                 self.names = [i for i in self.dbnames if i in self.names]
 
@@ -135,543 +161,411 @@ class SNPsExtracter:
             self.sidxs = np.array(
                 sorted([self.dbnames.index(i) for i in self.names]))
 
+    def parse_genos_from_hdf5(self, log_level: str="INFO"):
+        """Parse genotype calls from HDF5 snps file.
 
-    def parse_genos_from_hdf5(self, return_as_characters=False):
-        """
-        Parse genotype calls from hdf5 snps file and store snpsmap
-        for subsampling. This performs in a chunked way to avoid memory
-        limits on super large datasets.
+        This runs the filtering steps to extract and filter SNP data
+        and stores the snps and snpsmap as numpy arrays.
 
-        snpsmap columns:
-            0: 1-indexed scaff id
-            1: 0-indexed snpidx
-            2: 1-indexed scaffpos
-            3: 0-indexed orig. scaffidx
-            4: snpcounter]
+        This performs in a chunked way to avoid memory limits on super
+        large datasets.
         """
+        # df for reporting filter stats
+        stats = pd.Series(
+            index=[
+                "samples",
+                "pre_filter_snps",
+                "pre_filter_percent_missing",
+                "filter_by_indels_present",
+                "filter_by_non_biallelic",
+                "filter_by_mincov",
+                "filter_by_minmap",
+                "filter_by_invariant_after_subsampling",
+                "filter_by_minor_allele_frequency",
+                "post_filter_snps",
+                "post_filter_snp_containing_linkage_blocks",
+                "post_filter_percent_missing",                
+            ],
+            dtype=int,
+        )
 
         # how many cols of SNPs to load in at once from snps, genos, snpsmap
         chunksize = 10000
 
         # store masks to be concatenated at end
-        maskarrs = []
+        mask_arrs = []
+        genos_arrs = []
+        snpsmap_arrs = []
+        snps_arrs = []
+        nmissing = 0
+        ntotal = 0
 
         # build filter for this chunksize
         for chunkidx in range(0, self.nsnps, chunksize):
-
-            # send slice/chunk to get masks
+            # send slice/chunk to get masks and post-filtered arrays of
+            # genos, snps, and snpsmask.
             chunkslice = slice(chunkidx, chunkidx + chunksize)
-            masks = self.get_masks_chunk(chunkslice)
-            maskarrs.append(masks)
+            snpsmap, snps, genos, masks, nmiss, ntot = self._get_masks_chunk(chunkslice)
+            snpsmap_arrs.append(snpsmap)
+            snps_arrs.append(snps)
+            genos_arrs.append(genos)
+            mask_arrs.append(masks)
+            nmissing += nmiss
+            ntotal += ntot
 
-        # get stats from individual masks
-        print(maskarrs)
-
+        if not mask_arrs:
+            raise IPyradError("No SNPs found.")
 
         # concatenate masks into supermask array, and del list
+        mask = np.concatenate(mask_arrs)
+        self.mask = mask.sum(axis=1).astype(bool)
+        self.snpsmap = np.concatenate(snpsmap_arrs)
+        self.genos = np.concatenate(genos_arrs, axis=1).astype(np.uint8)
+        self.snps = np.concatenate(snps_arrs, axis=1)
 
+        # assign unique site index to every snpsmap site
+        self.snpsmap[:, 1] = range(self.snpsmap.shape[0])
 
-        # report mask statistics
+        # record missing pre-impute (TODO: move to )
+        if self.genos.size:
+            missing_cells = np.sum(self.genos == 9)
+            missing_percent = missing_cells / self.genos.size
+        else:
+            missing_percent = 1.
 
+        # report stats
+        stats.samples = len(self.names)
+        stats.pre_filter_snps = self.nsnps
+        stats.pre_filter_percent_missing = 100 * (nmissing / ntotal)
+        stats.filter_by_indels_present = mask[:, 0].sum()
+        stats.filter_by_non_biallelic = mask[:, 1].sum()
+        stats.filter_by_mincov = mask[:, 2].sum()
+        stats.filter_by_minmap = mask[:, 3].sum()
+        stats.filter_by_invariant_after_subsampling = mask[:, 4].sum()
+        stats.filter_by_minor_allele_frequency = mask[:, 5].sum()
+        stats.post_filter_snps = self.snpsmap.shape[0]
+        stats.post_filter_snp_containing_linkage_blocks = np.unique(self.snpsmap[:, 0]).size
+        stats.post_filter_percent_missing = 100 * missing_percent
+        logger.log(log_level, f"filter statistics:\n{stats}")
+        self.stats = stats
 
-        # apply mask to create snpsmap
+    def _get_masks_chunk(self, chunkslice):
+        """A single chunk iteration to load data and calc filters from h5.
 
-
-    def defunct(self):
-        # snpsmap is used to subsample per locus 
-        # [:, 1] is overwrit as a range over non-filtered sites below.
-        snpsmap = io5["snpsmap"][chunkslice, :2]
-
-        # .snps is an array of 0,1,2 or 9.
-        # .snpsmap is ready to subsample .snps to 1-per-locus 
-
-
-        # report pre-filter
-        self._print("Samples: {}".format(len(self.names)))
-        self._print("Sites before filtering: {}".format(snps.shape[1]))
-        self._print("Filtered (indels): {}".format(mask0.sum()))
-        self._print("Filtered (bi-allel): {}".format(mask1.sum()))
-        self._print("Filtered (mincov): {}".format(mask2.sum()))
-        self._print("Filtered (minmap): {}".format(mask3.sum()))
-        self._print("Filtered (subsample invariant): {}".format(mask4.sum()))
-        # report mask5 filters even if they overlap with other filters.
-        self._print("Filtered (minor allele frequency): {}".format(mask5.sum()))
-
-
-        # Calculate combined filters -------------------------------------
-        # apply the filters
-        summask = mask0 + mask1 + mask2 + mask3 + mask4 + mask5
-        allmask = np.invert(summask)
-
-        # store filtered int genotype calls (the output used by most tools)
-        self.snps = diplo[self.sidxs, :][:, allmask]
-
-        totalsnps = summask.sum()
-        self._print("Filtered (combined): {}".format(totalsnps))
-
-        # bail out if ALL snps were filtered
-        if self.snps.size == 0:
-            raise IPyradError("No SNPs passed filtering.")
-
-        # report state
-        self._print(
-            "Sites after filtering: {}".format(self.snps.shape[1])
-        )
-        self._mvals = np.sum(self.snps == 9)
-        self._msites = np.any(self.snps == 9, axis=0).sum()
-        self._print(
-            "Sites containing missing values: {} ({:.2f}%)"
-            .format(
-                self._msites, 
-                100 * self._msites / self.snps.shape[1],
-            )
-        )
-        self._print(
-            "Missing values in SNP matrix: {} ({:.2f}%)"
-            .format(
-                self._mvals, 
-                100 * self._mvals / self.snps.size,                
-            )
-        )
-
-        # apply mask to snpsmap to map snps
-        snpsmap = snpsmap[allmask, :]
-        snpsmap[:, 1] = range(snpsmap.shape[0])
-        self.snpsmap = snpsmap
-        del snpsmap
-
-        # final report
-        self._print(
-            "SNPs (total): {}\nSNPs (unlinked): {}".format(
-                self.snps.shape[1], 
-                np.unique(self.snpsmap[:, 0]).size
-            )
-        )
-
-        # overwrite geno calls with str data.
-        # store the filtered SNP calls (actual A,C,T or G) 
-        if return_as_characters:
-            self.snps = snps[self.sidxs, :][:, allmask].view("S1")
-            # if the b'' bothers you then you can call .astype(str)
-
-
-
-    def get_masks_chunk(self, chunkslice):
+        This could be parallelized. It only reads from h5.
         """
-        A single chunk iteration of parse_genos_from_hdf5()       
-        """
-        # masks are boolean shape=(5, chunksize)
-        masks = np.zeros((5, chunkslice.stop - chunkslice.start), dtype=np.bool_)  
-
-        # load arrays from hdf5; could be more efficient...
         with h5py.File(self.data, 'r') as io5:
 
-            # snps is used to filter multi-allel and indel containing 
-            snps = io5["snps"][:, chunkslice]
+            # snps is used to filter multi-allel and indel containing.
+            snps = io5["snps"]
+            # genos are the actual calls we want, after filtering.
+            genos = io5["genos"]
+            # snpsmap is the position information of SNPs on loci.
+            snpsmap = io5["snpsmap"]
 
-            # genos are the actual calls we want, after filtering
-            genos = io5["genos"][chunkslice, :, :]
+            # get size of the mask to create
+            start = chunkslice.start
+            end = min(chunkslice.stop, snps.shape[1])
+            nsnps = end - start
 
-            # mask0 is True if an indel is present
-            masks[0] = np.any(snps[self.sidxs, :] == 45, axis=0)
+            # select slice for this chunk and sample set
+            snpsmap = snpsmap[start:end, :2]
+            snps = snps[self.sidxs, start:end]
+            genos = genos[start:end, self.sidxs, :].astype(np.uint8)
+
+            # measure number of missing cells
+            nmissing = np.sum(genos == 9)
+            ntotal = genos.size
+
+            # get filter masks and diploid genotypes
+            masks, diplos = self._masks_filter(nsnps, snps, genos)
+
+            # flatten the mask to a boolean for each SNP
+            flat_mask = np.invert(masks.sum(axis=1).astype(bool))
+
+            # apply mask to arrays            
+            snpsmap = snpsmap[flat_mask]
+            snps = snps[:, flat_mask]
+            diplos = diplos[:, flat_mask]
+        return snpsmap, snps, diplos, masks, nmissing, ntotal
 
 
-            # mask1 is True if a third or fourth allele is present.
-            masks[1] = np.sum(genos[:, self.sidxs] == 2, axis=2).sum(axis=1).astype(bool)
-            masks[1] += np.sum(genos[:, self.sidxs] == 3, axis=2).sum(axis=1).astype(bool)
+    def _masks_filter(self, nsnps, snps, genos):
+        """Return arrays with filter masks and diploid genotypes.
 
+        The filter masks are not yet applied to the genotype array. The
+        snps and genos arrays have already been subsampled to include
+        only this chunk of snps, and only the selected rows of 
+        subsamples.
+        """
+        # masks are boolean shape=(6, chunksize)
+        masks = np.zeros((nsnps, 6), dtype=bool)
 
-            # mask missing calls from genotype array
-            genomask = np.ma.array(data=genos, mask=(genos == 9))
+        # mask0 is True if an indel is present
+        masks[:, 0] = np.any(snps == 45, axis=0)
 
-            # mask2 is True if sample coverage is below mincov. This method
-            # accomodates missing haploid calls (0/9) by counting alleles.
-            nhaplos = (~genomask).sum(axis=2).sum(axis=1)
-            if isinstance(self.mincov, int):
-                masks[2] = nhaplos < (2 * self.mincov)
-            elif isinstance(self.mincov, float):
-                masks[2] = nhaplos < (2 * self.mincov * len(self.sidxs))
+        # mask1 is True if a third or fourth allele is present.
+        masks[:, 1] = np.sum(genos == 2, axis=2).sum(axis=1).astype(bool)
+        masks[:, 1] += np.sum(genos == 3, axis=2).sum(axis=1).astype(bool)
+
+        # mask2 is True if sample coverage is below mincov. 
+        # mask missing calls from genotype array
+        genomask = np.ma.array(data=genos, mask=(genos == 9))
+
+        # count number of non-masked haplotypes in each site [2, 2, 4, 0, ...]
+        # here a zero indicates the the site is fully masked (i.e., missing)
+        # for the selected set of samples.
+        nhaplos = (~genomask.mask).sum(axis=2).sum(axis=1)
+
+        # This accomodates missing haploid calls (0/9) since it counts alleles
+        if isinstance(self.mincov, int):
+            masks[:, 2] = nhaplos < (2 * self.mincov)
+        elif isinstance(self.mincov, float):
+            masks[:, 2] = nhaplos < (2 * self.mincov * len(self.sidxs))
+        else:
+            raise IPyradError("mincov should be an int or float.")
+
+        # mask3 is True if any pop sample cov is below imap/minmap
+        for pop in self.imap:
+            # get min cov for this pop
+            mincov = self.minmap[pop]
+
+            # get the indices for samples in this pop
+            imap_sidxs = [self.names.index(i) for i in self.imap[pop]]
+
+            # select the samples from the geno array
+            subarr = genomask[:, imap_sidxs, :]
+
+            # get number of haplotypes skipping masked missing
+            nhaplos = (~subarr.mask).sum(axis=2).sum(axis=1)
+            if isinstance(mincov, int):
+                masks[:, 3] += nhaplos < (2 * mincov)
+            elif isinstance(mincov, float):
+                masks[:, 3] += nhaplos < (2 * mincov * len(imap_sidxs))
             else:
-                raise IPyradError("mincov should be an int or float.")
+                raise IPyradError("minmap dictionary malformed.")
 
+        # mask4 is True if site is not a variant w/ current sampling---
+        # get the common diploid call at each site (0, 1, 2); anything
+        # above this (e.g., 3, 4) necessarily includes a 2 or 3 geno
+        # call, which is already filtered by the bi-allele filter.
+        diplo_common = (genomask
+            .sum(axis=2)
+            .mean(axis=1)
+            .round()
+            .astype(int)
+            .data
+        )
+        # get diploid calls at each site
+        diplos = genomask.sum(axis=2).data.T
 
-            # mask3 is True if any pop sample cov in below imap/minmap -------
-            if self.imap:
-                for pop in self.imap:
-                    
-                    # get min cov for this pop
-                    mincov = self.minmap[pop]
+        # mask4 is sites where all samples match common geno.
+        masks[:, 4] = np.all(diplo_common == diplos, axis=0)
 
-                    # get the indices for samples in this pop
-                    pidxs = np.array(
-                        sorted(self.dbnames.index(i) for i in self.imap[pop])
-                    )
+        # mask5 is True if maf is below minmaf setting -----------
+        called_0 = (genomask == 0).sum(axis=2).sum(axis=1).data
+        called_1 = (genomask == 1).sum(axis=2).sum(axis=1).data
 
-                    # select the samples from the geno array
-                    subarr = genomask[:, pidxs, :]
-
-                    # get number of haplotypes skipping masked missing
-                    nhaplos = (~subarr).sum(axis=2).sum(axis=1)                   
-                    if isinstance(mincov, int):
-                        masks[3] += nhaplos < (2 * mincov)
-                    elif isinstance(mincov, float):
-                        masks[3] += nhaplos < (2 * mincov * len(pidxs))
-                    else:
-                        raise IPyradError("minmap dictionary malformed.")
-
-
-            # mask4 is True if site is not a variant w/ current sampling------
-            # get the common diploid call at each site (0, 1, 2) 
-            diplo_common = (
-                genomask[:, self.sidxs, :]
-                .sum(axis=2)
-                .mean(axis=1)
-                .round()
-                .astype(int)
-                .data
-            )
-            # get diploid calls at each site
-            diplos = genomask[:, self.sidxs, :].sum(axis=2).data.T
-            # mask sites where all samples match common geno.
-            masks[4] = np.all(diplo_common == diplos, axis=0)
-
-
-            # mask5 is True if maf is below minmaf setting -------------------
-            called_0 = (genomask == 0).sum(axis=2).sum(axis=1).data
-            called_1 = (genomask == 0).sum(axis=2).sum(axis=1).data            
+        # this suppresses a divide by zero error which represents sites
+        # with no observations of alleles 0 or 1. This is OK since such
+        # sites will already be filtered as either non-biallelic or as
+        # below mincov (all missing for these subsamples), or as 
+        # invariant (again due to all missing for these subsamples).
+        with np.errstate(divide='ignore', invalid='ignore'):
             if isinstance(self.maf, int):
                 freqs = called_1
             else:
                 freqs = called_1 / (called_0 + called_1)
                 freqs[freqs > 0.5] = 1 - (freqs[freqs > 0.5])
-            masks[5] = freqs < self.maf
+            masks[:, 5] = freqs < self.maf
 
-        return masks
+        # set 9 for missing values in diploid genotype array
+        diplos[snps == 78] = 9
+        return masks, diplos
 
 
+    def subsample_snps(self, random_seed=None, log_level="INFO"):
+        """Return an array with 1 SNP sampled per locus/linkage-block.
 
-
-    def old_parse_genos_from_hdf5(self, return_as_characters):
+        Uses numba jit function for speed, and snpsmap array to find
+        linkage information.
         """
-        A single chunk iteration of parse_genos_from_hdf5()       
-        """
-        # load arrays from hdf5; could be more efficient...
-        with h5py.File(self.data, 'r') as io5:
-
-            # snps is used to filter multi-allel and indel containing 
-            snps = io5["snps"][:]
-
-            # snpsmap is used to subsample per locus 
-            # [:, 1] is overwrit as a range over non-filtered sites below.
-            snpsmap = io5["snpsmap"][:, :2]
-
-            # genos are the actual calls we want, after filtering
-            genos = io5["genos"][:]  # .sum(axis=2).T
-
-            # report pre-filter
-            self._print("Samples: {}".format(len(self.names)))
-            self._print("Sites before filtering: {}".format(snps.shape[1]))
-
-
-            # filter all sites containing an indel in selected samples--------
-            # mask0 is True if an indel is present
-            mask0 = np.any(snps[self.sidxs, :] == 45, axis=0)
-            self._print("Filtered (indels): {}".format(mask0.sum()))
-
-
-            # filter all sites w/ multi-allelic in the selected samples-------
-            # mask1 is True if a third allele is present.
-            mask1 = np.sum(genos[:, self.sidxs] == 2, axis=2).sum(axis=1).astype(bool)
-            mask1 += np.sum(genos[:, self.sidxs] == 3, axis=2).sum(axis=1).astype(bool)
-            self._print("Filtered (bi-allel): {}".format(mask1.sum()))
-
-
-            # filter based on mincov of subsamples (default = 0.0)------------
-            # mask2 is True if sample coverage is below mincov.
-            # convert genos (e.g., 1/1) to genos sums (e.g., 2)
-            # TODO: if haploid missing calls are allowed (0|9) this is problem
-            diplo = genos.sum(axis=2).T
-
-            # convert any summed missing (18) to 9
-            diplo[diplo == 18] = 9
-            cov = np.sum(diplo[self.sidxs, :] != 9, axis=0)
-
-            if isinstance(self.mincov, int):
-                mask2 = cov < self.mincov
-
-            elif isinstance(self.mincov, float):
-                mask2 = cov < self.mincov * len(self.sidxs)
-
-            else:
-                raise IPyradError("mincov should be an int or float.")
-            self._print("Filtered (mincov): {}".format(mask2.sum()))
-
-
-            # mask3 is True if any pop sample cov in below imap/minmap -------
-            # filter based on per-population min coverages
-            mask3 = np.zeros(snps.shape[1], dtype=np.bool_)
-            if self.imap:
-                for key, val in self.imap.items():
-                    mincov = self.minmap[key]
-                    pidxs = np.array(sorted(self.dbnames.index(i) for i in val))
-                    try:
-                        subarr = diplo[pidxs, :]
-                    except IndexError as err:
-                        raise IPyradError(
-                            "imap is empty: {} - {}".format(key, val)
-                        ) from err
-                    counts = np.sum(subarr != 9, axis=0)
-                    if isinstance(mincov, float):
-                        mask3 += (counts / subarr.shape[0]) < mincov
-                    elif isinstance(mincov, int):
-                        mask3 += counts < mincov
-                    else:
-                        raise IPyradError("minmap dictionary malformed.")
-            self._print("Filtered (minmap): {}".format(mask3.sum()))
-
-
-            # mask4 is True if site is not a variant w/ current sampling------
-            # filter based on whether subsample still is variable at site
-            # after masking missing data values, while also collapsing data
-            # back into diploid genotype calls where haplo-missing is masked.
-            marr = np.ma.array(
-                data=diplo[self.sidxs, :], 
-                mask=diplo[self.sidxs, :] == 9,
-            )
-
-            # round to the most common call (0, 1, 2)
-            common = marr.mean(axis=0).round().astype(int)
-
-            # mask if any non-mask data is not the common genotype and invert
-            mask4 = np.invert(np.any(marr != common, axis=0).data)
-            self._print("Filtered (subsample invariant): {}".format(mask4.sum()))
-
-            
-            # mask5 is True if maf is below minmaf setting -------------------
-            # maf filter: applies to all gene copies (haploids)
-            if isinstance(self.maf, int):
-                freqs = marr.sum(axis=0)
-            else:
-                freqs = marr.sum(axis=0) / (2 * np.sum(marr.mask == False, axis=0))
-                freqs[freqs > 0.5] = 1 - (freqs[freqs > 0.5])
-            mask5 = freqs <= self.maf
-
-            # only report filters unique to mask5
-            # masks = mask0 + mask1 + mask2 + mask3 + mask4
-            # drop = mask5[~masks].sum()
-            # self._print("Filtered (minor allele frequency): {}".format(drop))
-
-            # report mask5 filters even if they overlap with other filters.
-            self._print("Filtered (minor allele frequency): {}".format(mask5.sum()))
-
-
-            # Calculate combined filters -------------------------------------
-            # apply the filters
-            summask = mask0 + mask1 + mask2 + mask3 + mask4 + mask5
-            allmask = np.invert(summask)
-
-            # store filtered int genotype calls (the output used by most tools)
-            self.snps = diplo[self.sidxs, :][:, allmask]
-
-            totalsnps = summask.sum()
-            self._print("Filtered (combined): {}".format(totalsnps))
-
-            # bail out if ALL snps were filtered
-            if self.snps.size == 0:
-                raise IPyradError("No SNPs passed filtering.")
-
-            # report state
-            self._print(
-                "Sites after filtering: {}".format(self.snps.shape[1])
-            )
-            self._mvals = np.sum(self.snps == 9)
-            self._msites = np.any(self.snps == 9, axis=0).sum()
-            self._print(
-                "Sites containing missing values: {} ({:.2f}%)"
-                .format(
-                    self._msites, 
-                    100 * self._msites / self.snps.shape[1],
-                )
-            )
-            self._print(
-                "Missing values in SNP matrix: {} ({:.2f}%)"
-                .format(
-                    self._mvals, 
-                    100 * self._mvals / self.snps.size,                
-                )
-            )
-
-            # apply mask to snpsmap to map snps
-            snpsmap = snpsmap[allmask, :]
-            snpsmap[:, 1] = range(snpsmap.shape[0])
-            self.snpsmap = snpsmap
-            del snpsmap
-
-            # final report
-            self._print(
-                "SNPs (total): {}\nSNPs (unlinked): {}".format(
-                    self.snps.shape[1], 
-                    np.unique(self.snpsmap[:, 0]).size
-                )
-            )
-
-            # overwrite geno calls with str data.
-            # store the filtered SNP calls (actual A,C,T or G) 
-            if return_as_characters:
-                self.snps = snps[self.sidxs, :][:, allmask].view("S1")
-                # if the b'' bothers you then you can call .astype(str)
-
-        # .snps is an array of 0,1,2 or 9.
-        # .snpsmap is ready to subsample .snps to 1-per-locus 
-
-
-
-
-    def subsample_snps(self, random_seed=None, quiet=False):
-        """
-        Calls jitted functions to subsample 1 SNP per locus/linkage-block
-        using snpsmap.
-        """
-        if not random_seed:
-            random_seed = np.random.randint(0, 1e9)
-        subarr = self.snps[:, jsubsample_snps(self.snpsmap, random_seed)]
-        if not quiet:
-            self._print("subsampled {} unlinked SNPs".format(subarr.shape[1]))
+        rng = np.random.default_rng(random_seed)
+        subarr = self.snps[:, jsubsample_snps(self.snpsmap, rng.integers(2**31))]
+        logger.log(log_level, f"subsampled {subarr.shape[1]} unlinked SNPs.")
         return subarr
 
+    def subsample_genos(self, random_seed=None, log_level="INFO"):
+        """Return an array with 1 SNP geno sampled per locus/linkage-block.
 
-    def subsample_loci(self, random_seed=None, quiet=False):
+        Uses numba jit function for speed, and snpsmap array to find
+        linkage information.
         """
+        rng = np.random.default_rng(random_seed)
+        subarr = self.genos[:, jsubsample_snps(self.snpsmap, rng.integers(2**31))]
+        logger.log(log_level, f"subsampled {subarr.shape[1]} unlinked SNPs.")
+        return subarr        
+
+    def subsample_loci(self, random_seed=None, log_level="INFO"):
+        """Return an array of snps by re-sampling loci w/ replacement.
+
         Calls jitted functions to subsample loci/linkage-blocks with
-        replacement to the same number as the original assembly. This does
-        not subsample unlinked SNPs per locus, but instead re-samples linked
-        SNPs for use in bootstrapping (e.g., BABA analysis).
-
-        THIS RESAMPLES ONLY LOCI IN THE SNPS HDF5 FILE, MEANING THAT IT DOES
-        NOT RESAMPLE INVARIANT LOCI. AND IN FACT IT RESAMPLES LOCI AFTER
-        FILTERING HAS REDUCED THE LOCI TO ONLY THOSE THAT INCLUDE THE 
-        SELECTED SAMPLES. 
-        So a full data set (e.g., loci file) may include 
-        3000 loci of which only 2000 include data for the a particular set
-        of four samples, and only 1000 of those are variable. This will 
-        return a random resampling with replacment of those 1000 loci.
+        replacement to the same number as the original assembly. 
+        This does not subsample unlinked SNPs per locus, but instead 
+        re-samples linked SNPs for use in bootstrapping. Read below
+        to be sure this is doing what you want it to do.
+        
+        Note
+        ----
+        THIS RESAMPLES ONLY LOCI IN THE SNPS HDF5 FILE, MEANING THAT IT
+        DOES NOT RESAMPLE INVARIANT LOCI. AND, IN FACT IT RESAMPLES 
+        LOCI AFTER FILTERING HAS REDUCED THE LOCI TO ONLY THOSE THAT
+        INCLUDE THE SELECTED SAMPLES. 
+            So, even though a full data set (loci file) may include
+        3000 loci, perhaps only 2000 of those will include a particular 
+        set of four samples, and only 1000 of those might be variable. 
+        This func will return a random resampling with replacment of 
+        those 1000 loci.
         """
-        if not random_seed:
-            random_seed = np.random.randint(0, 1e9)
-        nloci, lidxs = jsubsample_loci(self.snpsmap, random_seed)
+        rng = np.random.default_rng(random_seed)        
+        nloci, lidxs = jsubsample_loci(self.snpsmap, rng.integers(2**31))
         subarr = self.snps[:, lidxs]
-        if not quiet:
-            self._print(
-                "subsampled {} SNPs from {} variable loci w/ replacement"
-                .format(subarr.shape[1], nloci))
+        logger.log(
+            log_level, 
+            f"subsampled {subarr.shape[1]} SNPs from {nloci} variable "
+            " loci w/ replacement.",
+        )
         return subarr
 
+    def get_population_geno_counts(
+        self, 
+        subsample:bool=False, 
+        random_seed: Optional[int]=None,
+        log_level="INFO",        
+        ):
+        """Return dataframe with genos in treemix format.
 
-    def get_population_geno_counts(self, quiet=False):
-        """
-        Returns DF with genos in treemix format.
         A   B   C   D
         0,2 2,0 2,0 0,2
         0,2 1,1 3,0 0,3
         0,2 2,0 3,0 0,2
         ...
+
+        Parameters
+        ----------
+        subsample: bool
+            If True then 1 SNP is randomly sampled per linkage block.
+        random_seed: Optional[int]
+            Seed used for random subsampling of unlinked SNPs.
         """
         # check for required imap groupings
-        assert self.imap, "imap dictionary is required to get counts."
+        if not self.imap:
+            imap = {i: [i] for i in self.names}
+        else:
+            imap = self.imap.copy()
 
         # write the headers
-        df = pd.DataFrame(columns=sorted(self.imap))
+        data = pd.DataFrame(columns=sorted(imap))
+
+        # get data
+        if subsample:
+            genos = self.subsample_genos(random_seed=random_seed, log_level=log_level)
+        else:
+            genos = self.genos
 
         # create 0,5 pairs for ancestral derived counts
-        for pop in df.columns:
-            samp = [self.names.index(i) for i in self.imap[pop]]
-            ances = np.sum(self.snps[samp, :] == 0, axis=0) * 2
-            deriv = np.sum(self.snps[samp, :] == 2, axis=0) * 2
-            heter = np.sum(self.snps[samp, :] == 1, axis=0)
+        for pop in data.columns:
+            samp = [self.names.index(i) for i in imap[pop]]
+            ances = np.sum(genos[samp, :] == 0, axis=0) * 2
+            deriv = np.sum(genos[samp, :] == 2, axis=0) * 2
+            heter = np.sum(genos[samp, :] == 1, axis=0)
             ances += heter
             deriv += heter
-
-            df.loc[:, pop] = [
+            data.loc[:, pop] = [
                 "{},{}".format(i, j) for i, j in zip(ances, deriv)
             ]
-        return df
+        return data
 
+    def get_population_geno_frequency(
+        self, 
+        subsample: bool=False, 
+        random_seed=None, 
+        log_level="INFO",
+        # imap: Optional[Dict]=None
+        ):
+        """Return a dataframe with genotype frequencies as in construct format.
 
+        The population names will the names in the .imap dictionary
+        if one is present, otherwise every individual will be treated
+        as a separate population.
 
-    def get_population_geno_frequency(self, subsample=False, individuals=False, seed=None, quiet=False):
-        """
-        Returns DF with geno freqs as in construct format.
              0    1    2   ...
         A    0.0  0.5  1.0
         B    1.0  0.5  0.0
         C    0.0  0.0  0.0
 
-        You can optionally impute missing data before running this command
-        or not and missing values will be filled with NaN, which is fine since
-        construct will try to infer their values.
+        You can optionally impute missing data before running this 
+        command, or not -- missing values will be filled with NaN, 
+        which is fine since construct will try to infer their values.
 
-        Parameters:
-        -----------
-        subsample (bool):
+        Parameters
+        ----------
+        subsample: bool
             If True then max of 1 SNP per linkage group is sampled.
-        quiet (bool):
-            Print verbose output.
+        random_seed: int
+            Random number generator seed.
+        log_level: str
+            A logging level name ("DEBUG", "INFO", "WARNING", ...).
         """
+        # imap: Dict[str, List[str]]
+        #     A dictionary mapping a new population name to a list of
+        #     existing sample names. The allele frequencies will be of
+        #     all samples that have data at each SNP in each population.
+
         # check for required imap groupings
-        assert self.imap, "imap dictionary is required to get counts."
+        if not self.imap:
+            imap = {i: [i] for i in self.names}
+        else:
+            imap = self.imap.copy()
 
         # write the headers
-        df = pd.DataFrame(columns=sorted(self.imap))
+        data = pd.DataFrame(columns=sorted(imap))
+
+        # subsample dataset to use.
+        if subsample:
+            genos = self.subsample_genos(random_seed=random_seed, log_level=log_level)
+        else:
+            genos = self.genos
 
         # create 0,5 pairs for ancestral derived counts
-        for pop in df.columns:
-            samp = [self.names.index(i) for i in self.imap[pop]]
-            ances = np.sum(self.snps[samp, :] == 0, axis=0) * 2
-            deriv = np.sum(self.snps[samp, :] == 2, axis=0) * 2
-            heter = np.sum(self.snps[samp, :] == 1, axis=0)
+        for pop in data.columns:
+            samp = [self.names.index(i) for i in imap[pop]]
+            ances = np.sum(genos[samp, :] == 0, axis=0) * 2
+            deriv = np.sum(genos[samp, :] == 2, axis=0) * 2
+            heter = np.sum(genos[samp, :] == 1, axis=0)
             ances += heter
             deriv += heter
-            df.loc[:, pop] = deriv / (deriv + ances)
-
-        # subsample unlinked SNPs
-        if subsample:
-            if not seed:
-                seed = np.random.randint(int(1e9))
-            df = df.iloc[jsubsample_snps(self.snpsmap, seed), :]
-
-        return df.T
+            # allow divide by zero to be set as NaN
+            with np.errstate(divide='ignore', invalid='ignore'):
+                data.loc[:, pop] = deriv / (deriv + ances)
+        return data.T
 
 
 
+if __name__ == "__main__":
 
-    # def subsample_loci_full(self, nloci, random_seed=None, quiet=False):
-    #     """
-    #     Calls jitted functions to subsample loci/linkage-blocks with
-    #     replacement to the same number as the original assembly. This does
-    #     not subsample unlinked SNPs per locus, but instead re-samples linked
-    #     SNPs for use in bootstrapping (e.g., BABA analysis).
-    #     THIS RESAMPLES FROM ALL LOCI IN THE DATA SET, WHETHER IT IS 
-    #     VARIABLE OR NOT.
-    #     So a full data set (e.g., loci file) may include 
-    #     3000 loci of which only 2000 include data for the a particular set
-    #     of four samples. This will return 2000 a random resampling with 
-    #     replacment of those 2000 loci.
-    #     """
+    import toytree
+    import ipcoal
+    import ipyrad.analysis as ipa
+    ipa.set_loglevel("DEBUG")
 
-    #     # set random seed 
-    #     if not random_seed:
-    #         random_seed = np.random.randint(0, 1e9)
+    tree = toytree.rtree.unittree(10, 1e6)
+    model = ipcoal.Model(tree, Ne=1e5, nsamples=2)
+    model.sim_loci(50, 100)
+    model.apply_missing_mask(0.5)
+    model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
 
-    #     # expand snpsmap to include invariant loci that can be resampled.
-
-
-    #     # subsample nloci with replacment
-    #     nloci, lidxs = jsubsample_loci(self.snpsmap, random_seed)
-    #     subarr = self.snps[:, lidxs]
-
-
-    #     if not quiet:
-    #         self._print(
-    #             "subsampled {} SNPs from {} loci w/ replacement"
-    #             .format(subarr.shape[1], nloci))           
-    #     return subarr
+    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", mincov=5)
+    tool.parse_genos_from_hdf5()
+    print(tool.subsample_snps())
+    print(tool.get_population_geno_frequency())
