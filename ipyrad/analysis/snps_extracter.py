@@ -17,14 +17,18 @@ snpsmap columns:
 """
 
 from typing import Optional, Dict, List, Union
-
+import traceback
 import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
+from ipyrad.core.parallel import Cluster
+from ipyrad.core.progress_bar import AssemblyProgressBar
 
+
+logger = logger.bind(ipa=True)
 
 
 class SNPsExtracter:
@@ -42,15 +46,15 @@ class SNPsExtracter:
         converting a vcf file to .snps.hdf5 using ipyrad.analysis).
     imap: dict[str, List[str]]
         dict mapping population names to a list of sample names. This
-        is used to select which samples from the data will be 
-        included in the filtered dataset. 
+        is used to select which samples from the data will be
+        included in the filtered dataset.
     minmap: dict
         dict mapping population names to a float or integer
         representing the minimum samples required to be present per
         population for a SNP to be retained in the filtered dataset.
     mincov: int or float
         the minimum samples required globally for a SNP to be retained
-        in the dataset. Int is treated as a min number of samples, 
+        in the dataset. Int is treated as a min number of samples,
         float is treated as a min proportion of samples.
     minmaf: int or float
         minimum minor allele frequency. The minor allele at a variant
@@ -63,6 +67,8 @@ class SNPsExtracter:
         in two samples, or homozygous in only one sample. Float values
         take into account the proportion of samples with missing data
         in each site so that it is a proportion of the alleles present.
+    ncores: int
+        If ncores > 1 the work is parallelized on this many processors.
     """
     def __init__(
         self,
@@ -75,9 +81,9 @@ class SNPsExtracter:
 
         # store params
         self.data = data
-        """String file path to a snps HDF5 file."""       
+        """String file path to a snps HDF5 file."""
         self.imap = imap if imap else {}
-        """Dict mapping population names to a list of existing sample names."""        
+        """Dict mapping population names to a list of existing sample names."""
         self.minmap = minmap if minmap else {i: 1 for i in self.imap}
         """Dict mapping population names to mincov numbers or proportions per population."""
         self.mincov = mincov
@@ -108,9 +114,6 @@ class SNPsExtracter:
         self._get_names_from_imap()
         self._check_h5_files()
         self._check_h5_names()
-
-    def _check_params(self):
-        """Checks validity of some params."""
 
     def _get_names_from_imap(self):
         """Fill names, nsnps, and check input H5 file."""
@@ -161,7 +164,52 @@ class SNPsExtracter:
             self.sidxs = np.array(
                 sorted([self.dbnames.index(i) for i in self.names]))
 
-    def parse_genos_from_hdf5(self, log_level: str="INFO"):
+    def run(self, cores: int=1, log_level: str="INFO", ipyclient=None):
+        """Loads SNP data from HDF5, applies filters, and logs stats.
+
+        The filtered statistics are saved in the .stats attribute, and
+        are printed if the log_level if above the `ipa.set_log_level()`
+        (default='INFO'). This operation can be parallelized for speed
+        improvements on large datasets by entering a value > 1 for
+        the `cores` arg.
+
+        Parameters
+        ----------
+        cores: int
+            Number of cores to parallelize filtering. Default=1.
+        log_level: str
+            verbosity of outputs to the logger (mostly used internally).
+        """
+        if cores == 1:
+            self._run(log_level)
+            return
+
+        # init the ipyparallel cluster class wrapper
+        cluster = Cluster(quiet=False)
+        try:
+            # establish connection to a new or running ipyclient
+            cluster.start(cores=cores, ipyclient=ipyclient)
+            self._run(log_level=log_level, ipyclient=cluster.ipyclient)
+
+        except KeyboardInterrupt:
+            logger.warning("keyboard interrupt by user, cleaning up.")
+
+        # AssemblyProgressBar logs the traceback
+        except IPyradError as inst:
+            logger.error(f"An error occurred:\n{inst}")
+            raise
+
+        # logger.error logs the traceback
+        except Exception as inst:
+            logger.error(
+                "An unexpected error occurred, see logfile "
+                f"and trace:\n{traceback.format_exc()}")
+            raise
+
+        finally:
+            cluster.cleanup_safely(None)
+
+    def _run(self, log_level: str="INFO", ipyclient=None):
         """Parse genotype calls from HDF5 snps file.
 
         This runs the filtering steps to extract and filter SNP data
@@ -184,7 +232,7 @@ class SNPsExtracter:
                 "filter_by_minor_allele_frequency",
                 "post_filter_snps",
                 "post_filter_snp_containing_linkage_blocks",
-                "post_filter_percent_missing",                
+                "post_filter_percent_missing",
             ],
             dtype=int,
         )
@@ -200,12 +248,30 @@ class SNPsExtracter:
         nmissing = 0
         ntotal = 0
 
-        # build filter for this chunksize
-        for chunkidx in range(0, self.nsnps, chunksize):
-            # send slice/chunk to get masks and post-filtered arrays of
-            # genos, snps, and snpsmask.
-            chunkslice = slice(chunkidx, chunkidx + chunksize)
-            snpsmap, snps, genos, masks, nmiss, ntot = self._get_masks_chunk(chunkslice)
+        # run in parallel
+        if ipyclient is not None:
+            lbview = ipyclient.load_balanced_view()
+            prog = AssemblyProgressBar({}, "SNP filtering", "ipa", False)
+            for chunkidx in range(0, self.nsnps, chunksize):
+                chunkslice = slice(chunkidx, chunkidx + chunksize)
+                prog.jobs[chunkidx] = lbview.apply(self._get_masks_chunk, chunkslice)
+            prog.block()
+            prog.check()
+            jobs = prog.jobs
+
+        # run non-parallel
+        else:
+            jobs = {}
+            for chunkidx in range(0, self.nsnps, chunksize):
+                chunkslice = slice(chunkidx, chunkidx + chunksize)
+                jobs[chunkidx] = self._get_masks_chunk(chunkslice)
+
+        # collect results from chunked jobs
+        for job in jobs:
+            try:
+                snpsmap, snps, genos, masks, nmiss, ntot = jobs[job].get()
+            except (NameError, AttributeError):
+                snpsmap, snps, genos, masks, nmiss, ntot = jobs[job]
             snpsmap_arrs.append(snpsmap)
             snps_arrs.append(snps)
             genos_arrs.append(genos)
@@ -283,7 +349,7 @@ class SNPsExtracter:
             # flatten the mask to a boolean for each SNP
             flat_mask = np.invert(masks.sum(axis=1).astype(bool))
 
-            # apply mask to arrays            
+            # apply mask to arrays
             snpsmap = snpsmap[flat_mask]
             snps = snps[:, flat_mask]
             diplos = diplos[:, flat_mask]
@@ -295,7 +361,7 @@ class SNPsExtracter:
 
         The filter masks are not yet applied to the genotype array. The
         snps and genos arrays have already been subsampled to include
-        only this chunk of snps, and only the selected rows of 
+        only this chunk of snps, and only the selected rows of
         subsamples.
         """
         # masks are boolean shape=(6, chunksize)
@@ -308,7 +374,7 @@ class SNPsExtracter:
         masks[:, 1] = np.sum(genos == 2, axis=2).sum(axis=1).astype(bool)
         masks[:, 1] += np.sum(genos == 3, axis=2).sum(axis=1).astype(bool)
 
-        # mask2 is True if sample coverage is below mincov. 
+        # mask2 is True if sample coverage is below mincov.
         # mask missing calls from genotype array
         genomask = np.ma.array(data=genos, mask=(genos == 9))
 
@@ -369,7 +435,7 @@ class SNPsExtracter:
         # this suppresses a divide by zero error which represents sites
         # with no observations of alleles 0 or 1. This is OK since such
         # sites will already be filtered as either non-biallelic or as
-        # below mincov (all missing for these subsamples), or as 
+        # below mincov (all missing for these subsamples), or as
         # invariant (again due to all missing for these subsamples).
         with np.errstate(divide='ignore', invalid='ignore'):
             if isinstance(self.maf, int):
@@ -404,44 +470,44 @@ class SNPsExtracter:
         rng = np.random.default_rng(random_seed)
         subarr = self.genos[:, jsubsample_snps(self.snpsmap, rng.integers(2**31))]
         logger.log(log_level, f"subsampled {subarr.shape[1]} unlinked SNPs.")
-        return subarr        
+        return subarr
 
     def subsample_loci(self, random_seed=None, log_level="INFO"):
         """Return an array of snps by re-sampling loci w/ replacement.
 
         Calls jitted functions to subsample loci/linkage-blocks with
-        replacement to the same number as the original assembly. 
-        This does not subsample unlinked SNPs per locus, but instead 
+        replacement to the same number as the original assembly.
+        This does not subsample unlinked SNPs per locus, but instead
         re-samples linked SNPs for use in bootstrapping. Read below
         to be sure this is doing what you want it to do.
-        
+
         Note
         ----
         THIS RESAMPLES ONLY LOCI IN THE SNPS HDF5 FILE, MEANING THAT IT
-        DOES NOT RESAMPLE INVARIANT LOCI. AND, IN FACT IT RESAMPLES 
+        DOES NOT RESAMPLE INVARIANT LOCI. AND, IN FACT IT RESAMPLES
         LOCI AFTER FILTERING HAS REDUCED THE LOCI TO ONLY THOSE THAT
-        INCLUDE THE SELECTED SAMPLES. 
+        INCLUDE THE SELECTED SAMPLES.
             So, even though a full data set (loci file) may include
-        3000 loci, perhaps only 2000 of those will include a particular 
-        set of four samples, and only 1000 of those might be variable. 
-        This func will return a random resampling with replacment of 
+        3000 loci, perhaps only 2000 of those will include a particular
+        set of four samples, and only 1000 of those might be variable.
+        This func will return a random resampling with replacment of
         those 1000 loci.
         """
-        rng = np.random.default_rng(random_seed)        
+        rng = np.random.default_rng(random_seed)
         nloci, lidxs = jsubsample_loci(self.snpsmap, rng.integers(2**31))
         subarr = self.snps[:, lidxs]
         logger.log(
-            log_level, 
+            log_level,
             f"subsampled {subarr.shape[1]} SNPs from {nloci} variable "
             " loci w/ replacement.",
         )
         return subarr
 
     def get_population_geno_counts(
-        self, 
-        subsample:bool=False, 
+        self,
+        subsample:bool=False,
         random_seed: Optional[int]=None,
-        log_level="INFO",        
+        log_level="INFO",
         ):
         """Return dataframe with genos in treemix format.
 
@@ -487,9 +553,9 @@ class SNPsExtracter:
         return data
 
     def get_population_geno_frequency(
-        self, 
-        subsample: bool=False, 
-        random_seed=None, 
+        self,
+        subsample: bool=False,
+        random_seed=None,
         log_level="INFO",
         # imap: Optional[Dict]=None
         ):
@@ -504,8 +570,8 @@ class SNPsExtracter:
         B    1.0  0.5  0.0
         C    0.0  0.0  0.0
 
-        You can optionally impute missing data before running this 
-        command, or not -- missing values will be filled with NaN, 
+        You can optionally impute missing data before running this
+        command, or not -- missing values will be filled with NaN,
         which is fine since construct will try to infer their values.
 
         Parameters
@@ -557,15 +623,18 @@ if __name__ == "__main__":
     import toytree
     import ipcoal
     import ipyrad.analysis as ipa
-    ipa.set_loglevel("DEBUG")
+    ipa.set_log_level("DEBUG")
 
     tree = toytree.rtree.unittree(10, 1e6)
-    model = ipcoal.Model(tree, Ne=1e5, nsamples=2)
+    model = ipcoal.Model(tree, Ne=1e5, nsamples=6)
     model.sim_loci(50, 100)
     model.apply_missing_mask(0.5)
+    model.write_popfile(name='test', outdir="/tmp", diploid=True)
     model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
 
-    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", mincov=5)
-    tool.parse_genos_from_hdf5()
-    print(tool.subsample_snps())
-    print(tool.get_population_geno_frequency())
+    imap = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
+    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", mincov=5, imap=imap, minmaf=0.1)
+    tool.run()
+
+    ipa.snps_imputer(tool.genos, tool.names, tool.imap, inplace=True).run()
+    print(tool.subsample_genos())
