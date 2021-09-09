@@ -15,6 +15,9 @@ from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 
 
+logger = logger.bind(name="ipyrad")
+
+
 class AssemblyProgressBar:
     """
     Print pretty progress bar with printings specific to Assembly object

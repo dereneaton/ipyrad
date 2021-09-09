@@ -24,13 +24,9 @@ ASSEMBLY_FILE_LOGGER_FORMAT = (
     "{message}"
 )
 
-IP_LOGGERS = []
-
 
 def colorize():
-    """
-    check whether terminal/tty supports color
-    """
+    """Check whether terminal/tty supports color."""
     # check if we're in IPython/jupyter
     tty1 = bool(IPython.get_ipython())
     # check if we're in a terminal
@@ -38,45 +34,41 @@ def colorize():
     return tty1 or tty2
 
 
+LOGGERS = [0]
 def set_log_level(log_level="DEBUG", log_file=None):
     """Add logger for ipyrad to stderr and optionally to file.
 
-    The IDs of the loggers are stored in a global variable
-    IP_LOGGERS so they can be removed and updated, not duplicated.
-
-    These loggers are bound to the 'extra' keyword 'ip'. Thus, any
+    These loggers are bound to the 'extra' keyword 'ipyrad'. Thus, any
     module in assembly that aims to use this formatted logger should
-    put `logger = logger.bind(ip=True)` at the top of the module.
+    put `logger = logger.bind(name="ipyrad")` at the top of the module.
     """
-    # remove any previously assigned loggers for ip and ipa. This uses
-    # try/except in case run it multiple times in a row.
-    for log_id in IP_LOGGERS:
+    for idx in LOGGERS:
         try:
-            logger.remove(log_id)
+            logger.remove(idx)
         except ValueError:
             pass
-
-    # add a logger for assembly
-    log_id = logger.add(
+    idx = logger.add(
         sink=sys.stderr,
         level=log_level,
         colorize=colorize(),
         format=ASSEMBLY_STDERR_LOGGER_FORMAT,
-        filter=lambda x: x['extra'].get("ip"),
+        filter=lambda x: x['extra'].get("name") == "ipyrad",
     )
-    IP_LOGGERS.append(log_id)
+    LOGGERS.append(idx)
 
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        log_id = logger.add(
+        idx = logger.add(
             sink=log_file,
             level=log_level,
             colorize=False,
             format=ASSEMBLY_FILE_LOGGER_FORMAT,
-            filter=lambda x: x['extra'].get("ipa"),
+            filter=lambda x: x['extra'].get('name') == "ipyrad",
             enqueue=True,
             rotation="50 MB",
             backtrace=True,
             diagnose=True,
         )
-        IP_LOGGERS.append(log_id)
+        LOGGERS.append(idx)
+
+    logger.enable("ipyrad")

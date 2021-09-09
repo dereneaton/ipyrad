@@ -18,6 +18,9 @@ from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 
 
+logger.bind(name="ipyrad")
+
+
 class Cluster:
     """
     Stores cluster information.
