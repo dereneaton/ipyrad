@@ -53,12 +53,6 @@ from .snaq import Snaq as snaq
 # analysis tools uses INFO logger by default.
 set_log_level("INFO")
 
-# send test message
-# logger.debug(
-    # f"ipyrad-analysis (v.{ipa.__version__}) logging={log_level}")
-
-
-
 
 
 # # tested in 0.9.10
