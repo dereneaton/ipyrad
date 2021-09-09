@@ -9,32 +9,31 @@ from loguru import logger
 from ipyrad.core.logger_setup import colorize
 
 ANALYSIS_STDERR_LOGGER_FORMAT = (
-    "<level>ipa: {file}</level> <white>|</white> "
+    "<level>ipa</level> <white>|</white> "
+    "<level>{file}</level> <white>|</white> "
     "<black>{message}</black>"
 )
 
-IPA_LOGGERS = []
 
-
+LOGGERS = [0]
 def set_log_level(log_level="DEBUG"):
-    """Add logger for ipyrad-analysis to stderr.
+    """Add logger for ipa to stderr.
 
-    The IDs of the loggers are stored in a global variable
-    IP_LOGGERS so they can be removed and updated, not duplicated.
+    These loggers are bound to the 'extra' keyword 'ipa'. Thus, any
+    module in assembly that aims to use this formatted logger should
+    put `logger = logger.bind(name="ipa")` at the top of the module.
     """
-    # remove any previously assigned loggers for ip and ipa. This uses
-    # try/except in case run it multiple times in a row.
-    for log_id in IPA_LOGGERS:
+    for idx in LOGGERS:
         try:
-            logger.remove(log_id)
+            logger.remove(idx)
         except ValueError:
             pass
-
-    log_id = logger.add(
+    idx = logger.add(
         sink=sys.stderr,
         level=log_level,
         colorize=colorize(),
         format=ANALYSIS_STDERR_LOGGER_FORMAT,
-        filter=lambda x: x['extra'].get("ipa"),
+        filter=lambda x: x['extra'].get("name") == "ipa",
     )
-    IPA_LOGGERS.append(log_id)
+    LOGGERS.append(idx)
+    logger.enable("ipa")
