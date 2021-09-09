@@ -35,8 +35,7 @@ from ipyrad.analysis.snps_imputer import SNPsImputer
 from ipyrad.analysis.vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 from ipyrad.analysis.pca_drawing import Drawing
 
-
-logger.bind(ipa=True)
+logger.bind(name='ipa')
 
 _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
@@ -141,7 +140,7 @@ class PCA:
         kmeans_mincov_max: Optional[float]=0.8,
         kmeans_niters: Optional[int]=5,
         ld_block_size: int=0,
-        cores: int=0,
+        cores: int=1,
         ):
 
         # only check import at init
@@ -181,7 +180,7 @@ class PCA:
         """List of names in the subsampled dataset (imap or full)."""
         self.genos: np.ndarray=None
         """Array of (nsamples, nsnps) as dtype=uint8 that passed filtering."""
-        self.snpsmap = np.array([])
+        self.snpsmap: np.ndarray=None
         """Array of (nsnps, 2) with SNP linkage information."""
         self.missing_cells: int=0
         """The number of missing cells in the SNP matrix before imputation."""
@@ -189,6 +188,8 @@ class PCA:
         """The percentage of missing cells int he SNP matrix before imputation."""
         self.missing_per_sample: pd.Series=None
         """A pandas Series with percentage missing per sample."""
+        self.stats: pd.Series=None
+        """A pandas Series with stats from SNP extraction & filtering."""
 
         # hidden attributes used internally
         self._model: str="PCA"
@@ -198,6 +199,7 @@ class PCA:
         self._drawn_pstyles: List=None
         """Stores the marker styles used in the last drawing."""
         self._ext: 'ipa.snps_extracter'=None
+        """The snps_extracter module used to filter data."""
 
         # initialize functions: parse data and impute.
         self._check_map_args()

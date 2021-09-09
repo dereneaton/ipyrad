@@ -28,7 +28,7 @@ from ipyrad.core.parallel import Cluster
 from ipyrad.core.progress_bar import AssemblyProgressBar
 
 
-logger = logger.bind(ipa=True)
+logger = logger.bind(name="ipa")
 
 
 class SNPsExtracter:

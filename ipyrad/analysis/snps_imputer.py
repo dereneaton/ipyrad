@@ -10,7 +10,7 @@ from loguru import logger
 import numpy as np
 
 
-logger = logger.bind(ipa=True)
+logger = logger.bind(name="ipa")
 
 
 class SNPsImputer:
