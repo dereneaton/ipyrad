@@ -278,7 +278,6 @@ class Drawing:
         # add the replicates cloud points unless centroids_only=True
         if not self.centroids_only:
             for rep in range(self.nreplicates):
-
                 # get transformed coordinates and variances
                 _ = self.axes.scatterplot(
                     self.tool._loadings[rep][:, self.ax0],
@@ -289,7 +288,7 @@ class Drawing:
         # compute centroids
         xarr = np.concatenate([
             np.array([
-                self.tool._loadings[idx][:, self.ax0], 
+                self.tool._loadings[idx][:, self.ax0],
                 self.tool._loadings[idx][:, self.ax1],
             ]).T
             for idx in range(self.nreplicates)
@@ -310,7 +309,7 @@ class Drawing:
     def _add_legend(self):
         """Optionally adds a legend to the right side of figure.
 
-        Getting this to fit nicely with long names can be tricky, 
+        Getting this to fit nicely with long names can be tricky,
         which is why we added the legend_width option. However, it
         may be useful to play with more tweaking in the future.
         """
@@ -327,6 +326,8 @@ class Drawing:
                 toyplot.pdf.render(self.canvas, self.outfile)
             elif self.outfile.endswith(".svg"):
                 toyplot.svg.render(self.canvas, self.outfile)
+            elif self.outfile.endswith(".html"):
+                toyplot.html.render(self.canvas, self.outfile)
             else:
                 raise IPyradError(
                     "outfile arg must end with .svg or .pdf to select "
