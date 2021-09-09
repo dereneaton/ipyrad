@@ -65,7 +65,7 @@ class PCA:
     Imputation is performed using a population allele sampling method.
     Two alleles are sampled at missing SNP calls to get a new genotype
     as 0, 1, or 2, based on the frequency of derived alleles at that
-    site in the population to which the sample belongs. 
+    site in the population to which the sample belongs.
 
     Population assignments can be entered as an imap dictionary
 
@@ -81,11 +81,11 @@ class PCA:
         The population assignments will be used for imputation.
     minmap: dict, int, float, or None
         Dict mapping population names to int or float values. If an
-        int or float is entered then it is treated as a dict mapping 
+        int or float is entered then it is treated as a dict mapping
         all pop names in the imap dict to that value. If a site does
-        not have data for (value) number of samples in each population, 
+        not have data for (value) number of samples in each population,
         respectively, the site is filtered from the data set. If None
-        then all populations are set to 1 (require at least one 
+        then all populations are set to 1 (require at least one
         individual to have data from every population at every site.)
     mincov: float or integer
         If a site does not have data across this proportion of total
@@ -96,12 +96,12 @@ class PCA:
     kmeans_clusters: int
         The number of imap populations to cluster samples into using
         the kmeans clustering method. If None then kmeans clustering is
-        not performed. The estimated imap dict from this operation 
+        not performed. The estimated imap dict from this operation
         will override any user input imap dict. However, the imap arg
         can still be used to subsample which samples will be included
-        in this analysis. Only the minimum minmap 
-        value is used (since imap pops are estimated you cannot set 
-        diff values for each pop here), so you should set minmap as 
+        in this analysis. Only the minimum minmap
+        value is used (since imap pops are estimated you cannot set
+        diff values for each pop here), so you should set minmap as
         just an int or float value when using this option.
     kmeans_niters: int
         Number of iterations of kmeans clustering with decreasing
@@ -205,7 +205,7 @@ class PCA:
         self._check_map_args()
         self._check_for_vcf_conversion()
         if not self._kmeans_clusters:
-            self._load_snps_hdf5()            
+            self._load_snps_hdf5()
             self._impute_data()
         else:
             self._iterative_kmeans()
@@ -264,6 +264,7 @@ class PCA:
         self._ext.run(log_level="INFO", cores=self._cores)
         self.names = self._ext.names
         self.genos = self._ext.genos
+        self.stats = self._ext.stats
 
         # raise an error if not data passed filtering
         if not self.genos.size:
@@ -319,17 +320,17 @@ class PCA:
         kmeans_model = KMeans(n_clusters=self._kmeans_clusters)
 
         # get the subsample of names to include in this analysis
-        self.names = SNPsExtracter(self.data, imap=self.imap).names        
+        self.names = SNPsExtracter(self.data, imap=self.imap).names
 
         # start kmeans with a global imap
         kmeans_imap = {'global': self.names}
 
         # get global mincov as a float.
         gmincov = (
-            self.mincov if isinstance(self.mincov, float) 
+            self.mincov if isinstance(self.mincov, float)
             else self.mincov / len(self.names)
         )
-        
+
         # iterate over mincovs evenly spaced over iterations
         iters = np.linspace(self._kmeans_mincov_max, gmincov, self._kmeans_niters)
         for idx, kmeans_mincov in enumerate(iters):
@@ -344,13 +345,13 @@ class PCA:
             self._ext = SNPsExtracter(
                 data=self.data,
                 imap=kmeans_imap,
-                minmap={i: minmap for i in kmeans_imap}, 
+                minmap={i: minmap for i in kmeans_imap},
                 mincov=kmeans_mincov,
             )
             log = ("INFO" if idx in (0, len(iters) - 1) else "DEBUG")
             self._ext.run(log_level=log, cores=self._cores)
-            self.names = self._ext.names
             self.genos = self._ext.genos
+            self.names = self._ext.names
             if not self.genos.size:
                 raise IPyradError(
                     "No data passed filtering, try different settings, such "
@@ -371,7 +372,7 @@ class PCA:
 
             # x. On final iteration return this imputed array as the result
             if idx == len(iters) - 1:
-                logger.info("imap dict inferred by iterative PCA and KMeans.")                
+                logger.info("imap dict inferred by iterative PCA and KMeans.")
                 continue
 
             # 3. subsample unlinked SNPs
@@ -388,8 +389,6 @@ class PCA:
                 group = np.where(kmeans_model.labels_ == lab)[0]
                 kmeans_imap[lab] = [self.names[j] for j in group]
             logger.debug(f"imap in iter {idx}: {kmeans_imap}")
-
-        
 
     def loadings(self, rep=0):
         """Return a dataframe with the PC loadings for a specific rep."""
@@ -682,7 +681,7 @@ class PCA:
 
         # init TSNE model object with params (sensitive)
         umap_kwargs = {
-            'n_neighbors': n_neighbors,
+            'n_neighbors': int(n_neighbors),
             'init': 'spectral',
             'random_state': random_seed,
         }
