@@ -1,93 +1,191 @@
 #!/usr/bin/env python
 
-"D-statistic calculations"
+"""Calculate D-statistics from RAD loci using bootstrap resampling.
 
-# py2/3 compat
-from __future__ import print_function, division
-from builtins import range
 
-import time
-from collections import OrderedDict
+"""
 
-# import scipy.stats as st  ## used for dfoil
-from numba import njit
+from typing import Dict, List, Union, Optional
+
+from loguru import logger
 import pandas as pd
 import numpy as np
+import toytree
+# from numba import njit
+from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.core.parallel import Cluster
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.analysis.snps_extracter import SNPsExtracter
+from ipyrad.analysis.baba_drawing import Drawing
 
-# ipyrad tools
-from .utils import ProgressBar
-from ..core.Parallel import Parallel
-from ..assemble.utils import IPyradError
-from .snps_extracter import SNPsExtracter
-
-# check for toytree and toyplot
-try:
-    import toytree
-    import toyplot
-    import scipy.stats as sc
-except ImportError:
-    pass
-
-
-"""
-TODO: 
-- sliding window analysis (wrap around SNPsExtracter...)
-"""
+logger = logger.bind(name="ipa")
 
 
 class Baba:
-    """
-    ipyrad.analysis Baba Class object.
+    """...
 
     Parameters
     ----------
-    data : str
-        Path to the .snps.hdf5 input file.
-
-    Functions
-    ---------
-    run_test: 
-
-    run:
-
-    generate_tests_from_tree:
-
-    plot:
-
+    data: str
+        A file path to an input .snps.hdf5 data file.
     """
-    def __init__(
-        self, 
-        data=None,
-        ):
-
-        # store tests
+    def __init__(self, data: str):
         self.data = data
 
-        # results storage
-        self.results_table = None
-        self.taxon_table = None
+        # attrs to be filled.
+        self.results_table: pd.DataFrame=None
+        """A pandas DataFrame with results from the last test ran."""
+        self.taxon_table: pd.DataFrame=None
+        """A pandas DataFrame with sample names from the last test run."""
+        self._ext: 'ipa.snps_extracter'=None
+        """An ipa.snps_extracter tool used to filter snps."""
 
-        # cluster attributes
-        self.ipcluster = {
-            "cluster_id": "", 
-            "profile": "default",
-            "engines": "Local", 
-            "quiet": 0, 
-            "timeout": 60, 
-            "cores": 0, 
-            "threads": 2,
-            "pids": {},
-            }
+    def run_test(
+        self,
+        imap: Dict[str,List[str]],
+        minmap: Union[Dict[str, Union[int, float]], int, float],
+        nboots: int=100,
+        ):
+        """Return a DataFrame results for a single D-statistic test.
 
+        Parameters
+        ----------
+        imap: dict
+            A test is defined using a dict mapping the keys p1, p2, p3,
+            and p4 to lists of sample names. When multiple samples
+            represent a tip the allele frequency is used.
+        minmap: dict, int, or float.
+            A dict mapping the same keys as in imap to int or float
+            values representing the minimum number (or proportion)
+            of samples in the list that must have data at a SNP for
+            it to be included in the analysis. This only applies if
+            you have more than one sample per tip, since the minmap
+            will default to a minimum of 1 per group.
+        nboots: int
+            The number of bootstrap samples used to calculate std dev
+            and measure Z-score for significance testing.
 
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame with the number of observed site patterns and
+            the test significance based on bootstrap resampling loci
+            with replacement.
+        """
+
+        # check on imaps
+        assert sorted(imap.keys()) == ["p1", "p2", "p3", "p4"], (
+            "Malformed imap: must contain keys 'p1', 'p2', 'p3', and 'p4'.\n"
+            f"You entered: {imap}"
+        )
+
+        # check on minmaps
+        if isinstance(minmap, (int, float)):
+            minmap = {i: minmap for i in imap}
+
+        # parse genotypes for this subsapmle
+        self._ext = SNPsExtracter(
+            self.data,
+            imap=imap,
+            minmap=minmap,
+            mincov=4,
+        )
+        self._ext.run(cores=1)
+
+        # get test results and arrange in dataframe
+        return self._get_test_results(imap, nboots)
+
+    def run_partitioned_test(
+        self,
+        imap: Dict[str,List[str]],
+        minmap: Dict[str,Union[int,float]]=None,
+        nboots: int=100,
+        ):
+        """Return partitioned D-statistic results for a single test.
+
+        Parameters
+        ----------
+        imap: dict
+            ...
+        minmap: dict
+            ...
+        nboots: int
+            ...
+        """
+        # parse genotypes for this subsapmle
+        self._ext = SNPsExtracter(
+            self.data,
+            imap=imap,
+            minmap=minmap,
+            mincov=4,
+        )
+        self._ext.run()
+        return self._get_test_results_5(imap, nboots)
+
+    def _get_test_results(self, imap, nboots):
+        """Return a pd.Series of results for a single test."""
+        barr = self._get_pop_freqs(self._ext.genos, imap)
+        dhat, abba, baba = self._get_dstat(barr)
+        boots = self._get_boots(imap, nboots)
+        boots_std = boots.std()
+        zstat = abs(dhat) / boots_std
+        return pd.Series(
+            name="D-statistic",
+            dtype=float,
+            data={
+                "D": dhat,
+                "D_bootstrap_std": boots_std,
+                "Z": zstat,
+                "ABBA": abba,
+                "BABA": baba,
+                "nSNPs": self._ext.snpsmap.shape[0],
+                "nloci": len(set(self._ext.snpsmap[:, 0])),
+            },
+        )
+
+    def _get_test_results_5(self, imap, nboots):
+        """Returns a pd.Series of results for a single test."""
+        barr = self._get_pop_freqs_5(self._ext.genos, imap)
+        res = self._get_partitioned_dstats(barr)
+        boots = self._get_boots_5(imap, nboots)
+        zstat12 = abs(res[0]) / boots[0].std()
+        zstat1 = abs(res[1]) / boots[1].std()
+        zstat2 = abs(res[2]) / boots[2].std()
+        return pd.Series(
+            name="partitioned-D-statistic",
+            dtype=float,
+            data={
+                "D12": res[0][0],
+                "D1": res[0][1],
+                "D2": res[0][2],
+                "boot12std": res[1][0].std(),
+                "boot1std": res[1][1].std(),
+                "boot2std": res[1][2].std(),
+                "Z12": zstat12,
+                "Z1": zstat1,
+                "Z2": zstat2,
+                "ABBBA": res[0][3],
+                "BABBA": res[0][4],
+                "ABBAA": res[0][5],
+                "BABAA": res[0][6],
+                "ABABA": res[0][7],
+                "BAABA": res[0][8],
+                "nSNPs": self._ext.snpsmap.shape[0],
+                "nloci": len(set(self._ext.snpsmap[:, 0])),
+            },
+        )
 
     def _get_pop_freqs(self, arr, imap):
-        """
-        Calculates frequencies of 'derived' alleles at each site in 
-        each population group after choosing 'ancestral' allele 
-        based on what is present in the outgroup.
+        """Calculates frequencies of 'derived' alleles for each site x pop.
 
-        # nb: ma arrays do not support numba jit
+        This first chooses an 'ancestral' allele for each site based
+        on the most frequent allele (0/1) in the outgroup (p4). All
+        sites are already post-filtered, and thus have at least one
+        allele per population (minmap minimum enforced).
+
+        Note
+        ----
+        ma arrays do not support numba jit
         """
         barr = np.zeros((4, arr.shape[1]), dtype=np.float)
 
@@ -95,7 +193,7 @@ class Baba:
         for pidx, pop in enumerate(("p1", "p2", "p3", "p4")):
 
             # get sample idxs
-            sidx = [self.snex.names.index(i) for i in imap[pop]]
+            sidx = [self._ext.names.index(i) for i in imap[pop]]
 
             # mask missing data
             marr = np.ma.array(data=arr[sidx, :], mask=arr[sidx, :] == 9)
@@ -109,55 +207,21 @@ class Baba:
         barr[:, flip] = 1 - barr[:, flip]
         return barr
 
-
-    @staticmethod
-    @njit
-    def _get_dstat(barr):
-        """
-        Returns D-stat and return abba baba freq arrays
-        """
-        abba = (1 - barr[0]) * (barr[1]) * (barr[2]) * (1 - barr[3])
-        baba = (barr[0]) * (1 - barr[1]) * (barr[2]) * (1 - barr[3])
-        sabba = abba.sum()
-        sbaba = baba.sum()
-        dstat = (sabba - sbaba) / (sabba + sbaba)
-        return dstat, sabba, sbaba
-
-
-
-    def _get_boots(self, imap, nboots):
-        """
-        Returns array of bootstrap replicate D-stats
-        """
-        boots = np.zeros(nboots)
-        for idx in range(nboots):
-            arr = self.snex.subsample_loci(quiet=True)
-            barr = self._get_pop_freqs(arr, imap)
-            dhat, _, _ = self._get_dstat(barr)
-            boots[idx] = dhat
-        return boots
-
-
-
-    def _get_test_results(self, imap, nboots):
-        """
-        Returns a row of results for a single test.
-        """
-        barr = self._get_pop_freqs(self.snex.snps, imap)
-        dhat, abba, baba = self._get_dstat(barr)
-        boots = self._get_boots(imap, nboots)
-        zstat = abs(dhat) / boots.std()
-        return dhat, boots.std(), zstat, abba, baba  # .sum(), baba.sum()
-
-
-
     def _get_pop_freqs_5(self, arr, imap):
-        """
-        5-taxon allels frequencies
+        """Calculates frequencies of 'derived' alleles for each site x pop.
+
+        This first chooses an 'ancestral' allele for each site based
+        on the most frequent allele (0/1) in the outgroup (p4). All
+        sites are already post-filtered, and thus have at least one
+        allele per population (minmap minimum enforced).
+
+        Note
+        ----
+        ma arrays do not support numba jit
         """
         barr = np.zeros((5, arr.shape[1]), dtype=float)
         for pidx, pop in enumerate(["p1", "p2", "p3_1", "p3_2", "p4"]):
-            sidx = [self.snex.names.index(i) for i in imap[pop]]
+            sidx = [self._ext.names.index(i) for i in imap[pop]]
             marr = np.ma.array(data=arr[sidx, :], mask=arr[sidx, :] == 9)
             freq = (marr / 2).mean(axis=0).data
             barr[pidx] = freq
@@ -165,14 +229,20 @@ class Baba:
         barr[:, flip] = 1 - barr[:, flip]
         return barr
 
-
+    # @njit
+    @staticmethod
+    def _get_dstat(barr) -> (float, int, int):
+        """Return D-stat and abba baba counts."""
+        abba = (1 - barr[0]) * (barr[1]) * (barr[2]) * (1 - barr[3])
+        baba = (barr[0]) * (1 - barr[1]) * (barr[2]) * (1 - barr[3])
+        sabba = abba.sum()
+        sbaba = baba.sum()
+        dstat = (sabba - sbaba) / (sabba + sbaba)
+        return dstat, sabba, sbaba
 
     @staticmethod
-    @njit
     def _get_partitioned_dstats(barr):
-        """
-        Calculate partitioned D-statistics from 5 taxon tree.
-        """     
+        """Return partitioned D-statistics and site counts."""
         abbba = (1 - barr[0]) * (barr[1]) * (barr[2] * barr[3]) * (1 - barr[4])
         ababa = (1 - barr[0]) * (barr[1]) * ((1 - barr[2]) * barr[3]) * (1 - barr[4])
         abbaa = (1 - barr[0]) * (barr[1]) * (barr[2] * (1 - barr[3])) * (1 - barr[4])
@@ -192,20 +262,29 @@ class Baba:
         dstat1 = (sabbaa - sbabaa) / (sabbaa + sbabaa)
         dstat2 = (sababa - sbaaba) / (sababa + sbaaba)
         return (
-            dstat12, dstat1, dstat2, 
-            sabbba, sbabba, 
+            dstat12, dstat1, dstat2,
+            sabbba, sbabba,
             sabbaa, sbabaa,
-            sababa, sbaaba, 
-            )
+            sababa, sbaaba,
+        )
 
-
+    def _get_boots(self, imap, nboots):
+        """Return an array of bootstrap replicate D-stats."""
+        boots = np.zeros(nboots)
+        for idx in range(nboots):
+            arr = self._ext.subsample_loci(log_level="INFO" if not idx else "DEBUG")
+            barr = self._get_pop_freqs(arr, imap)
+            dhat, _, _ = self._get_dstat(barr)
+            boots[idx] = dhat
+        return boots
 
     def _get_boots_5(self, imap, nboots):
+        """Return an array of bootstrap replicate partitioned D-stats."""
         boots12 = np.zeros(nboots)
         boots1 = np.zeros(nboots)
         boots2 = np.zeros(nboots)
         for idx in range(nboots):
-            arr = self.snex.subsample_loci(quiet=True)
+            arr = self._ext.subsample_loci(log_level="INFO" if not idx else "DEBUG")
             barr = self._get_pop_freqs_5(arr, imap)
             res = self._get_partitioned_dstats(barr)
             boots12[idx] = res[0]
@@ -213,233 +292,97 @@ class Baba:
             boots2[idx] = res[2]
         return boots12, boots1, boots2
 
+    def run(
+        self,
+        imaps: List[Dict[str,List[str]]],
+        minmaps: List[Union[Dict,float,int]],
+        nboots: int=100,
+        cores: int=4,
+        ipyclient: Optional["ipyparallel.Client"]=None,
+        ):
+        """Run a batch of dstat tests in parallel.
 
+        The imaps args takes as input a list of test dictionaries.
+        The list of tests can either be set on the .tests attribute
+        of the baba object, or auto-generated by calling
+        .generate_tests_from_tree().
 
-    def _get_test_results_5(self, imap, nboots):
+        Parameters
+        ----------
+        imaps: list of imap dictionaries
+            This ...
+        minmaps: 
+            ...
+        nboots: int
+            Number of bootstrap replicates to run.
+        cores: int
+            The number of cores to parallelize the jobs on.
+        ipyclient: ipyparallel.Client object
+            An ipyparallel client object to distribute jobs to a
+            cluster. This is an optional alternative to using an
+            automatic cluster, which is done if left as None.
         """
-        Returns a row of results for a single test
-        """
-        barr = self._get_pop_freqs_5(self.snex.snps, imap)
-        res = self._get_partitioned_dstats(barr)
-        boots = self._get_boots_5(imap, nboots)
-        zstat12 = abs(res[0]) / boots[0].std()
-        zstat1 = abs(res[1]) / boots[1].std()
-        zstat2 = abs(res[2]) / boots[2].std()
-        return res, boots, (zstat12, zstat1, zstat2)
+        # distribute jobs in a wrapped cleaner function
+        cluster = Cluster()
+        cluster.start(cores=cores)
+        lbview = ipyclient = cluster.ipyclient.load_balanced_view()
 
+        # progress bar tracker
+        prog = AssemblyProgressBar({}, "abba-baba", "ipa", True)
 
-
-    def run_partitioned_test(self, imap, minmap=None, nboots=100, quiet=False):
-        """
-        Returns Partitioned D-statistic results for a single test.
-        """
-        # parse genotypes for this subsapmle 
-        self.snex = SNPsExtracter(
-            self.data, imap=imap, minmap=minmap, mincov=4, quiet=quiet,
-        )
-        self.snex.parse_genos_from_hdf5()
-
-        # get test results and arrange in dataframe
-        res = self._get_test_results_5(imap, nboots)
-        resdf = pd.DataFrame({
-            "D12": res[0][0],
-            "D1": res[0][1],
-            "D2": res[0][2],
-            "boot12std": res[1][0].std(),
-            "boot1std": res[1][1].std(),
-            "boot2std": res[1][2].std(),
-            "Z12": res[2][0],
-            "Z1": res[2][1],
-            "Z2": res[2][2],                        
-            "ABBBA": res[0][3],
-            "BABBA": res[0][4],
-            "ABBAA": res[0][5],
-            "BABAA": res[0][6],
-            "ABABA": res[0][7],
-            "BAABA": res[0][8],
-            "nSNPs": self.snex.snpsmap.shape[0],
-            "nloci": len(set(self.snex.snpsmap[:, 0])),
-        }, index=[0])
-        return resdf
-
-
-
-    def run_test(self, imap, minmap=None, nboots=100, quiet=False):
-        """
-        Return D-statistic results for a single test. 
-
-        Parameters:
-        -----------
-        imap (dict):
-            A test is defined using a dict mapping the keys p1, p2, p3, and p4
-            to lists of sample names. When multiple samples represent a tip 
-            the allele frequency is used. 
-
-        minmap (dict):
-            A dictionary containing the same keys as imap and with a float 
-            or int as the value representing the minimum number (or proportion)
-            of samples in the list that must have data at a SNP for it to be
-            included in the analysis. This only applies if you have more than
-            one sample per tip.
-
-        nboots (int):
-            The number of bootstrap samples used to calculate std dev. and 
-            measure Z-score for significance testing.
-
-        quiet (bool):
-            Verbosity of SNP filtering.       
-
-        Returns
-        -------
-        result (pandas.DataFrame):
-            A DataFrame 
-        """
-
-        # check on imaps
-
-
-        # check on minmaps
-
-
-        # parse genotypes for this subsapmle 
-        self.snex = SNPsExtracter(
-            self.data, imap=imap, minmap=minmap, mincov=4, quiet=quiet,
-        )
-        self.snex.parse_genos_from_hdf5()
-
-        # get test results and arrange in dataframe
-        res = self._get_test_results(imap, nboots)
-        res = pd.DataFrame({
-            "D": res[0],
-            "bootstd": res[1],
-            "Z": res[2],
-            "ABBA": res[3],
-            "BABA": res[4],
-            "nSNPs": self.snex.snpsmap.shape[0],
-            "nloci": len(set(self.snex.snpsmap[:, 0])),
-        }, index=[0])
-        return res
-
-
-
-    def _run(self, imaps, minmaps, nboots, ipyclient):
-
-        # load-balancer
-        lbview = ipyclient.load_balanced_view()
-
-        # store the set of tests used here
-        self.tests = imaps
-
-        # expand minmaps
+        # check and expand minmaps if None
         if minmaps is None:
             minmaps = [
-                {i: 1 for i in ["p1", "p2", "p3", "p4"]} 
+                {i: 1 for i in ["p1", "p2", "p3", "p4"]}
                 for j in range(len(imaps))
             ]
-
-        # distribute job
-        dfs = {}
+        # self.run_test(imaps[0], minmaps[0], nboots)
 
         # distribute jobs
-        rasyncs = {}
-        idx = 0
-        for imap, minmap in zip(imaps, minmaps):
-            args = (self.data, imap, minmap, nboots, True)
-            rasync = lbview.apply(remote_run, *args)
-            rasyncs[idx] = rasync
-            idx += 1
-
-        # setup progress bar
-        prog = ProgressBar(len(imaps), None, "abba-baba tests")
-        prog.finished = 0
+        for idx, _ in enumerate(imaps):
+            args = (imaps[idx], minmaps[idx], nboots)
+            rasync = lbview.apply(self.run_test, *args)
+            prog.jobs[idx] = rasync
         prog.update()
-
-        while 1:
-            # check for completed
-            finished = [i for i in rasyncs if rasyncs[i].ready()]
-            for idx in finished:
-                dfs[idx] = rasyncs[idx].get()
-                prog.finished += 1
-                del rasyncs[idx]
-
-            # show progress
-            prog.update()
-            time.sleep(0.9)
-            if not rasyncs:
-                print("")
-                break
+        prog.block()
+        prog.check()        
 
         # concat results to df
-        df = pd.concat([dfs[i] for i in range(len(imaps))], ignore_index=True)
-        self.results_table = df
+        data = pd.concat(
+            [prog.jobs[idx].get() for idx in sorted(prog.jobs)],
+            axis=1,
+            ignore_index=True,
+        )
+        self.results_table = data.T
+        logger.info(f"{data.shape[0]} test results stored to `.results_table`")
 
         # concat sample names to df strings
         self.taxon_table = pd.DataFrame(imaps).applymap(lambda x: ",".join(x))
-
-
-
-    def run(self, imaps, minmaps=None, nboots=100, auto=True, ipyclient=None, show_cluster=False):
-        """
-        Run a batch of dstat tests in parallel on a list of test dictionaries.
-        The list of tests can either be set on the .tests attribute of the
-        baba object, or auto-generated by calling .generate_tests_from_tree().
-
-        Parameters:
-        -----------
-        auto (bool):
-            Automatically start and stop parallel cluster using all cores
-            available or with fine tuning by .ipcluster attribute params.
-
-        force (bool):
-            Overwrite existing results CSV file with this [workdir]/[name].csv
-
-        ipyclient (ipyparallel.Client object):
-            An ipyparallel client object to distribute jobs to a cluster. 
-            This is an optional alternative to using 'auto=True'.
-
-        show_cluster (bool):
-            Verbose option to print information about n cores in cluster.
-        """
-        # distribute jobs in a wrapped cleaner function
-        pool = Parallel(
-            tool=self,
-            ipyclient=ipyclient,
-            show_cluster=show_cluster,
-            auto=auto,
-            rkwargs={'imaps': imaps, 'minmaps': minmaps, 'nboots': nboots},
-            )
-        pool.wrap_run()
-
-        # batch(self, ipyclient)
-        # ## skip this for 5-part test results
-        # if not isinstance(self.results_table, list):
-        #     self.results_table.nloci = (
-        #         np.nan_to_num(self.results_table.nloci).astype(int))
-
+        cluster.cleanup_safely(None)
 
 
     def generate_tests_from_tree(
         self,
         tree,
-        constraint_dict=None, 
+        constraint_dict=None,
         constraint_exact=False,
         return_idxs=False,
         quiet=False):
-        """ 
-        Returns a list of all possible 4-taxon tests on a tree (newick file). 
-        The number of possible tests can be greatly reduced by setting 
-        constraints on the taxon sampling using the constraint_dict arg. 
+        """
+        Returns a list of all possible 4-taxon tests on a tree (newick file).
+        The number of possible tests can be greatly reduced by setting
+        constraints on the taxon sampling using the constraint_dict arg.
 
         Parameters:
         -----------
         constraint_dict: dict
             The constraint dict will limit the tests generated to only include
-            the taxa listed in the dict. 
+            the taxa listed in the dict.
 
         constraint_exact: bool or list
-            If constraint_exact is True then only samples meeting the exact 
+            If constraint_exact is True then only samples meeting the exact
             entries in the constraint_dict will be returned, as opposed to all
-            subsets of those entries. If a list then different values can be 
+            subsets of those entries. If a list then different values can be
             applied to [p1, p2, p3, p4]. For example, if the constraint_dict is
             {"p1": sample1, "p2": sample2, "p3": sample3, "p4": [sample4, sample5]},
             then with constraint_exact==False you get:
@@ -479,356 +422,49 @@ class Baba:
 
 
 
-    def draw(self, tree, width=500, height=500, sort=False, prune=False, fade=False, zscoreTH=2.5, *args, **kwargs):
-        """ 
-        Draw a multi-panel figure with tree, tests, and results 
+    def draw(
+        self,
+        tree,
+        width=500,
+        height=500,
+        sort=False,
+        prune=False,
+        fade=False,
+        zscoreTH=2.5,
+        **kwargs,
+        ):
+        """Draw a multi-panel figure with tree, tests, and results
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         width: int
             Width in pixels
-
         height: int
             Height in pixels
-
         prune: bool
             Prune the tree to only draw tips that are involved in tests.
-            
         sort: bool
             Sort tests
-            
+
         fade: float
             Fade test blocks if the Z-score is not significant.
-
         """
-
         # make the plot
-        drawing = Drawing(self.results_table, self.taxon_table, tree, width, height, sort=sort, prune=prune, fade=fade, zscoreTH=zscoreTH)
+        drawing = Drawing(
+            self.results_table,
+            self.taxon_table,
+            tree,
+            width,
+            height,
+            sort=sort,
+            prune=prune,
+            fade=fade,
+            zscoreTH=zscoreTH,
+        )
         return drawing.canvas
 
 
 
-
-class Drawing:
-    def __init__(self, res, tax, tree, width=500, height=500, sort=False, prune=False, fade=False, zscoreTH=2.5):
-        
-        self.tests = tax
-        self.res = res
-        self.ntests = res.shape[0]
-        self.zscoreTH = zscoreTH
-        self.fade = fade
-      
-        # if prune tree
-        if prune:
-            intree = set([])
-            for cell in self.tests.values.flatten():
-                for tax_ in cell.split(","):
-                    intree.add(tax_)
-            tree = tree.drop_tips(
-                [i for i in tree.get_tip_labels() if i not in intree]
-            )
-        
-        
-        # define tree, original tree or prunned tree
-        self.tree = tree
-        
-        
-        if sort:
-            # split to make cell into a list
-            sindex = (
-                self.tests
-                .applymap(lambda x: x.split(","))
-                .applymap(self.tree.get_mrca_idx_from_tip_labels)
-                .sort_values(by=["p4", "p3", "p2", "p1"])
-            ).index
-
-            # rearrange tables by sindex
-            self.tests = self.tests.loc[sindex]
-            self.res = self.res.loc[sindex]
-            self.tests.reset_index(drop=True, inplace=True)
-            self.res.reset_index(drop=True, inplace=True)
-
-        # canvas and axes components
-        self.canvas = toyplot.Canvas(width, height)
-        self.add_tree_to_canvas()
-        self.add_zscores_to_canvas()
-        self.add_histos_to_canvas()
-        self.add_test_idxs_to_canvas()
-        self.add_tip_names_to_canvas()
-        self.add_tests_to_canvas()
-
-
-    def add_tree_to_canvas(self):
-        ax0 = self.canvas.cartesian(bounds=("50%", "90%", "5%", "19%"), show=False)
-        self.tree.draw(
-            axes=ax0, 
-            ts='n', 
-            layout='d', 
-            tip_labels=False, 
-            tip_labels_align=True, 
-            xbaseline=0.5,
-        )
-        ax0.rectangle(
-            0, self.tree.ntips, 
-            0, self.tree.treenode.height, 
-            style={"fill": "none"},
-        )
-
-
-    def add_test_idxs_to_canvas(self):
-        # test names
-        ax4 = self.canvas.cartesian(bounds=("91%", "95%", "21%", "80%"), show=False)
-        ax4.rectangle(
-            0, 1, 
-            0, self.ntests + 1, 
-            style={"fill": "none"})
-        ax4.text(
-            np.repeat(0, self.ntests),
-            np.arange(self.ntests) + 1, 
-            [str(i) for i in range(self.ntests)][::-1],
-            style={"fill": "black", "text-anchor": "start"}
-        )
-
-
-    def add_tip_names_to_canvas(self):
-        # tip names
-        ax5 = self.canvas.cartesian(bounds=("50%", "90%", "80%", "97%"), show=False)
-        ax5.rectangle(0, self.tree.ntips, 0, 1, style={"fill": "none"})
-        ax5.text(
-            np.arange(self.tree.ntips) + 0.5,
-            np.repeat(0.9, self.tree.ntips),
-            self.tree.get_tip_labels(),
-            angle=-90,
-            style={"fill": "black", "text-anchor": "start"},
-            annotation=True,
-        )
-
-
-    def add_tests_to_canvas(self):
-        # add tests bars to axes
-        ax1 = self.canvas.cartesian(
-            bounds=("50%", "90%", "21%", "80%"), 
-            show=False,
-            padding=0,
-        )
-
-        # spacer rect
-        ax1.rectangle(
-            0, self.tree.ntips, 
-            0, self.ntests + 1, 
-            style={
-                "fill": "grey", 
-                "fill-opacity": 0.1, 
-            },
-        )
-
-        # coloring
-        COLORS = toyplot.color.Palette()
-        colors = [COLORS[0], COLORS[1], toyplot.color.black, COLORS[7]]
-        opacities = [1, 1, 1, 1]
-        TIPS = self.tree.get_tip_labels()
-
-        # draw blocks
-        for idx in range(self.ntests):
-
-            # line tracing
-            hidx = self.ntests - idx
-            ax1.hlines(hidx, color=toyplot.color.black, style={"stroke-dasharray": "2,4"})
-            
-            
-            #if fade option is true, make half transparent non significant blocks
-            if self.fade:
-                # check if Z is significant and set opacities for every block
-                if self.res.Z[idx] < self.zscoreTH:
-                    opacities = [0.6, 0.6, 1, 1] #make both P1 and P2 transparent
-                else:
-                    if self.res.D[idx] > 0:
-                        opacities = [0.6, 1, 1, 1] #make P1 transparent
-                    else:
-                        opacities = [1, 0.6, 1, 1] #make P2 transparent
-        
-            
-
-            # get test [name1, name2, name3]
-            for cidx, pop in enumerate(["p1", "p2", "p3", "p4"]):
-                test = self.tests.iloc[idx][pop]
-
-                
-                # get name indices [0, 2, 3]
-                tidxs = sorted([TIPS.index(i) for i in test.split(",")])
-                                
-                # draw blocks connecting index to next until no more.
-                blocks = []
-                
-                # declare a block as [names, initial tip, last tip]
-                block = [test.replace(",","\n"), tidxs[0], tidxs[0]]
-                for i in range(1, len(tidxs)):
-                    if tidxs[i] - tidxs[i - 1] == 1:
-                        block[-1] = tidxs[i]
-                    else:
-                        blocks.append(block)
-                        block = [test, tidxs[i], tidxs[i]]
-
-                blocks.append(block)
-                blocks[-1][-1] = tidxs[-1]
-
-                
-                # draw them (left, right, top, bottom)
-                for block in blocks:
-                    ax1.rectangle(
-                        a=block[1] + 0.25,
-                        b=block[2] + 0.75,
-                        c=hidx + 0.25, 
-                        d=hidx - 0.25,
-                        title=block[0],
-                        style={
-                            "fill": colors[cidx],
-                            "stroke": toyplot.color.black,
-                            "opacity": opacities[cidx],
-                            "stroke-width": 0.5,
-                        },
-                    )
-        ax1.hlines(
-            [0, self.ntests + 1], 
-            style={"stroke": toyplot.color.black, "stroke-width": 1.5}
-        )
-        ax1.vlines(
-            [0, self.tree.ntips], 
-            style={"stroke": toyplot.color.black, "stroke-width": 1.5},
-        )        
-
-
-    def add_zscores_to_canvas(self):
-        # add zscores bars to axes
-        ax2 = self.canvas.cartesian(
-            bounds=("25%", "47%", "21%", "80%"), 
-            yshow=False,
-            padding=0,
-        )
-
-        # the longest bar space
-        maxz = max(self.res.Z) + (max(self.res.Z) * .10)
-
-        # spacer rect
-        ax2.rectangle(
-            -maxz, 0,
-            0, self.ntests + 1, 
-            style={
-                "fill": "grey", 
-                "fill-opacity": 0.1,
-            },
-        )
-
-        # add data bars
-        for idx in range(self.ntests):
-            hidx = self.ntests - idx
-            ax2.hlines(hidx, color='black', style={"stroke-dasharray": "2,4"})
-            ax2.rectangle(
-                0, -self.res.Z[idx],
-                hidx - 0.25, hidx + 0.25, 
-                color=toyplot.color.black,
-                title="Z-score: " + str(round(-self.res.Z[idx], 2))
-            )
-
-
-        # stylring 
-        ax2.x.spine.show = False
-        ax2.x.label.text = "Z-score"
-        ax2.x.ticks.locator = toyplot.locator.Extended(5, only_inside=True)
-        ax2.vlines(
-            [ax2.x.domain.min, ax2.x.domain.max, 0, -maxz], 
-            style={"stroke": toyplot.color.black, "stroke-width": 1.5},
-        )
-        ax2.hlines(
-            [0, self.ntests + 1],
-            style={"stroke": toyplot.color.black, "stroke-width": 1.5},            
-        ) 
-        
-        #zscore threshold
-        if -maxz < -self.zscoreTH:
-            ax2.vlines(
-                -self.zscoreTH, 
-                style={
-                    "stroke": "grey", 
-                    "stroke-dasharray": "2,4", 
-                    "stroke-width": 1,
-                })
-
-
-    def add_histos_to_canvas(self):
-        # add histograms to axes
-        ax3 = self.canvas.cartesian(
-            bounds=("5%", "22%", "21%", "80%"), 
-            yshow=False, 
-            padding=0,
-        )
-
-        zmin = min(self.res.D - 3.25 * self.res.bootstd[0])
-        zmax = max(self.res.D + 3.25 * self.res.bootstd[0])
-
-        # draw outline and fill
-        ax3.rectangle(
-            zmin, zmax,
-            0, self.ntests + 1, 
-            style={
-                "fill": "grey", 
-                "fill-opacity": 0.1, 
-            },
-        )
-
-        # iterate over tests to add histos
-        for idx in range(self.ntests):
-            hidx = self.ntests - idx
-
-            # get fill color
-            if self.res.Z[idx] < self.zscoreTH:
-                fill = toyplot.color.Palette()[7]
-            else:
-                if self.res.D[idx] > 0:
-                    fill = toyplot.color.Palette()[1]
-                else:
-                    fill = toyplot.color.Palette()[0]
-
-            # histogram fill
-            points = np.linspace(zmin, zmax, 30)
-            density = sc.norm.pdf(
-                points, loc=self.res.D[idx], scale=self.res.bootstd[idx],
-            )
-            ax3.fill(
-                points, density / density.max() * 0.7,
-                baseline=np.repeat(hidx - 0.25, len(points)),
-                style={
-                    "stroke": 'black', 
-                    "stroke-width": 0.5, 
-                    "fill": fill},
-                title="D-statistic: " + str(round(self.res.D[idx], 2))
-            )
-
-        # Z=0 indicator    
-        ax3.vlines(
-            0, 
-            style={
-                "stroke": "grey", 
-                "stroke-dasharray": "2,4", 
-                "stroke-width": 1,
-            })
-
-        ax3.vlines(
-            [zmin, zmax],
-            style={"stroke": "black", "stroke-width": 1.5},
-        )
-        ax3.hlines(
-            [0, self.ntests + 1],
-            style={"stroke": "black", "stroke-width": 1.5},
-        )        
-
-        # style axes
-        ax3.x.label.text = "D-statistic"
-        ax3.x.spine.show = False
-        ax3.x.ticks.locator = toyplot.locator.Explicit(
-            [zmin, 0.0, zmax],
-            ["{:.1f}".format(i) for i in [zmin, 0.0, zmax]],
-        )
 
 
 
@@ -842,7 +478,7 @@ class TreeParser:
 
         # tree to traverse
         self.tree = toytree.tree(tree)
-        if not self.tree.is_rooted(): 
+        if not self.tree.is_rooted():
             raise IPyradError(
                 "generate_tests_from_tree(): tree must be rooted and resolved")
 
@@ -895,21 +531,21 @@ class TreeParser:
         for topnode in node.traverse():
             for oparent in topnode.children:
                 for onode in oparent.traverse():
-                    if self.test_constraint(onode, 3):                       
+                    if self.test_constraint(onode, 3):
                         self.hold[3] = onode.idx
 
                         node2 = oparent.get_sisters()[0]
                         for topnode2 in node2.traverse():
                             for oparent2 in topnode2.children:
                                 for onode2 in oparent2.traverse():
-                                    if self.test_constraint(onode2, 2):                       
+                                    if self.test_constraint(onode2, 2):
                                         self.hold[2] = onode2.idx
 
                                         node3 = oparent2.get_sisters()[0]
                                         for topnode3 in node3.traverse():
                                             for oparent3 in topnode3.children:
                                                 for onode3 in oparent3.traverse():
-                                                    if self.test_constraint(onode3, 1):                       
+                                                    if self.test_constraint(onode3, 1):
                                                         self.hold[1] = onode3.idx
 
                                                         node4 = oparent3.get_sisters()[0]
@@ -938,8 +574,8 @@ class TreeParser:
                 if len(names.intersection(const)) == len(names):
                     return 1
                 else:
-                    return 0        
-        return 1        
+                    return 0
+        return 1
 
 
 
