@@ -4,7 +4,6 @@
 Sliding window (or sampling window) for phylo inference
 """
 
-# standard
 import os
 import glob
 import shutil
@@ -22,53 +21,60 @@ from loguru import logger
 from ipyrad.core.parallel import Cluster
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError
-from .raxml import Raxml as raxml
+from ipyrad.analysis.raxml import Raxml as raxml
 # from .mrbayes import MrBayes as mrbayes
 from .window_extracter import window_extracter, NoDataInWindowError
 
 
+logger.bind(name="ipa")
+
+
 class TreeSlider:
-    """
-    Performs phylogenetic inference on subsampled and filtered RADseq
-    data in genomic windows. Uses the seqs.hdf5 database file from 
-    ipyrad as input. Data must have been assembled by mapping to a
-    reference genome. If no window size is entered then entire 
-    scaffolds are used as windows. 
+    """Define and run phylogenetic inference on genomic windows.
 
-    Example:
-    --------
-    tool = ipa.tree_slider(
-        data=data, 
-        mincov=4, 
-        minsnps=100, 
-        window_size=1e5,
-        slide_size=1e5,
-        scaffold_idxs=[0, 1, 2, 4, 5],
-    )
-    tool.run(cores=8)
+    This tool is used to subsample and filter RADseq genomic windows
+    from the seqs.hdf5 database file from and pass them to a tree
+    inference tool (e.g., raxml) in a highly parallelized way to
+    calculate gene trees across entire scaffolds/chromosomes.
 
-    Parameters:
-    ------------
-    data: (str)
+    Data must have been assembled by mapping to a reference genome.
+    If no window size is entered then entire scaffolds (e.g., RAD loci)
+    are used as windows.
+
+    Example
+    -------
+    >>> tool = ipa.tree_slider(
+    >>>     data=data,
+    >>>     mincov=4,
+    >>>     minsnps=100,
+    >>>     window_size=1e5,
+    >>>     slide_size=1e5,
+    >>>     scaffold_idxs=[0, 1, 2, 4, 5],
+    >>> )
+    >>> tool.run(cores=8)
+
+    Parameters
+    ----------
+    data: str
         Database file (.seqs.hdf5) produced by ipyrad.
-    name: (str)
+    name: str
         Name prefix for output files.
-    workdir: (str)
+    workdir: str
         Directory for output files.
-    imap: (dict) 
-        Optional dictionary mapping population names to lists of 
+    imap: Dict
+        Optional dictionary mapping population names to lists of
         sample names. This can be used to apply minmap filters for
-        sample coverage within groups, or for consensus_reduce 
+        sample coverage within groups, or for consensus_reduce
         sampling of sites (see window_extracter docs).
-    minmap: (dict) 
+    minmap: Dict
         Optional dictionary mapping population names to min sample
         coverage values as int or float (proportion).
     minsnps: int
         Minimum number of SNPs required to include window in analysis.
     inference_method: str
         'raxml' or 'mb'
-    inference_args: dict
-        A dictionary mapping method param names to their values. 
+    inference_args: Dict
+        A dictionary mapping method param names to their values.
         See examples or contact developers to enable unsupported
         options.
     scaffold_minlen: int
@@ -76,17 +82,15 @@ class TreeSlider:
         an extracted window after site filtering is applied. Windows
         that do not pass filtering are skipped (NA).
     keep_all_files: bool
-        All alignment and tree inference files are saved in the 
+        All alignment and tree inference files are saved in the
         workdir instead of being retained only temporarily.
-    quiet: bool
-        Suppress progress info
     """
     def __init__(
         self,
         data: str,
         name: Optional[str]=None,
         workdir: str="./analysis-treeslider",
-        window_size: Optional[int]=None, 
+        window_size: Optional[int]=None,
         slide_size: Optional[int]=None,
         scaffold_idxs:Optional[List[int]]=None,
         minsnps: int=1,
@@ -105,10 +109,10 @@ class TreeSlider:
 
         # report bad arguments
         if kwargs:
-            print(
+            logger.warning(
                 "Warning: Some arg names are not recognized and may have "
-                "changed. Please check the documentation:\n"
-                "{}".format(kwargs))
+                f"changed. Please check the documentation:\n{kwargs}"
+            )
 
         # store attributes
         self.name = name if name is not None else "tree_slider"
@@ -133,7 +137,7 @@ class TreeSlider:
 
         # get outfile name
         self.tree_table_path = os.path.join(
-            self.workdir, f"{self.name}.tree_table.csv")           
+            self.workdir, f"{self.name}.tree_table.csv")
 
         # to-be parsed attributes
         self.phymap = None
@@ -152,13 +156,11 @@ class TreeSlider:
 
 
     def show_inference_command(self, show_full=False):
-        """
-        Shows the inference command (and args if show_full=True).
-        """
+        """Show the inference command (and args if show_full=True)."""
         # show raxml command and args
         if self.inference_method == "raxml":
             rax = raxml(
-                data=self.data, 
+                data=self.data,
                 name=self.name,
                 workdir=tempfile.gettempdir(),
                 **self.inference_args
@@ -171,9 +173,9 @@ class TreeSlider:
             # pretty print it
             else:
                 printkwargs = {
-                    "s": "...", 
-                    "w": "...", 
-                    "n": "...",        
+                    "s": "...",
+                    "w": "...",
+                    "n": "...",
                 }
                 rax.params.update(printkwargs)
                 print(rax.command)
@@ -246,7 +248,7 @@ class TreeSlider:
                 "samples": 0,
                 "missing": 0.0,  # np.nan,
                 "tree": "",
-                }, 
+                },
             )
             dataframes.append(data)
 
@@ -257,7 +259,7 @@ class TreeSlider:
 
     def run(self, cores=None, ipyclient=None, force=False):
         """
-        Distribute tree slider jobs in parallel on N cores. The 
+        Distribute tree slider jobs in parallel on N cores. The
         number of threads per job will be detected from the inference
         args to start the appropriate number of concurrent jobs.
 
@@ -267,8 +269,8 @@ class TreeSlider:
             Number of cores to use for parallelization. The tool will
             automatically manage a local cluster with N cores.
 
-        ipyclient: (type=ipyparallel.Client); Default=None. 
-            If you started an ipyclient manually then you can 
+        ipyclient: (type=ipyparallel.Client); Default=None.
+            If you started an ipyclient manually then you can
             connect to it and use it to distribute jobs here. This
             option may be used to setup a cluster over multiple
             machines/nodes using MPI.
@@ -317,7 +319,7 @@ class TreeSlider:
         """
         Hidden func to distribute jobs that is wrapped inside Parallel.
         """
-        # THREADING set to match between ipcluster and raxml 
+        # THREADING set to match between ipcluster and raxml
         nthreads = 1
         if self.inference_method == "raxml":
             if "T" in self.inference_args:
@@ -392,7 +394,7 @@ class TreeSlider:
         for idx in prog.results:
             newick = prog.results[idx]
             self.tree_table.loc[idx, 'tree'] = newick
-        
+
         # write CSV to disk
         self.tree_table.to_csv(self.tree_table_path)
         logger.info(f"tree_table written to {self.tree_table_path}")
@@ -448,13 +450,13 @@ def remote_mrbayes(nexfile, inference_args, keepdir=None):
     os.remove(nexfile)
 
     # return results
-    return tree    
+    return tree
 
 
 
 def remote_raxml(
-    phyfile:str, 
-    inference_args:Dict[str,str], 
+    phyfile:str,
+    inference_args:Dict[str,str],
     keepdir:Optional[str],
     ):
     """
@@ -506,13 +508,13 @@ end;
 """
 
 # proc = subprocess.Popen([
-#     self.raxml_binary, 
-#     "--msa", fname, 
-#     "--model", "JC", 
-#     "--threads", "1", 
+#     self.raxml_binary,
+#     "--msa", fname,
+#     "--model", "JC",
+#     "--threads", "1",
 #     "--redo",
-#     ], 
-#     stderr=subprocess.PIPE, 
+#     ],
+#     stderr=subprocess.PIPE,
 #     stdout=subprocess.PIPE,
 # )
 # out, _ = proc.communicate()
