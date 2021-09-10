@@ -77,6 +77,7 @@ class SNPsExtracter:
         minmap: Optional[Dict]=None,
         mincov: Union[float,int]=0.0,
         minmaf: Union[float,int]=0.0,
+        # rmincov: float=0.0,
         ):
 
         # store params
@@ -90,6 +91,8 @@ class SNPsExtracter:
         """The minimum sample coverage across all samples or subsamples (if imap)."""
         self.maf = minmaf
         """The minimum frequency of the minor allele else SNP is filtered."""
+        # self.rmincov = rmincov
+        """The minimum proportion of data per sample (before filtering) or it is excluded."""
 
         # attributes to be filled
         self.nsnps: int=None
@@ -292,7 +295,7 @@ class SNPsExtracter:
         # assign unique site index to every snpsmap site
         self.snpsmap[:, 1] = range(self.snpsmap.shape[0])
 
-        # record missing pre-impute (TODO: move to )
+        # record missing pre-impute (TODO: move to ?)
         if self.genos.size:
             missing_cells = np.sum(self.genos == 9)
             missing_percent = missing_cells / self.genos.size
@@ -472,7 +475,13 @@ class SNPsExtracter:
         logger.log(log_level, f"subsampled {subarr.shape[1]} unlinked SNPs.")
         return subarr
 
-    def subsample_loci(self, random_seed=None, log_level="INFO"):
+    def subsample_loci(
+        self,
+        random_seed: Optional[int]=None,
+        return_sites: bool=False,
+        # invariant_loci: Optional[int]=None,
+        log_level: str="INFO",
+        ):
         """Return an array of snps by re-sampling loci w/ replacement.
 
         Calls jitted functions to subsample loci/linkage-blocks with
@@ -480,6 +489,25 @@ class SNPsExtracter:
         This does not subsample unlinked SNPs per locus, but instead
         re-samples linked SNPs for use in bootstrapping. Read below
         to be sure this is doing what you want it to do.
+
+        Parameters
+        ----------
+        random_seed: int
+            Random number generator seed.
+        return_sites: bool
+            If True sites np.uint8 values are returned, else diploid
+            genotypes (0,1,2,9) are returned.
+        invariant_loci: Optional[int]
+            An optional additional number of invariant loci to resample
+            from. When one of these is randomly sampled no SNPs are
+            added to the array. This emulates sampling loci from a
+            genome more closely. The number of invariant loci can be
+            estimated from running locus_extracter instead of
+            snps_extracter...?
+        log_level: str
+            The logging level of this function can be modified to
+            effects its logged message. This is useful if it will be
+            run many times repeatedly, set to "WARNING" to suppress.
 
         Note
         ----
@@ -495,11 +523,14 @@ class SNPsExtracter:
         """
         rng = np.random.default_rng(random_seed)
         nloci, lidxs = jsubsample_loci(self.snpsmap, rng.integers(2**31))
-        subarr = self.snps[:, lidxs]
+        if return_sites:
+            subarr = self.snps[:, lidxs]
+        else:
+            subarr = self.genos[:, lidxs]
         logger.log(
             log_level,
             f"subsampled {subarr.shape[1]} SNPs from {nloci} variable "
-            " loci w/ replacement.",
+            "loci w/ replacement.",
         )
         return subarr
 
