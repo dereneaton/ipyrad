@@ -95,8 +95,6 @@ class Baba2:
         """A pandas DataFrame with results from the last test ran."""
         self.taxon_table: pd.DataFrame=None
         """A pandas DataFrame with sample names from the last test run."""
-        #self._ext: 'ipa.snps_extracter'=None
-        """An ipa.snps_extracter tool used to filter snps."""
 
     def run(
         self,
@@ -104,6 +102,7 @@ class Baba2:
         minmaps: List[Union[Dict,float,int]],
         nboots: int=100,
         cores: int=4,
+        random_seed: Optional[int]=None,
         ipyclient: Optional["ipyparallel.client.Client"]=None,
         ):
         """Run a batch of dstat tests in parallel.
@@ -135,7 +134,7 @@ class Baba2:
             cluster. This is an optional alternative to using an
             automatic cluster, which is done if left as None.
         """
-        # check and expand minmaps if None
+        # check and expand minmaps
         keys = ["p1", "p2", "p3", "p4"]
         if minmaps is None:
             minmaps = [1 for i in imaps]
@@ -149,7 +148,7 @@ class Baba2:
             res = self._run(imaps, minmaps, nboots, ipyclient=ipyclient)
         else:
             with Cluster(cores=cores, logger_name="ipa") as client:
-                res = self._run(imaps, minmaps, nboots, ipyclient=client)
+                res = self._run(imaps, minmaps, nboots, random_seed, client)
 
         # organize into dataframe, store and return
         data = pd.concat(res, axis=1, ignore_index=True)
@@ -159,8 +158,12 @@ class Baba2:
         return self.results_table
 
 
-    def _run(self, imaps, minmaps, nboots, ipyclient):
+    def _run(self, imaps, minmaps, nboots, random_seed, ipyclient):
         """Distributes :meth:`remote_baba` on all engines."""
+        # random number generator for bootstrap resampling
+        rng = np.random.default_rng(random_seed)
+
+        # store results for each test
         results = []
         for idx, _ in enumerate(imaps):
             # extract SNPs for this subset of samples
@@ -196,13 +199,9 @@ class Baba2:
                     engine = ipyclient[eid]
                     if not engine.queue_status()["queue"]:
                         if bidx < nboots + 1:
-                            if bidx:
-                                data = ext.subsample_loci(log_level="TRACE")
-                            else:
-                                data = ext.genos
+                            args = (ext, rng.integers(2 ** 31) if bidx else 0, imaps[idx])
                             prog.jobs[bidx] = engine.apply(
-                                self.remote_baba,
-                                *(data, ext.names, imaps[idx]),
+                                self.remote_baba, *args
                             )
                             bidx += 1
 
@@ -210,7 +209,6 @@ class Baba2:
                 if prog.finished == nboots + 1:
                     prog.update(final=True)
                     break
-                time.sleep(0.1)
 
             # collect results into a Series
             boots = np.array([prog.jobs[i][0] for i in range(1, nboots + 1)])
@@ -233,9 +231,10 @@ class Baba2:
         return results
 
 
-    def remote_baba(self, arr, names, imap):
+    def remote_baba(self, ext, random_seed, imap):
         """Runs baba inference on a remote engine."""
-        return BabaRemote(arr, names, imap).run()
+        arr = ext.subsample_loci(random_seed=random_seed)
+        return BabaRemote(arr, ext.names, imap).run()
 
 
 class OLD:
