@@ -1,4 +1,4 @@
-name: dev
+name: base
 channels: 
   - conda-forge
   - bioconda
@@ -14,8 +14,8 @@ dependencies:
   - pandas
   - scipy
   - numpy
-  - numba >=0.37
-  - ipyparallel >=6.0.2
+  - numba
+  - ipyparallel >=7.0
 
   - pysam >=0.15
   - vsearch >=2.13
