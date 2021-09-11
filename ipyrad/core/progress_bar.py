@@ -116,18 +116,18 @@ class AssemblyProgressBar:
         """
         # check for failures:
         for job in self.jobs:
-            rasync = self.jobs[job]
             try:
-                self.results[job] = rasync.get()
+                self.results[job] = self.jobs[job].get()
             except ipyparallel.RemoteError as inst:
+                raise inst
                 # logger.error(
                 #     "An error occurred, see logfile "
                 #     f"and trace:\n{traceback.format_exc()}"
                 # )
-                logger.error(
-                    "An error occurred: SEE TRACE BELOW\n" + 
-                    '\n'.join(inst.render_traceback())
-                )
+                # logger.error(
+                    # "An error occurred: SEE TRACE BELOW\n" + 
+                    # '\n'.join(inst.render_traceback())
+                # )
                 raise IPyradError("Exception on remote engine.") from inst
 
 
@@ -137,7 +137,7 @@ class AssemblyProgressBar:
         """
         if self.jobs[key].stdout:
             logger.info(self.jobs[key].stdout.strip())
-            self.jobs[key].stdout = ""            
+            self.jobs[key].stdout = ""
 
 
 
