@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 
-"""
+"""Install ipyrad with setup.
+
+See recommended usage example below.
+
+Examples
+--------
 Install ipyrad with:
- `conda install ipyrad -c conda-forge -c bioconda`
+    >>> conda install ipyrad -c conda-forge -c bioconda
 
 Or, for developers, install dependencies and then ipyrad w/ pip local:
- `cd ipyrad/`
- `conda env create -f environment.yml`
- `pip install . --no-deps`
+    >>> cd ipyrad/
+    >>> conda env create -f environment.yml
+    >>> pip install . --no-deps
 """
 
 import re
