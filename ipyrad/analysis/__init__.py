@@ -43,8 +43,12 @@ from .download import Download as download
 from .utils import popfile_to_imap
 from .astral import Astral as astral
 from .snaq import Snaq as snaq
+from .baba2 import Baba2 as baba
 
 # TESTING
+# from .baba2 import Baba as baba2
+# from .locus_extracter import LocusExtracter as locus_extracter
+
 # from .bucky import Bucky as bucky
 # from .bpp import Bpp as bpp
 # from .fasttree import Fasttree as fasttree
@@ -68,7 +72,7 @@ set_log_level("INFO")
 # from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5  # tetrad version ahead.
 #
 # # testing
-# from .locus_extracter import LocusExtracter as locus_extracter
+
 # from .tetrad import Tetrad as tetrad
 # from .window_extracter import WindowExtracter as window_extracter
 # from .clade_weights import CladeWeights as clade_weights
