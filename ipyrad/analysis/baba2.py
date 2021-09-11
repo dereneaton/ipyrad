@@ -95,6 +95,8 @@ class Baba2:
         """A pandas DataFrame with results from the last test ran."""
         self.taxon_table: pd.DataFrame=None
         """A pandas DataFrame with sample names from the last test run."""
+        self.bootstraps: np.ndarray=None
+        """Array of bootstrap D-statistics of shape (ntests, nboots)."""
 
     def run(
         self,
@@ -145,7 +147,7 @@ class Baba2:
 
         # distribute on existing client or start a new cluster ipyclient
         if ipyclient is not None and len(ipyclient):
-            res = self._run(imaps, minmaps, nboots, ipyclient=ipyclient)
+            res = self._run(imaps, minmaps, nboots, random_seed, ipyclient)
         else:
             with Cluster(cores=cores, logger_name="ipa") as client:
                 res = self._run(imaps, minmaps, nboots, random_seed, client)
@@ -161,6 +163,7 @@ class Baba2:
     def _run(self, imaps, minmaps, nboots, random_seed, ipyclient):
         """Distributes :meth:`remote_baba` on all engines."""
         # random number generator for bootstrap resampling
+        self.bootstraps = np.zeros(shape=(len(imaps), nboots), dtype=float)
         rng = np.random.default_rng(random_seed)
 
         # store results for each test
@@ -212,6 +215,7 @@ class Baba2:
 
             # collect results into a Series
             boots = np.array([prog.jobs[i][0] for i in range(1, nboots + 1)])
+            self.bootstraps[idx] = boots
             boots_std = boots.std()
             zstat = abs(prog.jobs[0][0]) / boots_std
             result = pd.Series(
