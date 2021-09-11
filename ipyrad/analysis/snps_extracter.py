@@ -17,15 +17,14 @@ snpsmap columns:
 """
 
 from typing import Optional, Dict, List, Union
-import traceback
 import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
-from ipyrad.core.parallel import Cluster
-from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.core.cluster import Cluster
+from ipyrad.analysis.progress import ProgressBar
 
 
 logger = logger.bind(name="ipa")
@@ -91,8 +90,6 @@ class SNPsExtracter:
         """The minimum sample coverage across all samples or subsamples (if imap)."""
         self.maf = minmaf
         """The minimum frequency of the minor allele else SNP is filtered."""
-        # self.rmincov = rmincov
-        """The minimum proportion of data per sample (before filtering) or it is excluded."""
 
         # attributes to be filled
         self.nsnps: int=None
@@ -187,30 +184,12 @@ class SNPsExtracter:
             self._run(log_level)
             return
 
-        # init the ipyparallel cluster class wrapper
-        cluster = Cluster(quiet=False)
-        try:
-            # establish connection to a new or running ipyclient
-            cluster.start(cores=cores, ipyclient=ipyclient)
-            self._run(log_level=log_level, ipyclient=cluster.ipyclient)
-
-        except KeyboardInterrupt:
-            logger.warning("keyboard interrupt by user, cleaning up.")
-
-        # AssemblyProgressBar logs the traceback
-        except IPyradError as inst:
-            logger.error(f"An error occurred:\n{inst}")
-            raise
-
-        # logger.error logs the traceback
-        except Exception as inst:
-            logger.error(
-                "An unexpected error occurred, see logfile "
-                f"and trace:\n{traceback.format_exc()}")
-            raise
-
-        finally:
-            cluster.cleanup_safely(None)
+        # run with an existing ipyclient or start and wrap a new one.
+        if ipyclient is not None:
+            self._run(log_level=log_level, ipyclient=ipyclient)
+        else:
+            with Cluster(cores=cores, logger_name="ipa") as client:
+                self._run(log_level=log_level, ipyclient=client)
 
     def _run(self, log_level: str="INFO", ipyclient=None):
         """Parse genotype calls from HDF5 snps file.
@@ -254,7 +233,7 @@ class SNPsExtracter:
         # run in parallel
         if ipyclient is not None:
             lbview = ipyclient.load_balanced_view()
-            prog = AssemblyProgressBar({}, "SNP filtering", "ipa", False)
+            prog = ProgressBar({}, "SNP filtering")
             for chunkidx in range(0, self.nsnps, chunksize):
                 chunkslice = slice(chunkidx, chunkidx + chunksize)
                 prog.jobs[chunkidx] = lbview.apply(self._get_masks_chunk, chunkslice)
@@ -654,7 +633,9 @@ if __name__ == "__main__":
     import toytree
     import ipcoal
     import ipyrad.analysis as ipa
+    import ipyrad as ip
     ipa.set_log_level("DEBUG")
+    ip.set_log_level("DEBUG")
 
     tree = toytree.rtree.unittree(10, 1e6)
     model = ipcoal.Model(tree, Ne=1e5, nsamples=6)
@@ -665,7 +646,7 @@ if __name__ == "__main__":
 
     imap = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
     tool = ipa.snps_extracter("/tmp/test.snps.hdf5", mincov=5, imap=imap, minmaf=0.1)
-    tool.run()
+    tool.run(cores=2)
 
     ipa.snps_imputer(tool.genos, tool.names, tool.imap, inplace=True).run()
     print(tool.subsample_genos())
