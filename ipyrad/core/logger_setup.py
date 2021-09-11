@@ -10,12 +10,15 @@ from loguru import logger
 import IPython
 
 
-ASSEMBLY_STDERR_LOGGER_FORMAT = (
-    "<cyan>{time:hh:mm:ss}</cyan> <white>|</white> "
-    "<level>{level: <7}</level> <white>|</white> "
-    "<magenta>{file:<18}</magenta> <white>|</white> "
-    "<level>{message}</level>"
-)
+def formatter(record):
+    """Custom formatter that allows for progress bar."""
+    end = record["extra"].get("end", "\n")
+    fmessage = (
+        "<level>{level:}</level> <white>|</white> "
+        "<magenta>{file:<18}</magenta> <white>|</white> "
+        "{message}"
+    ) + end
+    return fmessage
 
 ASSEMBLY_FILE_LOGGER_FORMAT = (
     "{time:YYYY/MM/DD} | {time:hh:mm:ss} | "
@@ -25,8 +28,8 @@ ASSEMBLY_FILE_LOGGER_FORMAT = (
 )
 
 
-def colorize():
-    """Check whether terminal/tty supports color."""
+def color_support():
+    """Check for color support in stderr as a notebook or terminal/tty."""
     # check if we're in IPython/jupyter
     tty1 = bool(IPython.get_ipython())
     # check if we're in a terminal
@@ -50,8 +53,8 @@ def set_log_level(log_level="DEBUG", log_file=None):
     idx = logger.add(
         sink=sys.stderr,
         level=log_level,
-        colorize=colorize(),
-        format=ASSEMBLY_STDERR_LOGGER_FORMAT,
+        colorize=color_support(),
+        format=formatter,#ASSEMBLY_STDERR_LOGGER_FORMAT,
         filter=lambda x: x['extra'].get("name") == "ipyrad",
     )
     LOGGERS.append(idx)
