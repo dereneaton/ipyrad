@@ -9,16 +9,16 @@ from loguru import logger
 from ipyrad.core.logger_setup import color_support
 
 
-def formatter(record):
-    """Custom formatter that allows for progress bar."""
-    start = record["extra"].get("start", "")
-    end = record["extra"].get("end", "\n")
-    fmessage = start + (
-        "<level>ipa</level> <white>|</white> "
-        "<level>{file}</level> <white>|</white> "
-        "<black>{message}</black>"
-    ) + end
-    return fmessage
+# def formatter(record):
+#     """Custom formatter that allows for progress bar."""
+#     start = record["extra"].get("start", "")
+#     end = record["extra"].get("end", "\n")
+#     fmessage = start + (
+#         "<level>ipa</level> <white>|</white> "
+#         "<level>{file}</level> <white>|</white> "
+#         "<black>{message}</black>"
+#     ) + end
+#     return fmessage
 
 
 def formatter(record):
@@ -30,7 +30,7 @@ def formatter(record):
     fmessage = start + (
         f"<level>{lev}</level> <white>|</white> "
         f"<fg #00005f>{fname: <12}</fg #00005f> <white>|</white> "
-        "<black>{message}</black>"
+        "<level><normal>{message}</normal></level>"
     ) + end
     return fmessage
 
