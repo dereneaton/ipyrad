@@ -347,6 +347,7 @@ class PCA:
                 imap=kmeans_imap,
                 minmap={i: minmap for i in kmeans_imap},
                 mincov=kmeans_mincov,
+                minmaf=self.minmaf,
             )
             log = ("INFO" if idx in (0, len(iters) - 1) else "DEBUG")
             self._ext.run(log_level=log, cores=self._cores)
