@@ -6,14 +6,15 @@ Assembly class object as the main API for calling assembly steps.
 
 import os
 import shutil
-import traceback
+# import traceback
 from typing import List, Optional
 from loguru import logger
 import pandas as pd
 from ipyparallel import Client
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
 from ipyrad.core.schema import Project, SampleSchema
-from ipyrad.core.parallel import Cluster
+# from ipyrad.core.parallel import Cluster
+from ipyrad.core.cluster import Cluster
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.s1_demux import Step1
 from ipyrad.assemble.s2_trim_reads import Step2
@@ -279,48 +280,29 @@ class Assembly:
         # the Class functions to run for each entered step.
         step_map = {
             "1": Step1,
-            "2": Step2, 
+            "2": Step2,
             "3": Step3,
             "4": Step4,
-            "5": Step5, 
+            "5": Step5,
             "6": Step6,
             "7": Step7,
         }
 
-        # could load the tool to check whether this job can be run 
+        # could load the tool to check whether this job can be run
         # before starting the ipcluster?.
-        
+
 
         # init the ipyparallel cluster class wrapper
-        cluster = Cluster(quiet=quiet)
-        try:
-            # establish connection to a new or running ipyclient
-            cluster.start(cores=cores, ipyclient=ipyclient)
+        if ipyclient is not None:
+            raise NotImplementedError(
+                "Usage of an external ipyclient is currently deprecated.")
 
+        with Cluster(cores=cores) as client:
             # use client for any/all steps of assembly
             for step in steps:
-                tool = step_map[step](self, force, quiet, cluster.ipyclient)
+                tool = step_map[step](self, force, quiet, client)
                 tool.run()
-                shutil.rmtree(tool.tmpdir)   # uncomment when not testing.
-
-        except KeyboardInterrupt:
-            logger.warning("keyboard interrupt by user, cleaning up.")
-
-        # AssemblyProgressBar logs the traceback
-        except IPyradError as inst:
-            logger.error(f"An error occurred:\n{inst}")
-            print("An error occurred, see logfile and below.")
-            raise
-
-        # logger.error logs the traceback
-        except Exception as inst:
-            logger.error(
-                "An unexpected error occurred, see logfile "
-                f"and trace:\n{traceback.format_exc()}")
-            raise
-
-        finally:
-            cluster.cleanup_safely(None)
+                shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
 
 
 # PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
