@@ -18,7 +18,7 @@ import toytree
 from loguru import logger
 
 # internal librries
-from ipyrad.core.parallel import Cluster
+from ipyrad.core.cluster import Cluster
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.raxml import Raxml as raxml
@@ -289,30 +289,8 @@ class TreeSlider:
             return
 
         # init the ipyparallel cluster class wrapper
-        cluster = Cluster(quiet=self.quiet)
-        try:
-            # establish connection to a new or running ipyclient
-            cluster.start(cores=cores, ipyclient=ipyclient)
-            self._run(ipyclient=cluster.ipyclient)
-
-        except KeyboardInterrupt:
-            logger.warning("keyboard interrupt by user, cleaning up.")
-
-        # AssemblyProgressBar logs the traceback
-        except IPyradError as inst:
-            logger.error(f"An error occurred:\n{inst}")
-            print("An error occurred, see logfile and below.")
-            raise
-
-        # logger.error logs the traceback
-        except Exception as inst:
-            logger.error(
-                "An unexpected error occurred, see logfile "
-                f"and trace:\n{traceback.format_exc()}")
-            raise
-
-        finally:
-            cluster.cleanup_safely(None)
+        with Cluster(cores=cores) as ipyclient:
+            self._run(ipyclient=ipyclient)
 
 
     def _run(self, ipyclient, quiet=False):
