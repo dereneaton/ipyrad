@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""ipyrad Cluster class for starting/stopping ipyparallel.
+"""ipyrad Cluster class for starting/stopping w/ ipyparallel.
 
 This uses the new ipyparallel cluster API (v.>7.0) for starting and
 stopping clusters using a context wrapper. Our custom superclass
@@ -27,8 +27,14 @@ logger = logger.bind(name="ipyrad")
 class Cluster(ipyparallel.cluster.cluster.Cluster):
     """Custom superclass of ipyparallel cluster.
 
-    Suppresses print statements and adds some logging calls. Exit
-    has custom exception handling and formatting.
+    This class is used to start an ipcluster with an optional set of 
+    additional kwargs, return a connected Client instance, and 
+    shutdown the ipcluster when the context manager closes.
+
+    Compared to the ipyparallel parent class, this one suppresses 
+    print statements and instead uses a logger, and the context manager
+    exit function has custom exception handling and formatting for
+    ipyrad specifically.
     """
     # suppress INFO calls from ipyparallel built-in logging.
     log_level = 30
@@ -40,10 +46,13 @@ class Cluster(ipyparallel.cluster.cluster.Cluster):
         **kwargs,
         ):
 
-        # cores is an alias for .n, logger name adds bind(name=...).
-        self.cores = cores
-        self.n = cores
+        # cores is an alias for .n, which is also stored for ipp parent.
+        self.cores = self.n = cores if cores else get_num_cpus()
+
+        # can limit logging to a name bound logger (see top of this module)
         self.logger_name = logger_name
+
+        # init parent class with kwargs for ipcluster start (e.g., MPI)
         super().__init__(**kwargs)
 
         # hidden attributes
@@ -132,3 +141,11 @@ def color_support():
     # check if we're in a terminal
     tty2 = sys.stderr.isatty()
     return tty1 or tty2
+
+
+if __name__ == "__main__":
+
+    # import ipyrad as ip
+    # ip.set_log_level("DEBUG")
+    with Cluster(cores=0) as c:
+        c
