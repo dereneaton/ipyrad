@@ -1,86 +1,356 @@
 #!/usr/bin/env python
 
-"""
-Extract, filter, count SNPs and reorganize filtered loci into a 3-d array
-(with maxlen limit) for simple indexing. Unlike window_extracter this does
-not attempt to concatenate loci and thus is just a faster simpler method
+"""Extract and filter loci from a .seqs.hdf5 array.
+
+Extract, Filter, count SNPs and reorganize filtered loci into a
+3-d array (with maxlen limit) for simple indexing. Unlike
+snps_extracter this will include all loci, even those that are
+invariant. Unlike window_extracter this does not attempt to
+concatenate loci and thus is just a faster simpler method
 of locus extraction based on assembled loci.
+
+This module is used internally by `ipa.baba`, `ipa.bpp`, `ipa.coverage`,
+and `ipa.popgen`.
+
+Examples
+--------
+>>> ipa.locus_extracter(data='data.seqs.hdf5', imap=imap, mincov=4)
+>>> ipa.
 """
 
-# py2/3 compat
-from __future__ import print_function
-
-# standard lib
 import os
 import itertools
-from copy import copy
+from typing import Union, Dict, List
+from dataclasses import dataclass, field
+from loguru import logger
 
 import h5py
 import numpy as np
 import pandas as pd
-
 from numba import njit
 
-from .utils import count_snps
-from ..core.Parallel import Parallel
-from ..assemble.utils import IPyradError, GETCONS
-from ..assemble.write_outputs_converter import NEXHEADER
+# import os
+# import itertools
+from copy import copy
+from ipyrad.core.cluster import Cluster
+from ipyrad.analysis.progress import ProgressBar
+from ipyrad.assemble.utils import IPyradError, GETCONS
+from ipyrad.assemble.write_outputs_converter import NEXHEADER
+from ipyrad.analysis.utils import count_snps
+
+logger = logger.bind(name="ipa")
+
+
+# 
+# Make ConsensusReduce a subclass?
+#
+
+
+@dataclass
+class NewLocusExtracter:
+    """Extract and filter sequence alignments from an HDF5 database.
+
+    This makes each locus easily accessible in post-filtered form
+    given a set of subsampled taxa and filtering options.
+
+    Parameters
+    ----------
+    data: str
+        Path to a ipyrad seqs.hdf5 database file.
+    imap: Optional[Dict]
+        A dict mapping population names to a list of sample names. This
+        can be used to subselect which taxa from the data file will be
+        kept in the filtered dataset, and also to optionally apply
+        minmap filtering based on coverage within each population.
+    mincov: float or int
+        Minimum coverage across all samples in order to retain locus
+        in the filtered data.
+    minmap: dict
+        A dict mapping population names to an int or float value
+        representing ...
+
+    min_snps
+    max_missing
+    min_len
+    rmin_cov
+    scaffold_idxs
+    
+    """
+    data: str
+    imap: Dict[str,List[str]]=field(default_factory=dict)
+    min_map: Dict[str,Union[int,float]]=field(default_factory=dict)
+    min_cov: Union[int,float]=4
+    min_snps: int=0
+    max_missing: float=1.0
+    min_len: int=50
+    rmin_cov: float=0.1
+    scaffold_idxs: List[int]=field(default_factory=list)
+
+    # attributes to be filled
+    names: np.ndarray=field(default=None, init=False)
+    """str array with names of samples kept from imap + database."""
+    sidxs: np.ndarray=field(default=None, init=False)
+    """int array with indices of the samples in the database file."""
+    scaffold_table: pd.DataFrame=field(default=None, init=False)
+    """pandas DataFrame with scaffold name and len information."""
+    phymap: pd.DataFrame=field(default=None, init=False)
+    """pandas DataFrame with locus positions in database/genome."""
+    sample_stats: pd.DataFrame=field(default=None, init=False)
+    """pandas DataFrame with sample coverage/filter stastistics."""
+
+    # hidden attributes used internally
+    _min_cov: int=None
+    """int converted mincov value."""    
+    _min_map: Dict[str,int]=None
+    """int converted minmap dict."""
+    _loci: List[List[str]]=None
+    """List of seq arrays after filtering."""
+    _smask: np.ndarray=None
+    """Array of masks to apply to arrays in ._loci."""
+
+
+    def __post_init__(self):
+        self.data = os.path.realpath(os.path.expanduser(self.data))
+        self._parse_scaffolds_meta()
+        self._load_phymap()
+        self._set_float_filters_to_ints()
+
+    def _parse_scaffolds_meta(self):
+        """Get scaffold/locus lengths and (sub)sample names and indices."""
+        with h5py.File(self.data, 'r') as io5:
+
+            # get database sample names
+            names = np.array([i.strip() for i in io5["phymap"].attrs["phynames"]])
+
+            # set imap to all samples if not provided.
+            if not self.imap:
+                self.imap = {"samples": names}
+
+            # get list of excluded samples from comparison to imap.
+            imapset = set(itertools.chain(*self.imap.values()))
+            exclude = set(names).difference(imapset)
+
+            # get indices of the samples to keep from database
+            self.sidxs = np.array([
+                i for (i, j) in enumerate(names) if j not in exclude
+            ])
+
+            # get names that are in imap and the database
+            self.names = names[self.sidxs]
+
+            # scaff names bytes ugh
+            try:
+                scaff_names = [i.decode() for i in io5["scaffold_names"][:]]
+            except AttributeError:
+                scaff_names = list(io5["scaffold_names"][:])
+
+            # parse scaffold names and lengths from db
+            self.scaffold_table = pd.DataFrame(
+                data={
+                    "scaffold_name": scaff_names,
+                    "scaffold_length": io5["scaffold_lengths"][:],
+                },
+            )
+
+    def _load_phymap(self):
+        """Load DataFrame with positions of loci from concat seqs database.
+
+        The seq data is stored in concatenated form with breakpoints
+        saved in the phymap array. This has columns: locidx, seqstart,
+        seqend, genomestart, genomeend, filtered.
+        """
+        with h5py.File(self.data, 'r') as io5:
+            col_names = io5["phymap"].attrs["columns"]
+            self.phymap = pd.DataFrame(
+                data=io5["phymap"][:],
+                columns=[
+                    i.decode() if isinstance(i, bytes)
+                    else i for i in col_names
+                ]
+            )
+        self.phymap.loc[:, "filtered"] = False
+
+    def _set_float_filters_to_ints(self):
+        """Set mincov and minmap to ints.
+
+        This requires converting floats to ints by multiplying by
+        the number of (sub)samples.
+        """
+        # set global filter can be int or float
+        self._min_cov = (
+            self.min_cov if isinstance(self.min_cov, int)
+            else int(self.min_cov * len(self.sidxs))
+        )
+
+        # set population filters as integers
+        self._minmap = {}
+        for ikey in self.min_map:
+            imin_cov = self.min_map[ikey]
+            self._minmap[ikey] = (
+                imin_cov if isinstance(imin_cov, int)
+                else np.ceil(imin_cov * len(self.imap[ikey]))
+            )
+
+    def run(self, cores: int=1, ipyclient: 'ipyparallel.Client'=None):
+        """Filter loci by distributing jobs in parallel.
+
+        TODO TODO TODO
+
+        Applies locus filtering to the concatenated sequence array in 
+        the HDF5 so that the LocusExtracter object ends with a list
+        of loci (.loci) and an array of masks (.smask) indicating which
+        samples are present in which loci. This can then be used easily
+        to sample loci suitable for different sets of samples.
+        """
+        # TODO: implement a force flag here?
+        if ipyclient is not None:
+            self._run(ipyclient)
+        else:
+            with Cluster(cores=cores) as client:
+                self._run(client)
+
+    def _run(self, ipyclient):
+        """Distributes jobs on the cluster."""
+        lbview = ipyclient.load_balanced_view()
+        prog = ProgressBar({}, "locus_extracter")
+
+        # submit jobs that each process 500 loci
+        chunksize = 500
+        for lidx in range(0, self.phymap.shape[0], chunksize):
+            block = self.phymap.iloc[lidx:lidx + chunksize, :]
+            prog.jobs[lidx] = lbview.apply(filter_loci, block, self)
+
+        # collect results
+        chunk = 0
+        for lidx in sorted(prog.jobs):
+            loci, filters, farr, smask = prog.jobs[lidx].result()
+
+            # store the locus in the ordered list.
+            self._loci.extend(loci)
+
+            # store the filters for reporting stats (TODO: just fill stats)
+            for key in self._filters:
+                self._filters[key] += filters[key]
+
+            # this is a filter array? ...?
+            self.phymap.iloc[chunk: chunk+chunksize, -1] = farr
+
+            # store the smask for extracting loci/samples later.
+            # should this be a list or array?
+            if smask:
+                self._smask.append(smask)
+            chunk += chunksize
+
+        # concatenate results
+        self.smask = np.concatenate(self.smask)
+        self.sample_stats.loci = self.smask.sum(axis=0)
+        
+        # TODO: report a dataframe to logger
+        logger.debug(f"nloci after filtering: {len(self.loci)}")
+
+
+def filter_loci(self, block):
+    """Remote function...
+
+    self
+        A LocusExtracter object with phymap, start, end...?
+    block
+        Chunk of the seqs array extracted from HDF5.
+    """
+    self.loci = []
+    self.filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
+    self.farr = np.zeros(block.shape[0], dtype=np.bool)
+    self.smask = []
+    # self.smask = np.zeros((block.shape[0], len(self.names)), dtype=np.bool)
+
+    # open h5 for reading seqarray
+    with h5py.File(self.data, 'r') as io5:
+
+        # iterate over the locus index in each block
+        for idx, lidx in enumerate(block.index):
+
+            # get sampling positions
+            self.start = self.phymap.loc[lidx, "phy0"]
+            self.end = self.phymap.loc[lidx, "phy1"]
+
+            # extract sequence
+            self.seqarr = io5["phy"][self.sidxs, self.start:self.end]
+
+            # applies SITE filters to seqarr and returns loc and row filters
+            self._imap_consensus_reduce()
+            filters, smask = self._filter_seqarr()
+
+            # only keep if it passed filtering
+            if not any(list(filters.values())):
+                self.loci.append(self.seqarr)
+                self.smask.append(smask)
+            else:
+                self.farr[idx] = True
+
+            # update stats
+            for key in self.filters:
+                self.filters[key] += filters[key]
+
+    return self.loci, self.filters, self.farr, self.smask
+
+
+
 
 
 
 class LocusExtracter(object):
     """
-    Extract and filter a sequence alignment from a genomic window. You can 
+    Extract and filter a sequence alignment from a genomic window. You can
     subselect or filter to include certain samples, and to require that data
     are not missing across some number of them, or to relabel them.
 
     This tool is primarily for INTERNAL use by ipyrad. Users are more likely
-    to want to access the window_extracter tool, which provides similar 
-    functionality in addition to more options.  
+    to want to access the window_extracter tool, which provides similar
+    functionality in addition to more options.
 
     Parameters:
     -----------
     data (str):
         A seqs.hdf5 file from ipyrad.
     name (str):
-        Prefix name used for outfiles. If None then it is created from the 
+        Prefix name used for outfiles. If None then it is created from the
         scaffold, start and end positions.
     workdir (str):
         Location for output files to be written. Created if it doesn't exist.
     scaffold_idx (int):
         Select scaffold by index number. If unsure, leave this
         empty when loading a file and then check the .scaffold_table to view
-        the indices of scaffolds. 
+        the indices of scaffolds.
     start (int):
         The starting position on a scaffold to obtain data from (default=0)
     end (int):
         The final position on a scaffold to obtain data from (default=end).
     mincov (int):
         The minimum number of individuals that must have data at a site for it
-        to be included in the concatenated alignment (default=4). 
+        to be included in the concatenated alignment (default=4).
     exclude (list):
         A list of sample names to exclude from the data set. Samples can also
         be excluded by using an imap dictionary and not including them.
     imap (dict):
-        A dictionary mapping group names (keys) to lists of samples names 
-        (values) to be included in the analysis. 
+        A dictionary mapping group names (keys) to lists of samples names
+        (values) to be included in the analysis.
     minmap (dict):
         A dictionary mapping group names (keys) to integers or floats to act
-        as a filter requiring that at least N (or N%) of samples in this 
+        as a filter requiring that at least N (or N%) of samples in this
         group have data for a locus to be retained in the dataset. When using
         consensus_reduce=True the imap applies to the reduced data set, i.e.,
         it applies to the groups (keys) so that all values must be <= 1.
     consensus_reduce (bool):
-        The samples in imap groups will be reduced to a consensus sequence 
-        that randomly samples two alleles based on the frequency of alleles 
-        in the group. This can reduce overall missing data in alignments. 
+        The samples in imap groups will be reduced to a consensus sequence
+        that randomly samples two alleles based on the frequency of alleles
+        in the group. This can reduce overall missing data in alignments.
     quiet (bool):
         Do not print progress information.
 
     """
     def __init__(
-        self, 
-        data, 
+        self,
+        data,
         name=None,
         workdir="analysis-locus_extracter",
         mincov=4,
@@ -116,7 +386,7 @@ class LocusExtracter(object):
         self.quiet = quiet
 
         # hardcoded in locus extracter
-        self.rmincov = rmincov        
+        self.rmincov = rmincov
 
         # minmap defaults to 0 if empty and imap
         if self.imap:
@@ -134,15 +404,15 @@ class LocusExtracter(object):
 
         # parallelization
         self.ipcluster = {
-            "cluster_id": "", 
+            "cluster_id": "",
             "profile": "default",
-            "engines": "Local", 
-            "quiet": 0, 
-            "timeout": 60, 
-            "cores": 0, 
+            "engines": "Local",
+            "quiet": 0,
+            "timeout": 60,
+            "cores": 0,
             "threads": 2,
             "pids": {},
-            }        
+            }
 
         # global values
         self.filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
@@ -157,7 +427,7 @@ class LocusExtracter(object):
         self._names = []
         self._pnames = []
 
-        # get sample names, sidxs, and scaf names        
+        # get sample names, sidxs, and scaf names
         self._parse_scaffolds_meta()
 
         # get start and stop positions in phymap
@@ -171,51 +441,34 @@ class LocusExtracter(object):
 
 
 
-    def run(self, ipyclient=None, force=False, show_cluster=False, auto=False):
+    def run(self, ipyclient=None, force=False):
         """
-        Distribute locus extracter jobs in parallel. 
+        Distribute locus extracter jobs in parallel.
 
         Parameters:
         -----------
-        ipyclient: (type=ipyparallel.Client); Default=None. 
-            If you started an ipyclient manually then you can 
+        cores: int
+            ...
+        ipyclient: (type=ipyparallel.Client); Default=None.
+            If you started an ipyclient manually then you can
             connect to it and use it to distribute jobs here.
-
         force: (type=bool); Default=False.
             Force overwrite of existing output with the same name.
-
-        show_cluster: (type=bool); Default=False.
-            Print information about parallel connection.
-
-        auto: (type=bool); Default=False.
-            Let ipyrad automatically manage ipcluster start and shutdown. 
-            This will connect to all avaiable cores by default, but can 
-            be modified by changing the parameters of the .ipcluster dict 
-            associated with this tool.
         """
-
-        # wrap analysis in parallel client
-        pool = Parallel(
-            tool=self, 
-            ipyclient=ipyclient,
-            show_cluster=show_cluster,
-            auto=auto,
-            rkwargs={"force": force},
-            )
-        pool.wrap_run()
-
+        if ipyclient is not None:
+            self._run(force, ipyclient)
+        else:
+            with Cluster(cores=cores) as client:
+                self._run(force, client)
 
 
     def _run(self, force=False, ipyclient=None):
-        """
-        Parallelize locus filtering
-        """
+        """Parallelize locus filtering."""
         # load balance parallel jobs 2-threaded
         lbview = ipyclient.load_balanced_view()
 
         # print Nloci to start.
-        if not self.quiet:
-            print("[locus filter] full data: {}".format(self.phymap.shape[0]))
+        logger.info("pre-filter nloci={self.phymap.shape[0]}")
 
         # submit jobs in blocks of 2K loci
         chunksize = 2000
@@ -260,9 +513,7 @@ class LocusExtracter(object):
         self.sample_stats.loci = self.smask.sum(axis=0)
 
         # print results
-        if not self.quiet:
-            print("[locus filter] post filter: {}".format(len(self.loci)))
-
+        logger.info("post-filter nloci={len(self.loci)}")
 
 
     def _load_phymap(self):
@@ -274,8 +525,6 @@ class LocusExtracter(object):
                 columns=[i.decode() for i in colnames],
             )
         self.phymap.loc[:, "filtered"] = False
-
-
 
     def _set_filters_type(self):
         """
@@ -291,7 +540,7 @@ class LocusExtracter(object):
         # global filter can be int or float
         self._minmap = copy(self.minmap)
         self._mincov = (
-            self.mincov if isinstance(self.mincov, int) 
+            self.mincov if isinstance(self.mincov, int)
             else int(self.mincov * nsamples)
         )
 
@@ -306,7 +555,7 @@ class LocusExtracter(object):
                     ).format(self._mincov, nsamples)
                 )
 
-            # local minmap applies before 
+            # local minmap applies before
             if self.minmap:
                 if max(self.minmap.values()) > 1:
                     raise IPyradError(
@@ -321,15 +570,15 @@ class LocusExtracter(object):
                 # get int value entered by user
                 imincov = self.minmap[ikey]
 
-                # get minmap as an int 
+                # get minmap as an int
                 if self.consensus_reduce:
                     self._minmap[ikey] = (
-                        imincov if isinstance(imincov, int) 
+                        imincov if isinstance(imincov, int)
                         else int(imincov * len(ivals))
                     )
                 else:
                     self._minmap[ikey] = (
-                        imincov if isinstance(imincov, int) 
+                        imincov if isinstance(imincov, int)
                         else int(imincov * 1.0)
                     )
 
@@ -339,7 +588,7 @@ class LocusExtracter(object):
 
         self.sample_stats = pd.DataFrame(
             data=[0] * len(self.names),
-            index=self.names, 
+            index=self.names,
             columns=["loci"],
         )
         # stats table
@@ -367,12 +616,12 @@ class LocusExtracter(object):
     def _imap_consensus_reduce(self):
         """
         Called on REMOTE.
-        Get consensus sequence for all samples in clade. 
+        Get consensus sequence for all samples in clade.
         And resets .names, ._pnames as alphanumeric imap keys for writing.
         """
         # skip if no imap
         if not self.consensus_reduce:
-            return 
+            return
 
         # empty array of shape imap groups
         iarr = np.zeros((len(self.imap), self.seqarr.shape[1]), dtype=np.uint8)
@@ -383,7 +632,7 @@ class LocusExtracter(object):
 
             # get subarray for this group
             match = [np.where(self.names == i)[0] for i in ivals]
-            sidxs = [i[0] for i in match if i.size]        
+            sidxs = [i[0] for i in match if i.size]
             subarr = self.seqarr[sidxs, :]
 
             # get consensus sequence
@@ -402,12 +651,12 @@ class LocusExtracter(object):
     def _filter_seqarr(self):
         """
         Called on REMOTE.
-        Apply filters to remove sites from alignment and to drop taxa if 
+        Apply filters to remove sites from alignment and to drop taxa if
         they end up having all Ns.
         """
         # track filters
         filters = {
-            "mincov": 0, "minmap": 0, "minsnps": 0, 
+            "mincov": 0, "minmap": 0, "minsnps": 0,
             "maxmissing": 0, "minlen": 0,
         }
 
@@ -430,7 +679,7 @@ class LocusExtracter(object):
             self.seqarr = self.con_seqarr
 
         # drop SITES that don't meet imap/minmap filter
-        if self.imap:        
+        if self.imap:
             self.seqarr = self.seqarr[:, np.invert(imapdrop)]
 
         # drop SITES that don't meet mincov filter (applied after cons_reduc)
@@ -510,7 +759,7 @@ class LocusExtracter(object):
             self.pnames = np.array([
                 "{}{}".format(name, " " * (self._longname - len(name)))
                 for name in self.pnames
-            ])               
+            ])
 
             # parse scaf names and lengths from db
             scafnames = [i.decode() for i in io5["scaffold_names"][:]]
@@ -519,7 +768,7 @@ class LocusExtracter(object):
                 data={
                     "scaffold_name": scafnames,
                     "scaffold_length": scaflens,
-                }, 
+                },
                 columns=["scaffold_name", "scaffold_length"],
             )
 
@@ -582,7 +831,7 @@ class LocusExtracter(object):
 
 
     def get_locus_phy(self, lidx):
-        # write to string       
+        # write to string
         seqarr = self.get_locus(lidx)
         ntaxa = len(seqarr)
         nsites = self.loci[lidx].shape[1]
@@ -600,10 +849,10 @@ class LocusExtracter(object):
 
         # grab a big block of data
         # sidx = 0
-        for block in range(0, self.seqarr.shape[1], 100):           
+        for block in range(0, self.seqarr.shape[1], 100):
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
-            for idx, name in enumerate(self._pnames):  
+            for idx, name in enumerate(self._pnames):
 
                 # py2/3 compat --> b"TGCGGG..."
                 seqdat = self.seqarr[idx, block:stop]
@@ -658,8 +907,9 @@ def consens_sample(iseq, consdict):
 
 
 def remote_filter_loci(self, block):
+    """Remote function...
 
-    # new fresh list
+    """
     self.loci = []
     self.filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
     self.farr = np.zeros(block.shape[0], dtype=np.bool)
@@ -695,3 +945,23 @@ def remote_filter_loci(self, block):
                 self.filters[key] += filters[key]
 
     return self.loci, self.filters, self.farr, self.smask
+
+
+
+if __name__ == "__main__":
+
+    import ipyrad.analysis as ipa
+    ipa.set_log_level("DEBUG")
+
+    # simulate a dataset
+    import toytree, ipcoal
+    tree = toytree.rtree.unittree(10, 1e6)
+    model = ipcoal.Model(tree, Ne=1e5, nsamples=2)
+    model.sim_loci(10, 100)
+    model.write_loci_to_hdf5("test", "/tmp")
+
+    tool = NewLocusExtracter(data="/tmp/test.seqs.hdf5")
+    print(tool.scaffold_table)
+    print(tool.phymap)
+
+    tool.run(cores=2)
