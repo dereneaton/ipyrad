@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 """
+DEPRECATED BY RELEASE OF NEW IPYPARALLEL
+
 Starts an ipcluster (IPython cluster) and writes the pid/ipcluster.pid 
 into a specified directory for killing cluster later.
 """
@@ -22,8 +24,21 @@ logger.bind(name="ipyrad")
 
 
 class Cluster:
-    """
-    Stores cluster information.
+    """Stores cluster information.
+
+    Used in assembly steps. See Ipcluster wrapper for analysis.
+
+    Examples
+    --------
+    >>> cluster = Cluster(quiet=self.quiet)
+    >>> try:
+    >>>     cluster.start(cores=cores, ipyclient=ipyclient)
+    >>>     cluster.ipyclient
+    >>> except KeyboardInterrupt:
+    >>>     logger.warning("keyboard interrupt by user, cleaning up.")
+    >>> except ...
+    >>> finally:
+    >>>     cluster.cleanup_safely()
     """
     def __init__(self, quiet=False):
 
@@ -39,10 +54,6 @@ class Cluster:
         self.ipyclient = None
         self.auto_started = False
         self.engine_pids = {}
-
-        # futures should be stored in this dict
-        self.rasyncs = {}
-
 
     def start(self, cores=0, ipyclient=None):
         """
@@ -243,12 +254,14 @@ def get_num_cpus():
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG")
+    import ipyrad.analysis as ipa
+    ip.set_log_level("DEBUG")
 
     cluster = Cluster()
     try:
         cluster.start(cores=0, ipyclient=None)
-        time.sleep(10)
+        time.sleep(3)
+        print(cluster.ipyclient[0].apply(ipa.baba2.Baba).get())
 
     except KeyboardInterrupt:
         logger.warning("keyboard interrupt by user, cleaning up.")
