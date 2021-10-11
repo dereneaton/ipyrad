@@ -13,8 +13,8 @@ from ipyrad.assemble.utils import comp
 
 class DigestGenome:
     """
-    Digest a fasta genome file with one or two restriction enzymes 
-    to create pseudo-fastq files to treat as samples in a RAD assembly. 
+    Digest a fasta genome file with one or two restriction enzymes
+    to create pseudo-fastq files to treat as samples in a RAD assembly.
 
     Parameters
     ----------
@@ -22,14 +22,14 @@ class DigestGenome:
         Path to a fasta genome file (optionally gzipped).
 
     workdir (str):
-        Directory in which to write output fastq files. Will be 
+        Directory in which to write output fastq files. Will be
         created if it does not yet exist.
 
     name (str):
         Name prefix for output files.
 
     readlen (int):
-        The length of the sequenced read extending from the cut 
+        The length of the sequenced read extending from the cut
         site when creating fastq reads from the digested fragments.
 
     re1 (str):
@@ -41,40 +41,40 @@ class DigestGenome:
         Second restriction enzyme recognition site. See re1 note.
 
     ncopies (int):
-        The number of sequenced copies to create for every digested 
+        The number of sequenced copies to create for every digested
         fragment to write to fastq file.
 
     nscaffolds (int, None):
-        Only the first N scaffolds (sorted in order from longest to 
-        shortest) will be digested. If None then all scaffolds are 
+        Only the first N scaffolds (sorted in order from longest to
+        shortest) will be digested. If None then all scaffolds are
         digested.
 
     Example:
     --------
     tool = ipa.digest_genome(
-        fasta="genome.fa", 
+        fasta="genome.fa",
         workdir="digested_genomes",
         name="quinoa",
         re1="CCGG",      # mspI
         re2="AAGCTT",    # hindIII
         ncopies=5,
         readlen=150,
-        paired=True,        
+        paired=True,
     )
     tool.run()
 
     """
     def __init__(
-        self, 
-        fasta: str, 
-        name: str="digested", 
+        self,
+        fasta: str,
+        name: str="digested",
         workdir: str="digested_genomes",
-        re1: str="CTGCAG", 
-        re2: Optional[str]=None, 
+        re1: str="CTGCAG",
+        re2: Optional[str]=None,
         ncopies: int=1,
-        readlen: int=150, 
-        paired: bool=True, 
-        min_size: Optional[int]=None, 
+        readlen: int=150,
+        paired: bool=True,
+        min_size: Optional[int]=None,
         max_size: Optional[int]=None,
         nscaffolds: Optional[int]=None,
         ):
@@ -137,7 +137,7 @@ class DigestGenome:
         # iterate over scaffolds
         for scaff in scaffolds[:self.nscaffolds]:
 
-            # get name 
+            # get name
             name, seq = scaff.split("\n", 1)
             # print(name)
 
@@ -174,7 +174,7 @@ class DigestGenome:
                 bits = []
                 for fragment in bits1:
                     # left chunk:   1----  ->   1---2  2----2 2-----
-                    # right chunk:  ----1  ->   ----2  2----2 2----1 
+                    # right chunk:  ----1  ->   ----2  2----2 2----1
                     # other chunks: 1---1  ->   1---2  2----2 2----1
                     fbits = []
                     if self.re2 in fragment:
@@ -192,26 +192,25 @@ class DigestGenome:
                     # check each bit for cutters and size
                     for bit in fbits:
                         if bit.count("1") == 1 and bit.count("2") == 1:
-                            if self.max_size >= len(bit) >= self.min_size:                                
+                            if self.max_size >= len(bit) >= self.min_size:
                                 # orient for R1 adapter ligation to cut 1
                                 if bit.startswith("1"):
                                     bits.append(self.re1 + bit[1:-1] + self.re2)
-                                    # bits.append(bit[1:-1])                                    
+                                    # bits.append(bit[1:-1])
                                 else:
                                     # rbit = comp(self.re2 + bit[1:-1] + self.re1)[::-1]
-                                    #rbit = comp(bit[1:-1])[::-1]                                    
+                                    #rbit = comp(bit[1:-1])[::-1]
                                     #bits.append(rbit)
                                     # bits.append(bit[1:-1])
                                     bits.append(self.re2 + bit[1:-1] + self.re1)
 
             # turn fragments into (paired) reads
             fastq_r1s = []
-            fastq_r2s = []            
+            fastq_r2s = []
 
             for fragment in bits:
                 # print(fragment[:10], '...', fragment[-10:])
                 read1 = fragment[:self.readlen]
-                read2 = comp(fragment[-self.readlen:])[::-1]
 
                 # write reads to a file
                 for copy in range(self.ncopies):
@@ -227,11 +226,12 @@ class DigestGenome:
                     })
                     fastq_r1s.append(fastq)
 
-                    if self.paired:                   
+                    if self.paired:
+                        read2 = comp(fragment[-self.readlen:])[::-1]
                         fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:{i5}+{i7}\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
                             'name': name,
-                            'loc': iloc, 
+                            'loc': iloc,
                             'copy': copy,
                             'i5': "AAAAAAAA",
                             'i7': "".join(np.random.choice(list("ACGT"), 8)),
