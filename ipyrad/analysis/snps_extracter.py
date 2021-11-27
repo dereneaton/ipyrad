@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
+from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 
 """
 .snps should be returned as dtype=... int8, int64?
@@ -89,8 +90,18 @@ class SNPsExtracter(object):
         # check input data
         if self.data.endswith(".seqs.hdf5"):
             raise IPyradError("data should be .snps.hdf5 file not .seqs.hdf5.")
-        if self.data.endswith(".vcf"):
-            raise NotImplementedError("VCF parsing coming soon.")
+        if self.data.endswith((".vcf", ".vcf.gz")):
+            print(EXTRACT_SNPS_FROM_VCF_WARNING)
+            converter = vcf_to_hdf5(
+                name=data.split("/")[-1].split(".vcf")[0],
+                data=self.data,
+                quiet=quiet,
+            )
+            # run the converter
+            converter.run()
+            # Set data to the new hdf5 file
+            self.data = converter.database
+
         self.parse_names_from_hdf5()
 
 
@@ -390,10 +401,11 @@ class SNPsExtracter(object):
             df.loc[:, pop] = deriv / (deriv + ances)
         return df.T
 
-
-
-
-
+EXTRACT_SNPS_FROM_VCF_WARNING = """
+Extracting snps from vcf file assumes RAD-seq data (short unlinked CHROM
+blocks). If the vcf is reference aligned you should use ipa.analysis.vcf_to_hdf5
+to specify  the `ld_block_size` parameter by hand to generate the snps.hdf5 file.
+"""
 
     # def subsample_loci_full(self, nloci, random_seed=None, quiet=False):
     #     """
