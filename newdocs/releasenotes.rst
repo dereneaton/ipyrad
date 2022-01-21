@@ -4,6 +4,17 @@
 Release Notes
 =============
 
+0.9.82
+------
+**January 21, 2022**
+
+- pin vsearch version <=2.19 #469
+- analysis.snps_extracter: allow passing in vcf file (assuming RADSeq data).
+- Add check for executable of structure binary
+- kmeans imputation niters fix (#459)
+- cookbook-bpp: Update tauprior to bpp 4.x inverse gamma standard
+- cookbook-bpp remove randomize_order flag from run() as this doesn't exist anymore
+
 0.9.81
 ------
 **June 16, 2021**
