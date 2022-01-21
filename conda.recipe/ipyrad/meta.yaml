@@ -35,7 +35,7 @@ requirements:
     - mpi4py >=3.0
     - bedtools
     - muscle
-    - vsearch >=2.13
+    - vsearch >=2.13,<=2.19
     - bwa
 
 test:
