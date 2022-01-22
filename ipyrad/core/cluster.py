@@ -145,7 +145,7 @@ def color_support():
 
 if __name__ == "__main__":
 
-    # import ipyrad as ip
-    # ip.set_log_level("DEBUG")
+    import ipyrad as ip
+    ip.set_log_level("DEBUG")
     with Cluster(cores=0) as c:
-        c
+        print(c)

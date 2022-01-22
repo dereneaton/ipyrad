@@ -1,7 +1,26 @@
 #!/usr/bin/env python
 
-"""
-Logger for stderr and optionally to file.
+"""Logger for ipyrad to STDERR and optionally also to a LOGFILE.
+
+logging to STDERR
+-----------------
+DEBUG: used by developers to examine extra details.
+INFO: info reported to users, including progress bars. (DEFAULT)
+WARNING: warnings to users, if set to default then progress bars are not shown.
+ERROR: sometimes printed along with raised errors.
+
+logging to LOGFILE
+------------------
+DEBUG: developer stuff
+INFO: same as above, w/ some extra info, but not progress bars. (DEFAULT)
+same
+same
+
+Examples
+--------
+>>> import ipyrad as ip
+>>> ip.set_log_level("DEBUG")
+>>> ip.set_log_level("DEBUG", log_file="/tmp/ip-log.txt")
 """
 
 import os
@@ -9,12 +28,11 @@ import sys
 from loguru import logger
 import IPython
 
-
 def formatter(record):
     """Custom formatter that allows for progress bar."""
     end = record["extra"].get("end", "\n")
     fmessage = (
-        "<level>{level:}</level> <white>|</white> "
+        "<level>{level:<8}</level> <white>|</white> "
         "<magenta>{file:<18}</magenta> <white>|</white> "
         "{message}"
     ) + end
@@ -27,7 +45,6 @@ ASSEMBLY_FILE_LOGGER_FORMAT = (
     "{message}"
 )
 
-
 def color_support():
     """Check for color support in stderr as a notebook or terminal/tty."""
     # check if we're in IPython/jupyter
@@ -35,7 +52,6 @@ def color_support():
     # check if we're in a terminal
     tty2 = sys.stderr.isatty()
     return tty1 or tty2
-
 
 LOGGERS = [0]
 def set_log_level(log_level="DEBUG", log_file=None):
@@ -73,5 +89,8 @@ def set_log_level(log_level="DEBUG", log_file=None):
             diagnose=True,
         )
         LOGGERS.append(idx)
-
     logger.enable("ipyrad")
+    logger.bind(name='ipyrad').debug(f"ipyrad logging enabled: {log_level}")
+
+if __name__ == "__main__":
+    set_log_level("DEBUG")

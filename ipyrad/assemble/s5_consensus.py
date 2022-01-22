@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-"""
-Call consensus alleles from clustered stacks within samples.
+"""Call consensus alleles from clustered stacks within samples.
+
 """
 
 from typing import Dict
@@ -19,17 +19,16 @@ from ipyrad.core.schema import Stats5
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.utils import IPyradError, clustdealer
 from ipyrad.assemble.consens_utils import (
-    Processor, 
+    Processor,
     concat_catgs,
     concat_denovo_consens,
     concat_reference_consens,
 )
 
+logger = logger.bind(name="ipyrad")
 
 class Step5(BaseStep):
-    """
-    Run Step3 clustering/mapping using vsearch or bwa
-    """
+    """Run Step3 clustering/mapping using vsearch or bwa"""
     def __init__(self, data, force, quiet, ipyclient):
         super().__init__(data, 5, quiet, force)
         self.ipyclient = ipyclient
@@ -40,35 +39,31 @@ class Step5(BaseStep):
         self.data.stepdir = self.stepdir
 
         # sample paths to be used
-        for sname in self.samples:
-            self.samples[sname].files.depths = (
+        for sname, sample in self.samples.items():
+            sample.files.depths = (
                 os.path.join(self.stepdir, f"{sname}.catg.hdf5"))
             if self.data.is_ref:
-                self.samples[sname].files.consens = (
+                sample.files.consens = (
                     os.path.join(self.stepdir, f"{sname}.bam"))
             else:
-                self.samples[sname].files.consens = (
+                sample.files.consens = (
                     os.path.join(self.stepdir, f"{sname}.consens.gz"))
 
     def run(self):
-        """
-        Submit jobs to run either denovo, reference, or complex.
-        """
+        """Submit jobs to run either denovo, reference, or complex."""
         self.calculate_depths_and_max_frag()
         self.make_chunks()
         self.process_chunks()
         self.concatenate_chunks()
         self.data.save_json()
 
-
     def calculate_depths_and_max_frag(self):
-        """
-        Checks whether mindepth has changed and calc nclusters and maxlen
+        """Check whether mindepth has changed and calc nclusters and maxlen
         """
         # send jobs to be processed on engines
         jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
+        for sname, sample in self.samples.items():
+            args = (self.data, sample)
             rasync = self.lbview.apply(recal_hidepth_majrule, *args)
             jobs[sname] = rasync
         msg = "calculating depths"
@@ -86,30 +81,26 @@ class Step5(BaseStep):
         logger.debug(
             f"high depth clusters for consensus calling: {self.nclusters_dict}")
 
-
     def make_chunks(self):
-        """
-        split clusters into chunks for parallel processing
+        """Split clusters into chunks for parallel processing
         """
         msg = "chunking clusters"
         jobs = {}
-        for sname in self.samples:
+        for sname, sample in self.samples.items():
             args = (
-                self.data, 
-                self.samples[sname], 
+                self.data,
+                sample,
                 self.nclusters_dict[sname],
                 len(self.ipyclient),
             )
-            rasync = self.lbview.apply(make_chunks, *args)
+            rasync = self.lbview.apply(make_chunks_remote, *args)
             jobs[sname] = rasync
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
         prog.check()
 
-
     def process_chunks(self):
-        """
-        Process the cluster chunks into arrays and consens or bam files
+        """Process the cluster chunks into arrays and consens or bam files
         """
         def processor_wrap(data, sample, chunkfile):
             "wrapper for class function"
@@ -119,11 +110,11 @@ class Step5(BaseStep):
 
         # get mean values across all samples
         self.data.error_est = np.mean([
-            self.data.samples[i].stats_s4.error_est 
+            self.data.samples[i].stats_s4.error_est
             for i in self.data.samples
         ])
         self.data.hetero_est = np.mean([
-            self.data.samples[i].stats_s4.error_est 
+            self.data.samples[i].stats_s4.error_est
             for i in self.data.samples
         ])
 
@@ -157,7 +148,7 @@ class Step5(BaseStep):
             if stat_dict['nconsens']:
                 self.samples[sname].state = 5
 
-            # STORE STATS 
+            # STORE STATS
             self.samples[sname].stats_s5 = Stats5(
                 cluster_total=self.nclusters_dict[sname],
                 consensus_total=stat_dict['nconsens'],
@@ -168,7 +159,7 @@ class Step5(BaseStep):
                 nsites=stat_dict['nsites'],
                 nhetero=stat_dict['heteros'],
                 heterozygosity=(
-                    0. if stat_dict['nsites'] == 0 
+                    0. if stat_dict['nsites'] == 0
                     else stat_dict['heteros'] / stat_dict['nsites']
                 ),
                 min_depth_maj_during_step5=self.data.params.min_depth_majrule,
@@ -185,14 +176,12 @@ class Step5(BaseStep):
             istats = self.samples[sname].stats_s5.dict()
             for column in statsdf.columns:
                 statsdf.loc[sname, column] = istats[column]
-        with open(stats_file, 'w') as out:
+        with open(stats_file, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
             logger.info("\n" + statsdf.iloc[:, :7].to_string())
 
-
     def concatenate_chunks(self):
-        """
-        Concatenate chunks and relabel for joined chunks. This spends
+        """Concatenate chunks and relabel for joined chunks. This spends
         most of its time storing CATG data that will probably not be used,
         but is important for saving SNP depths info.
         """
@@ -211,7 +200,7 @@ class Step5(BaseStep):
                     concat_denovo_consens, *(self.data, self.samples[sname]))
             else:
                 jobs2[sname] = self.lbview.apply(
-                    concat_reference_consens, *(self.data, self.samples[sname]))               
+                    concat_reference_consens, *(self.data, self.samples[sname]))
 
         jobs = list(jobs1.values()) + list(jobs2.values())
         jobs = dict(enumerate(jobs))
@@ -221,9 +210,9 @@ class Step5(BaseStep):
         prog.check()
 
 
+
 def recal_hidepth_majrule(data, sample):
-    """
-    Returns the number of loci above the majrule threshold and the 
+    """Returns the number of loci above the majrule threshold and the
     max fragment length that will be allowed.
     """
     # if nothing changed then return max fragment length
@@ -231,7 +220,7 @@ def recal_hidepth_majrule(data, sample):
     check2 = data.params.min_depth_statistical == sample.stats_s3.min_depth_stat_during_step3
     if check1 and check2:
         maxfrag = (
-            4 + sample.stats_s3.mean_hidepth_cluster_length + 
+            4 + sample.stats_s3.mean_hidepth_cluster_length +
             (2 * sample.stats_s3.std_hidepth_cluster_length)
         )
         return sample.stats_s3.clusters_hidepth, maxfrag
@@ -280,7 +269,7 @@ def recal_hidepth_majrule(data, sample):
     lens_above_st = maxlens[stat_mask]
 
     # calculate frag length from hidepth lens
-    try:       
+    try:
         maxfrag = 4 + int(lens_above_st.mean() + (2. * lens_above_st.std()))
     except Exception as inst:
         raise IPyradError(
@@ -289,10 +278,8 @@ def recal_hidepth_majrule(data, sample):
             ) from inst
     return stat_mask.sum(), maxfrag
 
-
-def make_chunks(data, sample, nclusters, ncpus):
-    """
-    Split job into bits and pass to the client
+def make_chunks_remote(data, sample, nclusters, ncpus):
+    """Split job into bits and pass to the client
     """
     # counter for split job submission
     num = 0
@@ -320,10 +307,8 @@ def make_chunks(data, sample, nclusters, ncpus):
                     outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
                 num += 1
 
-
 def store_sample_stats(sample, statsdicts):
-    """
-    Not parallel, store the sample objects stats
+    """Not parallel, store the sample objects stats
     """
     # record results
     xcounters = {
@@ -373,12 +358,10 @@ def store_sample_stats(sample, statsdicts):
         print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
-
-
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", stderr=False, logfile="/tmp/test.log")
-   
-    TEST = ip.load_json("/tmp/TEST1.json")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+
+    TEST = ip.load_json("/tmp/TEST5.json")
     TEST.run("5", force=True, quiet=False)

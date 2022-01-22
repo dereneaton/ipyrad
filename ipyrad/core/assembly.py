@@ -1,19 +1,18 @@
 #!/usr/bin/env python
 
-"""
-Assembly class object as the main API for calling assembly steps.
+"""Assembly class iss the core object for calling assembly steps.
+
+
 """
 
 import os
 import shutil
-# import traceback
 from typing import List, Optional
 from loguru import logger
 import pandas as pd
 from ipyparallel import Client
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
 from ipyrad.core.schema import Project, SampleSchema
-# from ipyrad.core.parallel import Cluster
 from ipyrad.core.cluster import Cluster
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.s1_demux import Step1
@@ -24,63 +23,84 @@ from ipyrad.assemble.s5_consensus import Step5
 from ipyrad.assemble.s6_clustmap_across import Step6
 from ipyrad.assemble.s7_assemble import Step7
 
+# pylint: disable=too-many-branches
+logger = logger.bind(name="ipyrad")
+
 
 class Assembly:
-    """
-    Returns a new Assembly class instance with default parameter
-    settings. The first steps of an API analysis typically involves
-    initializing a new Assembly, setting params, and then calling
-    self.run() to start running assembly steps.
-    """
-    def __init__(self, name:str):
+    """Assembly class for storing params, connecting to cluster, and
+    running assembly steps.
 
+    Notes
+    -----
+    The Assembly object can be serialzed to JSON using .save_json(), 
+    and reloaded from JSON using .load_json(). The schema for 
+    converting back and forth between object and JSON checks the 
+    types of the Params.
+    
+    Examples
+    --------
+    >>> import ipyrad as ip
+    >>> data = ip.Assembly(name="test")
+    >>> data.params.sorted_fastq_path = "..."
+    >>> data.run("1")
+    """
+    def __init__(self, name: str):
         # core JSON file components
         self.params = ParamsSchema(assembly_name=name)
+        """: A class storing assembly parameters."""
         self.hackers = HackersSchema()
+        """: A class storing 'Hackers' parameters that are for power-users."""
         self.samples = {}
+        """: A dictionary mapping sample names to Sample objects."""
+        self.populations = {}
+        """: A optional dictionary mapping population names to min"""
+        self.outfiles = {}
+        """: A dict with step7 output file paths, if assembly finished."""
+        self.assembly_stats = {}
+        """: A dict-like class with *final stats* for completed assembly."""
         self.ipcluster = {
             'cores': None,
             'threads': 2,
         }
+        """: Dict with info for how to start ipyparallel cluster."""
 
     def __repr__(self):
         return "<ipyrad.Assembly object {}>".format(self.name)
 
     @property
-    def name(self):
-        """shortcut to return the assembly_name from params"""
+    def name(self) -> str:
+        """Shortcut to return the assembly_name from params"""
         return self.params.assembly_name
 
     @property
-    def json_file(self):
-        """JSON file is project_dir/assembly_name.json"""
+    def json_file(self) -> str:
+        """JSON file is {project_dir}/{assembly_name}.json"""
         return os.path.join(
             self.params.project_dir,
             self.params.assembly_name + ".json"
         )
 
     @property
-    def is_ref(self):
-        """shortcut attribute returns whether Assembly is reference method"""
+    def is_ref(self) -> bool:
+        """Shortcut returns whether Assembly is reference method"""
         return self.params.assembly_method == "reference"
 
     @property
-    def is_pair(self):
-        """shortcut attribute returns whether Assembly is paired datatype"""
+    def is_pair(self) -> bool:
+        """Shortcut returns whether Assembly is paired datatype"""
         return "pair" in self.params.datatype
 
     @property
-    def stats(self):
-        """
-        Returns a dataframe with *summarized stats* extracted from the
-        project JSON file given the current completed assembly steps.
+    def stats(self) -> pd.DataFrame:
+        """Return a dataframe with *summary stats* extracted from JSON.
+
+        Returns stats given the current completed assembly steps.
         To see more detailed stats from specific steps see instead
         the self.stats_dfs.
         """
         # using self object (any cases where we need to load from json?)
-        # self.save_json
-
-        # dataframe to fill
+        # create dataframe with only the summary stats as columns
         stats = pd.DataFrame(
             index=sorted(self.samples),
             columns=[
@@ -161,26 +181,23 @@ class Assembly:
         stats = stats.dropna(axis=1, how="all")
         return stats
 
-
     def branch(self, name:str, subsample:List[str]=None) -> 'Assembly':
-        """
-        Returns a new branched Assembly class instance.
+        """Return a new branched Assembly class instance.
 
         The new object will have the same parameter settings as the
         current object, and inherits the same sample histories, but
-        will write to a different name prefix path
-        going forward.
+        will write to a different name prefix path going forward.
 
         Creating a new branch does not write a JSON until you either
         run an Assembly step by calling .run() or call .save_json()
 
-        Examples:
-        ---------
-        data1 = ip.Assembly("data1")
-        data1.params.sorted_fastq_path = "./data/*.gz"
-        data1.run('1')
-        data2 = data1.branch("data2", subsample=['1A_0', '1B_0'])
-        data2.run('2')
+        Examples
+        --------
+        >>> data1 = ip.Assembly("data1")
+        >>> data1.params.sorted_fastq_path = "./data/*.gz"
+        >>> data1.run('1')
+        >>> data2 = data1.branch("data2", subsample=['1A_0', '1B_0'])
+        >>> data2.run('2')
         """
         # create new names Assembly and copy over all params except name
         branch = Assembly(name)
@@ -204,23 +221,27 @@ class Assembly:
                     logger.warning(f"sample name {i} does not exist.")
         return branch
 
-
     def write_params(self, force:bool=False) -> None:
+        """Write a CLI params file to <workdir>/params-<name>.txt.
+
+        Writes the current Params for this Assembly. When this is 
+        called from the CLI as `ipyrad -n name` it writes to the 
+        current directory, since project_dir has not been created yet,
+        which is fine, since user's should only need to call it once
+        when using the CLI, probably.
         """
-        Write a CLI params file to <workdir>/params-<name>.txt with
-        the current params in this Assembly.
-        """
-        outfile = f"params-{self.name}.txt"
+        outname = f"params-{self.name}.txt"
+        outpath = os.path.join(self.params.project_dir, outname)
 
         # Test if params file already exists?
         # If not forcing, test for file and bail out if it exists
         if not force:
-            if os.path.exists(outfile):
+            if os.path.exists(outpath):
                 raise IPyradError(
-                    f"file {outfile} exists, you must use force to overwrite")
+                    f"file {outpath} exists, you must use force to overwrite")
 
         params = self.params.dict()
-        with open(outfile, 'w') as out:
+        with open(outpath, 'w', encoding="utf-8") as out:
             print("---------- ipyrad params file " + "-" * 80, file=out)
             for idx, param in enumerate(params):
                 value = params.get(param)
@@ -229,25 +250,24 @@ class Assembly:
                 else:
                     value = str(value) if value else ""
                 print(
-                    f"{value.ljust(40)}## [{idx}] {param}: {PARAMSINFO[idx]}",
+                    f"{value.ljust(40)} ## [{idx}] {param}: {PARAMSINFO[idx]}",
                     file=out,
                 )
-
+            logger.debug(f"params file written to {outpath}")
 
     def save_json(self) -> None:
-        """
-        Save the current Assembly object to the project JSON file
+        """Writes the current Assembly object to the project JSON file
         (<project_dir>/<name>.json)
         """
         project = Project(
             params=ParamsSchema(**self.params.dict()),
             hackers=HackersSchema(**self.hackers.dict()),
             samples={sname: self.samples[sname] for sname in self.samples},
+            populations=self.populations,
         )
-        with open(self.json_file, 'w') as out:
+        with open(self.json_file, 'w', encoding="utf-8") as out:
             out.write(project.json(indent=4, exclude_none=True))
         logger.debug(f"wrote to {self.json_file}")
-
 
     def run(
         self,
@@ -257,8 +277,7 @@ class Assembly:
         quiet: bool=False,
         ipyclient: Optional[Client]=None,
         ) -> None:
-        """
-        Run one or more assembly steps (1-7) of an ipyrad assembly.
+        """Run one or more assembly steps (1-7) of an ipyrad assembly.
 
         Parameters
         ----------
@@ -268,11 +287,16 @@ class Assembly:
             Force overwrite of existing results for this step.
         quiet: bool
             Suppress printed outputs to stdout.
-        ipyclient: Optional[ipyparallel.Client]
+        ipyclient: None or ipyparallel.Client
             Optional ipyparallel client to connect to for distributing
             jobs in parallel. This option is generally only useful if
             you start a Client using MPI to connect to multiple nodes
             of an HPC cluster. See ipyrad HPC docs for details.
+
+        Examples
+        --------
+        >>> data = ip.load_json("test.json")
+        >>> data.run("123", cores=4)
         """
         # save the current JSON file (and a backup?)
         self.save_json()
@@ -287,10 +311,12 @@ class Assembly:
             "6": Step6,
             "7": Step7,
         }
-
-        # could load the tool to check whether this job can be run
-        # before starting the ipcluster?.
-
+ 
+        # TODO
+        # could load tool to check whether the first step can be run
+        # before starting the ipcluster?. Example, it might say that
+        # step 2 has not been completed yet before bothering to start
+        # up the cluster.
 
         # init the ipyparallel cluster class wrapper
         if ipyclient is not None:
@@ -302,8 +328,7 @@ class Assembly:
             for step in steps:
                 tool = step_map[step](self, force, quiet, client)
                 tool.run()
-                shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
-
+                # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
 
 # PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
 PARAMSINFO = {
@@ -344,14 +369,18 @@ PARAMSINFO = {
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
+    ip.set_log_level("DEBUG")#, logfile="/tmp/test.log")
 
     TEST = ip.Assembly("PEDIC2")
+    TEST.params.project_dir = "/tmp"
     TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    TEST.populations['all'] = (['a', 'b', 'c'], 3)
     TEST.write_params(True)
-    # TEST.params.project_dir = "/tmp"
-    # TEST.run('12', force=True, quiet=True)
-    # print(TEST.stats)
+
+    TEST.run('1', force=True, quiet=True)
+    print(TEST.stats)
+    print(TEST.outfiles)
+    print(TEST.assembly_stats)
 
     # TEST = ip.Assembly("TEST1")
     # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"

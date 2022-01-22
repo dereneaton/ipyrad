@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
-"""
-Progress bars
+"""Tracker for jobs running on remote cluster.
+
+Logger will print a progress bar and stdout from engines.
 """
 
-import os
 import sys
 import time
-import traceback
 import datetime
 import ipyparallel
 import IPython
@@ -19,8 +18,8 @@ logger = logger.bind(name="ipyrad")
 
 
 class AssemblyProgressBar:
-    """
-    Print pretty progress bar with printings specific to Assembly object
+    """Print pretty progress bar specific to Assembly object
+
     """       
     def __init__(self, jobs, message, step, quiet=False, start=None):
         self.jobs = jobs
@@ -35,18 +34,18 @@ class AssemblyProgressBar:
 
     @property
     def progress(self):
-        "returns the percent progress as a float"
+        """returns the percent progress as a float"""
         if not self.jobs:
             return 0
         return 100 * (self.finished / float(len(self.jobs)))
 
     @property
     def elapsed(self):
-        "returns the elapsed time in nice format"
+        """returns the elapsed time in nice format"""
         return datetime.timedelta(seconds=int(time.time() - self.start))
 
     def update(self, final=False):
-        "flushes progress bar at current state to STDOUT"
+        """flushes progress bar at current state to STDOUT"""
         if self.quiet:
             return
         # build the bar
@@ -63,11 +62,11 @@ class AssemblyProgressBar:
         sys.stdout.flush()
 
     def block(self):
-        """
-        Tracks completion of asynchronous result objects in a while 
-        loop until they are finished, checking every 0.5 seconds.
-        Prints progress either continuously or occasionally, depending
-        on TTY output type.
+        """Tracks completion of asynchronous result objects.
+
+        Tracked in a while loop until they are finished, checking 
+        every 0.5 seconds. Prints progress either continuously or 
+        occasionally, depending on TTY output type.
         """
         # get TTY output type of STDOUT (or os.isatty(1))
         isatty = sys.stdout.isatty() or bool(IPython.get_ipython())
@@ -110,9 +109,11 @@ class AssemblyProgressBar:
             time.sleep(1)            
 
     def check(self):
-        """
-        Will log and raise an error with traceback. Stores results 
-        into self.results
+        """Stores results and/or raises exceptions.
+
+        Re-raises exceptions from Engines ...
+        .. as IPyradErrors so they
+        will be caught by Assembly object and formatted nicely.
         """
         # check for failures:
         for job in self.jobs:
@@ -130,11 +131,8 @@ class AssemblyProgressBar:
                 # )
                 raise IPyradError("Exception on remote engine.") from inst
 
-
     def engine_log(self, key):
-        """
-        Logs the current stdout from engine and then clears it.
-        """
+        """Sends STDOUT from engine to logger.INFO and clears STDOUT."""
         if self.jobs[key].stdout:
             logger.info(self.jobs[key].stdout.strip())
             self.jobs[key].stdout = ""

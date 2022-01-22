@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
-"""
-JSON schema for storing project w/ Params and Sample info.
+"""JSON schema for storing project w/ Params and Sample info.
+
+Pydantic Models are similar to dataclases but they also include
+*type validation*, meaning that if you try to set an attribute to
+the wrong type it will raise an error.
 """
 
 # pylint: disable=no-self-argument, no-name-in-module
@@ -13,18 +16,18 @@ from ipyrad.core.params_schema import ParamsSchema, HackersSchema
 
 
 class Stats(BaseModel):
-    state: int = Field(None)
-    reads_raw: int = Field(None)
-    reads_passed_filter: int = Field(None)
-    reads_merged: int = Field(None)
-    reads_mapped_to_ref_prop: int = Field(None)
-    reads_mapped_to_ref_prop: float = Field(None)
-    cluster_total: int = Field(None)
-    clusters_hidepth: int = Field(None)
-    hetero_est: float = Field(None)
-    error_est: float = Field(None)
-    reads_consens: int = Field(None)
-    loci: int = Field(None)
+    state: int = None
+    reads_raw: int = None
+    reads_passed_filter: int = None
+    reads_merged: int = None
+    reads_mapped_to_ref_prop: int = None
+    reads_mapped_to_ref_prop: float = None
+    cluster_total: int = None
+    clusters_hidepth: int = None
+    hetero_est: float = None
+    error_est: float = None
+    reads_consens: int = None
+    loci: int = None
 
 class Stats1(BaseModel):
     reads_raw: int = 0
@@ -45,10 +48,10 @@ class Stats3(BaseModel):
     merged_pairs: int = 0
     min_depth_maj_during_step3: int = 0
     min_depth_stat_during_step3: int = 0
-    reads_mapped_to_ref: int = Field(None)
-    reads_mapped_to_ref_prop: float = Field(None)
-    clusters_total: int = Field(None)
-    clusters_hidepth: int = Field(None)   
+    reads_mapped_to_ref: int = None
+    reads_mapped_to_ref_prop: float = None
+    clusters_total: int = None
+    clusters_hidepth: int = None
     mean_depth_total: float = 0.
     mean_depth_mj: float = 0.
     mean_depth_stat: float = 0.
@@ -61,7 +64,7 @@ class Stats3(BaseModel):
     max_hidepth_cluster_length: int = 0
     mean_hidepth_cluster_length: float = 0.
     std_hidepth_cluster_length: float = 0.
-    depths_histogram: List[int] = Field(None)
+    depths_histogram: List[int] = None
 
 class Stats4(BaseModel):
     hetero_est: float = 0.
@@ -78,62 +81,74 @@ class Stats5(BaseModel):
     heterozygosity: float
     nsites: int
     nhetero: int
-    min_depth_maj_during_step5: int = 0    
+    min_depth_maj_during_step5: int = 0
     min_depth_stat_during_step5: int = 0
 
 class Stats7(BaseModel):
     nloci: int
 
 class SampleFiles(BaseModel):
-    fastqs: List[Tuple[str, str]] = Field(None)
-    edits: List[Tuple[str, str]] = Field(None)
-    mapped_reads: Tuple[str, str] = Field(None)
-    unmapped_reads: Tuple[str, str] = Field(None)
-    clusters: str = Field(None)
-    consens: str = Field(None)
-    depths: str = Field(None)
-    database: str = Field(None)
+    """A dict-like class for storing file paths to samples."""
+    fastqs: List[Tuple[str, str]] = None
+    edits: List[Tuple[str, str]] = None
+    mapped_reads: Tuple[str, str] = None
+    unmapped_reads: Tuple[str, str] = None
+    clusters: str = None
+    consens: str = None
+    depths: str = None
+    database: str = None
 
 class SampleSchema(BaseModel):
+    """A dict-like class for representing individual Samples info."""
     name: str
     state: int = 1
     files: SampleFiles = SampleFiles()
-    stats_s1: Stats1 = Field(None)
-    stats_s2: Stats2 = Field(None)
-    stats_s3: Stats3 = Field(None)
-    stats_s4: Stats4 = Field(None)
-    stats_s5: Stats5 = Field(None)
-    stats_s7: Stats7 = Field(None)
+    stats_s1: Stats1 = None
+    stats_s2: Stats2 = None
+    stats_s3: Stats3 = None
+    stats_s4: Stats4 = None
+    stats_s5: Stats5 = None
+    stats_s7: Stats7 = None
 
 class FilterStats(BaseModel):
-    nloci_before_filtering: int
-    filtered_by_rm_duplicates: int
-    filtered_by_min_sample_cov: int
-    filtered_by_max_indels: int    
-    filtered_by_max_snps: int
-    filtered_by_max_shared_h: int
-    nloci_after_filtering: int
+    """A dict-like class with stats for filters applied during step 7."""
+    nloci_before_filtering: int = 0
+    filtered_by_rm_duplicates: int = 0
+    filtered_by_min_sample_cov: int = 0
+    filtered_by_max_indels: int = 0
+    filtered_by_max_snps: int = 0
+    filtered_by_max_shared_h: int = 0
+    nloci_after_filtering: int = 0
 
 class AssemblyStats(BaseModel):
-    filters: FilterStats
-    nsnps: int
-    nloci: int
-    nbases: int
-    nsamples: int
-    sample_cov: Dict[str, int]
-    locus_cov: Dict[int, int]
-    var_sites: Dict[int, int]
-    var_props: Dict[float, int]
-    pis_sites: Dict[int, int]
-    pis_props: Dict[float, int]
+    """A dict-like class with stats for completed assembly."""
+    filters: FilterStats = FilterStats()
+    nsnps: int = 0
+    nloci: int = 0
+    nbases: int = 0
+    nsamples: int = 0
+    sample_cov: Dict[str, int] = Field(default_factory=dict)
+    locus_cov: Dict[int, int] = Field(default_factory=dict)
+    var_sites: Dict[int, int] = Field(default_factory=dict)
+    var_props: Dict[float, int] = Field(default_factory=dict)
+    pis_sites: Dict[int, int] = Field(default_factory=dict)
+    pis_props: Dict[float, int] = Field(default_factory=dict)
 
 class Project(BaseModel):
+    """Top-level schema for serializing Assembly objects to JSON and back.
+
+    When Assembly objects calls `.save_json()` the object is serialized
+    to JSON and written to disk. In each Step of the assembly in `.run`
+    a Project is created from the Assembly and its Sample objects at
+    that point to update it and re-serialize to JSON on disk.
+    """
     version: str = str(get_distribution('ipyrad')).split()[1]
     params: ParamsSchema
     hackers: HackersSchema
-    samples: Dict[str,SampleSchema]
-    assembly_stats: AssemblyStats = Field(None)
-    outfiles: Dict[str,str] = Field(None)
+    samples: Dict[str, SampleSchema]
+    assembly_stats: AssemblyStats = None
+    outfiles: Dict[str,str] = Field(default_factory=dict)
+    populations: Dict[str, Tuple[List[str], int]] = Field(default_factory=dict)
 
     def __str__(self):
         return self.json(indent=2)
@@ -170,4 +185,4 @@ if __name__ == "__main__":
         samples={sample.name: sample for sample in samples},
     )
 
-    print(data.json(indent=2, exclude_none=True))    
+    print(data.json(indent=2, exclude_none=True))

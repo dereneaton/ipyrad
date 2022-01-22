@@ -1,28 +1,32 @@
 #!/usr/bin/env python
 
-"""
-Params schema for type checking and serialization of params
+"""Params and Hackers schemas for type checking and serialization.
+
+Pydantic Models are similar to dataclases but they also include
+*type validation*, meaning that if you try to set an attribute to
+the wrong type it will raise an error.
 """
 
 # pylint: disable=no-self-argument, no-name-in-module, no-self-use
 
-import os
 import glob
+import os
 from enum import Enum
 from typing import List, Tuple
 from pydantic import BaseModel, Field, validator
 
 
 class HackersSchema(BaseModel):
+    """Hackers dict class for 'extra' options in ipyrad assembly."""
     random_seed: int = 42
     max_fragment_length: int = Field(50, help="limits maxlen of loci by tiling")
     max_inner_mate_distance: int = Field(None, help="used to delimit loci in ref assemblies")
     p5_adapter: str = "AGATCGGAAGAGC"
-    p5_adapters_extra: List[str] = Field(None)
+    p5_adapters_extra: List[str] = None
     p3_adapter: str = "AGATCGGAAGAGC"
-    p3_adapters_extra: List[str] = Field(None)
-    query_cov: float = Field(None)
-    bwa_args: str = Field(None)
+    p3_adapters_extra: List[str] = None
+    query_cov: float = None
+    bwa_args: str = None
     demultiplex_on_i7_tags: bool = False
     declone_PCR_duplicates: bool = False
     merge_technical_replicates: bool = True
@@ -30,29 +34,30 @@ class HackersSchema(BaseModel):
     trim_loci_min_sites: int = 4
 
 class AssemblyMethod(str, Enum):
-    "supported assembly method categories"
-    denovo = "denovo"
-    reference = "reference"
+    """supported assembly method categories"""
+    DENOVO = "denovo"
+    REFERENCE = "reference"
 
 class DataType(str, Enum):
-    "supported datatypes categories"
-    rad = "rad"
-    ddrad = "ddrad"
-    pairddrad = "pairddrad"
-    pair3rad = "pair3rad"
-    gbs = "gbs"
-    pairgbs = "pairgbs"
-    _2brad = "2brad"
+    """supported datatypes categories"""
+    RAD = "rad"
+    DDRAD = "ddrad"
+    PAIRDDRAD = "pairddrad"
+    PAIR3RAD = "pair3rad"
+    GBS = "gbs"
+    PAIRGBS = "pairgbs"
+    _2BRAD = "2brad"
 
 class ParamsSchema(BaseModel):
+    """Assembly object parameters for ipyrad assembly."""
     assembly_name: str = Field(allow_mutation=False)
     project_dir: str = os.path.realpath("./")
-    raw_fastq_path: str = Field(None)
-    barcodes_path: str = Field(None)
-    sorted_fastq_path: str = Field(None)
+    raw_fastq_path: str = None
+    barcodes_path: str = None
+    sorted_fastq_path: str = None
     assembly_method: AssemblyMethod = "denovo"
-    reference_sequence: str = Field(None)
-    datatype: DataType = Field("rad")
+    reference_sequence: str = None
+    datatype: DataType = "rad"
     restriction_overhang: Tuple[str, str] = ("TGCAG", "")
     max_low_qual_bases: int = 5
     phred_qscore_offset: int = 33
@@ -73,13 +78,12 @@ class ParamsSchema(BaseModel):
     trim_reads: Tuple[int, int, int, int] = (0, 0, 0, 0)
     trim_loci: Tuple[int, int, int, int] = (0, 0, 0, 0)
     output_formats: List[str] = ("p", "s", "l")
-    pop_assign_file: str = Field(None)
-    reference_as_filter: str = Field(None)
+    pop_assign_file: str = None
+    reference_as_filter: str = None
 
     class Config:
-        """
-        This is required to use allow_mutation=False on name and it 
-        enables type checking validation when using settattr in API.
+        """This is required to use allow_mutation=False on name.
+        it enables type checking validation when using settattr in API.
         """
         validate_assignment = True
 
@@ -89,10 +93,13 @@ class ParamsSchema(BaseModel):
     def __repr__(self):
         return self.json(indent=2)        
 
+    ##################################################################
+    # Below here, custom validator funcs in addition to type checking.
+    ##################################################################
+
     @validator('assembly_name')
     def _name_validator(cls, value):
-        """
-        names cannot have whitespace, other strange characters are 
+        """Names cannot have whitespace. Other strange characters are 
         simply replaced with a warning message printed.
         """
         if ' ' in value:
@@ -101,9 +108,7 @@ class ParamsSchema(BaseModel):
 
     @validator('project_dir')
     def _proj_validator(cls, value):
-        """
-        project_dir cannot have whitespace, is expanded, and created.
-        """
+        """Project_dir cannot have whitespace, is expanded, and created."""
         if ' ' in value:
             raise ValueError('project_dir cannot contain spaces')
         value = os.path.realpath(os.path.expanduser(value))
@@ -113,8 +118,7 @@ class ParamsSchema(BaseModel):
 
     @validator('raw_fastq_path')
     def _raw_validator(cls, value):
-        """
-        Expand path to check that some files match the regex string.
+        """Expand path to check that some files match the regex string.
         If post-merge then no check.
         """
         if value and ("Merged:" not in value):
@@ -132,8 +136,7 @@ class ParamsSchema(BaseModel):
 
     @validator('barcodes_path')
     def _barcode_validator(cls, value):
-        """
-        Check that barcodes file exists if a path was entered.
+        """Check that barcodes file exists if a path was entered.
         If post-merge then no check.
         """
         if value and ("Merged:" not in value):
@@ -147,8 +150,7 @@ class ParamsSchema(BaseModel):
 
     @validator('sorted_fastq_path')
     def _sorted_validator(cls, value):
-        """
-        Expand path to check that some files match the regex string.
+        """Expand path to check that some files match the regex string.
         If post-merge then no check.
         """
         if not value:
@@ -168,9 +170,7 @@ class ParamsSchema(BaseModel):
 
     @validator("reference_sequence")
     def _reference_validator(cls, value):
-        """
-        Checks that reference file exists and expands path.
-        """
+        """Checks that reference file exists and expands path."""
         if value:
             fullpath = os.path.realpath(os.path.expanduser(value))
             if not glob.glob(fullpath):
@@ -183,9 +183,7 @@ class ParamsSchema(BaseModel):
 
     @validator("restriction_overhang")
     def _enzyme_validator(cls, value):
-        """
-        Check that the restriction enzyes do not contain bad chars?
-        """
+        """Check that the restriction enzymes do not contain bad chars?"""
         # TODO:
         return value
 
@@ -202,6 +200,23 @@ class ParamsSchema(BaseModel):
         Return the Enum value (string)
         """
         return value.value        
+
+
+    ### TODO...
+
+
+    @validator("reference_as_filter")
+    def _reference_filter_validator(cls, value):
+        """Checks that reference file exists and expands path."""
+        if value:
+            fullpath = os.path.realpath(os.path.expanduser(value))
+            if not glob.glob(fullpath):
+                raise ValueError(
+                    f"reference_as_filter file not found. You entered {value}")
+            value = glob.glob(fullpath)[0]
+            if value.endswith(".gz"):
+                raise ValueError("reference_as_filter must be decompressed.")
+        return value
 
 
 

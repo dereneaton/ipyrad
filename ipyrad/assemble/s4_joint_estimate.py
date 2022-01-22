@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-"""
-Jointly estimate heterozygosity and error rate
-"""
+"""Jointly estimate heterozygosity and error rate."""
 
 import os
 import gzip
@@ -20,11 +18,10 @@ from ipyrad.core.schema import Stats4
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError, clustdealer
 
+logger = logger.bind(name="ipyrad")
 
 class Step4(BaseStep):
-    """
-    Run the step4 estimation 
-    """
+    """Run the step4 estimation """
     def __init__(self, data, force, quiet, ipyclient):
         super().__init__(data, 4, quiet, force)       
         self.haploid = data.params.max_alleles_consens == 1
@@ -32,14 +29,12 @@ class Step4(BaseStep):
         self.lbview = self.ipyclient.load_balanced_view()
 
     def run(self):
-        """
-        Distribute optimization jobs and store results.
-        """
+        """Distribute optimization jobs and store results."""
         jobs = {}
-        for sname in self.samples:
+        for sname, sample in self.samples.items():
             jobs[sname] = self.lbview.apply(
                 optim2, 
-                *(self.data, self.samples[sname], self.haploid)
+                *(self.data, sample, self.haploid)
             )
         msg = "inferring [H, E]"
         prog = AssemblyProgressBar(jobs, msg, 4, self.quiet)
@@ -47,8 +42,7 @@ class Step4(BaseStep):
         prog.check()
 
         # collect updated samples and save to JSON
-        for sname in prog.results:
-            sample = prog.results[sname]
+        for sname, sample in prog.results.items():
             self.data.samples[sname] = sample
         self.data.save_json()
 
@@ -63,14 +57,12 @@ class Step4(BaseStep):
                 statsdf.loc[sname, i] = stats[i]
         logger.info("\n" + statsdf.to_string())
         outfile = os.path.join(self.stepdir, "s4_joint_estimate.txt")
-        with open(outfile, 'w') as out:
+        with open(outfile, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
 
 
 def optim2(data, sample, haploid):
-    """
-    Maximum likelihood optimization with scipy
-    """
+    """Maximum likelihood optimization with scipy."""
 
     # get array of all clusters data
     stacked = stackarray(data, sample)
@@ -123,11 +115,8 @@ def optim2(data, sample, haploid):
     )
     return sample
 
-
 def get_haploid_loglik(errors, bfreqs, ustacks, counts):
-    """
-    Log likelihood score given values [E]
-    """
+    """Log likelihood score given values [E]."""
     hetero = 0.
     lik1 = ((1. - hetero) * likelihood1(errors, bfreqs, ustacks))
     liks = lik1
@@ -135,11 +124,8 @@ def get_haploid_loglik(errors, bfreqs, ustacks, counts):
     score = -logliks.sum()
     return score
 
-
 def nget_diploid_loglik(pstart, bfreqs, ustacks, counts):
-    """
-    Log likelihood score given values [H,E]
-    """
+    """Log likelihood score given values [H,E]"""
     hetero, errors = pstart
     lik1 = (1. - hetero) * likelihood1(errors, bfreqs, ustacks)
     lik2 = (hetero) * nlikelihood2(errors, bfreqs, ustacks)
@@ -148,11 +134,8 @@ def nget_diploid_loglik(pstart, bfreqs, ustacks, counts):
     score = -logliks.sum()
     return score
 
-
 def likelihood1(errors, bfreqs, ustacks):
-    """
-    Probability homozygous. 
-    """
+    """Probability homozygous."""
     ## make sure base_frequencies are in the right order
     # print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
     # totals = np.array([ustacks.sum(axis=1)]*4).T
@@ -161,11 +144,8 @@ def likelihood1(errors, bfreqs, ustacks):
     lik1 = np.sum(bfreqs * prob, axis=1)
     return lik1
 
-
 def nlikelihood2(errors, bfreqs, ustacks):
-    """
-    calls nblik2_build and lik2_calc for a given err
-    """
+    """Calls nblik2_build and lik2_calc for a given err."""
     one = [2. * bfreqs[i] * bfreqs[j] for i, j in combinations(range(4), 2)]
     four = 1. - np.sum(bfreqs**2)
     tots, twos, thrs = nblik2_build(ustacks)
@@ -287,9 +267,7 @@ def recal_hidepth_stat(data, sample):
 
 
 def stackarray(data, sample):
-    """
-    Stacks clusters into arrays using at most 10K clusters.
-    """
+    """Stacks clusters into arrays using at most 10K clusters."""
     # only use clusters with depth > min_depth_statistical for param estimates
     stat_mask, maxfrag = recal_hidepth_stat(data, sample)
     stat_mask = stat_mask if stat_mask is not None else np.ones(10000)
@@ -387,8 +365,7 @@ def stackarray(data, sample):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
    
-    TEST = ip.load_json("/tmp/TEST1.json")
+    TEST = ip.load_json("/tmp/TEST5.json")
     TEST.run("4", force=True, quiet=False)
-

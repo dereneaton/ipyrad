@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-""" 
-Various sequence manipulation util functions used by different
+""" Various sequence manipulation util functions used by different
 parts of the pipeline
 """
 
@@ -73,8 +72,6 @@ CIGARDICT = {
 CDICT = dict(zip("CATG", "0123"))
 
 
-
-
 class IPyradError(Exception):
     def __init__(self, *args, **kwargs):
         # raise the exception with this string message and a traceback
@@ -105,7 +102,7 @@ def bcomp(seq):
               .upper()\
               .replace(b"Z", b"n")
 
-# used by step4.stackarray, ..
+# used by step4.stackarray, step7.split_clusters, ...
 def clustdealer(pairdealer, optim):
     """ 
     Return 'optim' clusters from 'pairdealer' iterators, and returns 
@@ -130,7 +127,6 @@ def clustdealer(pairdealer, optim):
         chunk.append("".join(oneclust))
         ccnt += 1
     return 0, chunk
-
 
 # used by cluster_across.build_clusters
 def fullcomp(seq):
@@ -167,8 +163,6 @@ def fullcomp(seq):
              .replace('b', 'r')\
              .replace('o', 'k')
     return seq
-
-
 
 
 # ================================================================
@@ -242,29 +236,44 @@ TRANSFULL = {
 # }
 
 
+def chroms2ints(data, keys_as_ints: bool = False):
+    """Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
+    
+    The chrom indices are 1-indexed.
 
-def chroms2ints(data, intkeys):
+    Parameters
+    ----------
+    data: Assembly
+    intkeys: if True then return {int: name} else {name: int}
     """
-    Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
-    """
+    # load reference genome info as a dataframe.
     fai = pd.read_csv(
         data.params.reference_sequence + ".fai",
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )
-    # Allow CHROM to take integer values, here cast them to str
+
+    # get CHROM (scaffold names) as strings.
     fai["scaffold"] = fai["scaffold"].astype(str)
 
-    faidict = {j: i for i, j in enumerate(fai.scaffold)}
-    if intkeys:
-        revdict = {j: i for i, j in faidict.items()}
-        return revdict
+    # get dict mapping {str: int} using 1-indexed chrom indices.
+    faidict = {j: i + 1 for i, j in enumerate(fai.scaffold)}
+
+    # return dict as is, or reversed.
+    if keys_as_ints:
+        return {j: i for i, j in faidict.items()}
     return faidict
 
 
-
-
-
+def get_fai_values(data, value):
+    """Returns the fai table from the reference as an array."""
+    reference_file = data.params.reference_sequence
+    fai = pd.read_csv(
+        reference_file + ".fai",
+        names=['scaffold', 'length', 'sumsize', 'a', 'b'],
+        sep="\t",
+    )
+    return fai[value].values
 
 
 def splitalleles(consensus):
