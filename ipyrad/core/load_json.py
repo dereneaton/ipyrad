@@ -9,9 +9,8 @@ from ipyrad.core.schema import Project
 from ipyrad.core.assembly import Assembly
 
 
-def load_json(json_file:str):
-    """
-    Return an Assembly object loaded from a project JSON file.
+def load_json(json_file: str) -> Assembly:
+    """Return an Assembly object loaded from a project JSON file.
     """
     proj = Project.parse_file(json_file)
     data = Assembly(proj.params.assembly_name)
