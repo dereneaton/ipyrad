@@ -1,14 +1,36 @@
 #!/usr/bin/env python
 
-"""
-Converter class for writing output files formats from HDF5 input.
+"""Converter class for writing output files formats from HDF5 input.
+
 """
 
 import os
 import h5py
 import numpy as np
-from ipyrad.assemble.write_outputs_helpers import subsample
+# from ipyrad.assemble.write_outputs_helpers import subsample
+from numba import njit
 from ipyrad.assemble.utils import BTS, chroms2ints
+
+
+
+# -------------------------------------------------------------
+# jitted subsample func
+# -------------------------------------------------------------
+
+@njit
+def subsample(snpsmap):
+    """
+    Subsample snps, one per locus, using snpsmap
+    """
+    sidxs = np.unique(snpsmap[:, 0])
+    subs = np.zeros(sidxs.size, dtype=np.int64)
+    idx = 0
+    for sidx in sidxs:
+        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
+        site = np.random.choice(sites)
+        subs[idx] = site
+        idx += 1
+    return subs
 
 
 class Converter:
