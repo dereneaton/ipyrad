@@ -10,6 +10,7 @@ the wrong type it will raise an error.
 # pylint: disable=no-self-argument, no-name-in-module
 
 from typing import List, Tuple, Dict, Optional
+from pathlib import Path
 from pkg_resources import get_distribution
 from pydantic import BaseModel, Field
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
@@ -147,7 +148,7 @@ class Project(BaseModel):
     hackers: HackersSchema
     samples: Dict[str, SampleSchema]
     assembly_stats: AssemblyStats = None
-    outfiles: Dict[str,str] = Field(default_factory=dict)
+    outfiles: Dict[str, Path] = Field(default_factory=dict)
     populations: Dict[str, Tuple[List[str], int]] = Field(default_factory=dict)
 
     def __str__(self):
