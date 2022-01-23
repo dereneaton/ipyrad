@@ -4,10 +4,10 @@
 
 Datasets in snps.hdf5
 ---------------------
-- snps
-- snpsmap
-- genos
-- pseudoref
+- snps    : shape=(nsamples, nsnps)
+- snpsmap : shape=(nsnps, 5)
+- genos   : shape=(nsamples, nsnps, 2)
+- alts    : shape=(nsnps, 4)
 
 Format of snps.hdf5 'snpsmap'
 ----------------------------
@@ -19,20 +19,22 @@ Format of snps.hdf5 'snpsmap'
 
 Example snpsmap
 ---------------
->>> [1, 0, 10, 1, 10000],
->>> [1, 1, 22, 1, 10012],
->>> [1, 2, 65, 1, 10065],
->>> [2, 0, 80, 1, 20000],  # locus 2 has only 1 SNP, at position 20K on scaff 1.
->>> [3, 0, 25, 1, 30000],
->>> [3, 1, 75, 1, 30050],
+>>> [0, 0, 10, 1, 10000],
+>>> [0, 1, 22, 1, 10012],
+>>> [0, 2, 65, 1, 10065],
+>>> [1, 0, 80, 1, 20000],  # locus 1 has only 1 SNP at pos 80, which is pos 20K on scaff 1.
+>>> [2, 0, 25, 1, 30000],
+>>> [2, 1, 75, 1, 30050],
 >>> ...
 >>> [10000, 3, 88, 100, 200]  # scaff 100 is small and so SNP pos is low.
 
 Note
 ----
-As much as I don't like it, the loci and scaffolds in snpsmap are
-1-indexed for compatibility reasons with other formats like VCF,
-which do not allow a 0-indexed scaffold or positions.
+The total locus counter index is 0-indexed as of v.1.0. This is 
+not the same as the scaffold index, which is 1-indexed. In denovo
+data they refer to the same thing, since loci are scaffolds, in 
+which case it can be confusing. Just remember, scaffold name
+"RAD_locus_0" is scaffold 1.
 """
 
 from typing import Iterator, Dict, List, Tuple, TypeVar
@@ -40,7 +42,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 from numba import njit
-from ipyrad.core.schema import Project
 from ipyrad.assemble.utils import get_fai_values
 
 Assembly = TypeVar("Assembly")
@@ -71,6 +72,8 @@ AMBIGS_FULL = np.array([
     [71, 71, 71],
     ], dtype=np.uint8)
 
+# size of concatenated data processed at one time in memory.
+CHUNKSIZE = 10_000
 
 class SnpsDatabase:
     def __init__(self, data: Assembly):
@@ -106,27 +109,29 @@ class SnpsDatabase:
         """Create the datasets in the snps database.
 
         The order of samples in the snps database is alphanumeric
-        except for the 'reference' sample, if included as a sample
-        using the hackers option, in which case it is listed first.
+        except for the 'reference' sample which if present is listed
+        first. The hackers.exclude reference does not yet apply here,
+        except in that it already affect the .nsamples attribute so
+        that the datasets are the right size.
         """
         with h5py.File(self.name, 'w') as io5:
 
             # stores the snps sequence array.
             io5.create_dataset(
                 name="snps",
-                shape=(self.proj.assembly_stats.nsamples, self.proj.assembly_stats.nsnps),
+                shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nsnps),
                 dtype=np.uint8,
             )
             # stores the positions of SNPs on loci and scaffolds.
             snpsmap = io5.create_dataset(
                 name="snpsmap",
-                shape=(self.proj.assembly_stats.nsnps, 5),
+                shape=(self.data.assembly_stats.nsnps, 5),
                 dtype=np.uint64,
             )
             # stores the REF and alleles for writing ALT/REF in VCF
             io5.create_dataset(
                 name="alts",
-                shape=(self.proj.assembly_stats.nsnps, 4),
+                shape=(self.data.assembly_stats.nsnps, 4),
                 dtype=np.uint8,
             )
             # stores genotype calls (ALTS) as (0,0, 0,1, 0,2, etc) where 
@@ -134,7 +139,7 @@ class SnpsDatabase:
             # common allele in denovo.
             io5.create_dataset(
                 name="genos",
-                shape=(self.proj.assembly_stats.nsamples, self.proj.assembly_stats.nsnps, 2),
+                shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nsnps, 2),
                 dtype=np.uint8,
             )
 
@@ -170,8 +175,10 @@ class SnpsDatabase:
             snpsmap.attrs["columns"] = ["locus", "locidx", "locpos", "scaf", "scafpos"]
             snpsmap.attrs["indexing"] = [1, 0, 0, 1, 1]
 
-    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,int,int]]]:
+    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,str,int,int]]]:
         """Yields loci from each ordered .loci file until empty.
+
+        The 'reference' sample is always included here when is_ref.
         """
         for locfile in self._get_sorted_loci_chunks():
             with open(locfile, 'r', encoding="utf-8") as indata:
@@ -189,27 +196,25 @@ class SnpsDatabase:
                         names_to_seqs['snpstring'] = line[self.snppad:].split("|")[0]
 
                         # parse reference position from snpstring
-                        chrom, pos0, pos1 = 0, 0, 0
+                        chrom_int, chrom_name, pos0, pos1 = 0, "", 0, 0
                         if self.data.is_ref:
-                            line_end = line.split("|")[1]
-                            chrom = int(line_end.split(":")[0])
-                            pos0, pos1 = (
-                                int(i) for i in line_end.split(":")[1].split(",")[0].split("-")
-                            )
+                            line_chunks = line.split("|")
+                            chrom_int, chrom_name, pos = line_chunks[1].split(":")
+                            chrom_int = int(chrom_int)
+                            pos0, pos1 = [int(i) for i in pos.split("-")]
 
                         # end of locus, yield the dict.
-                        yield names_to_seqs, (chrom, pos0, pos1)
+                        yield names_to_seqs, (chrom_int, chrom_name, pos0, pos1)
 
     def _iter_supermatrix_chunks(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """Yields chunks of supermatrix and snpsmap.
         """
-        # size of chunks that will be yielded, with some overflow of columns
-        chunk_size = 10_000
-        nsamps = self.proj.assembly_stats.nsamples
+        # concat size of chunks that will be yielded, with some overflow of columns
+        nsamps = self.data.assembly_stats.nsamples
 
         # make array to fill w/ overflow on column size.
-        tmparr = np.zeros((nsamps, chunk_size + 5_000), dtype=np.uint8)
-        tmpref = np.zeros((chunk_size + 5_000), dtype=np.uint8)
+        tmparr = np.zeros((nsamps, CHUNKSIZE + 5_000), dtype=np.uint8)
+        tmpref = np.zeros((CHUNKSIZE + 5_000), dtype=np.uint8)
         tmpmap = []
 
         # iterate over loci from .loci files incrementing the locus every
@@ -220,7 +225,7 @@ class SnpsDatabase:
         for names_to_seqs, positions in self._iter_loci():
 
             # get locus dict and ref positions
-            chrom, pos0, _ = positions
+            chrom_int, _, pos0, _ = positions
 
             # get snpstring
             snps_mask = np.array(list(names_to_seqs.pop("snpstring"))) != " "
@@ -237,9 +242,10 @@ class SnpsDatabase:
             # convert locus to uint8 array and subselect only SNP sites.
             loc = np.array([list(i) for i in ordered_seqs], dtype=np.uint8)
             snps_sites = loc[:, snps_mask]
-            snps_pos = np.where(snps_sites)[0]
+            snps_pos = np.where(snps_mask)[0]
 
-            # store the reference sequence if present
+            # store the reference sequence if present. This is separate from
+            # whether or not it will being stored as a sample.
             if self.data.is_ref:
                 tmpref[pos: pos + snps_sites.shape[1]] = snps_sites[0, :]
 
@@ -250,22 +256,21 @@ class SnpsDatabase:
                     if name == "reference":
                         continue
                     global_sidx = self.sidxs[name] - 1
-                    tmparr[global_sidx, pos_slice] = snps_sites[tmp_sidx - 1]
                 else:
                     global_sidx = self.sidxs[name]
-                    tmparr[global_sidx, pos_slice] = snps_sites[tmp_sidx]
+                tmparr[global_sidx, pos_slice] = snps_sites[tmp_sidx]
 
             # enter position data into the tmpmap
             for idx in range(nsnps):
                 spos = snps_pos[idx]
-                tmpmap.append((locidx, idx, spos, chrom, pos0 + spos))
+                tmpmap.append((locidx, idx, spos, chrom_int, pos0 + spos))
 
             # advance locus counter and supermtarix position index
             locidx += 1
             pos += snps_sites.shape[1]
 
             # if the tmparr is full, yield it and refresh.
-            if pos >= chunk_size:
+            if pos >= CHUNKSIZE:
 
                 # trim extra, fill empty cells to N (78), and convert map to array.
                 tmpref = tmpref[:pos]
@@ -276,7 +281,7 @@ class SnpsDatabase:
                 yield tmparr, tmpmap, tmpref
 
                 # reset
-                tmparr = np.zeros((nsamps, chunk_size + 5_000), dtype=np.uint8)
+                tmparr = np.zeros((nsamps, CHUNKSIZE + 5_000), dtype=np.uint8)
                 tmpmap = []
                 pos = 0
 
@@ -317,17 +322,17 @@ class SnpsDatabase:
         with h5py.File(self.name, 'a') as io5:
 
             # pass a chunk of phy seq array to jit'd function
-            phycols = io5["snps"].shape[1]  # pylint: disable=no-member
-            for chunk in range(0, phycols, 10_000):
+            snpcols = io5["snps"].shape[1]  # pylint: disable=no-member
+            for chunk in range(0, snpcols, CHUNKSIZE):
 
                 # get alts from observations in chunk of snps
-                cslice = slice(chunk, chunk + 10_000)
-                alts = get_ordered_alts(io5["snps"][:, cslice], AMBIGS)
+                cslice = slice(chunk, chunk + CHUNKSIZE)
+                alts = jit_get_ordered_alts(io5["snps"][:, cslice], AMBIGS)
 
                 # if ref, shift to make ref allele first, in chunks.
                 if self.data.is_ref:
                     ref = io5["alts"][cslice, 0]
-                    alts = get_reordered_alts_by_reference(alts, ref)
+                    alts = jit_get_reordered_alts_by_reference(alts, ref)
 
                 # enter the altschunk into 'alts'
                 io5["alts"][cslice, :] = alts
@@ -338,16 +343,16 @@ class SnpsDatabase:
         with h5py.File(self.name, 'a') as io5:
 
             # pass a chunk of phy seq array to jit'd function
-            phycols = io5["snps"].shape[1]  # pylint: disable=no-member
-            for chunk in range(0, phycols, 10_000):
+            snpcols = io5["snps"].shape[1]  # pylint: disable=no-member
+            for chunk in range(0, snpcols, CHUNKSIZE):
 
                 # slice to get chunk
-                cslice = slice(chunk, chunk + 10_000)
+                cslice = slice(chunk, chunk + CHUNKSIZE)
                 chunk = io5["snps"][:, cslice]
                 alts = io5["alts"][cslice, :]
 
                 # get genos and enter into hdf5
-                genos = get_genos(chunk, alts, AMBIGS_FULL)
+                genos = jit_get_genos(chunk, alts, AMBIGS_FULL)
                 io5["genos"][cslice, :, :] = genos
 
     def _write_stats(self):
@@ -381,23 +386,23 @@ class SnpsDatabase:
         self._fill_genos()
 
 @njit
-def get_ordered_alts(
-    phy: np.ndarray, cons: np.ndarray) -> np.ndarray:
+def jit_get_ordered_alts(
+    arr: np.ndarray, cons: np.ndarray) -> np.ndarray:
     """Find all observed bases at each site in order of frequency.
 
     This is used when filling VCF to fill the ALTS index.
     """
     # array to store observed genos for writing to VCF.
-    alt_refs = np.zeros((phy.shape[1], 4), dtype=np.uint8)
+    alt_refs = np.zeros((arr.shape[1], 4), dtype=np.uint8)
 
     # column 0 will have observation, column 1 defaults to '.'
     alt_refs[:, 1] = 46
 
     # iterate over columns of the matrix
-    for cidx in range(phy.shape[1]):
+    for cidx in range(arr.shape[1]):
         # count occurrences of each uint8 character.
         fcounts = np.zeros(111, dtype=np.uint64)
-        counts = np.bincount(phy[:, cidx])
+        counts = np.bincount(arr[:, cidx])
         fcounts[:counts.shape[0]] = counts
 
         # remove Ns and -s
@@ -405,8 +410,12 @@ def get_ordered_alts(
         fcounts[45] = 0
 
         # expand columns ambiguous bases to A,C,T,G
+        # iterate over alleles in AMBIGS
         for aidx in range(cons.shape[0]):
+            # get the counts of this allele
             nbases = fcounts[cons[aidx, 0]]
+            # for each count, add one to its two resolved bases.
+            # print(cidx, arr[:, cidx], cons[aidx, 0].tobytes(), nbases)
             for _ in range(nbases):
                 fcounts[cons[aidx, 1]] += 1
                 fcounts[cons[aidx, 2]] += 1                
@@ -425,7 +434,7 @@ def get_ordered_alts(
     return alt_refs
 
 @njit
-def get_reordered_alts_by_reference(
+def jit_get_reordered_alts_by_reference(
     alts: np.ndarray, ref: np.ndarray) -> np.ndarray:
     """Returns ALTs so that the reference is first, and other 
     observations come after.
@@ -457,7 +466,7 @@ def get_reordered_alts_by_reference(
     return new_alts
 
 @njit
-def get_genos(
+def jit_get_genos(
     snps: np.ndarray, alts: np.ndarray, cons: np.ndarray) -> np.ndarray:
     """Return genotype as 0/1/2/3 or 9 for missing as, e.g., (0, 1).
 
@@ -484,6 +493,7 @@ def get_genos(
     for aidx, arr in enumerate((snps1, snps2)):
         for cidx in range(arr.shape[1]):
             alt = alts[cidx]                     # [71, 67, 0, 0]
+            # print(alt)
             for sidx in range(arr.shape[0]):
                 xpos = np.where(alt == arr[sidx, cidx])[0]
                 if xpos.size:
@@ -493,58 +503,40 @@ def get_genos(
     return genos
 
 
-AMBIGS_FULL = np.array([
-    [82, 71, 65],
-    [75, 71, 84],
-    [83, 71, 67],
-    [89, 84, 67],
-    [87, 84, 65],
-    [77, 67, 65],
-    [78,  9,  9],
-    [45,  9,  9],
-    [67, 67, 67],
-    [65, 65, 65],
-    [84, 84, 84],
-    [71, 71, 71],
-    ], dtype=np.uint8)
-
-
 
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+    from ipyrad.assemble.s7_assemble import Step7    
+    ip.set_log_level("INFO", log_file="/tmp/test.log")
 
-    TEST = ip.load_json("/tmp/TEST5.json")
-    PROJ = Project.parse_file(TEST.json_file)
-
-    # pretend this has been made into a Step7 class object
-    TEST.tmpdir = "/tmp/TEST5_tmp_outfiles"
-    TEST.stepdir = "/tmp/TEST5_outfiles"
-    TEST.samples["reference"] = ip.core.schema.SampleSchema(name="reference")
-
-    # uncomment both of these to include the ref
-    TEST.hackers.exclude_reference = False
-    PROJ.assembly_stats.nsamples += 1
-    print("EXCLUDE REF=", TEST.hackers.exclude_reference)
+    DATA = ip.load_json("/tmp/TEST5.json")
+    # uncomment to include the ref
+    DATA.hackers.exclude_reference = True
+    print("EXCLUDE REF=", DATA.hackers.exclude_reference)
 
     # run it.
-    db = SnpsDatabase(TEST, PROJ)
-    db.run()
+    with ip.Cluster(4) as ipyclient:
+        step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
+        step._split_clusters()
+        step._apply_filters_and_trimming()
+        step._collect_stats()
 
-    # print supermatrix parts from start and end of loci file.
-    with h5py.File(db.name, 'r') as io5:
-        names = io5["snpsmap"].attrs["names"][:]
-        snps = io5["snps"][:]
-        genos = io5["genos"][:]
 
-        print(names)
-        # print first ten sites in first chunk file
-        for i, name in enumerate(names):            
-            print(f"{names[i]:<10}", snps[i, :16].tobytes().decode())            
-        print(genos[-1, :16])
+        db = SnpsDatabase(DATA)
+        db.run()
 
-        # print()
-        # # print last ten sites in last chunk file.
-        # for i, name in enumerate(names):
-        #     print(f"{names[i]:<10}", snps[i, -16:].tobytes().decode())
+        # print supermatrix parts from start and end of loci file.
+        with h5py.File(db.name, 'r') as IO5:
+            NAMES = IO5["snpsmap"].attrs["names"][:]
+            SNPS = IO5["snps"][:]
+            GENOS = IO5["genos"][:]
+            ALTS = IO5["alts"][:]
+
+            print(NAMES)
+            # print first ten sites in first chunk file
+            for i, n in enumerate(NAMES):            
+                print(f"{NAMES[i]:<10}", SNPS[i, :16].tobytes().decode())            
+            print(ALTS[:16])
+            # print(GENOS[-1, :16])
+            

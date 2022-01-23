@@ -59,9 +59,10 @@ class ChunkProcess:
     """: Dict of padded names for loci file."""
 
     def __post_init__(self):
-        # get nsamples accounting for reference
+        # get boolean for whether 'reference' will be written to files.
         self.drop_ref = self.data.is_ref & self.data.hackers.exclude_reference
-        self.nsamples = len(self.data.samples) - int(self.drop_ref)
+
+        # get dict with padding for the samples that will be written
         self.pnames = self._get_padded_names()
 
         # filters dataframe is size of nloci (chunksize)
@@ -72,19 +73,25 @@ class ChunkProcess:
             dtype=bool,
         )
 
-        # sets stats default values w/ respect to nsamples
-        samples = set(self.data.samples) - set(["reference"])
+        # get tmp list of sample names that will be written to file.
+        # This is may or may not include reference, since when drop_ref
+        # is on the ref should not be included in stats.
+        samples = list(self.data.samples)
+        if self.drop_ref:
+            samples.remove("reference")
+
+        # sets stats defaults, using nsamples that will be written
         self.stats = {
             'nbases': 0,
             'sample_cov': {i: 0 for i in samples},
-            'locus_cov': {i: 0 for i in range(1, self.nsamples + 1)},
+            'locus_cov': {i: 0 for i in range(1, len(samples) + 1)},
             'var_sites': {i: 0 for i in range(2000)},
             'pis_sites': {i: 0 for i in range(2000)},
             'var_props': {},
             'pis_props': {},
         }
 
-    def _get_padded_names(self, drop_ref: bool=False) -> Dict[str,str]:
+    def _get_padded_names(self) -> Dict[str,str]:
         """Return a dict mapping names to padded left-aligned names
         and padding for the SNP line.
 
@@ -98,11 +105,9 @@ class ChunkProcess:
         which may exclude the 'reference' sample and thus pad the names
         slightly differently (e.g., phy and snps outputs).
         """
-        snames = set(self.data.samples)
-        if drop_ref:
-            snames = snames - set(['reference'])
-        longname = max(len(i) for i in snames)
-        pnames = {i: i.ljust(longname + 5) for i in snames}
+        names = list(self.data.samples)
+        longname = max(len(i) for i in names)
+        pnames = {i: i.ljust(longname + 5) for i in names}
         pnames["snpstring"] = "//".ljust(longname + 5)
         return pnames
 
@@ -319,6 +324,7 @@ class ChunkProcess:
                     names.append(name)
                     nidxs.append(nidx)
                     store_sequence = True
+
                 # store the sequence if the name was stored.
                 elif store_sequence:
                     seqs.append(list(line.strip().encode("utf-8")))
@@ -538,16 +544,16 @@ if __name__ == "__main__":
 
     data = ip.load_json("/tmp/TEST5.json")
     data.params.restriction_overhang = ("TGCAG", "CGG")
+    data.hackers.exclude_reference = True
 
-    # faidict = chroms2ints(data, keys_as_ints=True)
-    # print(faidict)
+    with ip.Cluster(cores=2) as ipyclient:
+        step = ip.assemble.s7_assemble.Step7(data, True, True, ipyclient)
+        step._split_clusters()
+        step._apply_filters_and_trimming()
+        step._collect_stats()
 
-    # with ip.Cluster(cores=2) as ipyclient:
-    #     step = ip.assemble.s7_assemble.Step7(data, True, True, ipyclient)
-    #     step._split_clusters()
-
-    #     proc = ChunkProcess(step.data, 10, '/tmp/TEST5_tmp_outfiles/chunk-0', True)
-    #     proc.run()
+        # proc = ChunkProcess(step.data, 100, '/tmp/TEST5_tmp_outfiles/chunk-0')
+        # proc.run()
 
         # lidx, names, seqs, nidxs, is_dup  = next(proc._iter_loci())
         # trimmer = EdgeTrimmer(step.data, names, seqs, nidxs, debug=True)
@@ -559,3 +565,5 @@ if __name__ == "__main__":
         # proc.run()
         # print(proc.filters.head())
     # print(asdict(proc))
+
+    # confirm that SNPs are being called correct.

@@ -73,12 +73,14 @@ class LociWriter:
             for loci_chunk in self._iter_loci():
                 out.write("\n".join(loci_chunk) + "\n")
 
+
 if __name__ == "__main__":
 
     import ipyrad as ip
     from ipyrad.assemble.s7_assemble import Step7
     with ip.Cluster(cores=4) as ipyclient:
         data = ip.load_json("/tmp/TEST5.json")
+        data.hackers.exclude_reference = True
         step = Step7(data, quiet=False, force=True, ipyclient=ipyclient)
         step._split_clusters()
         step._apply_filters_and_trimming()

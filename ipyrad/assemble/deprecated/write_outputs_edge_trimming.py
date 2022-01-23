@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-"""
-Locus edge trimming based on presence of cutsites, 
+"""Locus edge trimming based on presence of cutsites, 
 locus trimming params, and site trimming hacker param.
 """
 
@@ -194,6 +193,8 @@ if __name__ == "__main__":
         list(b"NNNATCGGACCTTNNNNTTCCAACCGNNNNNNTACAAGCTA"),
         list(b"NNNATCGGNCCTTNNNNTTCCAACCGNNNNNNTACAAGCTA"),
     ]).astype(np.uint8)
+
+    # load Edges class
     test = Edges(DATA, SEQS)
     print(test.minsites_left, test.minsites_right)
     print(test.data.hackers.trim_loci_min_sites)

@@ -1,29 +1,41 @@
 #!/usr/bin/env python
 
-"""
-Helper classes for step7 (write_outputs.py) for filtering loci for
-the .loci output.
+"""Helper classes for step7 filtering and trimming.
+
+- ChunkProcess
+    - Edges
 """
 
+from typing import Sequence, Iterable, List, Tuple
 import pandas as pd
 import numpy as np
 from numba import njit
-from ipyrad.assemble.write_outputs_edge_trimming import Edges
+# from ipyrad.assemble.write_outputs_new_edge_trim import Edges
 
 
 AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
 
+# pylint: disable=too-many-branches
+
 
 class ChunkProcess:
-    """
+    """Process a chunk of raw loci into filtered and formatted loci.
+
     Runs the remote step7 func apply_filters_and_trimming() to filter
     and trim loci and return stats.
+
+    Parameters
+    -----------
+    drop_ref: bool
+        If True then the reference sample is present and it should 
+        NOT be included when calculating whether or not a site is 
+        a SNP, or in minsamp.
     """
-    def __init__(self, data, chunksize, chunkfile):
-        
+    def __init__(self, data, chunksize, chunkfile, drop_ref):
         self.data = data
         self.chunksize = chunksize
         self.chunkfile = chunkfile
+        self.nsamples = len(self.data.samples) - int(drop_ref)
 
         # returned results
         self.filters = pd.DataFrame(
@@ -37,70 +49,66 @@ class ChunkProcess:
             ],
             data=False,
         )
-        # (R1>, <R1, R2>, <R2), currently only trims external edges.
-        self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
-        # stats storage.
+        """: DataFrame with filtering stats for this loci chunk."""
         self.stats = {
             'nbases': 0,
-            'sample_cov': {i: 0 for i in self.data.samples},
-            'locus_cov': {i: 0 for i in range(1, len(self.data.samples) + 1)},
+            'sample_cov': {i: 0 for i in range(self.nsamples)},
+            'locus_cov': {i: 0 for i in range(1, self.nsamples + 1)},
             'var_sites': {i: 0 for i in range(2000)},
             'pis_sites': {i: 0 for i in range(2000)},
             'var_props': {},
             'pis_props': {},
         }
+        """: Dict to store polymorphism stats for loci in this chunk."""
+
+        # DEPRECATED..
+        # self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
+        # """: Array to store nsites that were trimmed from each locus edge."""
+
         # updated each iteration
         self.lidx: int = None
         self.outlist = []
 
-
     def run(self):
-        """
-        Iterates over loci in the chunkfile trimming edges and 
-        calculating stats for each.
-        """
-        # Iterate over loci
-        io_chunk = open(self.chunkfile, 'rt')
-        io_loci = enumerate(iter(io_chunk.read().split("//\n//\n")))
+        """Iterates over raw loci fasta to filter and trim.
 
+        Filters are applied in the order: 
+            - duplicates
+            - minsamp
+            - trim_edges
+            - maxindels
+            - maxsnps
+            - maxsharedsnps
+        """
         # keep track of var and pis proportions for histogram at end
         histos = {"pis": [], "var": []}
 
-        while 1:
-            # get the next locus in the chunkfile and skips the reference
-            # sample if present in the locus and hackers.exclude_reference
-            # otherwise reference is first if ref datatype.
-            try:
-                self.lidx, chunk = next(io_loci)
-                names, nidxs, seqs, dup = parse_locus(self.data, chunk)
-            except StopIteration:
-                break
+        # iterates over each locus decomposing info
+        for locus_info in iter_loci(self.data.samples, self.chunkfile):
+            lidx, names, seqs, nidxs, is_dup = locus_info
 
             # check duplicates filter
-            if dup:
-                self.filters.loc[self.lidx, "dups"] = True
+            if is_dup:
+                self.filters.loc[lidx, "dups"] = True
                 continue
 
             # check minsamp filter (optionally w/ popmins)
             if self.filter_minsamp_pops(names):
-                self.filters.loc[self.lidx, "minsamp"] = True
+                self.filters.loc[lidx, "minsamp"] = True
                 continue
 
-            # trim edges and store the trimming lengths
+            # Edge run stores positions in .edges, and returns bool 
+            # if overzealous trimming count it as a minsamp filter.
             edges = Edges(self.data, seqs)
-            edges.get_edges()
-            self.edges[self.lidx] = edges.edges
-
-            # check overzealous edge trimming (saved as a minsamp effect)
-            if edges.bad:
-                self.filters.loc[self.lidx, "minsamp"] = True
+            if edges.run():
+                self.filters.loc[lidx, "minsamp"] = True
                 continue
-
-            # apply the edge trimming 
-            trimseq = seqs[:, self.edges[self.lidx][0]:self.edges[self.lidx][3]]
+                
+            # apply the edge trimming to the sequence
+            trimseq = seqs[:, edges.edges[0]:edges.edges[-1]]
 
             # check if any samples have been overly trimmed (no data)
-            keepmask = np.zeros(len(names), dtype=np.bool_)
+            keepmask = np.zeros(len(names), dtype=bool)
             nseq = trimseq.copy()
             nseq[nseq == 45] = 78
             for sidx, _ in enumerate(names):
@@ -112,7 +120,7 @@ class ChunkProcess:
             names = [i for i, j in zip(names, keepmask) if j]
             nidxs = [i for i, j in zip(nidxs, keepmask) if j]
 
-            # if trimming dropped all samples, then apply minsamp filter
+            # if trimming dropped all samples, then count as minsamp filter
             # NOTE: pre v.1.0 we dropped the whole locus if any sample
             # was removed here. That conservative approach may be safer...
             if sum(keepmask == 0) == len(names):
@@ -145,7 +153,7 @@ class ChunkProcess:
                 trimseq[:, edges.edges[1]:edges.edges[2]] = 78   # N
                 # self.aseqs[:, edges.edges[1]:edges.edges[2]] = 110  # n
 
-            # [ref]: nidx string will be updated in to_locus() with edg
+            # [ref]: nidx string will be updated in .to_locus() with edg
             # for is-ref we need to mask the insert between pairs, and
             # for this we need to not check the 'reference' sample.
             else:
@@ -201,7 +209,7 @@ class ChunkProcess:
         # If no loci survive filtering then don't write the files
         if self.outlist:
             # write the chunk to tmpdir
-            with open(self.chunkfile + ".loci", 'wt') as outchunk:
+            with open(self.chunkfile + ".loci", 'w', encoding="utf-8") as outchunk:
                 outchunk.write("\n".join(self.outlist) + "\n")
 
             # save filters df for only the loci that were filtered.
@@ -270,7 +278,7 @@ class ChunkProcess:
             locus.append(
                 "{}{}".format(
                     self.data.pnames[name],
-                    trimseq[idx, :].tostring().decode())
+                    trimseq[idx, :].tobytes().decode())
             )
         locus.append("{}{}|{}|".format(
             self.data.snppad, snpstring, nidxstring))
@@ -360,38 +368,89 @@ class ChunkProcess:
         return False
 
 
-def parse_locus(data, chunk):
+
+
+def iter_loci(
+    samples: Sequence[str], 
+    chunk_file: str,
+    ) -> Iterable[Tuple[int, List[str], np.ndarray, List[str], bool]]:
+    """Generator to yield loci names, seqs, and nidxs (meta strings).
+    
+    Iterates over the chunk file yielding each time it reaches the
+    end of a locus (which are separated by //). Names and sequences
+    are extracted from the fasta data, as well as 'nidx' strings
+    which record the locus name and position (reference info).
+    Also checks whether a name exists >1 time in locus, indicating
+    a poor clustering that led to duplicate.    
     """
-    grabs the next locus from the chunk file
-    """
-    names = []
-    nidxs = []
-    seqs = []
+    with open(chunk_file, 'r', encoding="utf-8") as io_chunk:    
+        names = []
+        nidxs = [] # reference mapping info
+        seqs = []
+        lidx = 0
+        store_sequence = False
+        
+        for line in io_chunk:
+            
+            # yield the current locus info and reset
+            if line[0] == "/":
+                if names:
+                    is_dup = len(names) == len(set(names))
+                    seqarr = np.array(seqs).astype(np.uint8)
+                    yield (lidx, names, seqarr, nidxs, is_dup)
 
-    # advance locus to next, parse names and seqs
-    lines = chunk.strip().split("\n")
-    for line in lines:
-        if line[0] == ">":
-            name, nidx = line[1:].rsplit("_", 1)
-            names.append(name)
-            nidxs.append(nidx)
-        else:
-            seqs.append(list(line.encode()))
+                    # reset.
+                    names.clear()
+                    nidxs.clear()
+                    seqs.clear()
+                    lidx += 1
+            
+            # get sample name and mapping info
+            elif line[0] == ">":
+                name, nidx = line[1:].strip().rsplit("_", 1)
+                if name not in samples:
+                    continue
+                names.append(name)
+                nidxs.append(nidx)
+                store_sequence = True
+            # store the sequence if the name was stored.
+            elif store_sequence:
+                seqs.append(line.strip().encode("utf-8"))
+                store_sequence = False
 
-    # filter to include only samples in this assembly (including 'reference')
-    mask = [i in data.samples for i in names]
+# DEPRECATED.
+# def parse_locus(data, chunk):
+#     """
+#     grabs the next locus from the chunk file
+#     """
+#     names = []
+#     nidxs = []
+#     seqs = []
 
-    # select samples in locus to keep
-    names = [i for (i, j) in zip(names, mask) if j]
+#     # advance locus to next, parse names and seqs
+#     lines = chunk.strip().split("\n")
+#     for line in lines:
+#         if line[0] == ">":
+#             name, nidx = line[1:].rsplit("_", 1)
+#             names.append(name)
+#             nidxs.append(nidx)
+#         else:
+#             seqs.append(list(line.encode()))
 
-    # if duplicates return True
-    if len(set(names)) < len(names):
-        return names, nidxs, seqs, True
+#     # filter to include only samples in this assembly (including 'reference')
+#     mask = [i in data.samples for i in names]
 
-    # get nidx (refpos/locid string) and sequences of unmasked samples
-    nidxs = [i for (i, j) in zip(nidxs, mask) if j]
-    seqs = np.array([i for (i, j) in zip(seqs, mask) if j], dtype=np.uint8)
-    return names, nidxs, seqs, False
+#     # select samples in locus to keep
+#     names = [i for (i, j) in zip(names, mask) if j]
+
+#     # if duplicates return True
+#     if len(set(names)) < len(names):
+#         return names, nidxs, seqs, True
+
+#     # get nidx (refpos/locid string) and sequences of unmasked samples
+#     nidxs = [i for (i, j) in zip(nidxs, mask) if j]
+#     seqs = np.array([i for (i, j) in zip(seqs, mask) if j], dtype=np.uint8)
+#     return names, nidxs, seqs, False
 
 
 # -------------------------------------------------------------
