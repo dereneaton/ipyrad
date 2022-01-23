@@ -37,11 +37,10 @@ import pandas as pd
 import h5py
 
 # internal imports
-from ipyrad.core.schema import Project, AssemblyStats, Stats7
+from ipyrad.core.schema import AssemblyStats, Stats7
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.utils import IPyradError, clustdealer, splitalleles
-from ipyrad.assemble.utils import GETCONS, DCONS, chroms2ints
+from ipyrad.assemble.utils import IPyradError, clustdealer
 
 # helper classes ported to separate files.
 from ipyrad.assemble.write_outputs_processor import ChunkProcess
@@ -76,7 +75,7 @@ class Step7(BaseStep):
         # store 'step samples' which is all samples that are ready for
         # this step in the current Assembly, plus the addition of a
         # 'reference' Sample if this is a reference assembly. These
-        # samples must have the same 'database' file, meaning they 
+        # samples must have the same 'database' file, meaning they
         # were run in step6 together, checked in `check_database_files()`.
         # IF 'hackers.exclude_reference' it is excluded later.
         self.data.samples = self.samples
@@ -255,7 +254,7 @@ class Step7(BaseStep):
         stats.nsamples = len(stats.sample_cov)
         stats.nloci = sum(stats.locus_cov.values())
         stats.nsnps = sum([i * stats.var_sites[i] for i in stats.var_sites])
-            
+
         # store filter stats
         stats.filters.nloci_before_filtering = sum(stats.locus_cov.values()) + int(filters.sum())
         stats.filters.nloci_after_filtering = sum(stats.locus_cov.values())
@@ -367,7 +366,7 @@ class Step7(BaseStep):
             # write the header and then write the 'N variation' dataframe.
             out.write(
                 "\n\n# The distribution of N polymorphisms per locus.\n"
-                "# This should be interpreted like a histogram.\n"                
+                "# This should be interpreted like a histogram.\n"
                 "# pis = only parsimony informative variable sites (minor allele in >1 sample).\n\n"
                 "# var = any variable site (pis + autapomorphies).\n")
             maxval = max([
@@ -399,7 +398,7 @@ class Step7(BaseStep):
                 "stats on each assembly step.\n\n")
             self.data.stats.to_string(buf=out)
 
-            # write alignment sizes 
+            # write alignment sizes
             out.write(
                 "\n\n# Alignment matrix statistics:\n"
                 "# See ipyrad-analysis toolkit for tools to subsample loci, \n"
@@ -408,11 +407,15 @@ class Step7(BaseStep):
             out.close()
 
     def _write_databases(self):
-        """Write default formats: 'snps.hdf5', and 'seqs.hdf5'."""
+        """Write default formats: 'snps.hdf5', and 'seqs.hdf5'.
+
+        These are written first b/c the other formats use the
+        h5 databases to generate their data.
+        """
         msg = "writing loci and database files"
         jobs = {0: self.lbview.apply(remote_fill_loci, self.data)}
         jobs = {1: self.lbview.apply(remote_fill_seqs, self.data)}
-        # jobs = {2: self.lbview.apply(fill_snp_array, self.data)}
+        jobs = {2: self.lbview.apply(remote_fill_snps, self.data)}
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
         prog.block()
         prog.check()
@@ -458,10 +461,8 @@ class Step7(BaseStep):
     def _remote_build_vcf(self):
         """Build VCF format from snps HDF5, but w/o depths info."""
         printstr = "writing vcf output"
-        prog = AssemblyProgressBar({}, None, printstr, self.data)
-        prog.update()
-        rasync = self.lbview.apply(build_vcf, self.data)
-        prog.jobs = {0: rasync}
+        jobs = {0: self.lbview.apply(remote_write_vcf, self.data)}
+        prog = AssemblyProgressBar(jobs, None, printstr, self.data)
         prog.block()
         prog.check()
 
@@ -496,9 +497,9 @@ def remote_fill_snps(data: Assembly) -> None:
     """Write .snps.hdf5 file from chunks."""
     SnpsDatabase(data).run()
 
-def remove_file_conversion(data: Assembly, outf: Path):
+def remote_file_conversion(data: Assembly, outf: Path):
     """Remote function for converiting."""
-    return Converter(data).run(outf)
+    Converter(data).run(outf)
 
 def remote_write_vcf(data: Assembly) -> None:
     """..."""
@@ -516,65 +517,6 @@ def remove_fill_vcf_depths(data, nsnps, sample):
             data=filler.vcfd,
             )
     del filler
-
-
-# ------------------------------------------------------------
-# funcs parallelized on remote engines
-# -------------------------------------------------------------
-# def write_loci(data):
-#     """Write the .loci file from processed loci chunks.
-    
-#     Concatenates .loci chunk files into a single file.
-
-#     Notes
-#     -----
-#     Writing of the .alleles format is currently deprecated (v.1.0)
-#     """
-#     # parse `reference.fai` to get dict of enumerated {int: scaffname}
-#     if data.is_ref:
-#         faidict = chroms2ints(data, True)
-
-#     # gather all processed .loci bits and order them.
-#     locibits = glob.glob(os.path.join(data.tmpdir, "*.loci"))
-#     sortbits = sorted(locibits,
-#         key=lambda x: int(x.rsplit("-", 1)[-1][:-5]))
-
-#     # write to file while adding counters to the ordered loci
-#     outfile = os.path.join(data.stepdir, f"{data.name}.loci")
-#     outloci = open(outfile, 'w', encoding="utf-8")
-
-#     idx = 0
-#     for bit in sortbits:
-#         # store until writing
-#         lchunk = []
-
-#         # LOCI ONLY: iterate through chunk files
-#         indata = open(bit, 'r', encoding="utf-8")
-#         for line in iter(indata):
-
-#             # write name, seq pairs
-#             if "|\n" not in line:
-#                 lchunk.append(line)  # [:5] + line[5:].upper())
-
-#             # write snpstring and info
-#             else:
-#                 snpstring, nidxs = line.rsplit("|", 2)[:2]
-#                 if data.is_ref:
-#                     refpos = nidxs.split(",")[0]
-
-#                     # translate refpos chrom idx (1-indexed) to chrom name
-#                     cid, rid = refpos.split(":")
-#                     cid = faidict[int(cid) - 1]
-#                     lchunk.append(
-#                         "{}|{}:{}:{}|\n".format(snpstring, idx, cid, rid))
-#                 else:
-#                     lchunk.append(
-#                         "{}|{}|\n".format(snpstring, idx))
-#                 idx += 1
-#         # close bit handle
-#         indata.close()
-#         outloci.write("".join(lchunk))
-#     outloci.close()
 
 
 BADPOP_SAMPLES = """
@@ -612,12 +554,11 @@ if __name__ == "__main__":
 
 
     TEST = ip.load_json("/tmp/TEST5.json")
-    PROJ = Project.parse_file(TEST.json_file)
-    TEST.tmpdir = "/tmp/TEST5_tmp_outfiles"
-    TEST.stepdir = "/tmp/TEST5_outfiles"
-    # fill_seq_array(TEST, PROJ)
 
+    TEST.hackers.exclude_reference = True
+    TEST.params.output_formats = ("v", "s")
     TEST.run("7", force=True, quiet=True)
+
 
     # tdata = ip.load_json("/tmp/test-simpairddrad.json")
     # tdata.params.output_formats = "lpsnkaguvtm"
