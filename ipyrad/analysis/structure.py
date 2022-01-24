@@ -463,6 +463,11 @@ class Structure(object):
             fins = [i for i in self.rasyncs if self.rasyncs[i].ready()]
             for i in fins:
                 prog.finished += 1
+
+                error = self.rasyncs[i].exception()
+                if error:
+                    raise IPyradError("Structure Error:\n{}".format(error.evalue))
+
                 del self.rasyncs[i]
             prog.update()
             time.sleep(0.9)
@@ -653,7 +658,7 @@ def _call_structure(STRUCTURE, mname, ename, sname, name, workdir, seed, ntaxa, 
     comm = proc.communicate()
 
     if proc.returncode:
-        raise IPyradError(comm[0])
+        raise IPyradError(comm[0].decode())
 
     # cleanup
     oldfiles = [mname, ename, sname]
