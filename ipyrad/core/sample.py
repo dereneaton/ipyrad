@@ -43,12 +43,12 @@ class Sample(object):
                    "hetero_est",
                    "error_est",
                    "reads_consens",
-                   ]).astype(np.object)
+                   ], dtype=object)
 
         ## stats for each step
         self.stats_dfs = ObjDict({
               "s1": pd.Series(index=["reads_raw",
-                                     ]).astype(np.object),
+                                     ], dtype=object),
 
               "s2": pd.Series(index=["reads_raw",
                                      "trim_adapter_bp_read1",
@@ -58,7 +58,7 @@ class Sample(object):
                                      "reads_filtered_by_Ns",
                                      "reads_filtered_by_minlen",
                                      "reads_passed_filter",
-                                     ]).astype(np.object),
+                                     ], dtype=object),
                                      #"filtered_by_qscore",
                                      #"filtered_by_adapter",
 
@@ -73,11 +73,11 @@ class Sample(object):
                                      "sd_depth_mj",
                                      "sd_depth_stat",
                                      "filtered_bad_align",
-                                     ]).astype(np.object),
+                                     ], dtype=object),
 
               "s4": pd.Series(index=["hetero_est",
                                      "error_est",
-                                     ]).astype(np.object),
+                                     ], dtype=object),
 
               "s5": pd.Series(index=["clusters_total",
                                      "filtered_by_depth",
@@ -88,7 +88,7 @@ class Sample(object):
                                      "nsites",
                                      "nhetero",
                                      "heterozygosity",
-                                     ]).astype(np.object)
+                                     ], dtype=object),
               })
 
         ## store cluster depth information (biggest memory cost), 
