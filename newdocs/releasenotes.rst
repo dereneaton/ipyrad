@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.83
+------
+**February 01, 2022**
+
+- ipyrad.core.sample Set dtype of stats pd.Series as object to silence a pd warning.
+- Test vsearch version to handle derep_fulllength deprecation #469
+- structure error reporting (#471)
+
 0.9.82
 ------
 **January 21, 2022**
