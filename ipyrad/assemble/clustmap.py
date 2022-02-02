@@ -23,6 +23,7 @@ import subprocess as sps
 import numpy as np
 import pysam
 import ipyrad as ip
+from distutils.version import StrictVersion
 from .utils import IPyradError, bcomp, comp
 
 
@@ -744,12 +745,22 @@ def dereplicate(data, sample, nthreads):
     if data.params.datatype in ['gbs', '2brad']:
         strand = "both"
 
+    # Test version of vsearch to handle deprecation of derep_fulllength #469
+    vsearch_version = sps.check_output([ip.bins.vsearch, "-v"], stderr=sps.STDOUT)
+    v = vsearch_version.split(b"_")[0].split(b"v")[-1].decode()
+    if StrictVersion(v) > StrictVersion("2.19"):
+        derep_flag = "--fastx_uniques"
+        output_flag = "--fastaout"
+    else:
+        derep_flag = "--derep_fulllength"
+        output_flag = "--output"
+
     # do dereplication with vsearch
     cmd = [
         ip.bins.vsearch,
-        "--derep_fulllength", infile,
+        derep_flag, infile,
         "--strand", strand,
-        "--output", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
+        output_flag, os.path.join(data.tmpdir, sample.name + "_derep.fa"),
         # "--threads", str(nthreads),
         "--fasta_width", str(0),
         "--minseqlength",  str(data.params.filter_min_trim_len),
