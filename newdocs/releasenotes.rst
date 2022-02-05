@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.84
+------
+**February 05, 2022**
+
+- fix pd 1.4.0 issue with setting options #475
+
 0.9.83
 ------
 **February 01, 2022**
