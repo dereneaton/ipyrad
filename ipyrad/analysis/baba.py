@@ -54,7 +54,7 @@ You can install it with the following command:
 # """
 
 # set floating point precision in data frames to 3 for prettier printing
-pd.set_option('precision', 3)
+pd.set_option('display.precision', 3)
 
 
 class Baba(object):
