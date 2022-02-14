@@ -262,11 +262,11 @@ class Assembly:
         project = Project(
             params=ParamsSchema(**self.params.dict()),
             hackers=HackersSchema(**self.hackers.dict()),
-            samples={sname: self.samples[sname] for sname in self.samples},
+            samples=self.samples,  # {sname: self.samples[sname] for sname in self.samples},
             populations=self.populations,
         )
         with open(self.json_file, 'w', encoding="utf-8") as out:
-            out.write(project.json(indent=4, exclude_none=True))
+            out.write(project.json(indent=2, exclude_none=True))
         logger.debug(f"wrote to {self.json_file}")
 
     def run(
@@ -376,11 +376,13 @@ if __name__ == "__main__":
     TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
     TEST.populations['all'] = (['a', 'b', 'c'], 3)
     TEST.write_params(True)
+    print((TEST.params.project_dir))
 
-    TEST.run('1', force=True, quiet=True)
-    print(TEST.stats)
-    print(TEST.outfiles)
-    print(TEST.assembly_stats)
+    # TEST.run('1', force=True, quiet=True)
+    # print(TEST.stats)
+    # print(TEST.outfiles)
+    # print(TEST.assembly_stats)
+
 
     # TEST = ip.Assembly("TEST1")
     # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"
