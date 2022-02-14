@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-"""
-Reference based assembly methods
+"""Reference based assembly method.
+
 """
 
 import os
@@ -9,7 +9,7 @@ from loguru import logger
 import pandas as pd
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.clustmap_within_reference_utils import (
-    index_ref_with_bwa, 
+    index_ref_with_bwa,
     index_ref_with_sam,
     mapping_reads_minus,
     join_pairs_for_derep_ref,
@@ -26,11 +26,11 @@ from ipyrad.assemble.clustmap_within_denovo_utils import (
     set_sample_stats
 )
 
+logger = logger.bind(name="ipyrad")
+
 
 class ClustMapReference:
-    """
-    de novo assembly pipeline.
-    """
+    """Reference mapping assembly pipeline."""
     def __init__(self, step):
         # inherit attrs from step
         self.data = step.data
@@ -42,11 +42,8 @@ class ClustMapReference:
         self.lbview = step.lbview
         self.thview = step.thview
 
-
     def index_references(self):
-        """
-        Index reference and/or reference_filter files.
-        """
+        """Index reference and/or reference_filter files."""
         jobs = {}
         if self.data.params.reference_sequence:
             logger.debug("indexing reference with bwa and samtools")
@@ -63,17 +60,17 @@ class ClustMapReference:
             jobs['sam_index_alt'] = rasync2
 
         # track job
-        msg = "indexing reference             "
+        msg = "indexing reference"
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
-        prog.check()        
-
+        prog.check()
 
     def concat_trimmed_files_from_assembly_merge(self):
-        """
+        """Combine merged assembly files.
+
         If assembly merging was performed after step2 and before step3
         then multiple 'trim' fastq files must be merged within samples
-        to be used as inputs for step3. 
+        to be used as inputs for step3.
 
         i: edits/{sname}_edits_[R1,R2].fastq
         o: tmpdir/{sname}_concat_edits_[R1,R2].fastq
@@ -96,10 +93,8 @@ class ClustMapReference:
             prog.block()
             prog.check()
 
-
     def mapping_to_refminus(self):
-        """
-        map reads to altref to get unmapped fastq files.
+        """Map reads to altref to get unmapped fastq files.
 
         # i: tmpdir/{}_R[1,2]-tmp.fa
         # o: tmpdir/{}-tmp-umap[1,2].FASTQ
@@ -114,12 +109,11 @@ class ClustMapReference:
             msg = "joining pairs for dereplication"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()        
-
+            prog.check()
 
     def join_pairs_for_derep(self):
-        """
-        Joins pairs end to end for decloning and dereplicating.
+        """Joins pairs end to end for decloning and dereplicating.
+
         i: tmpdir/[trim, concat, or unmapped].fastq[.gz]
         o: tmpdir/joined.fastq
         """
@@ -137,10 +131,9 @@ class ClustMapReference:
             prog.block()
             prog.check()
 
-
     def tag_for_decloning(self):
-        """
-        Joins pairs end to end for decloning and dereplicating.
+        """Joins pairs end to end for decloning and dereplicating.
+
         i: tmpdir/[trim, concat, or unmapped].fastq[.gz]
         o: tmpdir/joined.fastq
         """
@@ -156,12 +149,11 @@ class ClustMapReference:
             msg = "tagging reads for decloning    "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()            
-
+            prog.check()
 
     def dereplicate(self):
-        """
-        Dereplicate read(pairs) to fasta format using vsearch.
+        """Dereplicate read(pairs) to fasta format using vsearch.
+
         i: tmpdir/{}_[trimmed_R1, joined, declone].fastq
         o: tmpdir/{}_derep.fa
         """
@@ -175,17 +167,16 @@ class ClustMapReference:
             msg = "dereplicating reads              "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()            
-    
+            prog.check()
 
     def tag_to_header(self):
-        """
-        Dereplicate read(pairs) to fasta format using vsearch.
+        """Dereplicate read(pairs) to fasta format using vsearch.
+
         i: tmpdir/{}_[trimmed_R1, joined, declone].fastq
         o: tmpdir/{}_derep.fa
         """
         if not self.data.hackers.declone_PCR_duplicates:
-            return        
+            return
         jobs = {}
         for sname in self.samples:
             jobs[sname] = self.lbview.apply(
@@ -196,12 +187,11 @@ class ClustMapReference:
             msg = "tagging headers for decloning  "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()            
-    
+            prog.check()
 
     def split_derep_pairs_for_mapping(self):
-        """
-        Dereplicate read(pairs) to fasta format using vsearch.
+        """Dereplicate read(pairs) to fasta format using vsearch.
+
         i: tmpdir/{}_[derep,tagged].fa
         o: tmpdir/{}_derep_split_R[1,2].fa
         """
@@ -217,12 +207,10 @@ class ClustMapReference:
             msg = "splitting derep pairs for mapping"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()            
-    
+            prog.check()
 
     def mapping_to_reference(self):
-        """
-        map reads to reference to get mapped bams.
+        """Map reads to reference to get mapped bams.
 
         i: tmpdir/{}_derep_[split]_R[1,2].fa
         o: tmpdir/{}.bam
@@ -237,13 +225,10 @@ class ClustMapReference:
             msg = "mapping reads to reference"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()        
-
+            prog.check()
 
     def build_clusters_from_cigars(self):
-        """
-        Builds clusters.gz files from .bams 
-        """
+        """Builds clusters.gz files from .bams."""
         jobs = {}
         for sname in self.samples:
             jobs[sname] = self.thview.apply(
@@ -254,18 +239,16 @@ class ClustMapReference:
             msg = "building clusters"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check()          
-
+            prog.check()
 
     def calculate_sample_stats(self):
-        """
-        Send samples to calc depths on remote, and then enter stats
+        """Send samples to calc depths on remote, and then enter stats
         to sample objects non-parallel.
         """
         jobs = {}
         for sname in self.samples:
             jobs[sname] = self.lbview.apply(
-                set_sample_stats, 
+                set_sample_stats,
                 *(self.data, self.samples[sname])
             )
 
@@ -276,15 +259,15 @@ class ClustMapReference:
         prog.check()
 
         # store/save
-        self.data.samples = {i: prog.results[i] for i in prog.results}
+        self.data.samples = prog.results  # {i: j for (i, j) in prog.results.items()}
         self.data.save_json()
 
         # write stats text file
         statsdf = pd.DataFrame(
             index=sorted(self.data.samples),
             columns=[
-                "clusters_total", 
-                "clusters_hidepth", 
+                "clusters_total",
+                "clusters_hidepth",
                 "mean_depth_mj",
                 "mean_depth_stat",
                 "reads_mapped_to_ref_prop",
@@ -296,13 +279,13 @@ class ClustMapReference:
                 statsdf.loc[sname, i] = statsdict[i]
 
         handle = os.path.join(self.data.stepdir, 's3_cluster_stats.txt')
-        with open(handle, 'w') as outfile:
+        with open(handle, 'w', encoding="utf-8") as outfile:
             statsdf.to_string(outfile)
         logger.info("\n" + statsdf.to_string())
 
-
     def run(self):
-        """
+        """Run steps of the reference-based step3.
+
         Series of functions to run single or paired reference assembly
         with or without PCR decloning.
         """
@@ -322,14 +305,15 @@ class ClustMapReference:
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", logfile="/tmp/test.log")
-    DATA = ip.load_json("/home/deren/Documents/ipyrad/sandbox/ama3rad/assembly/amaranth.json")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+
 
     # practice with concat of some samples
-    DATA1 = DATA.branch("test-branch1", subsample=["SLH_AL_1000", "SLH_AL_1009"])
-    DATA2 = DATA.branch("test-branch2", subsample=["SLH_AL_1000", "SLH_AL_1009"])    
-    DATA = ip.merge("merge", [DATA1, DATA2])
-    
+    DATA = ip.load_json("/home/deren/Documents/ipyrad/sandbox/ama3rad/assembly/amaranth.json")
+    # DATA1 = DATA.branch("test-branch1", subsample=["SLH_AL_1000", "SLH_AL_1009"])
+    # DATA2 = DATA.branch("test-branch2", subsample=["SLH_AL_1000", "SLH_AL_1009"])
+    # DATA = ip.merge("merge", [DATA1, DATA2])
+
     # print(DATA.params)
     DATA.params.reference_as_filter = "../../tests/ipsimdata/rad_example_genome.fa"
     DATA.ipcluster['threads'] = 4

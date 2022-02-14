@@ -56,7 +56,8 @@ if __name__ == "__main__":
     TEST = ip.load_json("/tmp/TEST5.json")
     TEST.params.assembly_method = "reference"
     TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
-    TEST.run("3", force=True, quiet=True)
+    TEST.run("3", force=True, quiet=False)
+    print(TEST.stats)
 
     # Empirical SE
     # TEST = ip.load_json("/tmp/PEDIC.json")

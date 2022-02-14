@@ -2,16 +2,43 @@
 
 """Calculate D-statistics from RAD loci using bootstrap resampling.
 
+This tool first selects all variable RAD loci among a subset of 
+samples that will be selected for the p1-p4 popuations. A SNP
+dataset is extracted and filtered to keep only sites that have 
+sufficient coverage (minimum of 1 sample per population, or higher
+numbers selected using the minmap dict). ABBA and BABA are counted
+from these SNPs and a D-statistic calculated. To assess significance
+of this results bootstrap resampled datasets are created by resampling
+loci with replacement to the number of loci in the original dataset
+(selected only among the subset of loci that passed filtering for 
+the selected 4-taxon test). A Z-score is calculated and the results
+are returned as a DataFrame. Additional plotting tools are available
+from the Baba class object as well.
 
+Examples
+--------
+>>> import ipyrad.analysis as ipa
+>>> ipa.set_log_level("DEBUG")
+
+>>> tool = ipa.baba(data="/tmp/test.snps.hdf5")
+>>> tool.run(
+>>>     imaps=[{
+>>>         "p1": ['a', 'b', 'c'],
+>>>         "p2": ['d', 'e', 'f'],
+>>>         "p3": ['g', 'h', 'i'],
+>>>         "p4": ['j'],
+>>>     }],
+>>>     minmaps=0.5,
+>>>     nboots=500,
+>>>     random_seed=123,
+>>> )
 """
 
 from typing import Dict, List, Union, Optional
-import time
 from loguru import logger
 import pandas as pd
 import numpy as np
 import toytree
-# from numba import njit
 from ipyrad.core.cluster import Cluster
 from ipyrad.analysis.progress import ProgressBar
 from ipyrad.analysis.snps_extracter import SNPsExtracter
@@ -80,12 +107,21 @@ class Baba2:
     """ABBA-BABA job manager.
 
     This tool wraps the snps_extracter tool to filter SNP datasets,
-    distributes parallel jobs, and summarizes results in dataframes.
+    distributes parallel abba-baba culculation jobs, summarizes 
+    results for one or more tests into dataframes, and makes 
+    accessible tools for plotting the results.
 
     Parameters
     ----------
     data: str
         A file path to an input .snps.hdf5 data file.
+
+    Methods
+    -------
+    run
+        ...
+    draw
+        ...
     """
     def __init__(self, data: str):
         self.data = data
@@ -239,6 +275,9 @@ class Baba2:
         """Runs baba inference on a remote engine."""
         arr = ext.subsample_loci(random_seed=random_seed)
         return BabaRemote(arr, ext.names, imap).run()
+
+
+
 
 
 class OLD:

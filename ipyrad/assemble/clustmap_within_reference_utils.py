@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 
-"""
-Reference assembly related functions. Some of these are very similar
-to the functions in the denovo_utils but they sometimes differ subtly
-and so it was easier to write seperate versions for denovo and ref.
+"""Reference assembly related functions. 
+
+Some of these are very similar to the functions in the denovo_utils 
+but they sometimes differ subtly and so it was easier to write 
+separate versions for denovo and ref.
+
+Note that these functions have `print` statements in them instead of
+logger calls. This is because they are run on engines where the stdout
+will be caught by the tracker and piped to the logger.
 """
 
 # pylint: disable=no-member, 
@@ -25,9 +30,7 @@ BIN_BEDTOOLS = os.path.join(sys.prefix, "bin", "bedtools")
 
 
 def index_ref_with_bwa(data, alt=False):
-    """
-    Index the reference sequence, unless it already exists
-    """
+    """Index the reference sequence, unless it already exists"""
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -48,15 +51,15 @@ def index_ref_with_bwa(data, alt=False):
 
     # If reference sequence already exists then bail out of this func
     index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
-    if all([os.path.isfile(refseq_file + i) for i in index_files]):
+    if all(os.path.isfile(refseq_file + i) for i in index_files):
         print("reference is bwa indexed: {}".format(refseq_file))
         return
 
     # bwa index <reference_file>
     cmd = [BIN_BWA, "index", refseq_file]
     print(" ".join(cmd))
-    proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=None)
-    error = proc.communicate()[1].decode()
+    with sps.Popen(cmd, stderr=sps.PIPE, stdout=None) as proc:
+        error = proc.communicate()[1].decode()
 
     # error handling for one type of error on stderr
     if proc.returncode:
@@ -73,11 +76,8 @@ def index_ref_with_bwa(data, alt=False):
                 .format(refseq_file)))
         raise IPyradError(error)
 
-
 def index_ref_with_sam(data, alt=False):
-    """
-    Index ref for building scaffolds w/ index numbers in steps 5-6
-    """
+    """Index ref for building scaffolds w/ index numbers in steps 5-6"""
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -110,10 +110,8 @@ def index_ref_with_sam(data, alt=False):
     print(f"indexing {refseq_file} with pysam/samtools")
     pysam.faidx(refseq_file)
 
-
 def mapping_reads_minus(data, sample, nthreads):
-    """
-    Map reads to the reference-filter fasta to get unmapped fastq
+    """Map reads to the reference-filter fasta to get unmapped fastq
     files to use for downstream analyses.
     """
     if not data.params.reference_as_filter:
@@ -138,10 +136,10 @@ def mapping_reads_minus(data, sample, nthreads):
     print(" ".join(cmd1))
 
     # run cmd1
-    proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.DEVNULL)
-    error1 = proc1.communicate()[1]
-    if proc1.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
+    with sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc1:
+        error1 = proc1.communicate()[1]
+        if proc1.returncode:
+            raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
 
     # setup cmd2 (sam to bam)
     cmd2 = [BIN_SAMTOOLS, 'view', '-b', '-F', '0x904']
@@ -150,10 +148,10 @@ def mapping_reads_minus(data, sample, nthreads):
     print(' '.join(cmd2))
 
     # run cmd2
-    proc2 = sps.Popen(cmd2, stderr=sps.PIPE, stdout=sps.DEVNULL)
-    error2 = proc2.communicate()[1]
-    if proc2.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd2)}\nerror: {error2}")
+    with sps.Popen(cmd2, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc2:
+        error2 = proc2.communicate()[1]
+        if proc2.returncode:
+            raise IPyradError(f"cmd: {' '.join(cmd2)}\nerror: {error2}")
 
     # setup cmd3 (bam to fastq unmapped)
     cmd3 = [BIN_SAMTOOLS, 'fastq', '-v', '45']
@@ -163,11 +161,10 @@ def mapping_reads_minus(data, sample, nthreads):
     print(' '.join(cmd3))
 
     # run cmd3
-    proc3 = sps.Popen(cmd3, stderr=sps.PIPE, stdout=sps.DEVNULL)
-    error3 = proc3.communicate()[1]
-    if proc3.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
-
+    with sps.Popen(cmd3, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc3:
+        error3 = proc3.communicate()[1]
+        if proc3.returncode:
+            raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
 
 def join_pairs_for_derep_ref(data, sample):
     """ 
@@ -829,10 +826,10 @@ def bedtools_merge(data, sample) -> List[str]:
         cmd2.insert(2, "-d")
 
     # pipe output from bamtobed into merge
-    proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout)
-    result = proc2.communicate()[0].decode()
-    proc1.stdout.close()
+    with sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE) as proc1:
+        with sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout) as proc2:
+            result = proc2.communicate()[0].decode()
+        proc1.stdout.close()
 
     # check for errors and do cleanup
     if proc2.returncode:

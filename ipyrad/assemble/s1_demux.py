@@ -48,7 +48,7 @@ class Step1(BaseStep):
         if self.data.params.sorted_fastq_path is not None:
             FileLinker(self).run()
         else:
-            SimpleDemux(self).run()
+            SimpleDemux(self.data, quiet=quiet, ipyclient=ipyclient).run()
 
 
 if __name__ == "__main__":
@@ -57,10 +57,10 @@ if __name__ == "__main__":
     ip.set_log_level("DEBUG")
 
     # LOADING PRE-DEMUX'D DATA.
-    TEST = ip.Assembly("PEDIC")
-    TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
-    TEST.params.project_dir = "/tmp"
-    TEST.run('1', force=True, quiet=True)
+    # TEST = ip.Assembly("PEDIC")
+    # TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    # TEST.params.project_dir = "/tmp"
+    # TEST.run('1', force=True, quiet=True)
 
     # ONE FASTQ FILE AND UNIQUE BARCODES TEST (SE RAD)
     TEST = ip.Assembly("TEST1")
@@ -70,21 +70,21 @@ if __name__ == "__main__":
     TEST.params.max_barcode_mismatch = 1
     TEST.run('1', force=True, quiet=True)
 
-    # MULTIPLE FASTQ FILES AND ONE UNIQUE BARCODES TEST
-    TESTX = TEST.branch("TEST2")
-    TESTX.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_*.gz"
-    TESTX.run('1', force=True, quiet=True)
+    # # MULTIPLE FASTQ FILES AND ONE UNIQUE BARCODES TEST
+    # TESTX = TEST.branch("TEST2")
+    # TESTX.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_*.gz"
+    # TESTX.run('1', force=True, quiet=True)
 
-    # ONE FASTQ FILE AND TECHNICAL REPLICATES IN BARCODES (hackers on)
-    TESTX = TEST.branch("TEST3")
-    TESTX.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes_techreps.txt"
-    TESTX.run('1', force=True, quiet=True)
+    # # ONE FASTQ FILE AND TECHNICAL REPLICATES IN BARCODES (hackers on)
+    # TESTX = TEST.branch("TEST3")
+    # TESTX.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes_techreps.txt"
+    # TESTX.run('1', force=True, quiet=True)
 
-    # ONE FASTQ FILE AND TECHNICAL REPLICATES IN BARCODES (hackers off)    
-    TESTX = TEST.branch("TEST4")
-    TESTX.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes_techreps.txt"
-    TESTX.hackers.merge_technical_replicates = False
-    TESTX.run('1', force=True, quiet=True)
+    # # ONE FASTQ FILE AND TECHNICAL REPLICATES IN BARCODES (hackers off)    
+    # TESTX = TEST.branch("TEST4")
+    # TESTX.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes_techreps.txt"
+    # TESTX.hackers.merge_technical_replicates = False
+    # TESTX.run('1', force=True, quiet=True)
 
     # DEMUX PAIRED_END TEST
     TESTX = TEST.branch("TEST5")

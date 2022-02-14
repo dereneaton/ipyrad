@@ -27,7 +27,8 @@ class Step2(BaseStep):
     """Run Step2 read trimming and filtering using fastp.
 
     The program fastp auto-detects the adapter sequences by
-    analyzing the first 1M reads.
+    analyzing the first 1M reads. In addition to those, we tell it
+    to look for the adapters in the `./adapter.fa` file.
     """
     def __init__(self, data, force, quiet, ipyclient):
         super().__init__(data, step=2, quiet=quiet, force=force)
@@ -35,22 +36,20 @@ class Step2(BaseStep):
 
         # threading: default 4-threads per job.
         self.ipyclient = ipyclient
-        self.lbview = self.ipyclient.load_balanced_view(
-            self.ipyclient.ids[::4]
-        )
+        self.lbview = self.ipyclient.load_balanced_view(self.ipyclient.ids[::4])
 
     def run(self):
         """Run the component subfuctions to concatenate input files,
         run the fastp binary, and cleanup tmp files."""
-        self.concat_multiple_raws()
-        self.distribute_fastp()
+        self._concat_multiple_raws()
+        self._distribute_fastp()
+        self._write_json_file()
+        self._write_stats_file()
 
-        # json must run first
-        self.write_json_file()
-        self.write_stats_file()
+    def _concat_multiple_raws(self):
+        """Fills the `ctuples` dict with fastq paths {sname: (R1,R2)}.
 
-    def concat_multiple_raws(self):
-        """Don't bother to parallelize this since its rarely run and
+        Don't bother to parallelize this since its rarely run and
         when it is it's pretty I/O limited.
 
         Concatenate multiple raw files into a single 'concat' file.
@@ -58,7 +57,7 @@ class Step2(BaseStep):
         runs are 'merged' into a single assembly object, or when a
         demux run included merged technical replicates.
         """
-        for sname, sample in self.samples.items():
+        for sname, sample in self.data.samples.items():
 
             # check if user has moved any files since step 1
             for ftuple in sample.files.fastqs:
@@ -70,7 +69,7 @@ class Step2(BaseStep):
 
             # if only one set of files then no concatenation is necessary
             if len(sample.files.fastqs) == 1:
-                self.ctuple_dict[sname] = self.samples[sname].files.fastqs[0]
+                self.ctuple_dict[sname] = sample.files.fastqs[0]
 
             # otherwise, we need to concatenate multiple fastq files.
             else:
@@ -81,7 +80,7 @@ class Step2(BaseStep):
                 cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
 
                 # write to new concat handle
-                conc1 = os.path.join(self.tmpdir, f"{sample.name}_R1_concat.fastq")
+                conc1 = self.data.tmpdir / f"{sample.name}_R1_concat.fastq"
                 if sample.files.fastqs[0][0].endswith(".gz"):
                     conc1 += ".gz"
 
@@ -99,7 +98,7 @@ class Step2(BaseStep):
                 if self.data.is_pair:
 
                     # out _R2 filehandle
-                    conc2 = os.path.join(self.tmpdir, f"{sample.name}_R2_concat.fastq")
+                    conc2 = self.data.tmpdir / f"{sample.name}_R2_concat.fastq"
                     if sample.files.fastqs[0][0].endswith(".gz"):
                         conc2 += ".gz"
 
@@ -119,9 +118,8 @@ class Step2(BaseStep):
                 self.ctuple_dict[sname] = (conc1, conc2)
                 logger.debug('concat: {}'.format(self.ctuple_dict[sname]))
 
-    def distribute_fastp(self):
+    def _distribute_fastp(self):
         """Distribute N / 2 fastp jobs on N processors."""
-        # send samples to cutadapt filtering
         logger.debug("submitting remote fastp jobs")
 
         def trim_reads(data, sname, read1, read2, workdir):
@@ -138,17 +136,16 @@ class Step2(BaseStep):
 
         # submit jobs to run
         jobs = {}
-        for sname in self.samples:
+        for sname in self.data.samples:
             args = (
                 self.data,
                 sname,
                 self.ctuple_dict[sname][0],
                 self.ctuple_dict[sname][1],
-                self.stepdir,
+                self.data.stepdir,
             )
             # logger.debug(" ".join(ReadTrimming(*args).command))
-            rasync = self.lbview.apply(trim_reads, *args)
-            jobs[sname] = rasync
+            jobs[sname] = self.lbview.apply(trim_reads, *args)
 
         # wait for all to finish
         message = "processing reads"
@@ -156,30 +153,23 @@ class Step2(BaseStep):
         prog.block()
         prog.check()
 
-        # check for errors
-        for sname in prog.results:
-
-            # enter stats on the sample
-            jdata, filepaths = prog.results[sname]
-
-            # store data
-            self.samples[sname].files.edits = filepaths
-
-            # store results
-            stats = Stats2(
-                reads_raw=jdata['summary']['before_filtering']['total_reads'],
-                reads_filtered_by_Ns=jdata['filtering_result']['too_many_N_reads'],
-                reads_filtered_by_low_quality=jdata['filtering_result']['low_quality_reads'],
-                reads_filtered_by_low_complexity=jdata['filtering_result']['low_complexity_reads'],
-                reads_filtered_by_minlen=jdata['filtering_result']['too_short_reads'],
-                mean_len_R1_before_trimming=jdata['summary']['before_filtering']['read1_mean_length'],
-                mean_len_R1_after_trimming=jdata['summary']['after_filtering']['read1_mean_length'],
-                mean_len_R2_before_trimming=(
-                    jdata['summary']['before_filtering'].get("read2_mean_length", None)),
-                mean_len_R2_after_trimming=(
-                    jdata['summary']['after_filtering'].get("read2_mean_length", None)),
-                reads_passed_filter=jdata['summary']['after_filtering']['total_reads'],
-            )
+        # store file paths and stats
+        for sname, result in prog.results.items():
+            jdata, filepaths = result
+            self.data.samples[sname].files.edits = filepaths
+            stats = Stats2()
+            stats.reads_raw = jdata['summary']['before_filtering']['total_reads']
+            stats.reads_filtered_by_Ns = jdata['filtering_result']['too_many_N_reads']
+            stats.reads_filtered_by_low_quality = jdata['filtering_result']['low_quality_reads']
+            stats.reads_filtered_by_low_complexity = jdata['filtering_result']['low_complexity_reads']
+            stats.reads_filtered_by_minlen = jdata['filtering_result']['too_short_reads']
+            stats.mean_len_R1_before_trimming = jdata['summary']['before_filtering']['read1_mean_length']
+            stats.mean_len_R1_after_trimming = jdata['summary']['after_filtering']['read1_mean_length']
+            stats.mean_len_R2_before_trimming = (
+                jdata['summary']['before_filtering'].get("read2_mean_length", None))
+            stats.mean_len_R2_after_trimming=(
+                jdata['summary']['after_filtering'].get("read2_mean_length", None))
+            stats.reads_passed_filter=jdata['summary']['after_filtering']['total_reads']
 
             # store reads numbers as unpaired count unlike in fastp
             if self.data.is_pair:
@@ -194,9 +184,9 @@ class Step2(BaseStep):
                     setattr(stats, key, int(getattr(stats, key) / 2))
 
             # store to Sample object
-            self.samples[sname].stats_s2 = stats
+            self.data.samples[sname].stats_s2 = stats
 
-    def write_json_file(self):
+    def _write_json_file(self):
         """Writes samples to the JSON file."""
         # only advance the STATE for samples that were successful
         for sname, sample in self.samples.items():
@@ -208,10 +198,9 @@ class Step2(BaseStep):
                 sample.state = 2
 
         # put samples into Assembly and save updated JSON
-        self.data.samples = self.samples
         self.data.save_json()
 
-    def write_stats_file(self):
+    def _write_stats_file(self):
         """Write a easily readable tabular stats output file."""
         statsdf = pd.DataFrame(
             index=sorted(self.data.samples),
@@ -234,7 +223,7 @@ class Step2(BaseStep):
                 if statsdict[i]:
                     statsdf.loc[sname, i] = statsdict[i]
 
-        handle = os.path.join(self.stepdir, 's2_read_trim_stats.txt')
+        handle = self.data.stepdir / 's2_read_trim_stats.txt'
         with open(handle, 'w', encoding="utf-8") as outfile:
             statsdf.fillna(value=0).to_string(outfile)
         logger.info("\n" +
@@ -361,13 +350,12 @@ if __name__ == "__main__":
 
     # simulated PE DATA
     TEST = ip.load_json("/tmp/TEST5.json")
-    TEST = TEST.branch("test")
-    TEST.run("2", force=True, quiet=True)
+    TEST.run("2", force=True, quiet=False)
+    print(TEST.stats)
 
     # # EMPIRICAL
     # TEST = ip.load_json("/tmp/PEDIC.json")
     # TEST.run("2", force=True, quiet=True)
-
 
     # TEST = ip.Assembly("PEDIC")
     # TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"

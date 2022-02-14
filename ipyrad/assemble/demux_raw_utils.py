@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
-"""
-Some utilities used in demux.py for demultiplexing.
+"""Some utilities used in demux.py for demultiplexing.
 """
 
+from typing import Dict, Tuple, TypeVar
 import io
-import os
+from pathlib import Path
 import gzip
 import subprocess as sps
 from collections import Counter
+from dataclasses import dataclass
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
+
+Assembly = TypeVar("Assembly")
 
 
 class BarMatch:
@@ -97,10 +100,10 @@ class BarMatch:
         Gzips are always bytes so let's use rb to make unzipped also bytes.
         """
         # get file type
-        if self.ftuple[0].endswith(".gz"):
-            self.ofile1 = gzip.open(self.ftuple[0], 'rt')
+        if self.ftuple[0].suffix == ".gz":
+            self.ofile1 = gzip.open(self.ftuple[0], 'r', encoding="utf-8")
         else:
-            self.ofile1 = open(self.ftuple[0], 'rt')
+            self.ofile1 = open(self.ftuple[0], 'r', encoding="utf-8")
 
         # create iterators 
         quart1 = zip(self.ofile1, self.ofile1, self.ofile1, self.ofile1)
@@ -108,9 +111,9 @@ class BarMatch:
         # create second read iterator for paired data
         if self.ftuple[1]:
             if self.ftuple[0].endswith(".gz"):
-                self.ofile2 = gzip.open(self.ftuple[1], 'rt')
+                self.ofile2 = gzip.open(self.ftuple[1], 'r', encoding="utf-8")
             else:
-                self.ofile2 = open(self.ftuple[1], 'rt')
+                self.ofile2 = open(self.ftuple[1], 'r', encoding="utf-8")
 
             # create iterators
             quart2 = zip(self.ofile2, self.ofile2, self.ofile2, self.ofile2)
@@ -118,21 +121,18 @@ class BarMatch:
         else:
             self.quarts = zip(quart1, iter(int, 1))
 
-
     def close_read_generators(self):
-        """
-        Close the file handles that were opened as generators.
-        """
+        """Close the file handles that were opened as generators."""
         self.ofile1.close()
         if self.ftuple[1]:
             self.ofile2.close()
 
-
     def assign_reads(self):
-        """
-        Assign reads to samples using barcode matching and the reads
-        to fastq files. The statistics are stored in a dictionary which
-        is pickled, and the tmp filename is returned.
+        """Assign reads to samples using barcode matching.
+
+        Writes reads to reads to fastq files. The statistics are 
+        stored in a dictionary which is pickled, and the tmp filename
+        is returned.
         """
         while 1:
             # read in four lines of data and increase counter
@@ -233,23 +233,18 @@ class BarMatch:
             write_to_file(self.data, self.read2s, 2, self.fidx)
 
 
-
 def getbarcode1(cutters, read1, longbar):
     "find barcode for 2bRAD data"
     #+1 is for the \n at the end of the sequence line
     lencut = len(cutters[0][0]) + 1
     return read1[1][:-lencut][-longbar[0]:]
 
-
 def getbarcode2(_, read1, longbar):
     "finds barcode for invariable length barcode data"
     return read1[1][:longbar[0]]
 
-
 def getbarcode3(cutters, read1, longbar):
-    """
-    find barcode sequence in the beginning of read
-    """
+    """find barcode sequence in the beginning of read."""
     # default barcode string
     for cutter in cutters[0]:
         ## If the cutter is unambiguous there will only be one.
@@ -278,7 +273,6 @@ def getbarcode3(cutters, read1, longbar):
             return barcode[0]
     ## No cutter found
     return barcode[0] 
-
 
 def find3radbcode(cutters, longbar, read):
     """
@@ -317,12 +311,10 @@ def write_to_file(data, dsort, read, pid):
     for sname in dsort:
 
         # file out handle
-        handle = os.path.join(
-            data.tmpdir,
-            "tmp_{}_{}_{}.fastq".format(sname, rrr, pid))
+        handle = data.tmpdir / f"tmp_{sname}_{rrr}_{pid}.fastq"
 
         # append to this sample name
-        with open(handle, 'a') as out:
+        with open(handle, 'a', encoding="utf-8") as out:
             out.write("".join(dsort[sname]))
         # logger.debug("appending to {}".format(handle))
         # logger.complete()
@@ -333,8 +325,8 @@ def collate_files(data, sname, tmp1s, tmp2s):
     Collate temp fastq files in tmp-dir into 1 gzipped sample.
     """
     # out handle
-    out1 = os.path.join(data.stepdir, "{}_R1.fastq.gz".format(sname))
-    out2 = os.path.join(data.stepdir, "{}_R2.fastq.gz".format(sname))
+    out1 = data.stepdir / f"{sname}_R1.fastq.gz"
+    out2 = data.stepdir / f"{sname}_R2.fastq.gz"
 
     # build cmd
     cmd1 = ['cat']
@@ -342,27 +334,28 @@ def collate_files(data, sname, tmp1s, tmp2s):
         cmd1 += [tmpfile]
 
     # get compression function
-    proc = sps.Popen(['which', 'pigz'], stderr=sps.PIPE, stdout=sps.PIPE)
-    pigz_bin = proc.communicate()
-    if pigz_bin[0].strip():
-        compress = ["pigz"]
-    else:
-        compress = ["gzip"]
+    with sps.Popen(['which', 'pigz'], stderr=sps.PIPE, stdout=sps.PIPE) as proc:
+        pigz_bin = proc.communicate()
+        if pigz_bin[0].strip():
+            compress = ["pigz"]
+        else:
+            compress = ["gzip"]
 
     # call cmd
     out = io.BufferedWriter(gzip.open(out1, 'w'))    
-    proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.PIPE)
-    proc2 = sps.Popen(compress, stdin=proc1.stdout, stderr=sps.PIPE, stdout=out)
-    eout, _ = proc2.communicate()
+    with sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.PIPE) as proc1:
+        with sps.Popen(compress, stdin=proc1.stdout, stderr=sps.PIPE, stdout=out) as proc2:
+            eout, _ = proc2.communicate()
     if proc2.returncode:
         logger.exception(eout)
         raise IPyradError("error in collate_files R1 {}".format(eout))
-    proc1.stdout.close()
+    # proc1.stdout.close()
     out.close()
 
     # then cleanup
     for tmpfile in tmp1s:
-        os.remove(tmpfile)
+        tmpfile.unlink()
+        # os.remove(tmpfile)
 
     # do R2 files
     if data.is_pair:
@@ -384,4 +377,5 @@ def collate_files(data, sname, tmp1s, tmp2s):
 
         # then cleanup
         for tmpfile in tmp2s:
-            os.remove(tmpfile)
+            tmpfile.unlink()
+            # os.remove(tmpfile)

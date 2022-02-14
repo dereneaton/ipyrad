@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-"""
-ipyrad-analysis logger module.
+"""Starts separate logger for ipa.
+
+
 """
 
 import sys
@@ -34,8 +35,6 @@ def formatter(record):
     ) + end
     return fmessage
 
-
-
 LOGGERS = [0]
 def set_log_level(log_level="DEBUG"):
     """Add logger for ipa to stderr.
@@ -58,3 +57,7 @@ def set_log_level(log_level="DEBUG"):
     )
     LOGGERS.append(idx)
     logger.enable("ipa")
+
+
+if __name__ == "__main__":
+    pass

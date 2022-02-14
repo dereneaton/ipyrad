@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-"""
+"""Denovo clustering of reads within samples.
+
 Identify reads from the same loci using clustering in vsearch. 
 Support for SE and PE denovo and denovo-reference assemblies, 
 and tagging PCR duplicates.
@@ -31,9 +32,7 @@ from ipyrad.assemble.clustmap_within_denovo_utils import (
 
 
 class ClustMapDenovo:
-    """
-    de novo assembly pipeline.
-    """
+    """de novo within-sample assembly pipeline."""
     def __init__(self, step):
         # attach all relevent attributes to data (Assembly)
         self.data = step.data
@@ -47,15 +46,16 @@ class ClustMapDenovo:
         self.lbview = step.lbview
         self.thview = step.thview
 
-
     def index_references(self):
-        """
-        Index reference_filter with BWA for mapping reads.
+        """Index reference_filter with BWA for mapping reads.
+        
+        This can be used in denovo assemblies for filtering reads from
+        the 'reference_as_filter' param.
         """
         jobs = {}
         if not self.data.params.reference_as_filter:
             return
-        logger.debug("indexing reference_filter with bwa")
+        logger.debug("indexing reference_as_filter with bwa")
         rasync1 = self.lbview.apply(index_ref_with_bwa, self.data, alt=1)
         jobs['bwa_index_alt'] = rasync1
         msg = "indexing reference"
@@ -63,9 +63,9 @@ class ClustMapDenovo:
         prog.block()
         prog.check()        
 
-
     def concat_trimmed_files_from_assembly_merge(self):
-        """
+        """Concat when assemblies were merged before step3.
+
         i: edits/{sname}_edits_[R1,R2].fastq
         o: tmpdir/{sname}_concat_edits_[R1,R2].fastq
         """
@@ -86,9 +86,9 @@ class ClustMapDenovo:
             prog.block()
             prog.check()
 
-
     def pair_merge_with_vsearch(self):
-        """
+        """Merge reads based on overlapping using vsearch.
+
         i: tmpdir/{sname}_concat_edits_[R1,R2].fastq OR edits
         o: tmpdir/{sname}_merged.fastq, tmpdir/{sname}_nonmerged_R[1,2].fastq, 
         """
@@ -107,14 +107,12 @@ class ClustMapDenovo:
         prog.block()
         prog.check()
 
-
     def pair_join_unmerged_end_to_end(self):
-        """
+        """Joins end-to-end the unmerged paired reads, and concats to the
+        end of this file any merged reads from step2.
+
         i: tmpdir/{sname}_nonmerged_[R1,R2].fastq
         o: tmpdir/{sname}_merged.fastq
-
-        Joins end-to-end the unmerged paired reads, and concats to the
-        end of this file any merged reads from step2.
         """
         if not self.data.is_pair:
             return
@@ -130,21 +128,17 @@ class ClustMapDenovo:
         prog.block()
         prog.check()
 
-
     def decloning_transfer_tags_inline(self):
-        """
-        Moves the tags from the index to the reads for decloning.
-        """
+        """Moves the tags from the index to the reads for decloning."""
         if (not self.data.is_pair) or (not self.data.hackers.declone_PCR_duplicates):
             return
         # TODO:
 
-
     def dereplicate(self):
-        """
+        """Dereplicate sequences (read pairs are merged).
+
         i: tmpdir/{}_[merged,declone].fastq
-        o: tmpdir/{}_derep.fa        
-        Dereplicate sequences (read pairs are merged).        
+        o: tmpdir/{}_derep.fa
         """
         jobs = {}
         for sname in self.samples:
@@ -239,9 +233,7 @@ class ClustMapDenovo:
 
 
     def muscle_align_chunks(self):
-        """
-        Aligns all chunked loci using muscle
-        """
+        """Aligns all chunked loci using muscle"""
         # submit largest samples first
         sorted_samples = sorted(
             self.samples, key=lambda x: self.samples[x].stats_s2.reads_raw)
@@ -287,10 +279,8 @@ class ClustMapDenovo:
         prog.block()
         prog.check()
 
-
     def calculate_sample_stats(self):
-        """
-        Send samples to calc depths on remote, and then enter stats
+        """Send samples to calc depths on remote, and then enter stats
         to sample objects non-parallel.
         """
         jobs = {}
@@ -321,11 +311,8 @@ class ClustMapDenovo:
                 statsdf.loc[sname, i] = statsdict[i]                    
         logger.info("\n" + statsdf.to_string())
  
-
     def run(self):
-        """
-        Run the core functions.
-        """
+        """Run the core functions."""
         self.index_references()
         # self.map_to_reference_filter()
         self.concat_trimmed_files_from_assembly_merge()
@@ -343,10 +330,19 @@ if __name__ == "__main__":
 
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG", stderr=False, logfile="/tmp/test.log")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
-    DATA = ip.load_json("/tmp/TEST1.json")
-    DATA.run('3', force=True)
+    TEST = ip.load_json("/tmp/TEST5.json")
+    TEST = TEST.branch("TEST5-denovo")
+    TEST.params.assembly_method = "denovo"
+    TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
+
+    ClustMapDenovo(TEST)
+
+    # TEST.run("3", force=True, quiet=True)
+
+    # DATA = ip.load_json("/tmp/TEST1.json")
+    # DATA.run('3', force=True)
 
     # STEP = ip.assemble.s3_clustmap_within.Step3(DATA, 1, 0, CLIENT)
     # STEP.samples['1A_0'].concat = "A"

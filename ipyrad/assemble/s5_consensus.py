@@ -5,7 +5,7 @@
 """
 
 from typing import Dict
-import os
+from pathlib import Path
 import gzip
 import glob
 import itertools
@@ -35,19 +35,16 @@ class Step5(BaseStep):
         self.lbview = self.ipyclient.load_balanced_view()
         self.max_frag = self.data.hackers.max_fragment_length
         self.nclusters_dict: Dict[str,int] = {}
-        self.data.tmpdir = self.tmpdir
-        self.data.stepdir = self.stepdir
+        self.data.tmpdir = Path(self.tmpdir)
+        self.data.stepdir = Path(self.stepdir)
 
         # sample paths to be used
         for sname, sample in self.samples.items():
-            sample.files.depths = (
-                os.path.join(self.stepdir, f"{sname}.catg.hdf5"))
+            sample.files.depths = self.stepdir / f"{sname}.catg.hdf5"
             if self.data.is_ref:
-                sample.files.consens = (
-                    os.path.join(self.stepdir, f"{sname}.bam"))
+                sample.files.consens = self.stepdir / f"{sname}.bam"
             else:
-                sample.files.consens = (
-                    os.path.join(self.stepdir, f"{sname}.consens.gz"))
+                sample.files.consens = self.stepdir / f"{sname}.consens.gz"
 
     def run(self):
         """Submit jobs to run either denovo, reference, or complex."""
@@ -121,7 +118,7 @@ class Step5(BaseStep):
         # submit jobs (10 per sample === can be hundreds of jobs...)
         jobs = {sname: [] for sname in self.samples}
         for sname in self.samples:
-            chunks = glob.glob(os.path.join(self.tmpdir, f"{sname}.chunk.*"))
+            chunks = self.tmpdir.glob(f"{sname}.chunk.*")
             chunks.sort(key=lambda x: int(x.split('.')[-1]))
             for chunk in chunks:
                 args = (self.data, self.samples[sname], chunk)
@@ -149,25 +146,25 @@ class Step5(BaseStep):
                 self.samples[sname].state = 5
 
             # STORE STATS
-            self.samples[sname].stats_s5 = Stats5(
-                cluster_total=self.nclusters_dict[sname],
-                consensus_total=stat_dict['nconsens'],
-                filtered_by_depth=filter_dict['depth'],
-                filtered_by_max_h=filter_dict['maxh'],
-                filtered_by_max_alleles=filter_dict['maxalleles'],
-                filtered_by_max_n=filter_dict['maxn'],
-                nsites=stat_dict['nsites'],
-                nhetero=stat_dict['heteros'],
-                heterozygosity=(
-                    0. if stat_dict['nsites'] == 0
-                    else stat_dict['heteros'] / stat_dict['nsites']
-                ),
-                min_depth_maj_during_step5=self.data.params.min_depth_majrule,
-                min_depth_stat_during_step5=self.data.params.min_depth_statistical,
+            self.samples[sname].stats_s5 = Stats5()
+            stats = self.samples[sname].stats_s5
+            stats.cluster_total = self.nclusters_dict[sname]
+            stats.consensus_total = stat_dict["nconsens"]
+            stats.filtered_by_depth = filter_dict["depth"]
+            stats.filtered_by_max_h = filter_dict["maxh"]
+            stats.filtered_by_max_alleles = filter_dict["maxalleles"]
+            stats.filtered_by_max_n = filter_dict["maxn"]
+            stats.nsites = stat_dict["nsites"]
+            stats.nhetero = stat_dict["heteros"]
+            stats.heterozygosity = (
+                0. if stat_dict['nsites'] == 0
+                else stat_dict['heteros'] / stat_dict['nsites']
             )
+            stats.min_depth_maj_during_step5 = self.data.params.min_depth_majrule
+            stats.min_depth_stat_during_step5 = self.data.params.min_depth_statistical
 
         # WRITE TO STATS FILE and LOGGER
-        stats_file = os.path.join(self.stepdir, "s5_stats_consensus.txt")
+        stats_file = self.stepdir / "s5_stats_consensus.txt"
         statsdf = pd.DataFrame(
             index=sorted(self.samples),
             columns=list(self.samples[sname].stats_s5.dict()),
@@ -208,7 +205,6 @@ class Step5(BaseStep):
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
         prog.check()
-
 
 
 def recal_hidepth_majrule(data, sample):
@@ -298,64 +294,13 @@ def make_chunks_remote(data, sample, nclusters, ncpus):
         while not done:
             # grab optim clusters and write to file.
             done, chunk = clustdealer(pairdealer, optim)
-            chunkhandle = os.path.join(
-                data.tmpdir, f"{sample.name}.chunk.{optim}.{num * optim}")
+            chunkhandle = data.tmpdir / f"{sample.name}.chunk.{optim}.{num * optim}"
 
             # write to file
             if chunk:
                 with open(chunkhandle, 'wt') as outchunk:
                     outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
                 num += 1
-
-def store_sample_stats(sample, statsdicts):
-    """Not parallel, store the sample objects stats
-    """
-    # record results
-    xcounters = {
-        "nconsens": 0,
-        "heteros": 0,
-        "nsites": 0,
-    }
-    xfilters = {
-        "depth": 0,
-        "maxh": 0,
-        "maxn": 0,
-        "maxalleles": 0,
-    }
-
-    # merge finished consens stats
-    for counters, filters in statsdicts:
-        # sum individual counters
-        for key in xcounters:
-            xcounters[key] += counters[key]
-        for key in xfilters:
-            xfilters[key] += filters[key]
-
-    # set Sample stats_dfs values
-    if int(xcounters['nsites']):
-        prop = int(xcounters["heteros"]) / float(xcounters['nsites'])
-    else:
-        prop = 0
-
-    # store stats attributes to the sample
-    sample.stats_dfs.s5.nsites = int(xcounters["nsites"])
-    sample.stats_dfs.s5.nhetero = int(xcounters["heteros"])
-    sample.stats_dfs.s5.filtered_by_depth = xfilters['depth']
-    sample.stats_dfs.s5.filtered_by_maxH = xfilters['maxh']
-    sample.stats_dfs.s5.filtered_by_maxN = xfilters['maxn']
-    sample.stats_dfs.s5.filtered_by_max_alleles = int(xfilters['maxalleles'])
-    sample.stats_dfs.s5.reads_consens = int(xcounters["nconsens"])
-    sample.stats_dfs.s5.clusters_total = sample.stats_dfs.s3.clusters_total
-    sample.stats_dfs.s5.heterozygosity = float(prop)
-
-    # set the Sample stats summary value
-    sample.stats.reads_consens = int(xcounters["nconsens"])
-
-    # save state to Sample if successful
-    if sample.stats.reads_consens:
-        sample.stats.state = 5
-    else:
-        print("No clusters passed filtering in Sample: {}".format(sample.name))
 
 
 if __name__ == "__main__":

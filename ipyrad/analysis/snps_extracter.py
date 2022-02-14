@@ -641,12 +641,16 @@ if __name__ == "__main__":
     model = ipcoal.Model(tree, Ne=1e5, nsamples=6)
     model.sim_loci(50, 100)
     model.apply_missing_mask(0.5)
+    model.write_snps_to_hdf5(name="test", outdir="/tmp")
+
+    # write popfile and load back as an imap
     model.write_popfile(name='test', outdir="/tmp", diploid=True)
-    model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
-
     imap = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
-    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", mincov=5, imap=imap, minmaf=0.1)
-    tool.run(cores=2)
 
-    ipa.snps_imputer(tool.genos, tool.names, tool.imap, inplace=True).run()
-    print(tool.subsample_genos())
+    # model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
+    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", imap=imap, minmap={i:1 for i in imap}, minmaf=0.1)
+    tool.run(cores=2)
+    # print(tool.subsample_snps().view())    
+
+    # ipa.snps_imputer(tool.genos, tool.names, tool.imap, inplace=True).run()
+    # print(tool.subsample_genos())

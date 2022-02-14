@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-"""
-Functions run on remote parallel cluster in clustmap.
+"""Functions run on remote parallel cluster in clustmap.
+
 """
 
 import os
@@ -15,14 +15,13 @@ from loguru import logger
 from ipyrad.assemble.utils import IPyradError, comp
 from ipyrad.core.schema import Stats3
 
+logger = logger.bind(name="ipyrad")
 
 BIN_MUSCLE = os.path.join(sys.prefix, "bin", "muscle")
 BIN_VSEARCH = os.path.join(sys.prefix, "bin", "vsearch")
 
-
 def concat_multiple_edits(data, sample):
-    """
-    Create a temporary concatenated file for multiple edits input
+    """Create a temporary concatenated file for multiple edits input
     files, which arises when Assemblies were merged between steps
     2 and 3.
     """
@@ -33,28 +32,27 @@ def concat_multiple_edits(data, sample):
     read1s = [i[0] for i in sample.files.edits]
     if len(read1s) > 1:
         cmd = ['cat'] + read1s
-        with open(concat1, 'w') as cout:
-            proc = subprocess.Popen(
-                cmd, stderr=subprocess.PIPE, stdout=cout, close_fds=True)
-            res = proc.communicate()[1]
-            if proc.returncode:
-                raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")                
+        with open(concat1, 'w', encoding="utf-8") as cout:
+            with subprocess.Popen(
+                cmd, stderr=subprocess.PIPE, stdout=cout, close_fds=True,
+                ) as proc:
+                res = proc.communicate()[1]
+                if proc.returncode:
+                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")                
 
     read2s = [i[1] for i in sample.files.edits if i[1]]
     if len(read2s) > 1:
         cmd = ['cat'] + read2s
-        with open(concat2, 'w') as cout:
-            proc = subprocess.Popen(
-                cmd, stderr=subprocess.PIPE, stdout=cout, close_fds=True)
-            res = proc.communicate()[1]
-            if proc.returncode:
-                raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
-
+        with open(concat2, 'w', encoding="utf-8") as cout:
+            with subprocess.Popen(
+                cmd, stderr=subprocess.PIPE, stdout=cout, close_fds=True,
+                ) as proc:
+                res = proc.communicate()[1]
+                if proc.returncode:
+                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
 
 def merge_pairs_with_vsearch(data, sample):
-    """
-    Merge PE reads using vsearch to find overlap.
-    """
+    """Merge PE reads using vsearch to find overlap."""
     # input files (select only the top one)
     in1 = [
         os.path.join(data.tmpdir, f"{sample.name}_unmapped_R1.fastq"),
@@ -101,26 +99,22 @@ def merge_pairs_with_vsearch(data, sample):
         "--fastq_allowmergestagger",
     ]
     # send to logger.debug
-    # print(" ".join(cmd))
-    proc = subprocess.Popen(
-        cmd, 
-        stderr=subprocess.STDOUT, stdout=subprocess.PIPE
-    )
-    res = proc.communicate()[0].decode()
-    if proc.returncode:
-        logger.exception(res)
-        raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
+    # logger.debug(" ".join(cmd))
+    with subprocess.Popen(cmd, 
+        stderr=subprocess.STDOUT, stdout=subprocess.PIPE) as proc:
+        res = proc.communicate()[0].decode()
+        if proc.returncode:
+            logger.exception(res)
+            raise IPyradError("Error merge pairs:\n {}\n{}".format(cmd, res))
     return cmd
 
-
 def merge_end_to_end(data, sample, revcomp, append, identical=False):
-    """ 
-    Combines read1 and read2 with a 'nnnn' separator. If the data are 
+    """Combines read1 and read2 with a 'nnnn' separator. If the data are 
     going to be refmapped then do not revcomp the read2. 
 
-    Parameters:
+    Parameters
     ----------
-    identical (bool):
+    identical: bool
         *only for paired denovo refminus*
         It will split paired reads that have already been
         merged by vsearch. In this case it does not split them, but just uses
@@ -234,17 +228,14 @@ def merge_end_to_end(data, sample, revcomp, append, identical=False):
     fr2.close()
     combout.close()
 
-
 def dereplicate(data, sample):
-    """
-    Dereplicates reads and sorts so reads that were highly replicated are at
+    """Dereplicate reads and sort so reads that were highly replicated are at
     the top, and singletons at bottom, writes output to derep file. Paired
     reads are dereplicated as one concatenated read and later split again.
 
     Updated this function to take infile and outfile to support the double
     dereplication that we need for 3rad (5/29/15 iao).
     """
-
     # select input file with following precedence:
     # .trimmed_R1.fastq.gz, .concat_edit.fq.gz, ._merged.fastq, ._declone.fastq
     infiles = [
@@ -281,21 +272,17 @@ def dereplicate(data, sample):
     if infile.endswith(".gz"):
         cmd.append("--gzip_decompress")
 
-    # build PIPEd job   
-    proc = subprocess.Popen(
-        cmd, 
+    # build PIPEd job
+    with subprocess.Popen(cmd, 
         stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True
-    )
-    errmsg = proc.communicate()[0]
-    if proc.returncode:
-        raise IPyradError(errmsg.decode())
-
+        ) as proc:
+        errmsg = proc.communicate()[0]
+        if proc.returncode:
+            raise IPyradError(errmsg.decode())
 
 def cluster(data, sample):
-    """
-    Calls vsearch for clustering. cov varies by data type, values were chosen
-    based on experience, but could be edited by users
-    """
+    """Calls vsearch for clustering. cov varies by data type, values were chosen
+    based on experience, but could be edited by users."""
     # get dereplicated reads for denovo+reference or denovo-reference
     handles = [
         os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
@@ -357,19 +344,17 @@ def cluster(data, sample):
 
     # run vsearch
     logger.debug(" ".join(cmd))
-    proc = subprocess.Popen(
-        cmd, 
-        stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True)
-    res = proc.communicate()[0]
+    with subprocess.Popen(cmd, 
+        stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True,
+        ) as proc:
+        res = proc.communicate()[0]
 
     # check for errors
     if proc.returncode:
-        raise IPyradError("cmd {}: {}".format(cmd, res))
-
+        raise IPyradError(f"cmd {cmd}: {res}")
 
 def build_clusters(data, sample):
-    """
-    Combines information from .utemp and .htemp files to create .clust files,
+    """Combines information from .utemp and .htemp files to create .clust files,
     which contain un-aligned clusters. Hits to seeds are only kept in the
     cluster if the number of internal indels is less than 'maxindels'.
     By default, we set maxindels=6 for this step (within-sample clustering).
@@ -947,8 +932,11 @@ def reconcat(data, sample):
 
 
 def set_sample_stats(data, sample):
-    """
-    iterate over clustS files to get data returns maxlen and depths arrays
+    """Sets step3 stats to Samples from clusters files.
+
+    This is used for both denovo and reference assemblies.
+    Iterates over clustS files to count data, returns maxlen and 
+    depths arrays for each sample.
     """
     clustfile = os.path.join(
         data.stepdir, f"{sample.name}.clusters.gz")
@@ -1030,9 +1018,15 @@ def set_sample_stats(data, sample):
 
     # store nreads mapped to the reference_filter...
     if data.params.assembly_method == "reference":
-        sample.stats_s3.reads_mapped_to_ref = int(sum(depths))
-        sample.stats_s3.reads_mapped_to_ref_prop = float(
+
+        # paired-end reads map to 1/2 as many loci (2 reads per locus)
+        mapped = int(sum(depths))
+        if data.is_pair:
+            mapped *= 2
+        sample.stats_s3.reads_mapped_to_ref = mapped
+        # hack, this should not be possible to be >1
+        sample.stats_s3.reads_mapped_to_ref_prop = min(round(float(
             sample.stats_s3.reads_mapped_to_ref / 
             sample.stats_s2.reads_passed_filter
-        )
+        ), 2), 1.0)
     return sample

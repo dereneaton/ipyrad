@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-"""
+"""Step 6 reference-based.
+
 Reference based clustering across samples based on mapped positions
 to a reference genome.
 """
@@ -11,14 +12,14 @@ import glob
 import subprocess as sps
 import numpy as np
 from loguru import logger
-from pysam import AlignmentFile, FastaFile
+from pysam import AlignmentFile, FastaFile # pylint: disable=no-name-in-module
 from ipyrad.assemble.utils import IPyradError, chroms2ints
 from ipyrad.core.progress_bar import AssemblyProgressBar
-
 
 BIN_SAMTOOLS = os.path.join(sys.prefix, "bin", "samtools")
 BIN_BEDTOOLS = os.path.join(sys.prefix, "bin", "bedtools")
 
+logger = logger.bind(name="ipyrad")
 
 class ClustMapAcrossReference:
     def __init__(self, step):
@@ -33,11 +34,8 @@ class ClustMapAcrossReference:
                 self.step.stepdir, 
                 f"{self.data.name}_clust_database.fa")
 
-
     def run(self):
-        """
-        Runs the core step functions
-        """
+        """Runs the core step functions"""
         # concat
         self.remote_concat_bams()
 
@@ -50,11 +48,8 @@ class ClustMapAcrossReference:
         # concat aligned files (This is not necessary, chunk again in s7)
         self.remote_concat_alignments()
 
-
     def remote_concat_bams(self):
-        """
-        Merge bam files into a single large sorted indexed bam
-        """
+        """Merge bam files into a single large sorted indexed bam"""
         args = (self.step.data, self.step.samples)
         rasyncs = {0: self.step.lbview.apply(concat_bams, *args)}
 
@@ -64,11 +59,8 @@ class ClustMapAcrossReference:
         prog.block()
         prog.check()
 
-
     def remote_build_ref_regions(self):
-        """
-        call bedtools remotely and track progress
-        """
+        """Call bedtools remotely and track progress."""
         msg = "fetching regions"
         jobs = {0: self.step.lbview.apply(build_ref_regions, self.data)}
         prog = AssemblyProgressBar(jobs, msg, 6, self.step.quiet)
@@ -77,11 +69,8 @@ class ClustMapAcrossReference:
         self.step.regions = jobs[0].get()
         logger.debug('regions: {}...'.format(self.step.regions[:10]))
 
-
     def remote_build_ref_clusters(self):
-        """
-        build clusters and find variants/indels to store
-        """       
+        """Build clusters and find variants/indels to store."""       
         # send N jobs each taking chunk of regions
         ncpus = self.data.ncpus
         nloci = len(self.step.regions)
@@ -102,11 +91,8 @@ class ClustMapAcrossReference:
         prog.block()
         prog.check()
 
-
     def remote_concat_alignments(self):
-        """
-        concatenate fa chunks.
-        """
+        """concatenate fa chunks."""
         msg = "concat alignments"
         args = (self.data, self.samples)
         jobs = {0: self.step.lbview.apply(concat_alignments, *args)}
@@ -261,6 +247,7 @@ def build_ref_clusters(data, idx, iregion):
 
     # dict to map chromosome names to integers
     faidict = chroms2ints(data, False)
+    logger.warning("CHROMS2INTS CHANGED, CHECK INTS INDEXING")
 
     # prepare i/o for pysam reference indexed
     reffai = FastaFile(data.params.reference_sequence)
@@ -373,10 +360,11 @@ def concat_alignments(data, samples):
     # write clusters to file with a header that has all samples in db        
     snames = sorted(samples)
     clustdb = data.samples[snames[0]].files.database
-    with open(clustdb, 'wt') as out:
+    print(f"writing raw aligned loci to {clustdb}")
+    with open(clustdb, 'w', encoding="utf-8") as out:
         out.write("#{}\n".format(",@".join(snames)))
         for clustfile in clustbits:
-            with open(clustfile, 'r') as indata:
+            with open(clustfile, 'r', encoding="utf-8") as indata:
                 dat = indata.read()
                 if dat:
                     out.write(dat)  # + "//\n//\n")

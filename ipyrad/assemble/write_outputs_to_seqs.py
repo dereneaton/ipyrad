@@ -115,7 +115,7 @@ class SeqsDatabase:
             phymap.attrs["names"] = self.snames
             phymap.attrs["columns"] = ["chroms", "phy0", "phy1", "pos0", "pos1"]
 
-    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,int,int]]]:
+    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,str,int,int]]]:
         """Yields loci from each ordered .loci file until empty.
         """
         for locfile in self._get_sorted_loci_chunks():
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
     DATA = ip.load_json("/tmp/TEST5.json")
-    # uncomment both of these to include the ref
+    # uncomment to include the ref
     # DATA.hackers.exclude_reference = False
     print("EXCLUDE REF=", DATA.hackers.exclude_reference)
 

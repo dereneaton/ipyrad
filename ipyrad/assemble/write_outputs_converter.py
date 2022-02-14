@@ -4,106 +4,64 @@
 
 """
 
-import os
+# pylint: disable=too-many-return-statements
+
+from typing import TypeVar, List, Dict, Iterator
+from pathlib import Path
 import h5py
 import numpy as np
-# from ipyrad.assemble.write_outputs_helpers import subsample
 from numba import njit
-from ipyrad.assemble.utils import BTS, chroms2ints
+from ipyrad.assemble.utils import (
+    BTS, chroms2ints, IPyradError, NEXHEADER, NEXCLOSER, STRDICT,
+)
 
-
-
-# -------------------------------------------------------------
-# jitted subsample func
-# -------------------------------------------------------------
-
-@njit
-def subsample(snpsmap):
-    """
-    Subsample snps, one per locus, using snpsmap
-    """
-    sidxs = np.unique(snpsmap[:, 0])
-    subs = np.zeros(sidxs.size, dtype=np.int64)
-    idx = 0
-    for sidx in sidxs:
-        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
-        site = np.random.choice(sites)
-        subs[idx] = site
-        idx += 1
-    return subs
+Assembly = TypeVar("Assembly")
 
 
 class Converter:
-    """
-    Functions for converting hdf5 arrays into output files
-    """
-    def __init__(self, data):
-
-        # store inputs        
+    """Functions for converting hdf5 arrays into output files."""
+    def __init__(self, data: Assembly):
         self.data = data
-        self.seqs_database = os.path.join(
-            self.data.stepdir, f"{self.data.name}.seqs.hdf5")
-        self.snps_database = os.path.join(
-            self.data.stepdir, f"{self.data.name}.snps.hdf5")
-        # self.exclude_ref = (
-            # self.data.hackers.exclude_reference and self.data.is_ref)
+        self.snps_database: Path = data.output_formats["snps_database"]
+        self.seqs_database: Path = data.output_formats["seqs_database"]
+        self.snames: List[str] = []
+        self.pnames: Dict[str,str] = {}
 
-        # get sorted names
-        self.snames = sorted(self.data.samples)
-        if "reference" in self.snames:
-            self.snames.remove("reference")
-            self.snames = ["reference"] + self.snames
-        self.sidxs = {sample: i for (i, sample) in enumerate(self.snames)}
+        # fill ordered names from h5 database 
+        with h5py.File(self.snps_database, 'r') as io5:
+            self.snames = list(io5["snpsmap"]["names"])
 
-        # get padded names
+        # get padded names based on lengths.
         longname = max(len(i) for i in self.snames)
-        self.pnames = {
-            i: i.ljust(longname + 5) for i in self.snames
-        }
+        self.pnames = {i: i.ljust(longname + 5) for i in self.snames}
 
-
-    def run(self, oformat):
-        """
-        Write outputs one the selected output format.
-        """
-        # phy array outputs
-        if oformat == "p":
+    def run(self, oformat: str) -> Path:
+        """Write outputs one the selected output format."""
+        if oformat == "p":               # phylip format.
             return self.write_phy()
-
-        # phy array + phymap outputs
-        if oformat == "n":
+        if oformat == "n":               # nexus format.
             return self.write_nex()
-        
-        if oformat == "G":
+        if oformat == "G":               # gphocs format.
             return self.write_gphocs()
-
-        # phy array + phymap + populations outputs
-        if oformat == "m":
-            pass
-
-        # snps array + snpsmap outputs
-        if oformat == "s":
+        if oformat == "s":               # snps + snpsmap outputs
             snpsfile = self.write_snps()
             snpsmapfile = self.write_snps_map()
             return snpsfile, snpsmapfile
-
-        # recommended to use analysis tools for unlinked sampling.
-        if oformat == "u":
+        if oformat == "u":               # usnps
             return self.write_usnps()
-
-        if oformat == "k":
+        if oformat == "k":               # str (structure)
             return self.write_str()
-
-        if oformat == "g":
+        if oformat == "g":               # genos format
             return self.write_geno()
-
-        if oformat == "t":
+        if oformat == "t":               # treemix format
             return self.write_treemix()
-
+        raise IPyradError(f"output_format {oformat} not recognized.")
 
     def write_phy(self):
-        """
-        Writes entire sequence matrix, names padded, with header.
+        """Write entire sequence matrix, names padded, with header.
+    
+        If PE data the PE inserts have been removed.
+
         10 100
         taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
         taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
@@ -111,33 +69,56 @@ class Converter:
         taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
         """
         # write from hdf5 array
-        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.phy")
-        with open(outfile, 'w') as out:
-            with h5py.File(self.seqs_database, 'r') as io5:
+        outpath = Path(self.data.stepdir) / f"{self.data.name}.phy"
+        with h5py.File(self.seqs_database, 'r') as io5:
 
-                # load seqarray 
-                seqarr = io5['phy']
-                arrsize = io5['phymap'][-1, 2]
+            # load seqarray 
+            seqarr = io5['phy']
 
-                # if reference then inserts are not trimmed from phy
-                out.write("{} {}\n".format(len(self.snames), arrsize))
+            with open(outpath, 'w', encoding="utf-8") as out:
+                out.write("{} {}".format(*seqarr.shape))               # pylint: disable=no-member
+                for idx, name in enumerate(self.snames):
+                    seq = seqarr[idx, :].tobytes().decode().upper()    # pylint: disable=no-member
+                    pname = self.pnames[name]
+                    out.write(f"{pname}{seq}\n")
+        return outpath
 
-                # write to disk
-                for idx in range(io5['phy'].shape[0]):
-                    seq = seqarr[idx, :arrsize].view("S1")
-                    out.write(
-                        "{}{}".format(
-                            self.pnames[self.snames[idx]],
-                            b"".join(seq).decode().upper() + "\n",
-                        )
-                    )
-        return outfile
 
+    def _iter_nex_block(self, chunksize: int = 80) -> Iterator[np.ndarray]:
+        """Yields chunks of columns of phy array for nexus interleave."""
+        with h5py.File(self.seqs_database, 'r') as io5:
+
+            # load seqarray (this could be chunked, this can be >50Gb)
+            seqarr = io5['phy']
+            shape = seqarr.shape  # pylint: disable=no-member
+
+            # iterate by blocks until all columns fetched
+            for bidx in range(0, shape[1], chunksize):
+                # grab a big block of data (nsamples, 100_000)
+                yield seqarr[:, bidx:bidx + chunksize]
+
+    def _iter_nex_blocks(self, nblocks: int = 100) -> Iterator[List[str]]:
+        """Yields lists of locus strings for writing nex interleaved."""
+        blocks = []
+        bidx = 0
+        for chunk in self._iter_nex_block():
+            block = []
+            for sidx, name in enumerate(self.snames[::-1]):
+                pname = self.pnames[name]
+                seq = chunk[sidx].tobytes().decode()
+                block.append(f"{pname}{seq}")
+            blocks.append("\n".join(block))
+            bidx += 1
+            if bidx >= nblocks:
+                yield blocks
+                blocks = []
+                bidx = 0
+        if blocks:
+            yield blocks
 
     def write_nex(self):
-        """
-        Writes interleaved sequence matrix, names padded, with header.
-
+        """Write interleaved sequence matrix, names padded, with header.
+        
         #nexus
         begin data;
           dimensions ntax=10 nchar=100;
@@ -157,68 +138,39 @@ class Converter:
           ...
         end;
         """
-        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.nex")
-        with open(outfile, 'w') as out:
-            with h5py.File(self.seqs_database, 'r') as io5:
+        # open output file to write to
+        outpath = Path(self.data.stepdir) / f"{self.data.name}.nex"
+        with open(outpath, 'w', encoding="utf-8") as out:
+            out.write(NEXHEADER.format(*shape))
 
-                # load seqarray (this could be chunked, this can be >50Gb)
-                seqarr = io5['phy'][:]
-                arrsize = io5['phymap'][-1, 2]
-
-                # write nexus seq header
-                out.write(NEXHEADER.format(seqarr.shape[0], arrsize))
-
-                # get the name order for every block
-                xnames = [
-                    self.pnames[self.snames[i]] for i in range(len(self.snames))
-                ]
-
-                # grab a big block of data
-                chunksize = 100000  # this should be a multiple of 100
-                for bidx in range(0, arrsize, chunksize):
-                    bigblock = seqarr[:, bidx:bidx + chunksize].view("S1")
-                    lend = int(arrsize - bidx)
-
-                    # store interleaved seqs 100 chars with longname+2 before
-                    tmpout = []            
-                    for block in range(0, min(chunksize, lend), 100):
-                        stop = min(block + 100, arrsize)
-
-                        for idx, name in enumerate(xnames):  
-                            seqdat = bigblock[idx, block:stop]
-                            tmpout.append("  {}{}\n".format(
-                                name,
-                                seqdat.decode().upper()))
-                        tmpout.append("\n")
-
-                    # print intermediate result and clear
-                    if any(tmpout):
-                        out.write("".join(tmpout))
+            # print intermediate result and clear
+            for block in self._iter_nex_blocks():
+                out.write("\n".join(block))
                 
-                # closer
-                out.write(NEXCLOSER)
+            # closer
+            out.write(NEXCLOSER)
                 
-                # add partition information from maparr
-                maparr = io5["phymap"][:, 2]
-                charsetblock = []
-                charsetblock.append("BEGIN SETS;")
-                
-                # the first block
-                charsetblock.append("charset {} = {}-{};".format(
-                    0, 1, maparr[0],
-                ))
+            # # add partition information from maparr
+            # maparr = io5["phymap"][:, 2]
+            # charsetblock = []
+            # charsetblock.append("BEGIN SETS;")
+            
+            # # the first block
+            # charsetblock.append("charset {} = {}-{};".format(
+            #     0, 1, maparr[0],
+            # ))
 
-                # all other blocks
-                # nexus is 1-indexed. mapparr is dtype np.uint64, so adding
-                # a standard int results in np.float64, so cast uint64 first
-                for idx in range(0, maparr.shape[0] - 1):
-                    charsetblock.append("charset {} = {}-{};".format(
-                        idx + 1, maparr[idx] + np.uint64(1) , maparr[idx + 1]
-                        )
-                    )
-                charsetblock.append("END;")
-                out.write("\n".join(charsetblock))
-        return outfile
+            # # all other blocks
+            # # nexus is 1-indexed. mapparr is dtype np.uint64, so adding
+            # # a standard int results in np.float64, so cast uint64 first
+            # for idx in range(0, maparr.shape[0] - 1):
+            #     charsetblock.append("charset {} = {}-{};".format(
+            #         idx + 1, maparr[idx] + np.uint64(1) , maparr[idx + 1]
+            #         )
+            #     )
+            # charsetblock.append("END;")
+            # out.write("\n".join(charsetblock))
+        return outpath
 
 
     def write_snps(self):
@@ -558,27 +510,26 @@ class Converter:
         mig.write_seqfile()
 
 
+# -------------------------------------------------------------
+# jitted subsample func
+# -------------------------------------------------------------
 
-##########################################
-# GLOBALS
-##########################################
+@njit
+def subsample(snpsmap):
+    """Subsample snps, one per locus, using snpsmap."""
+    sidxs = np.unique(snpsmap[:, 0])
+    subs = np.zeros(sidxs.size, dtype=np.int64)
+    idx = 0
+    for sidx in sidxs:
+        sites = snpsmap[snpsmap[:, 0] == sidx, 1]
+        site = np.random.choice(sites)
+        subs[idx] = site
+        idx += 1
+    return subs
 
-NEXHEADER = """#nexus
-begin data;
-  dimensions ntax={} nchar={};
-  format datatype=dna missing=N gap=- interleave=yes;
-  matrix
-"""
 
-NEXCLOSER = """  ;
-end;
-"""
+if __name__ == "__main__":
 
-STRDICT = {
-    'A': '0', 
-    'T': '1', 
-    'G': '2', 
-    'C': '3', 
-    'N': '-9', 
-    '-': '-9',
-}
+    import ipyrad as ip
+    DATA = ip.load_json("/tmp/TEST5.json")
+    

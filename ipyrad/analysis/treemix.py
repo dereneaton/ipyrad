@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-# py2/3 compat
-from __future__ import print_function
-
-# standar lib
 import os
 import sys
 import gzip
@@ -14,7 +10,7 @@ import numpy as np
 import pandas as pd
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import Params
-from .snps_extracter import SNPsExtracter
+from ipyrad.analysis.snps_extracter import SNPsExtracter
 # from ipyrad.assemble.write_outfiles import reftrick, GETCONS
 
 

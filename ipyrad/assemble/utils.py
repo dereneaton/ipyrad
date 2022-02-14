@@ -306,6 +306,25 @@ def splitalleles(consensus):
 
 
 
+NEXHEADER = """#nexus
+begin data;
+  dimensions ntax={} nchar={};
+  format datatype=dna missing=N gap=- interleave=yes;
+  matrix
+"""
+
+NEXCLOSER = """  ;
+end;
+"""
+
+STRDICT = {
+    'A': '0', 
+    'T': '1', 
+    'G': '2', 
+    'C': '3', 
+    'N': '-9', 
+    '-': '-9',
+}
 
 # used by consens
 ## Alleles priority dict. The key:vals are the same as the AMBIGS dict

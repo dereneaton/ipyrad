@@ -936,7 +936,7 @@ def window_extracter(
 if __name__ == "__main__":
     
     import ipyrad.analysis as ipa
-    ipa.set_loglevel("INFO")
+    ipa.set_log_level("INFO")
 
     DATA = "/home/deren/Documents/ipyrad/sandbox/refdata_outfiles/refdata.seqs.hdf5"
 

@@ -1,47 +1,51 @@
 #!/usr/bin/env python
 
-"""
-General Base class for Step class objects called by Assembly.run()
-to call the basic setup funcs shared by all steps.
+"""Abstract Base class for Step class objects called by Assembly.run().
+
+Each step of the assembly creates a subclass, e.g., Step1, Step2, etc,
+that inherit from the Base class. This base class prints a header, 
+fetches the subsamples ready to process, and parses population data.
 """
 
-import os
+from typing import TypeVar, Dict, Tuple, List
+from pathlib import Path
 import shutil
+from abc import ABC
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.core.schema import SampleSchema
 
+Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
 
-class BaseStep:
-    """
-    General Base class for Step class objects called by Assembly.run()
-    to call the basic setup funcs shared by all steps.
-    """
-    def __init__(self, data, step, quiet, force):
+class BaseStep(ABC):
+    """Abstract Base Class for Step class objects."""
+    def __init__(self, data: Assembly, step: str, quiet: bool, force: bool):
 
         # store step
         self.data = data
-        self.quiet = quiet
         self.step = step
+        self.quiet = quiet
         self.force = force
-        self.print_headers()
 
-        # will be filled by .get_subsamples() 
-        self.samples = {}
-        self.get_subsamples()
+        # data to be filled, updates settings of Assembly
+        self.samples: Dict[str, Sample] = {}
+        """: Subsample of Assembly Samples ready for this step."""
+        self.data.stepdir: Path = None
+        """: Output dir used during this step."""        
+        self.data.tmpdir: Path = None
+        """: Tmp dir used during this step."""
+        self.data.populations: Dict[str, Tuple[List[str], int]] = {}
+        """: Population mapping {popname: ([sample_names], minsamp)}."""
 
-        # dirs will be created for this step by .setup_dirs()
-        self.stepdir = None
-        self.tmpdir = None
-        self.setup_dirs()
+        # Initiate the step.
+        self._print_headers()
+        self._get_subsamples()
+        self._setup_dirs()
+        if self.step == 7:
+            self._parse_populations()
 
-        # parse population file for step 7
-        if step == 7:
-            self.data.populations = {}            
-            self.parse_populations()
-
-
-    def print_headers(self) -> None:
+    def _print_headers(self) -> None:
         """print the CLI header for this step"""
         if self.quiet:
             return
@@ -76,10 +80,8 @@ class BaseStep:
         else:
             print(messages[key])
 
-
-    def get_subsamples(self) -> None:
-        """
-        Sets step.samples dictionary mapping {sname: Sample}
+    def _get_subsamples(self) -> None:
+        """Sets step.samples dictionary mapping {sname: Sample}
 
         Select samples ready for this step based on the .state 
         attribute. This is set at the end of each step if a sample
@@ -99,15 +101,15 @@ class BaseStep:
         not_ready = {}
         already_done = {}
         todo_samples = {}
-        for sname in self.data.samples:
+        for sname, sample in self.data.samples.items():
             # drop the reference sample created in s7, if present
             if sname != "reference":
-                if self.data.samples[sname].state < self.step - 1:
-                    not_ready[sname] = self.data.samples[sname]
-                elif self.data.samples[sname].state >= self.step:
-                    already_done[sname] = self.data.samples[sname]
+                if sample.state < self.step - 1:
+                    not_ready[sname] = sample
+                elif sample.state >= self.step:
+                    already_done[sname] = sample
                 else:
-                    todo_samples[sname] = self.data.samples[sname]
+                    todo_samples[sname] = sample
 
         # warn about skipped samples that are not ready
         if not_ready:
@@ -130,15 +132,12 @@ class BaseStep:
                     f"{', '.join(list(already_done))}")
             self.samples = todo_samples
 
-        # if it is step7, add a 'reference' sample to collect stats for.
+        # STEP7 only: add a 'reference' sample (even if we will exclude it later.)
         if (self.step == 7) and self.data.is_ref:
             self.samples['reference'] = SampleSchema(name="reference", state=7)
 
-
-    def setup_dirs(self) -> None:
-        """
-        Create the output dir and tmpdir for this step.
-        """
+    def _setup_dirs(self) -> None:
+        """Create the output dir and tmpdir for this step."""
         logger.debug(f"creating dirs for step {self.step}")
         suffix = {
             1: "fastqs",
@@ -149,45 +148,51 @@ class BaseStep:
             6: "across",
             7: "outfiles",
         }
-        self.stepdir = os.path.join(
-            self.data.params.project_dir, 
-            self.data.name + f"_{suffix[self.step]}",
-        )
-        self.tmpdir = os.path.join(
-            self.data.params.project_dir, 
-            self.data.name + f"_tmp_{suffix[self.step]}",
-        )
+        self.data.stepdir = (self.data.params.project_dir / 
+            f"{self.data.name}_{suffix[self.step]}")
+        self.data.tmpdir = (self.data.params.project_dir / 
+            f"{self.data.name}_tmp_{suffix[self.step]}")
 
         # clear stepdir or raise an error depending on exists and force
-        if os.path.exists(self.stepdir):            
+        if self.data.stepdir.exists():
             if self.force:
-                logger.debug(
-                    f"removing previous {suffix[self.step]} dir: {self.stepdir}"
-                )
-                shutil.rmtree(self.stepdir)
+                msg = f"removing previous {suffix[self.step]} dir: {self.data.stepdir}"
+                logger.debug(msg)
+                shutil.rmtree(self.data.stepdir)
             else:
-                raise IPyradError(
-                    f"Directory {self.stepdir} already exists. "
-                    "Use force to overwrite it.")
+                msg = f"Directory {self.data.stepdir} exists. Use force to overwrite."
+                raise IPyradError(msg)                
             
-        # always clear tmpdir
-        if os.path.exists(self.tmpdir):
-            shutil.rmtree(self.tmpdir)
+        # always clear tmpdir, and always make both new dirs.
+        if self.data.tmpdir.exists():
+            shutil.rmtree(self.data.tmpdir)
+        self.data.tmpdir.mkdir(exist_ok=True)
+        self.data.stepdir.mkdir(exist_ok=True)
 
-        # always make both dirs
-        os.makedirs(self.tmpdir, exist_ok=True)
-        os.makedirs(self.stepdir, exist_ok=True)
+    def _parse_populations(self) -> None:
+        """Parse the population file params input file. 
 
+        In the API a user can set the populations using a dictionary 
+        on the Assembly object as {popname: ([samps], minsamp), ...}.
+        
+        In the CLI this information is parsed from a file.
+        Default format is one sample per line, listing population name
+        then sample name separated by whitespace. In addition, 'minsamp'
+        population minimum coverage settings (analagous to the param
+        `minsamples_locus` but applied to each population) must be set
+        on an additional line starting with a hash character.
 
-    def parse_populations(self) -> None:
+        >>> ind1 pop1
+        >>> ind2 pop1
+        >>> ind3 pop2
+        >>> ind4 pop2
+        >>> ...        
+        >>> # pop1:2, pop2: 2, ...
         """
-        Parse the population file params input file. In the API
-        a user _could_ alternatively add a pop dictionary to the 
-        Assembly object as {popname: ([samps], minsamp), ...}
+        # if Assembly already has population info saved to it (e.g., 
+        # in its JSON) then if pop_assign_file is empty we do not 
+        # want it to be removed... so hard to do both API and CLI...
 
-        The populations file should be a tabular whitespace delimited
-        file with:...
-        """
         # TODO: just didn't get around to re-implementing and testing yet...
         if self.data.params.pop_assign_file:
             raise NotImplementedError(
@@ -201,9 +206,7 @@ class BaseStep:
 
 
 class TestStep(BaseStep):
-    """
-    Testing example setup for step subclasses
-    """
+    """Test BaseStep with a toy example subclass."""
     def __init__(self, data, force, quiet, ipyclient):
         super().__init__(data=data, step=1, force=force, quiet=quiet)
         self.ipyclient = ipyclient
@@ -213,8 +216,8 @@ class TestStep(BaseStep):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG")
+    ip.set_log_level("DEBUG")
     DATA = ip.Assembly("TEST")
     DATA.params.project_dir = "/tmp"
     STEP = TestStep(DATA, force=True, quiet=False, ipyclient=None)
-    print(STEP)
+    print(STEP.samples)

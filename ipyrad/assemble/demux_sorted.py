@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-"""
-Loads files and counts nreads for sorted_fastq_path data input
+"""Loads files and counts nreads for sorted_fastq_path data input
 """
 
-import os
+from typing import List, Dict, Tuple, TypeVar
 import glob
+from pathlib import Path
 import itertools
 import subprocess
 import pandas as pd
@@ -14,93 +14,79 @@ from ipyrad.assemble.utils import IPyradError, BADCHARS
 from ipyrad.core.schema import SampleSchema, Stats1
 from ipyrad.core.progress_bar import AssemblyProgressBar
 
-
+logger = logger.bind(name="ipyrad")
+Step1 = TypeVar("Step1")
+Assembly = TypeVar("Assembly")
 
 class FileLinker:
+    """Loads Samples from file names and check sample names for bad chars.
     """
-    Loads Samples from file names and check sample names for bad chars.
-    """
-    def __init__(self, step):
-        # store input
-        self.step = step
-        self.quiet = step.quiet
-        self.data = step.data
-        self.fastqs = glob.glob(self.data.params.sorted_fastq_path)
-
-        # to be filled
-        self.ftuples = {}
-
-        # parallel distributor
+    def __init__(self, step: Step1):
+        self.data: Assembly = step.data
+        self.quiet: bool = step.quiet
         self.lbview = step.ipyclient.load_balanced_view()
 
+        self.fastqs: List[Path] = []
+        self.ftuples: Dict[str,Tuple[str,str]] = {}
 
     def run(self):
-        """
-        checks files and then counts reads in each one.
-        """
-        self.check_file_suffixes()
-        self.parse_sample_names_and_pairs()
-        self.check_sample_names()
+        """Checks files and then counts reads in each one."""
+        self._get_fastq_files()
+        self._check_file_suffixes()
+        self._parse_sample_names_and_pairs()
+        self._check_sample_names()
+        self._remote_run_counter()
+        self._write_stats()
+        self.data.save_json()
 
-        # distributes jobs to parallel
-        self.remote_run_counter()
+    def _get_fastq_files(self):
+        """Sets .fastqs with all Paths matching the regular expression path."""
+        fastqs = glob.glob(str(self.data.params.sorted_fastq_path))
+        self.fastqs = [Path(i) for i in fastqs]
 
-        # save json file and csv stats file.
-        self.write_json_and_stats()
-
-
-    def check_file_suffixes(self):
-        """
-        Check file endings for unsupported types.
-        """
+    def _check_file_suffixes(self):
+        """Check file endings for unsupported types."""
         # Assert files are not .bz2 format
-        if any([i.endswith(".bz2") for i in self.fastqs]):
-            raise IPyradError((
-                "Found bz2 formatted files in 'sorted_fastq_path': {} "
-                "ipyrad does not support bz2 files. The only supported "
-                "formats for samples are .gz, .fastq, and .fq. The easiest "
-                "thing to do is probably go into your sorted_fastq_path "
-                "directory and issue this command `bunzip2 *`. You "
-                "will probably also need to update your params file to "
-                "reflect the fact that sample raw files now probably end "
-                "with .fq or .fastq.")
-                .format(self.fastqs))
+        if any(i.suffix == ".bz2" for i in self.fastqs):
+            raise IPyradError(BZ2_ERROR)
 
         # filter out any files without proper file endings. Raise if None left
-        endings = ("gz", "fastq", "fq")
-        fastqs = []
-        for i in self.fastqs:
-            if i.split(".")[-1] not in endings:
-                logger.warning(f"skipping {i}, file suffix not recognized.")
+        endings = (".gz", ".fastq", ".fq")
+        keep = []
+        for path in self.fastqs:
+            if path.suffix not in endings:
+                logger.warning(f"skipping {path}, file suffix not recognized.")
             else:
-                fastqs.append(i)
-        self.fastqs = fastqs
+                keep.append(path)
+
+        # update fastqs to be files with good suffix, raise if no files.
+        self.fastqs = keep
         if not self.fastqs:
             raise IPyradError((
                 "No fastq files found in 'sorted_fastq_path': {}\n"
                 "Check that file names match the required convention for "
                 "paired datatype, i.e., paired file names should be "
-                "identical save for _R1_ and _R2_ (note the underscores "
-                "before AND after R*).")
+                "identical save for 'R1' and 'R2' in names."
                 .format(self.data.params.sorted_fastq_path))
+            )
 
+    def _parse_sample_names_and_pairs(self):
+        """Check for PE matching and extract sample names to ftuples.
 
-    def parse_sample_names_and_pairs(self):
-        """
-        check for PE matching and extract sample names to ftuples
+        A fairly complicated process to flexibly find matching PE files.
         """
         def drop_from_right(fname, idx):
-            """
-            used in pair name parsing to sub out _ delim chunks
+            """Used in pair name parsing to sub out _ delim chunks
             
-            Example:
-            ---------
+            Example
+            -------
             if idx = 1 then:
                 name_prefix_001_R1_002.fastq.gz           # 1.
                 ['name_prefix', '001', 'R1', '002']       # 2.
                 ['name_prefix', '001', '002']             # 3.
             """
-            fname = os.path.basename(fname).rstrip(".gz").rstrip(".fastq").rstrip(".fq")
+            # fname = os.path.basename(fname).rstrip(".gz").rstrip(".fastq").rstrip(".fq")
+            fname = fname.name.rstrip(".gz").rstrip(".fastq").rstrip(".fq")
             chunks = fname.split("_")
             sublist = [j for i, j in enumerate(chunks[::-1]) if i != idx][::-1]
             return "_".join([i for i in sublist if i]).rstrip("_")
@@ -108,10 +94,10 @@ class FileLinker:
         # check if file names end with _ before the suffix and split
         # on two underscores, else split on last one.
         bases = sorted([
-            os.path.basename(i).rstrip(".gz").rstrip(".fastq").rstrip(".fq")
+            i.name.rstrip(".gz").rstrip(".fastq").rstrip(".fq")
             for i in self.fastqs
         ])
-        logger.info(bases)
+        logger.info(f"names: {bases}")
 
         # link pairs into tuples
         if self.data.is_pair:
@@ -151,7 +137,7 @@ class FileLinker:
             )
 
             for fname, files in groups:
-                fname = os.path.basename(fname)
+                fname = fname.name  # os.path.basename(fname)
                 files = sorted(files)
                 logger.debug(f"detected paired files: {files}")
                 self.ftuples[fname] = (files[0], files[1])
@@ -169,7 +155,7 @@ class FileLinker:
             endings = ("_R2", "_2", "_R2")
             warning = []
             for base in bases:
-                if any([base.endswith(i) for i in endings]):
+                if any(base.endswith(i) for i in endings):
                     warning.append(base)
             if warning:
                 message = (
@@ -182,46 +168,36 @@ class FileLinker:
                 logger.warning(message)
 
             for i in self.fastqs:
-                fname = os.path.basename(i.rstrip('.gz').rstrip('.fastq').rstrip('.fq'))
+                # fname = os.path.basename(i.rstrip('.gz').rstrip('.fastq').rstrip('.fq'))
+                fname = i.name.rstrip('.gz').rstrip('.fastq').rstrip('.fq')
                 self.ftuples[fname] = (i, "")
+        logger.debug(f"paired paths: {self.ftuples}")
 
-        logger.debug(f"ftuples: {self.ftuples}")
-
-
-    def check_sample_names(self):
-        """
-        Do not allow bad characters in names.
-        """
+    def _check_sample_names(self):
+        """Do not allow bad characters in names."""
         snames = sorted(self.ftuples)
         for sname in snames:
-            if any([i in sname for i in BADCHARS]):
+            if any(i in sname for i in BADCHARS):
                 newname = "".join([i.replace(i, "_") for i in BADCHARS])
                 logger.warning(
                     f"changing name {sname} to {newname} (hard characters).")
                 self.ftuples[newname] = self.ftuples.pop(sname)
 
-
-    def remote_run_counter(self):
-        """
-        Read in fastq files, count nreads for stats, and create Samples.
-        """
+    def _remote_run_counter(self):
+        """Read in fastq files, count nreads for stats, and create Samples."""
         # submit jobs to run on client
-        rasyncs = {}
-        for sname in self.ftuples:
-            rasyncs[sname] = self.lbview.apply(
-                zbuf_count_lines, self.ftuples[sname][0]
-            )
+        jobs = {}
+        for sname, ftup in self.ftuples.items():
+            jobs[sname] = self.lbview.apply(zbuf_count_lines, ftup[0])
 
         # show progress bar until all jobs complete
-        message = "loading reads"
-        prog = AssemblyProgressBar(rasyncs, message, step=1, quiet=self.quiet)
+        msg = "loading reads"
+        prog = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
         prog.block()
         prog.check()
 
         # collect results as they finish and show progress bar
-        for sname in prog.results:
-            # get nreads
-            nreads = prog.results[sname]
+        for sname, nreads in prog.results.items():
             if not nreads:
                 logger.warning(
                     f"sample {sname} has 0 reads and will be excluded.")
@@ -233,16 +209,9 @@ class FileLinker:
                 self.data.samples[sname] = sample
                 logger.debug(f"new sample {sname}: {sample.stats_s1.reads_raw}")
 
-
-    def write_json_and_stats(self):
-        """
-        Write updates to the project JSON files and copy stats to a 
-        human-readable stats file.
-        """
+    def _write_stats(self):
+        """Write stats to human-readable stats file."""
         logger.info(f"created {len(self.data.samples)} new samples")
-        self.data.save_json()
-
-        handle = os.path.join(self.step.stepdir, 's1_demultiplex_stats.txt')
         statsdf = pd.DataFrame(
             index=sorted(self.data.samples),
             columns=["reads_raw"],
@@ -250,17 +219,16 @@ class FileLinker:
                 self.data.samples[i].stats_s1.reads_raw 
                 for i in sorted(self.data.samples)
             ])
-        with open(handle, 'w') as outfile:
-            statsdf.fillna(value=0).astype(int).to_string(outfile)
+        handle = self.data.stepdir / 's1_demultiplex_stats.txt'
+        with open(handle, 'w', encoding="utf-8") as out:
+            statsdf.fillna(value=0).astype(int).to_string(out)
             # statsdf.to_csv(handle, sep="\t")
 
 
 def zbuf_count_lines(filename):
-    """
-    Fast line counter using unix utils
-    """
+    """Fast line counter using unix utils."""
     # gunzip -c is the same as zcat but supported on more systems
-    if filename.endswith(".gz"):
+    if filename.suffix == ".gz":
         cmd1 = ["gunzip", "-c", filename]
     else:
         cmd1 = ["cat", filename]
@@ -269,23 +237,34 @@ def zbuf_count_lines(filename):
     cmd2 = ["wc", "-l"]
 
     # start process one and pipe to process 2
-    proc1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
-    proc2 = subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE)
-    res = proc2.communicate()[0]
+    with subprocess.Popen(cmd1, stdout=subprocess.PIPE) as proc1:
+        with subprocess.Popen(cmd2, stdin=proc1.stdout, stdout=subprocess.PIPE) as proc2:
+            res = proc2.communicate()[0]
     if proc2.returncode:
         raise IPyradError("error zbuf_count_lines {}:".format(res))
     nreads = int(res.split()[0]) / 4
     return nreads
 
 
+BZ2_ERROR = """
+Found bz2 formatted files in 'sorted_fastq_path'.
+ipyrad does not support bz2 files. The only supported
+formats for samples are .gz, .fastq, and .fq. The easiest
+thing to do is probably go into your sorted_fastq_path
+directory and issue this command `bunzip2 *`. You
+will probably also need to update your params file to
+reflect the fact that sample raw files now probably end
+with .fq or .fastq.
+"""
+
+
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_loglevel("DEBUG")
+    ip.set_log_level("DEBUG")
 
     DATA = ip.Assembly("TEST")
     DATA.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
     DATA.params.project_dir = "/tmp"
     DATA.run('1', force=True, quiet=True)
     print(DATA.stats)
-
