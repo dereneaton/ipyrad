@@ -12,12 +12,11 @@ Install ipyrad with:
 Or, for developers, install dependencies and then ipyrad w/ pip local:
     >>> cd ipyrad/
     >>> conda env create -f environment.yml
-    >>> pip install . --no-deps
+    >>> pip install -e . --no-deps
 """
 
 import re
-from setuptools import setup, find_packages
-
+from setuptools import setup
 
 # Auto-update ipyrad version from git repo tag
 # Fetch version from git tags, and write to version.py.
@@ -29,6 +28,7 @@ CUR_VERSION = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
 
 setup(
     name="ipyrad",
+    packages=["ipyrad"],
     version=CUR_VERSION,
     url="https://github.com/dereneaton/ipyrad",
     author="Deren Eaton and Isaac Overcast",
@@ -36,15 +36,14 @@ setup(
     description="Interactive assembly and analysis of RAD-seq data sets",
     long_description=open('README.rst').read(),
     long_description_content_type='text/x-rst',
-    packages=find_packages(),
     install_requires=[],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:CLI']},
     license='GPL',
     classifiers=[
         'Programming Language :: Python',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
 )
