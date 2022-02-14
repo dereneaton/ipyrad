@@ -73,20 +73,20 @@ class Stats4(BaseModel):
     min_depth_stat_during_step4: int = 0
 
 class Stats5(BaseModel):
-    cluster_total: int
-    consensus_total: int
-    filtered_by_depth: int
-    filtered_by_max_h: int
-    filtered_by_max_alleles: int
-    filtered_by_max_n: int
-    heterozygosity: float
-    nsites: int
-    nhetero: int
-    min_depth_maj_during_step5: int = 0
-    min_depth_stat_during_step5: int = 0
+    cluster_total: int = None
+    consensus_total: int = None
+    filtered_by_depth: int = None
+    filtered_by_max_h: int = None
+    filtered_by_max_alleles: int = None
+    filtered_by_max_n: int = None
+    heterozygosity: float = None
+    nsites: int = None
+    nhetero: int = None
+    min_depth_maj_during_step5: int = None
+    min_depth_stat_during_step5: int = None
 
 class Stats7(BaseModel):
-    nloci: int
+    nloci: int = 0
 
 class SampleFiles(BaseModel):
     """A dict-like class for storing file paths to samples."""
