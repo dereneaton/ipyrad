@@ -10,7 +10,7 @@ the wrong type it will raise an error.
 # pylint: disable=no-self-argument, no-name-in-module, no-self-use
 
 import glob
-import os
+from pathlib import Path
 from enum import Enum
 from typing import List, Tuple
 from pydantic import BaseModel, Field, validator
@@ -51,12 +51,12 @@ class DataType(str, Enum):
 class ParamsSchema(BaseModel):
     """Assembly object parameters for ipyrad assembly."""
     assembly_name: str = Field(allow_mutation=False)
-    project_dir: str = os.path.realpath("./")
-    raw_fastq_path: str = None
-    barcodes_path: str = None
-    sorted_fastq_path: str = None
+    project_dir: Path = Path.cwd()
+    raw_fastq_path: Path = None
+    barcodes_path: Path = None
+    sorted_fastq_path: Path = None
     assembly_method: AssemblyMethod = "denovo"
-    reference_sequence: str = None
+    reference_sequence: Path = None
     datatype: DataType = "rad"
     restriction_overhang: Tuple[str, str] = ("TGCAG", "")
     max_low_qual_bases: int = 5
@@ -78,8 +78,8 @@ class ParamsSchema(BaseModel):
     trim_reads: Tuple[int, int, int, int] = (0, 0, 0, 0)
     trim_loci: Tuple[int, int, int, int] = (0, 0, 0, 0)
     output_formats: List[str] = ("p", "s", "l")
-    pop_assign_file: str = None
-    reference_as_filter: str = None
+    pop_assign_file: Path = None
+    reference_as_filter: Path = None
 
     class Config:
         """This is required to use allow_mutation=False on name.
@@ -107,78 +107,41 @@ class ParamsSchema(BaseModel):
         return value
 
     @validator('project_dir')
-    def _proj_validator(cls, value):
+    def _dir_validator(cls, value):
         """Project_dir cannot have whitespace, is expanded, and created."""
-        if ' ' in value:
+        if ' ' in value.name:
             raise ValueError('project_dir cannot contain spaces')
-        value = os.path.realpath(os.path.expanduser(value))
-        if not os.path.exists(value):
-            os.makedirs(value, exist_ok=True)
+        value = value.expanduser().resolve()
+        if value.exists():
+            value.mkdir(exist_ok=True)
         return value
 
-    @validator('raw_fastq_path')
-    def _raw_validator(cls, value):
-        """Expand path to check that some files match the regex string.
-        If post-merge then no check.
-        """
-        if value and ("Merged:" not in value):
-            value = os.path.realpath(os.path.expanduser(value))
-            if os.path.isdir(value):
-                raise ValueError(
-                    "raw_fastq_path should not be a directory. To select "
-                    "multiple files in a directory use a wildcard selector "
-                    "e.g., './data/*.fastq.gz'.")
-            if not glob.glob(value):
-                raise ValueError(
-                    "no files match the input string for raw_fastq_path. "
-                    f"You entered: {value}")
-        return value
-
-    @validator('barcodes_path')
-    def _barcode_validator(cls, value):
-        """Check that barcodes file exists if a path was entered.
-        If post-merge then no check.
-        """
-        if value and ("Merged:" not in value):
-            # expand name
-            fullpath = glob.glob(os.path.realpath(os.path.expanduser(value)))
-            if not fullpath:
-                raise ValueError(
-                    f"barcodes_path file not found. You entered {value}")
-            value = fullpath[0]
-        return value
-
-    @validator('sorted_fastq_path')
-    def _sorted_validator(cls, value):
-        """Expand path to check that some files match the regex string.
-        If post-merge then no check.
-        """
+    @validator('raw_fastq_path', 'sorted_fastq_path', 'barcodes_path')
+    def _path_validator(cls, value):
+        """If a path was entered then it must match >=1 files."""
         if not value:
             return value
-        if value and ("Merged:" not in value):
-            value = os.path.realpath(os.path.expanduser(value))
-            if os.path.isdir(value):
-                raise ValueError(
-                    "sorted_fastq_path should not be a directory. To select "
-                    "multiple files in a directory use a wildcard selector "
-                    "e.g., './data/*.fastq.gz'.")
-            if not glob.glob(value):
-                raise ValueError(
-                    "no files match the input string for sorted_fastq_path. "
-                    f"You entered: {value}")
+        if "Merged:" in value.name:
+            return value
+        value = value.expanduser().resolve()
+        if value.is_dir():
+            raise ValueError(
+                "You entered a dir path where you must enter a file path.\n"
+                "To select multiple files in a dir you can use regular \n"
+                "expressions, e.g., './data/*.fastq.gz'.")
+        if not glob.glob(str(value)):
+            raise ValueError(f"no files match the input string: {value}")
         return value
 
-    @validator("reference_sequence")
+    @validator("reference_sequence", "reference_as_filter")
     def _reference_validator(cls, value):
         """Checks that reference file exists and expands path."""
         if value:
-            fullpath = os.path.realpath(os.path.expanduser(value))
-            if not glob.glob(fullpath):
-                raise ValueError(
-                    f"reference_sequence file not found. You entered {value}")
-            value = glob.glob(fullpath)[0]
-            if value.endswith(".gz"):
-                raise ValueError("reference_sequence must be decompressed.")
+            value = value.expanduser().resolve()
+            if not glob.glob(value):
+                raise ValueError(f"no files match the input string: {value}")                
+            if value.suffix == ".gz":
+                raise ValueError(f"reference {value} must be decompressed.")
         return value
 
     @validator("restriction_overhang")
@@ -189,35 +152,16 @@ class ParamsSchema(BaseModel):
 
     @validator("datatype")
     def _datatype_validator(cls, value):
-        """
-        Return the Enum value (string)
-        """
+        """Return the Enum value (string)"""
         return value.value
 
     @validator("assembly_method")
     def _method_validator(cls, value):
-        """
-        Return the Enum value (string)
-        """
+        """Return the Enum value (string)."""
         return value.value        
 
 
     ### TODO...
-
-
-    @validator("reference_as_filter")
-    def _reference_filter_validator(cls, value):
-        """Checks that reference file exists and expands path."""
-        if value:
-            fullpath = os.path.realpath(os.path.expanduser(value))
-            if not glob.glob(fullpath):
-                raise ValueError(
-                    f"reference_as_filter file not found. You entered {value}")
-            value = glob.glob(fullpath)[0]
-            if value.endswith(".gz"):
-                raise ValueError("reference_as_filter must be decompressed.")
-        return value
-
 
 
 if __name__ == "__main__":
