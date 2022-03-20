@@ -397,4 +397,5 @@ results below.
     "Globally, 5K to 10K random variants were enough for an accurate estimation of genome diversity. Conversely, commercial panels and exome capture displayed strong ascertainment biases. ... the detection of the signature of selection and the accurate estimation of linkage disequilibrium required high-density panels of at least 1M variants."
 * McCartney‐Melstad et ak 2019 - `An empirical pipeline for choosing the optimal clustering threshold in RADseq studies <https://onlinelibrary.wiley.com/doi/full/10.1111/1755-0998.13029>`__
     Similar in spirit to the Mastretta‐Yanes et al. (2015) paper that everyone currently cites.
-
+* Rick et al 2022 - ``Reference genome choice and filtering thresholds jointly influence phylogenomic analyses <https://www.biorxiv.org/content/biorxiv/early/2022/03/12/2022.03.10.483737.full.pdf>`__
+    Don't over-filter your data (can't say this enough). Similar to Huang & Knowles and Linck & Battey, but this paper is looking at phylogenetic reconstruction and MAF/missing data filtering (using a reference genome). "We demonstrate that more stringent minor allele filters bias inferred trees away from the true species tree topology, and that these biased trees tend to be more imbalanced and have a higher center of gravity than the true trees."
