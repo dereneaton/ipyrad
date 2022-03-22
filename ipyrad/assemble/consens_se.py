@@ -182,7 +182,7 @@ class Step5:
             print("Exception in step 5: {}".format(inst))
             raise
         finally:
-            #shutil.rmtree(self.data.tmpdir)
+            shutil.rmtree(self.data.tmpdir)
             self.data.save()
 
 
