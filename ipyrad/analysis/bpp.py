@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 
+"""Convert loci file to bpp format input files
 """
-Convert loci file to bpp format input files
-"""
-
-# py2/3 compat
-from __future__ import print_function
-from builtins import range
 
 # standard lib
+from typing import Union, Dict, List, Optional, Tuple
 import os
 import sys
 import glob
@@ -17,39 +13,25 @@ import copy
 import tempfile
 import itertools
 import subprocess as sps
-import requests
+from dataclasses import dataclass
 
+import requests
 import numpy as np
 import pandas as pd
 import scipy.stats as ss
+import toytree
 
-from .utils import Params, ProgressBar
-from ..core.Parallel import Parallel
+# from .utils import Params, ProgressBar
+# from ..core.Parallel import Parallel
 from ..assemble.utils import IPyradError
 from ..analysis.locus_extracter import LocusExtracter
-
-try:
-    import toytree
-    # from toytree.utils import bpp2newick
-except ImportError:
-    pass
-_MISSING_TOYTREE = """
-You are missing required packages to use ipa.bpp().
-First run the following conda install command:
-
-conda install toytree -c conda-forge
-"""
-
-# TODO: raise error on locus_filter result 0
 
 DELIM = "___"
 
 
 @dataclass
 class BppBase:
-    """
-    Base class of BPP analysis tool parsing input args.
-    """
+    """Base class of BPP analysis tool parsing input args."""
     name: str
     workdir: str
     tree: Union['toytree.Toytree', str]
@@ -252,14 +234,9 @@ class Bpp(object):
 
 
     def _check_binary(self):
+        """Check for required software. If BPP is not present then a 
+        precompiled binary is downloaded into the tmpdir.
         """
-        Check for required software. If BPP is not present then a precompiled
-        binary is downloaded into the tmpdir.
-        """
-        # check that toytree is installed
-        if not sys.modules.get("toytree"):
-            raise ImportError(_MISSING_TOYTREE)
-
         # platform specific bpp binaries
         platform = "linux"
         if sys.platform != "linux":
@@ -928,7 +905,6 @@ class Bpp(object):
             return trees, toytree.mtree(list(itertools.chain(*treelists)))
 
 
-
     def draw_priors(self, gentime_min, gentime_max, mutrate_min, mutrate_max, seed=123):
         """
         For BPP 4.0+ the priors are described using an invgamma dist. and 
@@ -1134,7 +1110,6 @@ class Bpp(object):
         return canvas0, canvas1#, (ax0, ax1, ax2, ax3, ax4, ax5)
 
 
-
     def get_transformed_values(self, mcmc, param, gentime_min, gentime_max, mutrate_min, mutrate_max):
         """
         Transforms a single posterior column from mcmc array using assumed 
@@ -1143,7 +1118,6 @@ class Bpp(object):
         # init transformer tool
         tx = Transformer(mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max)
         return tx.transform(param)
-
 
 
     def transform(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, nsamp=1000):
@@ -1265,7 +1239,6 @@ class Bpp(object):
                         node.dist = (taus.loc[tidx, node.up.idx] - taus.loc[tidx, node.idx])
         #mtree.treelist = [i.mod.make_ultrametric() for i in mtree.treelist]
         return divs, popsize, newtree, mtree
-
 
 
     def draw_posteriors(self, mcmc, gentime_min, gentime_max, mutrate_min, mutrate_max, invgamma=True, seed=123):
@@ -1503,7 +1476,6 @@ class Bpp(object):
         return canvas0, canvas1
 
 
-
     def draw_posteriors_stacked(self, gamma_tuples, labels, **kwargs):
         """
         ...
@@ -1549,7 +1521,6 @@ class Bpp(object):
             labels=labels,
         )
         return c, ax, marks
-
 
 
     def draw_posterior_tree(
@@ -1720,9 +1691,6 @@ class Bpp(object):
         #toyplot.html.render(canvas, "/tmp/test.html")
         return canvas, axes
                 
-
-
-
 
 
 class Transformer(object):

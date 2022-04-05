@@ -17,9 +17,16 @@ from ipyrad.core.schema import SampleSchema
 
 Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
+logger = logger.bind(name="ipyrad")
 
 class BaseStep(ABC):
-    """Abstract Base Class for Step class objects."""
+    """Abstract Base Class for Step class objects.
+
+    This class must be subclassed to be used. Subclasses exist for each
+    step of the ipyrad assembly process. This includes functions run
+    by all steps, such as printing (logging) header info, getting 
+    the samples, ensuring directories, and optionally loading popfile.
+    """
     def __init__(self, data: Assembly, step: str, quiet: bool, force: bool):
 
         # store step
@@ -66,6 +73,7 @@ class BaseStep(ABC):
             if self.data.params.sorted_fastq_path is not None:
                 print(messages['1a'])
             else:
+                logger.info(messages['1'])
                 print(messages['1'])
         elif key == '3':
             if self.data.params.assembly_method == "reference":

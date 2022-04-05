@@ -4,30 +4,41 @@
 
 """
 
+from typing import TypeVar, Iterator, List
 import os
 import sys
 import gzip
 import glob
 import subprocess
+from pathlib import Path
 from itertools import islice, chain
+
 import numpy as np
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError, comp
 from ipyrad.core.schema import Stats3
 
+# pylint: disable=too-many-branches, too-many-statements, consider-using-with
+
+
 logger = logger.bind(name="ipyrad")
 
+Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
 BIN_MUSCLE = os.path.join(sys.prefix, "bin", "muscle")
 BIN_VSEARCH = os.path.join(sys.prefix, "bin", "vsearch")
 
-def concat_multiple_edits(data, sample):
-    """Create a temporary concatenated file for multiple edits input
+
+def concat_multiple_edits(data: Assembly, sample: Sample) -> None:
+    """Concat files if multiple Assemblies were merged between steps 2-3.
+
+    Create a temporary concatenated file for multiple edits input
     files, which arises when Assemblies were merged between steps
     2 and 3.
     """
     # define output files
-    concat1 = os.path.join(data.tmpdir, f"{sample.name}_concat_R1.fastq.gz")
-    concat2 = os.path.join(data.tmpdir, f"{sample.name}_concat_R2.fastq.gz")
+    concat1 = data.tmpdir / f"{sample.name}_concat_R1.fastq.gz"
+    concat2 = data.tmpdir / f"{sample.name}_concat_R2.fastq.gz"
 
     read1s = [i[0] for i in sample.files.edits]
     if len(read1s) > 1:
@@ -255,15 +266,15 @@ def dereplicate(data, sample):
     # do dereplication with vsearch
     cmd = [
         BIN_VSEARCH,
-        "--derep_fulllength", infile,
+        "--fastx_uniques", infile,
         "--strand", strand,
-        "--output", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
+        "--fastaout", os.path.join(data.tmpdir, sample.name + "_derep.fa"),
         "--fasta_width", str(0),
         "--minseqlength", str(data.params.filter_min_trim_len),
         "--sizeout", 
         "--relabel_md5",
         "--quiet",
-        "--threads", str(4),
+        # "--threads", str(4),
         # "--fastq_qmax", "1000",        
     ]
 
@@ -273,6 +284,7 @@ def dereplicate(data, sample):
         cmd.append("--gzip_decompress")
 
     # build PIPEd job
+    print(" ".join(cmd))  # engine sends to logger.info
     with subprocess.Popen(cmd, 
         stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True
         ) as proc:
@@ -280,20 +292,23 @@ def dereplicate(data, sample):
         if proc.returncode:
             raise IPyradError(errmsg.decode())
 
-def cluster(data, sample):
-    """Calls vsearch for clustering. cov varies by data type, values were chosen
-    based on experience, but could be edited by users."""
+def cluster(data: Assembly, sample: Sample) -> None:
+    """Calls vsearch for clustering with cluster_smallmem.
+
+    cov varies by data type, values were chosen
+    based on experience, but could be edited by users.
+    """
     # get dereplicated reads for denovo+reference or denovo-reference
     handles = [
-        os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
-        os.path.join(data.tmpdir, f"{sample.name}_remerged.fa"),
+        data.tmpdir / f"{sample.name}_derep.fa",
+        data.tmpdir / f"{sample.name}_remerged.fa",
     ]
-    derephandle = [i for i in handles if os.path.exists(i)][-1]
-    assert os.path.exists(derephandle), "bad derep handle"
+    derephandle = [i for i in handles if i.exists()][-1]
+    assert derephandle, "bad derep handle"
 
     # create handles for the outfiles
-    uhandle = os.path.join(data.tmpdir, sample.name + ".utemp")
-    temphandle = os.path.join(data.tmpdir, sample.name + ".htemp")
+    uhandle = data.tmpdir / (sample.name + ".utemp")
+    temphandle = data.tmpdir / (sample.name + ".htemp")
 
     # datatype specific optimization
     # minsl: the percentage of the seed that must be matched
@@ -324,26 +339,26 @@ def cluster(data, sample):
     # get call string
     cmd = [
         BIN_VSEARCH,
-        "-cluster_smallmem", derephandle,
-        "-strand", strand,
-        "-query_cov", str(cov),
-        "-id", str(data.params.clust_threshold),
-        "-minsl", str(minsl),
-        "-userout", uhandle,
-        "-userfields", "query+target+id+gaps+qstrand+qcov",
-        "-maxaccepts", "1",
-        "-maxrejects", "0",
-        "-threads", str(max(1, data.ipcluster['threads'])),
-        "-notmatched", temphandle,
-        "-fasta_width", "0",
+        "--cluster_smallmem", str(derephandle),
+        "--strand", strand,
+        "--query_cov", str(cov),
+        "--id", str(data.params.clust_threshold),
+        "--minsl", str(minsl),
+        "--userout", str(uhandle),
+        "--userfields", "query+target+id+gaps+qstrand+qcov",
+        "--maxaccepts", "1",
+        "--maxrejects", "0",
+        "--threads", str(max(1, data.ipcluster['threads'])),
+        "--notmatched", str(temphandle),
+        "--fasta_width", "0",
         "--minseqlength", str(data.params.filter_min_trim_len),
+        "--usersort",  # b/c we prefer sorted by depth
         # "-fastq_qmax", "100",
-        "-fulldp",
-        "-usersort",
+        # "-fulldp",  # no longer relevant, always used.    
     ]
 
     # run vsearch
-    logger.debug(" ".join(cmd))
+    print(" ".join(cmd))  # engine sends to logger.info
     with subprocess.Popen(cmd, 
         stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True,
         ) as proc:
@@ -353,203 +368,290 @@ def cluster(data, sample):
     if proc.returncode:
         raise IPyradError(f"cmd {cmd}: {res}")
 
-def build_clusters(data, sample):
-    """Combines information from .utemp and .htemp files to create .clust files,
-    which contain un-aligned clusters. Hits to seeds are only kept in the
-    cluster if the number of internal indels is less than 'maxindels'.
-    By default, we set maxindels=6 for this step (within-sample clustering).
-    """
+def build_clusters(data: Assembly, sample: Sample) -> None:
+    """Builds fasta like .clust.gz outputs from .utemp and .htemp.
 
-    # If reference assembly then here we're clustering the unmapped reads
-    # if "reference" in data.params.assembly_method:
-    # derepfile = os.path.join(
-    # data.tmpdir, sample.name + "-refmap_derep.fa")
+    The .htemp files contain the seeds, and the .utemp contains info
+    on the hits to the seeds. This applies filtering while building
+    clusters to remove matches that exceed maxindels setting (def=8).
+    """
     infiles = [
-        os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
-        os.path.join(data.tmpdir, f"{sample.name}_remerged.fa"),
+        data.tmpdir / f"{sample.name}_derep.fa",
+        data.tmpdir / f"{sample.name}_remerged.fa",
     ]
-    derepfile = [i for i in infiles if os.path.exists(i)][-1]
+    derepfile = [i for i in infiles if i.exists()][-1]
 
     # i/o vsearch files
-    uhandle = os.path.join(data.tmpdir, f"{sample.name}.utemp")
-    usort = os.path.join(data.tmpdir, f"{sample.name}.utemp.sort")
-    hhandle = os.path.join(data.tmpdir, f"{sample.name}.htemp")
-    clustsout = open(os.path.join(data.tmpdir, f"{sample.name}.clust.txt"), 'w')
+    uhandle = data.tmpdir / f"{sample.name}.utemp"
+    usorthandle = data.tmpdir / f"{sample.name}.utemp.sort"
+    hhandle = data.tmpdir / f"{sample.name}.htemp"
+    clusthandle = data.tmpdir / f"{sample.name}.clust.txt"
 
-    # Sort the uhandle file so we can read through matches efficiently
-    cmd = ["sort", "-k", "2", uhandle, "-o", usort]
-    proc = subprocess.Popen(cmd, close_fds=True)
-    _ = proc.communicate()[0]
+    # Sort uhandle  so we can read through matches efficiently
+    cmd = ["sort", "-k", "2", uhandle, "-o", usorthandle]
+    subprocess.run(cmd, check=True)
 
-    # load ALL derep reads into a dictionary (this can be a few GB of RAM)
-    # and is larger if names are larger. We are grabbing two lines at a time.
+    # load ALL derep reads into a dictionary (this can be a few 
+    # GB of RAM) and is larger if names are larger. We are 
+    # grabbing two lines at a time.
     alldereps = {}
-    with open(derepfile, 'rt') as ioderep:
-        dereps = zip(*[ioderep] * 2)
+    with open(derepfile, 'r', encoding="utf-8") as derepio:
+        dereps = zip(*[derepio] * 2)
         for namestr, seq in dereps:
             nnn, sss = [i.strip() for i in (namestr, seq)]  
             alldereps[nnn[1:]] = sss
 
-    # store observed seeds (this could count up to >million in bad data sets)
-    seedsseen = set()
+    # func to sort clusters by size (used below)
+    sorter = lambda x: int(x.split(";size=")[-1].split("\n")[0][:-2])
 
-    # Iterate through the usort file grabbing matches to build clusters
-    with open(usort, 'rt') as insort:
-        # iterator, seed null, seqlist null
-        isort = iter(insort)
-        lastseed = 0
-        fseqs = []
-        seqlist = []
-        seqsize = 0
-        while 1:
+    # write clusters to ...
+    with open(clusthandle, 'w', encoding="utf-8") as clustio:
 
-            # grab the next line and parse the informative columns
-            try:
-                hit, seed, _, ind, ori, _ = next(isort).strip().split()
-            except StopIteration:
-                break
+        # store observed seeds (this could count up to >million in bad data sets)
+        seedsseen = set()
 
-            # same seed, append match
-            if seed != lastseed:
-                seedsseen.add(seed)
+        # Iterate through the usort file grabbing matches to build clusters
+        with open(usorthandle, 'r', encoding="utf-8") as usortio:
+            lastseed = None    # keep track of last seed
+            fseqs = []         # store a single cluster
+            seqlist = []       # store clusters until writing
+            seqsize = 0        # store size of clusters until writing.
 
-                # store the last cluster (fseq), count it, and clear fseq
-                if fseqs:
-                    # sort hits by size, which is at the end of the header
-                    fsort = sorted(
-                        fseqs[1:], 
-                        key=(lambda x: int(x.split(";size=")[-1].split("\n")[0][:-2])),
-                        reverse=True,
-                    )
-                    # seed first then sorted hits
-                    fseqs = [fseqs[0]] + fsort
-                    seqlist.append("\n".join(fseqs))
-                    seqsize += 1
-                    fseqs = []
+            # iterate over all lines in the usort file.
+            for line in usortio:
+                hit, seed, _, ind, ori, _ = line.strip().split()
 
-                # occasionally write/dump stored clusters to file and clear mem
+                # same seed, append match
+                if seed != lastseed:
+                    seedsseen.add(seed)
+
+                    # store the last cluster (fseq), count it, and clear fseq
+                    if fseqs:
+                        # sort to seed then hits by size
+                        fsort = sorted(fseqs[1:], key=sorter, reverse=True)                        
+                        fseqs = [fseqs[0]] + fsort
+                        seqlist.append("\n".join(fseqs))
+                        seqsize += 1
+                        fseqs = []
+
+                    # occasionally write/dump stored clusters to file and clear mem
+                    if not seqsize % 10000:
+                        if seqlist:
+                            clustio.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
+                            seqlist = []
+
+                    # store the new seed on top of fseq list
+                    fseqs.append(f">{seed};*\n{alldereps[seed]}")
+                    lastseed = seed
+
+                # add match to the seed
+                # revcomp if orientation is reversed (comp preserves nnnn)
+                seq = alldereps[hit] if ori == "+" else comp(alldereps[hit])[::-1]
+
+                # only save if not too many indels
+                if int(ind) <= data.max_indels:
+                    fseqs.append(f">{hit};{ori}\n{seq}")
+
+        # write whatever is left over to the clusts file
+        if fseqs:
+            seqlist.append("\n".join(fseqs))
+        if seqlist:
+            clustio.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
+
+        # now write the seeds that had no hits. Make dict from htemp
+        with open(hhandle, 'r', encoding="utf-8") as iotemp:
+            nohits = zip(*[iter(iotemp)] * 2)
+            seqlist = []
+            seqsize = 0
+            for line in nohits:
+                line = line[0].strip()
+
+                # occasionally write to file
                 if not seqsize % 10000:
                     if seqlist:
-                        clustsout.write(
-                            "\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                        # reset list and counter
+                        clustio.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
                         seqlist = []
 
-                # store the new seed on top of fseq list
-                fseqs.append(">{};*\n{}".format(seed, alldereps[seed]))
-                lastseed = seed
+                # append to list if new seed
+                if line[1:] not in seedsseen:
+                    seqlist.append(f"{line};*\n{alldereps[line[1:]]}")
+                    seqsize += 1
 
-            # add match to the seed
-            # revcomp if orientation is reversed (comp preserves nnnn)
-            if ori == "-":
-                seq = comp(alldereps[hit])[::-1]
-            else:
-                seq = alldereps[hit]
-            # only save if not too many indels
-            if int(ind) <= data.max_indels:
-                fseqs.append(">{};{}\n{}".format(hit, ori, seq))
+        # write whatever is left over to the clusts file
+        if seqlist:
+            clustio.write("\n//\n//\n".join(seqlist))
 
-    # write whatever is left over to the clusts file
-    if fseqs:
-        seqlist.append("\n".join(fseqs))
-    if seqlist:
-        clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
-
-    # now write the seeds that had no hits. Make dict from htemp
-    with open(hhandle, 'rt') as iotemp:
-        nohits = zip(*[iter(iotemp)] * 2)
-        seqlist = []
-        seqsize = 0
-        while 1:
-            try:
-                nnn, _ = [i.strip() for i in next(nohits)]
-            except StopIteration:
-                break
-
-            # occasionally write to file
-            if not seqsize % 10000:
-                if seqlist:
-                    clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                    # reset list and counter
-                    seqlist = []
-
-            # append to list if new seed
-            if nnn[1:] not in seedsseen:
-                seqlist.append("{};*\n{}".format(nnn, alldereps[nnn[1:]]))
-                seqsize += 1
-
-    # write whatever is left over to the clusts file
-    if seqlist:
-        clustsout.write("\n//\n//\n".join(seqlist))
-
-    # close the file handle
-    clustsout.close()
+    # delete large dict
     del alldereps
 
+def muscle_chunker(data: Assembly, sample: Sample) -> None:
+    """Splits .clust files into chunks for Muscle alignment.
 
-def muscle_chunker(data, sample):
-    """
-    Splits the muscle alignment into chunks. Each chunk is run on a separate
-    computing core. Because the largest clusters are at the beginning of the 
-    clusters file, assigning equal clusters to each file would put all of the 
-    large cluster, that take longer to align, near the top. So instead we 
-    randomly distribute the clusters among the files. If assembly method is
-    reference then this step is just a placeholder and nothing happens. 
+    Each file is split into at most 10 chunks. Each chunk will be
+    run on a separate core, with the largest cluster files starting
+    first. Because the largest clusters are at the beginning of the 
+    clusters file, the chunks contain varying number of clusters to 
+    try to equalize their speed.
     """
     # only chunk up denovo data, refdata has its own chunking method which 
     # makes equal size chunks, instead of uneven chunks like in denovo
-    clustfile = os.path.join(data.tmpdir, sample.name + ".clust.txt")
+    clustfile = data.tmpdir / (sample.name + ".clust.txt")
 
     # get the number of clusters and chunk into 20 pieces
-    with iter(open(clustfile, 'rt')) as clustio:
+    with open(clustfile, 'r', encoding="utf-8") as clustio:
         nloci = sum(1 for i in clustio if "//" in i) // 2
         optim = (nloci // 20) + (nloci % 20)
+        inc = optim // 10
 
-    # write optim clusters to each tmp file
-    clustio = open(clustfile, 'rt')
-    inclusts = iter(clustio.read().strip().split("//\n//\n"))
+    # cluster generator
+    clustgen = iter_clusters(clustfile)
 
     # splitting loci so first file is smaller and last file is bigger
-    inc = optim // 10
     for idx in range(10):
+
         # how big is this chunk?
-        this = optim + (idx * inc)
-        left = nloci - this
+        this_chunk_size = optim + (idx * inc)
+        left = nloci - this_chunk_size
+
+        # grab next chunks-worth of data, or all that's left.
         if idx == 9:
-            # grab everything left
-            grabchunk = list(islice(inclusts, int(1e9)))
+            grabchunk = list(islice(clustgen, int(1e9)))
         else:
-            # grab next chunks-worth of data
-            grabchunk = list(islice(inclusts, this))
+            grabchunk = list(islice(clustgen, this_chunk_size))
             nloci = left
 
         # write the chunk to file
-        tmpfile = os.path.join(data.tmpdir, f"{sample.name}_chunk_{idx}.ali")
-        with open(tmpfile, 'w') as out:
+        tmpfile = data.tmpdir / f"{sample.name}_chunk_{idx}.ali"
+        with open(tmpfile, 'w', encoding="utf-8") as out:
             out.write("//\n//\n".join(grabchunk))
-            # out.write(str.encode("//\n//\n".join(grabchunk)))
-    clustio.close()
 
 
-def align_and_parse(handle, max_internal_indels=5, is_gbs=False, declone=False):
-    """ 
+def iter_clusters(clustfile: Path) -> Iterator[str]:
+    """Yields clusters between //\n// separators."""
+    with open(clustfile, 'r', encoding="utf-8") as clustio:
+        data = []
+        spacer = 0
+        for line in clustio:
+            if line[:2] != "//":
+                data.append(line)
+            else:
+                spacer += 1
+            if spacer == 2:
+                yield "".join(data)
+                data = []
+                spacer = 0
+
+def iter_muscle_alignments(handle: Path) -> Iterator[List[str]]:
+    """Align .ali tmp cluster files using mucle.
+
+    TODO: catch exceptions on subprocess
+    """
+    # muscle command to return alignment and then a spacer
+    cmd = "echo -e '{}' | " + BIN_MUSCLE
+    cmd += " -quiet -align /dev/stdin -output /dev/stdout; echo @@\n"
+
+    # Popen kwargs
+    kwargs = dict(
+        stdout=subprocess.PIPE, stdin=subprocess.PIPE, 
+        stderr=subprocess.DEVNULL, bufsize=0,
+    )
+
+    # create two persistent bash shells 
+    with subprocess.Popen(
+        'bash', **kwargs) as proc1, subprocess.Popen(
+        'bash', **kwargs) as proc2: 
+
+        # iterate over clusters
+        for clust in iter_clusters(handle):
+
+            # skip aligning if it is a singleton
+            if clust.count(">") == 1:
+                yield clust.replace(">", "").strip()
+                continue
+
+            # limit to first 100 unique sequences (pre-sorted by depth)
+            clust = clust.split()[:100]
+
+            # pair separator is not consistently found, do single align
+            if not all('nnnn' in i for i in clust[::2]):
+                proc1.stdin.write(cmd.format("\n".join(clust)).encode())
+                ali = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
+                yield ali, []
+
+            # split paired data on 'nnnn' separator. It must be present
+            # in EVERY read to align pairs separately, else single align.
+            else:
+                headers = []
+                read1s = []
+                read2s = []
+                for line in clust:
+                    if line[0] == ">":
+                        headers.append(line)
+                    else:
+                        pos = line.find("nnnn")
+                        read1s.append(line[:pos])
+                        read2s.append(line[pos + 4:])
+                clust1 = ["".join(i) for i in zip(headers, read1s)]
+                clust2 = ["".join(i) for i in zip(headers, read1s)]
+
+                # align reads simultaneously on separate subprocesses
+                proc1.stdin.write(cmd.format("\n".join(clust1)).encode())
+                proc2.stdin.write(cmd.format("\n".join(clust2)).encode())
+
+                # collect alignments
+                ali1 = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
+                ali2 = [i.decode() for i in iter(proc2.stdout.readline, b'@@\n')]
+                yield ali1, ali2
+
+def iter_alignment_filter(handle: Path):
+    """Return filtered, aligned, and sorted clusters.
+
+    TODO: Continue from here!!!!
+    """
+    for ali1, ali2 in iter_muscle_alignments(handle):
+        # get dict mapping headers to sequences
+        head_to_seq1 = {}
+        for line in ali1:
+            if line[0] == ">":
+                key = line.strip()
+            else:
+                if key in head_to_seq1:
+                    head_to_seq1[key] += line.strip()
+                else:
+                    head_to_seq1[key] = line.strip()
+        head_to_seq2 = {}
+        for line in ali2:
+            if line[0] == ">":
+                key = line.strip()
+            else:
+                if key in head_to_seq1:
+                    head_to_seq2[key] += line.strip()
+                else:
+                    head_to_seq2[key] = line.strip()
+
+        # sort the first reads
+        keys = sorted(head_to_seq1, key=lambda x: int(x.split("=")[-1].split(";")[0]))
+        seed = [i for i in keys if i[-1] == "*"][0]
+        seed = keys.pop(keys.index(seed))
+        order = [seed] + keys
+
+
+
+# deprecated for iter_alignment_filter
+def align_and_parse(
+    handle: Path, 
+    max_internal_indels: int=5, 
+    is_gbs: bool=False, 
+    declone: bool=False,
+    ) -> None:
+    """Align .ali tmp cluster files using mucle.
+
     Much faster implementation for aligning chunks that uses 
     persistent_popen_align3() function.
     """
-    # CHECK: data are already chunked, read in the whole thing. bail if no data
-    clusts = []
-    try:
-        with open(handle, 'rt') as infile:
-            clusts = infile.read().split("//\n//\n")
-            # remove any empty spots
-            clusts = [i for i in clusts if i]
-            # Skip entirely empty chunks; return 0 if no clusters in file
-            # Allows some chunks to be empty without raising an error.
-            if not clusts:
-                return 0
-
-    # return 0 if file not read for some reason...
-    except IOError:
+    # get all clusters in the file and return 0 if it is empty
+    clusts = islice(iter_clusters(handle), int(1e9))
+    if not clusts:
         return 0
 
     # count discarded clusters for printing to stats later
@@ -588,6 +690,7 @@ def align_and_parse(handle, max_internal_indels=5, is_gbs=False, declone=False):
     return highindels
 
 
+# deprecated for iter_muscle_alignments
 def persistent_popen_align3(clusts, maxseqs=200, is_gbs=False):
     """
     keeps a persistent bash shell open and feeds it muscle alignments
@@ -1030,3 +1133,5 @@ def set_sample_stats(data, sample):
             sample.stats_s2.reads_passed_filter
         ), 2), 1.0)
     return sample
+
+

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-""" the main CLI for calling ipyrad """
+"""ipyrad CLI."""
 
 import argparse
 import sys
@@ -13,12 +13,11 @@ from loguru import logger
 import ipyrad as ip
 from ipyrad.core.params_schema import ParamsSchema
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.core.parallel import get_num_cpus, Cluster
+from ipyrad.core.cluster import get_num_cpus, Cluster
 
 
 class CLI:
-    """
-    Command line organization
+    """Command line organization.
     """
     def __init__(self):
 
@@ -39,7 +38,7 @@ class CLI:
 
         # if args.debug turn on the debugger
         if self.args.logger:
-            ip.set_loglevel("DEBUG", logfile="./ipyrad_log.txt")
+            ip.set_log_level("DEBUG", log_file="./ipyrad_log.txt")
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit
@@ -76,9 +75,7 @@ class CLI:
 
 
     def check_args(self):
-        """
-        User must enter -p or -n as an argument
-        """
+        """User must enter -p or -n as an argument"""
         if not (self.args.params or self.args.new or self.args.download or self.args.merge):
             sys.exit("\n" + "\n".join([
                 "  ipyrad command must include either -p or -n ",
@@ -87,8 +84,7 @@ class CLI:
 
 
     def parse_params(self):
-        """
-        Parse the params file to a dictionary, load the project from 
+        """Parse the params file to a dictionary, load the project from 
         JSON, and type check any param changes on the Assembly object.
         """
         # check that params.txt file is correctly formatted.
@@ -96,7 +92,7 @@ class CLI:
             raise IPyradError("\n  No params file found\n")
         if not os.path.exists(self.args.params):
             raise IPyradError("\n  No params file found\n")
-        with open(self.args.params, 'r') as paramsin:
+        with open(self.args.params, 'r', encoding="utf-8") as paramsin:
             lines = paramsin.readlines()
 
         # get values from the params file lines

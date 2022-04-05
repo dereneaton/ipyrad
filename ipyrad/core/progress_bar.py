@@ -2,7 +2,9 @@
 
 """Tracker for jobs running on remote cluster.
 
-Logger will print a progress bar and stdout from engines.
+Logger prints a progress bar based on the number of finished jobs, 
+or from progress on a single job that is sent to stdout by the
+engines. 
 """
 
 import sys
@@ -129,7 +131,7 @@ class AssemblyProgressBar:
                     # "An error occurred: SEE TRACE BELOW\n" + 
                     # '\n'.join(inst.render_traceback())
                 # )
-                raise IPyradError("Exception on remote engine.") from inst
+                #raise IPyradError("Exception on remote engine.") from inst
 
     def engine_log(self, key):
         """Sends STDOUT from engine to logger.INFO and clears STDOUT."""

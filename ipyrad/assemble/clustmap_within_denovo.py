@@ -36,8 +36,6 @@ class ClustMapDenovo:
     def __init__(self, step):
         # attach all relevent attributes to data (Assembly)
         self.data = step.data
-        self.data.tmpdir = step.tmpdir
-        self.data.stepdir = step.stepdir
         self.data.max_indels = 8
 
         # job submitting, parallel, or progress bar relevant
@@ -129,10 +127,13 @@ class ClustMapDenovo:
         prog.check()
 
     def decloning_transfer_tags_inline(self):
-        """Moves the tags from the index to the reads for decloning."""
+        """Moves the tags from the index to the reads for decloning.
+
+        TODO: run on test data.
+        """
         if (not self.data.is_pair) or (not self.data.hackers.declone_PCR_duplicates):
             return
-        # TODO:
+        raise NotImplementedError("TODO.")
 
     def dereplicate(self):
         """Dereplicate sequences (read pairs are merged).
@@ -178,8 +179,9 @@ class ClustMapDenovo:
 
 
     def cluster_build_and_chunk(self):
-        """
-        submit clustering/mapping job. All jobs will start in order
+        """Cluster reads and build cluster output files.
+
+        Submit clustering/mapping job. All jobs will start in order
         and the tracking progress bar will progress as each group 
         finishes.
         """
@@ -279,6 +281,7 @@ class ClustMapDenovo:
         prog.block()
         prog.check()
 
+
     def calculate_sample_stats(self):
         """Send samples to calc depths on remote, and then enter stats
         to sample objects non-parallel.
@@ -311,6 +314,7 @@ class ClustMapDenovo:
                 statsdf.loc[sname, i] = statsdict[i]                    
         logger.info("\n" + statsdf.to_string())
  
+
     def run(self):
         """Run the core functions."""
         self.index_references()

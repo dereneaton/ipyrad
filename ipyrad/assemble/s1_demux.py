@@ -19,14 +19,21 @@ Supported scenarios (se and pe)
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.demux_sorted import FileLinker
-from ipyrad.assemble.demux_raw import SimpleDemux
+from ipyrad.assemble.demux_raw2 import SimpleDemux
 
 
 class Step1(BaseStep):
+    """Checks that files exist and starts appropriate subclass func."""
     def __init__(self, data, force, quiet, ipyclient):
-        super().__init__(data, step=1, quiet=quiet, force=force)
         self.ipyclient = ipyclient
+        """: Connected ipyparallel Client."""
+        self.child = None
+        """: FileLinker or SimpleDemux object, depending on data."""
+
+        # init parent class and check file paths
+        super().__init__(data, step=1, quiet=quiet, force=force)        
         self.pre_check()
+        self.select_processor()
 
     def pre_check(self):
         """Check that either sorted_fastq_path exists, or raw_fastq_path
@@ -43,12 +50,19 @@ class Step1(BaseStep):
                     "You must enter a barcodes_path in param settings "
                     "when demultiplexing from raw_fastq_path.")
 
-    def run(self):
-        """Runs a different Step1 class depending on input data method"""
+    def select_processor(self):
+        """Selects the processor class."""
         if self.data.params.sorted_fastq_path is not None:
-            FileLinker(self).run()
+            self.child = FileLinker(self)
         else:
-            SimpleDemux(self.data, quiet=quiet, ipyclient=ipyclient).run()
+            self.child = SimpleDemux(self.data, self.ipyclient)
+
+    def run(self):
+        """Runs a different Step1 class depending on input data method.
+        
+        When testing, this requires that the ipyclient is connected.
+        """
+        self.child.run()
 
 
 if __name__ == "__main__":

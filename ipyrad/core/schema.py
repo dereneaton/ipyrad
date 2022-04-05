@@ -90,8 +90,8 @@ class Stats7(BaseModel):
 
 class SampleFiles(BaseModel):
     """A dict-like class for storing file paths to samples."""
-    fastqs: List[Tuple[str, str]] = None
-    edits: List[Tuple[str, str]] = None
+    fastqs: List[Tuple[str, str]] = Field(default_factory=list)
+    edits: List[Tuple[str, str]] = Field(default_factory=list)
     mapped_reads: Tuple[str, str] = None
     unmapped_reads: Tuple[str, str] = None
     clusters: str = None
@@ -104,7 +104,7 @@ class SampleSchema(BaseModel):
     name: str
     state: int = 1
     files: SampleFiles = SampleFiles()
-    stats_s1: Stats1 = None
+    stats_s1: Stats1 = Stats1()
     stats_s2: Stats2 = None
     stats_s3: Stats3 = None
     stats_s4: Stats4 = None

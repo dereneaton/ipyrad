@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 
-"""Assembly class iss the core object for calling assembly steps.
+"""Assembly class is the core object for calling assembly steps.
 
 
 """
 
-import os
+from typing import List, Optional, Dict, Tuple
 import shutil
-from typing import List, Optional
+# import asyncio
+# from pathlib import Path
+
 from loguru import logger
 import pandas as pd
-from ipyparallel import Client
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
 from ipyrad.core.schema import Project, SampleSchema
 from ipyrad.core.cluster import Cluster
@@ -51,44 +52,38 @@ class Assembly:
         """: A class storing assembly parameters."""
         self.hackers = HackersSchema()
         """: A class storing 'Hackers' parameters that are for power-users."""
-        self.samples = {}
+        self.samples: Dict[str, SampleSchema] = {}
         """: A dictionary mapping sample names to Sample objects."""
-        self.populations = {}
-        """: A optional dictionary mapping population names to min"""
-        self.outfiles = {}
+        self.populations: Dict[str, Tuple] = {}
+        """: A optional dict of {popnames: ([samples], min)}"""
+        self.outfiles: Dict[str, str] = {}
         """: A dict with step7 output file paths, if assembly finished."""
-        self.assembly_stats = {}
+        self.assembly_stats: Dict[str, pd.DataFrame] = {}
         """: A dict-like class with *final stats* for completed assembly."""
-        self.ipcluster = {
-            'cores': None,
-            'threads': 2,
-        }
-        """: Dict with info for how to start ipyparallel cluster."""
+        self.ipcluster = {'cores': None, 'threads': 2}
+        """: Dict with default parallization args."""
 
     def __repr__(self):
-        return "<ipyrad.Assembly object {}>".format(self.name)
+        return f"<ipyrad.Assembly object {self.name}>"
 
     @property
     def name(self) -> str:
-        """Shortcut to return the assembly_name from params"""
+        """Return the assembly_name from Assembly.params"""
         return self.params.assembly_name
 
     @property
     def json_file(self) -> str:
-        """JSON file is {project_dir}/{assembly_name}.json"""
-        return os.path.join(
-            self.params.project_dir,
-            self.params.assembly_name + ".json"
-        )
+        """Return JSON file as {project_dir}/{assembly_name}.json"""
+        return self.params.project_dir / (self.params.assembly_name + ".json")
 
     @property
     def is_ref(self) -> bool:
-        """Shortcut returns whether Assembly is reference method"""
+        """Return whether Assembly is reference method, based on params."""
         return self.params.assembly_method == "reference"
 
     @property
     def is_pair(self) -> bool:
-        """Shortcut returns whether Assembly is paired datatype"""
+        """Returns whether Assembly is paired datatype, based on params."""
         return "pair" in self.params.datatype
 
     @property
@@ -231,12 +226,12 @@ class Assembly:
         when using the CLI, probably.
         """
         outname = f"params-{self.name}.txt"
-        outpath = os.path.join(self.params.project_dir, outname)
+        outpath = self.params.project_dir / outname
 
         # Test if params file already exists?
         # If not forcing, test for file and bail out if it exists
         if not force:
-            if os.path.exists(outpath):
+            if outpath.exists():
                 raise IPyradError(
                     f"file {outpath} exists, you must use force to overwrite")
 
@@ -256,13 +251,11 @@ class Assembly:
             logger.debug(f"params file written to {outpath}")
 
     def save_json(self) -> None:
-        """Writes the current Assembly object to the project JSON file
-        (<project_dir>/<name>.json)
-        """
+        """Writes the current Assembly object to the project JSON file."""
         project = Project(
             params=ParamsSchema(**self.params.dict()),
             hackers=HackersSchema(**self.hackers.dict()),
-            samples=self.samples,  # {sname: self.samples[sname] for sname in self.samples},
+            samples=self.samples,
             populations=self.populations,
         )
         with open(self.json_file, 'w', encoding="utf-8") as out:
@@ -275,7 +268,8 @@ class Assembly:
         cores: Optional[int]=None,
         force: bool=False,
         quiet: bool=False,
-        ipyclient: Optional[Client]=None,
+        ipyclient: Optional["ipyparallel.Client"]=None,
+        **ipyclient_kwargs,
         ) -> None:
         """Run one or more assembly steps (1-7) of an ipyrad assembly.
 
@@ -286,7 +280,7 @@ class Assembly:
         force: bool
             Force overwrite of existing results for this step.
         quiet: bool
-            Suppress printed outputs to stdout.
+            Suppress printed headers to stdout.
         ipyclient: None or ipyparallel.Client
             Optional ipyparallel client to connect to for distributing
             jobs in parallel. This option is generally only useful if
@@ -301,34 +295,91 @@ class Assembly:
         # save the current JSON file (and a backup?)
         self.save_json()
 
-        # the Class functions to run for each entered step.
-        step_map = {
-            "1": Step1,
-            "2": Step2,
-            "3": Step3,
-            "4": Step4,
-            "5": Step5,
-            "6": Step6,
-            "7": Step7,
-        }
- 
-        # TODO
-        # could load tool to check whether the first step can be run
-        # before starting the ipcluster?. Example, it might say that
-        # step 2 has not been completed yet before bothering to start
-        # up the cluster.
+        # init the ipyparallel cluster class wrapper
+        if ipyclient is not None:
+            raise NotImplementedError(
+                "Usage of an external ipyclient is currently deprecated.")
+
+        # init first step before starting cluster to check for
+        # simple errors like missing file paths.
+        # STEP_MAP[steps[0]](self, force=force, quiet=True, ipyclient=None)
+
+        # start cluster asynchronously, run jobs, and shutdown.
+        with Cluster(cores=cores, **ipyclient_kwargs) as client:
+            # use client for any/all steps of assembly
+            for step in steps:
+                tool = STEP_MAP[step](self, force, quiet, client)
+                tool.run()
+                # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
+
+    async def _run_async(
+        self,
+        steps: str,
+        cores: Optional[int]=None,
+        force: bool=False,
+        quiet: bool=False,
+        ipyclient: Optional["ipyparallel.Client"]=None,
+        **ipyclient_kwargs,
+        ) -> None:
+        """Run one or more assembly steps (1-7) of an ipyrad assembly.
+
+        This starts and shutsdown the ipyparallel cluster asynchronously
+        (faster). It is currently only designed for use with in the CLI,
+        not in the Python API, and will cause problems in jupyter, thus
+        it is a private func.
+
+        FIXME: interrupt not working yet for this func...?
+
+        Parameters
+        ----------
+        steps: str
+            A string of steps to run, e.g., "1", or "123".
+        force: bool
+            Force overwrite of existing results for this step.
+        quiet: bool
+            Suppress printed headers to stdout.
+        ipyclient: None or ipyparallel.Client
+            Optional ipyparallel client to connect to for distributing
+            jobs in parallel. This option is generally only useful if
+            you start a Client using MPI to connect to multiple nodes
+            of an HPC cluster. See ipyrad HPC docs for details.
+
+        Examples
+        --------
+        >>> data = ip.load_json("test.json")
+        >>> data.run("123", cores=4)
+        """
+        # save the current JSON file (and a backup?)
+        self.save_json()
 
         # init the ipyparallel cluster class wrapper
         if ipyclient is not None:
             raise NotImplementedError(
                 "Usage of an external ipyclient is currently deprecated.")
 
-        with Cluster(cores=cores) as client:
+        # init first step before starting cluster to check for
+        # simple errors like missing file paths.
+        STEP_MAP[steps[0]](self, force=force, quiet=True, ipyclient=None)
+
+        # start cluster asynchronously, run jobs, and shutdown.
+        async with Cluster(cores=cores, **ipyclient_kwargs) as client:
             # use client for any/all steps of assembly
             for step in steps:
-                tool = step_map[step](self, force, quiet, client)
+                tool = STEP_MAP[step](self, force, quiet, client)
                 tool.run()
                 # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
+
+
+# the Class functions to run for each entered step.
+STEP_MAP = {
+    "1": Step1,
+    "2": Step2,
+    "3": Step3,
+    "4": Step4,
+    "5": Step5,
+    "6": Step6,
+    "7": Step7,
+}
 
 # PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
 PARAMSINFO = {

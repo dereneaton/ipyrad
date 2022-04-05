@@ -22,9 +22,15 @@ from setuptools import setup
 # Fetch version from git tags, and write to version.py.
 # Also, when git is not available (PyPi package), use stored version.py.
 INITFILE = "ipyrad/__init__.py"
-CUR_VERSION = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                        open(INITFILE, "r").read(),
-                        re.M).group(1)
+with open(INITFILE, 'r', encoding="utf-8") as inidat:
+    CUR_VERSION = re.search(
+        r"^__version__ = ['\"]([^'\"]*)['\"]",
+        inidat.read(),
+        re.M,
+    ).group(1)
+
+with open('README.rst', 'r', encoding="utf-8") as readmeio:
+    README = readmeio.read()
 
 setup(
     name="ipyrad",
@@ -34,7 +40,7 @@ setup(
     author="Deren Eaton and Isaac Overcast",
     author_email="de2356@columbia.edu",
     description="Interactive assembly and analysis of RAD-seq data sets",
-    long_description=open('README.rst').read(),
+    long_description=README,
     long_description_content_type='text/x-rst',
     install_requires=[],
     entry_points={'console_scripts': ['ipyrad = ipyrad.__main__:CLI']},

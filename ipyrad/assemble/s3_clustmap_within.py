@@ -21,13 +21,14 @@ class Step3(BaseStep):
         self.thview = self.ipyclient.load_balanced_view(
             ipyclient.ids[:self.data.ipcluster['threads']]
         )
+        if self.data.params.assembly_method == "denovo":
+            self.child = ClustMapDenovo(self)
+        else:
+            self.child = ClustMapReference(self)
 
     def run(self):
         """Submit jobs to run either denovo, reference, or complex."""
-        if self.data.params.assembly_method == "denovo":
-            ClustMapDenovo(self).run()
-        else:
-            ClustMapReference(self).run()
+        self.child.run()
 
 
 if __name__ == "__main__":

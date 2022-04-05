@@ -73,8 +73,7 @@ class Step2(BaseStep):
 
             # otherwise, we need to concatenate multiple fastq files.
             else:
-                logger.debug(
-                    "concatenating inputs: {}".format(sample.files.fastqs))
+                logger.debug(f"concatenating inputs: {sample.files.fastqs}")
 
                 # cat command works for gzip or not. Index 0 of tuples is R1s.
                 cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
@@ -325,7 +324,7 @@ class ReadTrimming:
 
     def run(self):
         """Run the fastp command on a subprocess"""
-        logger.debug(" ".join(self.command))
+        print(" ".join(self.command))  # sends to logger.INFO on engines.
         with sps.Popen(self.command, stderr=sps.STDOUT, stdout=sps.PIPE) as proc:
             out = proc.communicate()
         if proc.returncode:
