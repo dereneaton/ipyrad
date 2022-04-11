@@ -21,10 +21,16 @@ Examples
 >>> import ipyrad as ip
 >>> ip.set_log_level("DEBUG")
 >>> ip.set_log_level("DEBUG", log_file="/tmp/ip-log.txt")
+
+Note
+----
+Exceptions written to the logfile have color support, which 
+can be viewed using `less -R logfile.txt`
 """
 
-import os
+from typing import Optional
 import sys
+from pathlib import Path
 from loguru import logger
 import IPython
 
@@ -54,29 +60,26 @@ def color_support():
     return tty1 or tty2
 
 LOGGERS = [0]
-def set_log_level(log_level="DEBUG", log_file=None):
+def set_log_level(log_level: str="DEBUG", log_file: Optional[Path]=None):
     """Add logger for ipyrad to stderr and optionally to file.
 
     These loggers are bound to the 'extra' keyword 'ipyrad'. Thus, any
     module in assembly that aims to use this formatted logger should
     put `logger = logger.bind(name="ipyrad")` at the top of the module.
+
+    The logger will use EITHER a STDERR or a LOGFILE, but not both.
     """
+    # remove any previous loggers created by ipyrad
     for idx in LOGGERS:
         try:
             logger.remove(idx)
         except ValueError:
             pass
-    idx = logger.add(
-        sink=sys.stderr,
-        level=log_level,
-        colorize=color_support(),
-        format=formatter,#ASSEMBLY_STDERR_LOGGER_FORMAT,
-        filter=lambda x: x['extra'].get("name") == "ipyrad",
-    )
-    LOGGERS.append(idx)
 
     if log_file:
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        log_file = Path(log_file)
+        log_file.parent.mkdir(exist_ok=True)
+        log_file.touch(exist_ok=True)
         idx = logger.add(
             sink=log_file,
             level=log_level,
@@ -88,7 +91,17 @@ def set_log_level(log_level="DEBUG", log_file=None):
             backtrace=True,
             diagnose=True,
         )
-        LOGGERS.append(idx)
+    else:
+        idx = logger.add(
+            sink=sys.stderr,
+            level=log_level,
+            colorize=color_support(),
+            format=formatter,#ASSEMBLY_STDERR_LOGGER_FORMAT,
+            filter=lambda x: x['extra'].get("name") == "ipyrad",
+        )
+    LOGGERS.append(idx)
+
+    # activate
     logger.enable("ipyrad")
     logger.bind(name='ipyrad').debug(f"ipyrad logging enabled: {log_level}")
 
