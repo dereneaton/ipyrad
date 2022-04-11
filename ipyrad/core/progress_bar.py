@@ -13,7 +13,6 @@ import datetime
 import ipyparallel
 import IPython
 from loguru import logger
-from ipyrad.assemble.utils import IPyradError
 
 
 logger = logger.bind(name="ipyrad")
@@ -23,7 +22,7 @@ class AssemblyProgressBar:
     """Print pretty progress bar specific to Assembly object
 
     """       
-    def __init__(self, jobs, message, step, quiet=False, start=None):
+    def __init__(self, jobs, message, step:int=None, quiet=False, start=None):
         self.jobs = jobs
         self.start = (start if start else time.time())
         self.message = message
@@ -58,7 +57,7 @@ class AssemblyProgressBar:
         message = (
             f"\r[{hashes + nohash}] "
             f"{int(self.progress):>3}% {self.elapsed} | "
-            f"{self.message.ljust(20)} | {self.step} |"
+            f"{self.message.ljust(20)}"
         )
         print(message, end="\n" if final else "")
         sys.stdout.flush()
