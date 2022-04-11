@@ -387,7 +387,7 @@ class SimpleDemux:
         outfile = open(stats_file, 'w', encoding="utf-8")
 
         # write the per-file stats
-        outfile.write("# Raw file statistics\n# -------------------\n")
+        outfile.write("# Raw file statistics\n######################\n")
         file_df = pd.DataFrame(
             index=sorted(self.file_stats),
             columns=["total_reads", "cut_found", "bar_matched"],
@@ -401,7 +401,7 @@ class SimpleDemux:
         outfile.write(file_df.to_string() + "\n\n")
 
         # write sample nreads stats ----------------------------------
-        outfile.write("# Sample demux statistics\n# -----------------------\n")
+        outfile.write("# Sample demux statistics\n######################\n")
         sample_df = pd.DataFrame(
             index=sorted(self.data.samples),
             columns=["reads_raw"],
@@ -414,7 +414,7 @@ class SimpleDemux:
         logger.info("\n" + sample_df.to_string())
 
         # write verbose barcode information --------------------------
-        outfile.write("# Barcode detection statistics\n# ----------------------------\n")
+        outfile.write("# Barcode detection statistics\n######################\n")
 
         # record matches 
         data = []
@@ -631,11 +631,12 @@ class BarMatchingSingleInline(BarMatching):
         
         In i7 matching there is nothing to be trimmed from the reads.
         """
+        cuts0 = list(self.cutters[0]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[0]])))
+        cuts0 = [i for i in cuts0 if i]
         for read1, read2 in self._iter_fastq_reads():
             
-            # find barcode from start of R1 (barcode1 + RE1 overhang) 
-            pos = min(read1[1].find(cut, 1) for cut in self.cutters[0] if cut)
-            barcode = read1[1][:pos] if 3 < pos < 20 else "XXX"
+            # find barcode from start of R1 (barcode1 + RE1 overhang)
+            barcode = cut_matcher(read1[1], cuts0)
 
             # look for matches
             match = self.barcodes_to_names.get(barcode)
@@ -678,18 +679,19 @@ class BarMatchingCombinatorialInline(BarMatching):
         
         In i7 matching there is nothing to be trimmed from the reads.
         """
+        # get a list of cutters and off-by-one's
+        cuts0 = list(self.cutters[0]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[0]])))
+        cuts0 = [i for i in cuts0 if i]
+        cuts1 = list(self.cutters[1]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[1]])))
+        cuts1 = [i for i in cuts1 if i]
+
         for read1, read2 in self._iter_fastq_reads():
             
             # find barcode from start of R1 (barcode1 + RE1 overhang) 
-            pos = min(read1[1].find(cut, 1) for cut in self.cutters[0] if cut)
-            match_r1 = read1[1][:pos] if 3 < pos < 20 else "XXX"
+            match_r1 = cut_matcher(read1[1], cuts0)
 
             # pull barcode from start of R2 (barcode2 + RE2 overhang) 
-            pos = min(read2[1].find(cut, 1) for cut in self.cutters[1] if cut)
-            match_r2 = read2[1][:pos] if 3 < pos < 20 else "XXX"
-
-            # TODO: if it found one but not the other, try a fuzzy match
-            # on the missing side allowing an error in the cut site.
+            match_r2 = cut_matcher(read2[1], cuts1)
 
             # look for matches
             barcode = f"{match_r1}_{match_r2}"
@@ -702,6 +704,28 @@ class BarMatchingCombinatorialInline(BarMatching):
                 yield read1, read2, match
             else:
                 self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1                
+
+
+def cut_matcher(
+    read: str,
+    cutters: List[str], 
+    minsize: int=3, 
+    maxsize: int=20,
+    ) -> int:
+    """Returns the index where a valid cut site occurs.
+
+    This will test each of the input cutters, which are multiple if it
+    contains an ambiguity code, and then also tests cutters that are 
+    differ from the cutter sequence by `offby` (default=1). This 
+    generator stops when the first valid hit occurs, for speed.
+    """
+    for idx, cut in enumerate(cutters):
+        pos = read.find(cut)
+        if minsize < pos < maxsize:
+            # if idx > 1:
+                # print(f"extended cut: {pos} {cut} {read}")            
+            return read[:pos]
+    return "XXX"
 
 
 @dataclass
