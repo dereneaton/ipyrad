@@ -8,10 +8,13 @@ the files have not been preprocessed by other tools already.
 Further read processing to merge pairs or derep takes place in Step3.
 """
 
+from typing import TypeVar
 import os
 import sys
 import json
+from pathlib import Path
 import subprocess as sps
+
 import pandas as pd
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
@@ -19,7 +22,7 @@ from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.core.schema import Stats2
 
-
+Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
 
 
@@ -73,7 +76,7 @@ class Step2(BaseStep):
 
             # otherwise, we need to concatenate multiple fastq files.
             else:
-                logger.debug(f"concatenating inputs: {sample.files.fastqs}")
+                logger.info(f"concatenating inputs: {sample.files.fastqs}")
 
                 # cat command works for gzip or not. Index 0 of tuples is R1s.
                 cmd1 = ["cat"] + [i[0] for i in sample.files.fastqs]
@@ -81,7 +84,7 @@ class Step2(BaseStep):
                 # write to new concat handle
                 conc1 = self.data.tmpdir / f"{sample.name}_R1_concat.fastq"
                 if sample.files.fastqs[0][0].endswith(".gz"):
-                    conc1 += ".gz"
+                    conc1 = conc1.with_suffix(".gz")
 
                 # call and write to open outfile
                 with open(conc1, 'w', encoding="utf-8") as cout1:
@@ -99,7 +102,7 @@ class Step2(BaseStep):
                     # out _R2 filehandle
                     conc2 = self.data.tmpdir / f"{sample.name}_R2_concat.fastq"
                     if sample.files.fastqs[0][0].endswith(".gz"):
-                        conc2 += ".gz"
+                        conc2 = conc2.with_suffix(".gz")
 
                     # write concat results directly to _concat outfile.
                     cmd2 = ["cat"] + [i[1] for i in sample.files.fastqs]
@@ -115,36 +118,31 @@ class Step2(BaseStep):
 
                 # store new file handles
                 self.ctuple_dict[sname] = (conc1, conc2)
-                logger.debug('concat: {}'.format(self.ctuple_dict[sname]))
+                logger.info(f'concat: {self.ctuple_dict[sname]}')
 
     def _distribute_fastp(self):
-        """Distribute N / 2 fastp jobs on N processors."""
-        logger.debug("submitting remote fastp jobs")
+        """Distribute N / 2 fastp jobs on N processors.
 
-        def trim_reads(data, sname, read1, read2, workdir):
+        """
+        logger.info("submitting remote fastp jobs")
+
+        def trim_reads(**kwargs):
             """Remote function for applying fastp read trimming."""
-            tool = ReadTrimming(
-                data=data,
-                sname=sname,
-                read1=read1,
-                read2=(read2 if read2 else None),
-                workdir=workdir,
-            )
+            tool = ReadTrimming(**kwargs)
             tool.run()
             return tool.parse_stats_from_json()
 
         # submit jobs to run
         jobs = {}
         for sname in self.data.samples:
-            args = (
-                self.data,
-                sname,
-                self.ctuple_dict[sname][0],
-                self.ctuple_dict[sname][1],
-                self.data.stepdir,
+            kwargs = dict(
+                data=self.data,
+                sname=sname,
+                read1=self.ctuple_dict[sname][0],
+                read2=self.ctuple_dict[sname][1],
             )
             # logger.debug(" ".join(ReadTrimming(*args).command))
-            jobs[sname] = self.lbview.apply(trim_reads, *args)
+            jobs[sname] = self.lbview.apply(trim_reads, **kwargs)
 
         # wait for all to finish
         message = "processing reads"
@@ -235,29 +233,23 @@ class ReadTrimming:
 
     https://github.com/OpenGene/fastp
     """
-    def __init__(self, data, sname, read1, read2, workdir):
+    def __init__(self, data: Assembly, sname: str, read1: Path, read2: Path):
 
-        # input args
+        # input args are passed as full paths
         self.data = data
-        self.read1 = os.path.realpath(os.path.expanduser(read1))
-        self.read2 = (
-            os.path.realpath(os.path.expanduser(read2)) if read2
-            else None
-        )
-        self.workdir = os.path.realpath(os.path.expanduser(workdir))
-        self.is_paired = self.read2 is not None
-        self.fastp_binary = os.path.join(sys.prefix, "bin", "fastp")
+        self.read1 = read1
+        self.read2 = read2 if read2 else None
+        self.fastp_binary = Path(sys.prefix) / "bin" / "fastp"
 
         # output file paths (do not bother gzipping since these are tmp files)
-        self.out1 = os.path.join(self.workdir, sname + ".trimmed_R1.fastq.gz")
+        self.out1 = self.data.stepdir / f"{sname}.trimmed_R1.fastq.gz"
         self.out2 = (
-            os.path.join(self.workdir, sname + ".trimmed_R2.fastq.gz")
-            if self.is_paired else ""
-        )
+            self.data.stepdir / f"{sname}.trimmed_R2.fastq.gz" 
+            if self.data.is_pair else "")
 
         # paths to stats files
-        self.json = os.path.join(self.workdir, f'{sname}.fastp.json')
-        self.html = os.path.join(self.workdir, f'{sname}.fastp.html')
+        self.json = self.data.stepdir / f'{sname}.fastp.json'
+        self.html = self.data.stepdir / f'{sname}.fastp.html'
 
         # get the command
         self.command = []
@@ -273,13 +265,13 @@ class ReadTrimming:
         (-A turns off adapter trimming)
         (-Q turns off quality filtering)
         """
-        if self.is_paired:
+        if self.data.is_pair:
             cmd = [
-                self.fastp_binary,
-                "-i", self.read1,
-                "-I", self.read2,
-                "-o", self.out1,
-                "-O", self.out2,
+                str(self.fastp_binary),
+                "-i", str(self.read1),
+                "-I", str(self.read2),
+                "-o", str(self.out1),
+                "-O", str(self.out2),
                 "--detect_adapter_for_pe"
             ]
             # if we merged in step2 this would prevent branching at
@@ -288,32 +280,42 @@ class ReadTrimming:
                 # cmd += ['-m', '--merged_out', self.out1 + ".merged"]
         else:
             cmd = [
-                self.fastp_binary,
-                "-i", self.read1,
-                "-o", self.out1,
+                str(self.fastp_binary),
+                "-i", str(self.read1),
+                "-o", str(self.out1),
             ]
+
+        # by default we trim the adapter lengths from the start of R1
+        # and R2 reads based on `restriction_overhang` params, but this
+        # will be overriden by `trim_reads` params.
+        trim_front1 = len(self.data.params.restriction_overhang[0])
+        trim_front2 = len(self.data.params.restriction_overhang[1])
+        if self.data.params.trim_reads[0]:
+            trim_front1 = self.data.params.trim_reads[0]
+        if self.data.params.trim_reads[2]:
+            trim_front2 = self.data.params.trim_reads[2]
 
         cmd.extend([
             "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
             "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
             # "-a", str(self.data.hackersonly.p5_adapter), # allow auto-detection
-            "-q", str(20 + self.data.params.phred_qscore_offset - 33),  # minqual
+            "-q", str(20 + self.data.hackers.phred_qscore_offset - 33),  # minqual
             "-l", str(self.data.params.filter_min_trim_len),  # minlen
             "-y", "-Y", "50",  # turns on and sets complexity filter to 50
             "-c",              # paired-end base correction
             "-w", "3",         # 3 proc. threads, 1 i/o thread.
             "--n_base_limit", str(self.data.params.max_low_qual_bases),
-            "-j", self.json,
-            "-h", self.html,
-            "--trim_front1", str(self.data.params.trim_reads[0]),
+            "-j", str(self.json),
+            "-h", str(self.html),
+            "--trim_front1", str(trim_front1),
             "--trim_tail1", str(self.data.params.trim_reads[1]),
-            "--trim_front2", str(self.data.params.trim_reads[2]),
+            "--trim_front2", str(trim_front2),
             "--trim_tail2", str(self.data.params.trim_reads[3]),
         ])
 
         # turn off filters if settings are lower than 2
         # hard coded fasta adapters file with Truseq and AAAAAAA
-        extra_adapters = os.path.join(os.path.dirname(__file__), "adapters.fa")
+        extra_adapters = Path(__file__).parent / "adapters.fa"
         if self.data.params.filter_adapters == 2:
             cmd.extend(["--adapter_fasta", str(extra_adapters)])
         if self.data.params.filter_adapters == 1:
