@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-"""
-Merge assemblies
+"""Merge assemblies
+
 """
 
 from typing import List, Dict, Optional
@@ -17,7 +17,8 @@ def merge(
     assemblies: List[Assembly], 
     rename_dict: Optional[Dict[str,str]] = None,
     ):
-    """
+    """Merge two Assemblies into a single Assembly.
+
     Creates and return a new Assembly containing the merged samples
     of all input Assemblies, and parameter settings set to the 
     first Assembly. Merging can be used to combine samples up to 
@@ -26,14 +27,14 @@ def merge(
     the actual files that currently exist, but rather creates new 
     samples that reference multiple existing files.
 
-    Examples:
+    Examples
     ---------
-    # merge two assemblies
-    new = ip.merge('newname', [assembly1, assembly2])
-
-    # merge two assemblies and rename samples
-    rename = {"1A_0", "A", "1B_0", "A"}
-    new = ip.merge('newname', [assembly1, assembly2], rename_dict=rename)
+    >>> # merge two assemblies
+    >>> new = ip.merge('newname', [assembly1, assembly2])
+    >>> 
+    >>> # merge two assemblies and rename samples
+    >>> rename = {"1A_0", "A", "1B_0", "A"}
+    >>> new = ip.merge('newname', [assembly1, assembly2], rename_dict=rename)
 
     Parameters:
     -----------
@@ -162,4 +163,4 @@ if __name__ == "__main__":
     data1 = ip.Assembly("test1")
     data2 = ip.Assembly("test2")
     data3 = ip.merge('merged', assemblies=[data1, data2])
-    data3.stats
+    print(data3.stats)
