@@ -13,24 +13,34 @@ will be caught by the tracker and piped to the logger.
 
 # pylint: disable=no-member, 
 
-from typing import List
+from typing import List, TypeVar
 import os
 import sys
 import gzip
-import subprocess as sps
+from pathlib import Path
+from subprocess import Popen, PIPE, STDOUT, DEVNULL
+
+from loguru import logger
 import numpy as np
 import pysam
 from ipyrad.assemble.utils import IPyradError
 
+logger = logger.bind(name="ipyrad")
 
-BIN_BWA = os.path.join(sys.prefix, "bin", "bwa")
-BIN_SAMTOOLS = os.path.join(sys.prefix, "bin", "samtools")
-BIN_VSEARCH = os.path.join(sys.prefix, "bin", "vsearch")
-BIN_BEDTOOLS = os.path.join(sys.prefix, "bin", "bedtools")
+Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
+
+BIN = Path(sys.prefix) / "bin"
+BIN_VSEARCH = str(BIN / "vsearch")
+BIN_BWA = str(BIN / "bwa")
+BIN_SAMTOOLS = str(BIN / "samtools")
+BIN_SAMTOOLS = str(BIN / "bedtools")
 
 
-def index_ref_with_bwa(data, alt=False):
-    """Index the reference sequence, unless it already exists"""
+def index_ref_with_bwa(data: Assembly, alt: bool=False) -> None:
+    """Index the reference sequence, unless it already exists
+
+    """
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -38,7 +48,7 @@ def index_ref_with_bwa(data, alt=False):
         refseq_file = data.params.reference_as_filter
 
     # check that ref file exists
-    if not os.path.exists(refseq_file):
+    if not refseq_file.exists():
         if not alt:
             raise IPyradError(
                 f"Assembly method {data.params.assembly_method} "
@@ -50,34 +60,35 @@ def index_ref_with_bwa(data, alt=False):
             f"{data.params.reference_as_filter}")
 
     # If reference sequence already exists then bail out of this func
-    index_files = [".amb", ".ann", ".bwt", ".pac", ".sa"]
-    if all(os.path.isfile(refseq_file + i) for i in index_files):
-        print("reference is bwa indexed: {}".format(refseq_file))
+    suffs = [".amb", ".ann", ".bwt", ".pac", ".sa"]
+    if all(refseq_file.with_suffix(i).exists() for i in suffs):
+        print(f"reference is bwa indexed: {refseq_file}")
         return
 
     # bwa index <reference_file>
-    cmd = [BIN_BWA, "index", refseq_file]
-    print(" ".join(cmd))
-    with sps.Popen(cmd, stderr=sps.PIPE, stdout=None) as proc:
+    cmd = [str(BIN_BWA), "index", str(refseq_file)]
+    print(" ".join(cmd)) # engine sends to logger.info
+    with Popen(cmd, stderr=PIPE, stdout=None) as proc:
         error = proc.communicate()[1].decode()
 
     # error handling for one type of error on stderr
     if proc.returncode:
         if "please use bgzip" in error:
-            raise IPyradError((
+            raise IPyradError(
                 "Reference sequence must be de-compressed fasta or bgzip "
                 "compressed, your file is probably gzip compressed. The "
                 "simplest fix is to gunzip your reference sequence by "
                 "running this command: \n"
-                "    gunzip {}\n"
+                f"    gunzip {refseq_file}\n"
                 "Then edit your params file to remove the `.gz` from the "
                 "end of the path to your reference sequence file and rerun "
-                "step 3 with the `-f` flag."
-                .format(refseq_file)))
+                "step 3 with the `-f` flag.")
         raise IPyradError(error)
 
-def index_ref_with_sam(data, alt=False):
-    """Index ref for building scaffolds w/ index numbers in steps 5-6"""
+def index_ref_with_sam(data: Assembly, alt: bool=False) -> None:
+    """Index ref for building scaffolds w/ index numbers in steps 5-6.
+
+    """
     # get ref file from params, alt ref is for subtraction
     if not alt:
         refseq_file = data.params.reference_sequence
@@ -85,46 +96,44 @@ def index_ref_with_sam(data, alt=False):
         refseq_file = data.params.reference_as_filter
 
     # check whether it is already indexed
-    if not os.path.exists(refseq_file):
+    if not refseq_file.exists():
         if not alt:
-            raise IPyradError((
-                "Assembly method {} requires that you enter a "
-                "reference_sequence_path. The path you entered was not "
-                "found: \n{}")
-                .format(data.params.assembly_method, data.params.reference_sequence))
-        raise IPyradError((
+            raise IPyradError(
+                f"Assembly method {data.params.assembly_method} requires"
+                " that you enter a reference_sequence_path. The path you"
+                f" entered was not found:\n{data.params.reference_sequence}")
+        raise IPyradError(
             "reference_as_filter requires that you enter a reference "
-            "fasta file. The path you entered was not found: \n{}")
-            .format(data.params.reference_as_filter))
+            "fasta file. The path you entered was not found:\n"
+            f"{data.params.reference_as_filter}")
 
     # If reference index exists then bail out unless force
-    if os.path.exists(refseq_file + ".fai"):
+    if refseq_file.with_suffix(".fai").exists():
         print(f"reference is sam indexed: {refseq_file}")
         return
 
     # complain if file is bzipped
-    if refseq_file.endswith(".gz"):
-        raise IPyradError("You must decompress your genome file.") 
+    if refseq_file.suffix == ".gz":
+        raise IPyradError(
+            "You must decompress the genome file: {refseq_file}.") 
 
     # index the file
     print(f"indexing {refseq_file} with pysam/samtools")
-    pysam.faidx(refseq_file)
+    pysam.faidx(str(refseq_file))
 
-def mapping_reads_minus(data, sample, nthreads):
+def mapping_reads_minus(data: Assembly, sample: Sample, nthreads: int) -> None:
     """Map reads to the reference-filter fasta to get unmapped fastq
     files to use for downstream analyses.
     """
     if not data.params.reference_as_filter:
         return
     reference = data.params.reference_as_filter
-    if not os.path.exists(reference):
-        raise IPyradError(f"reference_filter sequence not found: {reference}")
 
     # input reads are concat if present else trims
-    read1 = os.path.join(data.tmpdir, f"{sample.name}_concat_R1.fastq.gz")
-    read2 = os.path.join(data.tmpdir, f"{sample.name}_concat_R2.fastq.gz")
-    read1 = read1 if os.path.exists(read1) else sample.files.edits[0][0]
-    read2 = read2 if os.path.exists(read2) else sample.files.edits[0][1]
+    read1 = data.tmpdir / f"{sample.name}_concat_R1.fastq.gz"
+    read2 = data.tmpdir / f"{sample.name}_concat_R2.fastq.gz"
+    read1 = str(read1) if read1.exists() else sample.files.edits[0][0]
+    read2 = str(read2) if read2.exists() else sample.files.edits[0][1]
 
     # setup cmd1 (mapping w/ bwa)
     cmd1 = [BIN_BWA, "mem", "-t", str(max(1, nthreads)), "-M", reference]
@@ -132,59 +141,61 @@ def mapping_reads_minus(data, sample, nthreads):
     if data.hackers.bwa_args:
         for arg in data.hackers.bwa_args.split()[::-1]:
             cmd1.insert(2, arg)
-    cmd1 += ['-o', os.path.join(data.tmpdir, f"{sample.name}.sam")]
+    cmd1 += ['-o', str(data.tmpdir / f"{sample.name}.sam")]
     print(" ".join(cmd1))
 
     # run cmd1
-    with sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc1:
+    with Popen(cmd1, stderr=PIPE, stdout=DEVNULL) as proc1:
         error1 = proc1.communicate()[1]
         if proc1.returncode:
             raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
 
     # setup cmd2 (sam to bam)
     cmd2 = [BIN_SAMTOOLS, 'view', '-b', '-F', '0x904']
-    cmd2 += ['-U', os.path.join(data.tmpdir, f"{sample.name}.unmapped.bam")]
-    cmd2 += [os.path.join(data.tmpdir, f"{sample.name}.sam")]
+    cmd2 += ['-U', str(data.tmpdir / f"{sample.name}.unmapped.bam")]
+    cmd2 += [str(data.tmpdir / f"{sample.name}.sam")]
     print(' '.join(cmd2))
 
     # run cmd2
-    with sps.Popen(cmd2, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc2:
+    with Popen(cmd2, stderr=PIPE, stdout=DEVNULL) as proc2:
         error2 = proc2.communicate()[1]
         if proc2.returncode:
             raise IPyradError(f"cmd: {' '.join(cmd2)}\nerror: {error2}")
 
     # setup cmd3 (bam to fastq unmapped)
     cmd3 = [BIN_SAMTOOLS, 'fastq', '-v', '45']
-    cmd3 += ['-1', os.path.join(data.tmpdir, f"{sample.name}.unmapped_R1.fastq")]
-    cmd3 += ['-2', os.path.join(data.tmpdir, f"{sample.name}.unmapped_R2.fastq")]
-    cmd3 += [os.path.join(data.tmpdir, f"{sample.name}.unmapped.bam")]
+    cmd3 += ['-1', str(data.tmpdir / f"{sample.name}.unmapped_R1.fastq")]
+    cmd3 += ['-2', str(data.tmpdir / f"{sample.name}.unmapped_R2.fastq")]
+    cmd3 += [str(data.tmpdir / f"{sample.name}.unmapped.bam")]
     print(' '.join(cmd3))
 
     # run cmd3
-    with sps.Popen(cmd3, stderr=sps.PIPE, stdout=sps.DEVNULL) as proc3:
+    with Popen(cmd3, stderr=PIPE, stdout=DEVNULL) as proc3:
         error3 = proc3.communicate()[1]
         if proc3.returncode:
             raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
 
-def join_pairs_for_derep_ref(data, sample):
-    """ 
+def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
+    """Temporarily join pairs for dereplication.
+
     Combines read1 and read2 with a 'nnnn' separator. Because reads
     will be refmapped we DO NOT REVCOMP read2 in 'reference' datatype.
-    The joined read pairs are used for dereplication and decloning.
+    The joined read pairs are used for dereplication and decloning
+    but split again before mapping.
     """
     # input file options
-    unmapped1 = os.path.join(data.tmpdir, f"{sample.name}.unmapped_R1.fastq")
-    unmapped2 = os.path.join(data.tmpdir, f"{sample.name}.unmapped_R2.fastq")
-    concat1 = os.path.join(data.tmpdir, f"{sample.name}.concat_R1.fastq.gz")
-    concat2 = os.path.join(data.tmpdir, f"{sample.name}.concat_R2.fastq.gz")
-    trim1 = sample.files.edits[0][0]
-    trim2 = sample.files.edits[0][1]
+    unmapped1 = data.tmpdir / f"{sample.name}.unmapped_R1.fastq"
+    unmapped2 = data.tmpdir / f"{sample.name}.unmapped_R2.fastq"
+    concat1 = data.tmpdir / f"{sample.name}.concat_R1.fastq.gz"
+    concat2 = data.tmpdir / f"{sample.name}.concat_R2.fastq.gz"
+    trim1 = Path(sample.files.edits[0][0])
+    trim2 = Path(sample.files.edits[0][1])
 
     # file precedence
     order1 = (trim1, concat1, unmapped1)
     order2 = (trim2, concat2, unmapped2)
-    read1 = [i for i in order1 if os.path.exists(i)][-1]
-    read2 = [i for i in order2 if os.path.exists(i)][-1]
+    read1 = [i for i in order1 if i.exists()][-1]
+    read2 = [i for i in order2 if i.exists()][-1]
 
     # read in paired end read files 4 lines at a time
     xopen = gzip.open if read1.endswith(".gz") else open
@@ -195,19 +206,15 @@ def join_pairs_for_derep_ref(data, sample):
     quarts = zip(quart1, quart2)
 
     # output file
-    out = open(os.path.join(data.tmpdir, f"{sample.name}_joined.fastq"), 'wt')
+    handle = data.tmpdir / f"{sample.name}_joined.fastq"
+    out = open(handle, 'w', encoding="utf-8")
 
     # a list to store until writing
     writing = []
     counts = 0
 
     # iterate until done
-    while 1:
-        try:
-            read1s, read2s = next(quarts)
-        except StopIteration:
-            break
-
+    for read1s, read2s in quarts:
         writing.append(
             "".join([
                 read1s[0],
@@ -216,8 +223,6 @@ def join_pairs_for_derep_ref(data, sample):
                 read1s[3].strip() + "nnnn" + read2s[3],
             ])
         )
-
-        # keep count
         counts += 1
         if not counts % 5000:
             out.write("".join(writing))
@@ -239,26 +244,26 @@ def tag_for_decloning(data, sample):
     indices are gone. THIS IS DONE BEFORE DEREPLICATION, so that 
     identical reads are not collapsed if they have different i5s.
 
-    # e.g.,                                            i7       i5
-    @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
-    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-    +
-    BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-
-    to
-
-    @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
-    CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-    +
-    FFFFFFFFBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    >>> # e.g.,                                            i7       i5
+    >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
+    >>> AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    >>> +
+    >>> BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+    >>>
+    >>> # to
+    >>> ********
+    >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
+    >>> CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    >>> +
+    >>> FFFFFFFFBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
 
     3rad uses random adapters to identify pcr duplicates. For removing
     pcr dups later we need to insert the tag into the sequence here
     so they will not be dereplicated together.
     """
     # paired reads are merged or joined in the merged file
-    tmpin = os.path.join(data.tmpdir, f"{sample.name}_joined.fastq")
-    tmpout = os.path.join(data.tmpdir, f"{sample.name}_declone.fastq")
+    tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
+    tmpout = data.tmpdir / f"{sample.name}_declone.fastq"
 
     # Remove adapters from head of sequence and write out
     # tmp_outfile is now the input file for the next step
