@@ -47,10 +47,13 @@ class Stats2(BaseModel):
 
 class Stats3(BaseModel):
     merged_pairs: int = 0
+    merged_pairs_prop: float = 0    
     min_depth_maj_during_step3: int = 0
     min_depth_stat_during_step3: int = 0
     reads_mapped_to_ref: int = None
     reads_mapped_to_ref_prop: float = None
+    reads_mapped_to_ref_filter: int = None
+    reads_mapped_to_ref_filter_prop: float = None
     clusters_total: int = None
     clusters_hidepth: int = None
     mean_depth_total: float = 0.
@@ -60,8 +63,10 @@ class Stats3(BaseModel):
     std_depth_mj: float = 0.
     std_depth_stat: float = 0.
     filtered_bad_align: int = 0
-    deduplicated_reads: int = 0
-    deduplicated_reads_prop: int = 0
+    pcr_duplicates: int = 0
+    pcr_duplicates_prop: float = 0
+    # deduplicated_reads: int = 0
+    # deduplicated_reads_prop: int = 0
     max_hidepth_cluster_length: int = 0
     mean_hidepth_cluster_length: float = 0.
     std_hidepth_cluster_length: float = 0.
