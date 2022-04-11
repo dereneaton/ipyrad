@@ -4,7 +4,6 @@
 """
 
 from typing import List, Dict, Tuple, TypeVar
-import glob
 from pathlib import Path
 import itertools
 import subprocess
@@ -17,6 +16,7 @@ from ipyrad.core.progress_bar import AssemblyProgressBar
 logger = logger.bind(name="ipyrad")
 Step1 = TypeVar("Step1")
 Assembly = TypeVar("Assembly")
+
 
 class FileLinker:
     """Loads Samples from file names and check sample names for bad chars.
@@ -41,8 +41,8 @@ class FileLinker:
 
     def _get_fastq_files(self):
         """Sets .fastqs with all Paths matching the regular expression path."""
-        fastqs = glob.glob(str(self.data.params.sorted_fastq_path))
-        self.fastqs = [Path(i) for i in fastqs]
+        fastq_path = self.data.params.sorted_fastq_path
+        self.fastqs = list(fastq_path.parent.glob(fastq_path.name))
 
     def _check_file_suffixes(self):
         """Check file endings for unsupported types."""
@@ -75,7 +75,7 @@ class FileLinker:
 
         A fairly complicated process to flexibly find matching PE files.
         """
-        def drop_from_right(fname, idx):
+        def drop_from_right(fname: Path, idx: int) -> str:
             """Used in pair name parsing to sub out _ delim chunks
             
             Example
@@ -97,7 +97,7 @@ class FileLinker:
             i.name.rstrip(".gz").rstrip(".fastq").rstrip(".fq")
             for i in self.fastqs
         ])
-        logger.info(f"names: {bases}")
+        logger.debug(f"names: {bases}")
 
         # link pairs into tuples
         if self.data.is_pair:
@@ -128,7 +128,7 @@ class FileLinker:
                         "matching name prefix followed by _1 _2, _R1 _R2, "
                         "or _R1_ _R2_ followed by any subsequent suffix. "
                         f"Your filenames look like this: {self.fastqs}"
-                        )
+                    )
 
             # apply splitter to the full path names
             groups = itertools.groupby(
@@ -136,11 +136,10 @@ class FileLinker:
                 key=lambda x: drop_from_right(x, idx),
             )
 
-            for fname, files in groups:
-                fname = fname.name  # os.path.basename(fname)
-                files = sorted(files)
-                logger.debug(f"detected paired files: {files}")
-                self.ftuples[fname] = (files[0], files[1])
+            for fname, paths in groups:
+                paths = sorted(paths)
+                logger.debug(f"detected paired files: {paths}")
+                self.ftuples[fname] = (paths[0], paths[1])
 
             # file checks
             if not self.ftuples:
