@@ -32,6 +32,7 @@ class HackersSchema(BaseModel):
     merge_technical_replicates: bool = True
     exclude_reference: bool = True
     trim_loci_min_sites: int = 4
+    phred_qscore_offset: int = 33    
 
 class AssemblyMethod(str, Enum):
     """supported assembly method categories"""
@@ -60,7 +61,6 @@ class ParamsSchema(BaseModel):
     datatype: DataType = "rad"
     restriction_overhang: Tuple[str, str] = ("TGCAG", "")
     max_low_qual_bases: int = 5
-    phred_qscore_offset: int = 33
     min_depth_statistical: int = 6
     min_depth_majrule: int = 6
     max_depth: int = 10000
@@ -138,7 +138,7 @@ class ParamsSchema(BaseModel):
         """Checks that reference file exists and expands path."""
         if value:
             value = value.expanduser().resolve()
-            if not glob.glob(value):
+            if not value.exists():
                 raise ValueError(f"no files match the input string: {value}")                
             if value.suffix == ".gz":
                 raise ValueError(f"reference {value} must be decompressed.")
@@ -167,4 +167,5 @@ class ParamsSchema(BaseModel):
 if __name__ == "__main__":
 
     p = ParamsSchema(assembly_name="TEST", project_dir="./")
+    p.reference_as_filter = "../../tests/ipsimdata/gbs_example_genome.fa"
     print(p)
