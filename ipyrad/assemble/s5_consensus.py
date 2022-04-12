@@ -4,10 +4,7 @@
 
 """
 
-from typing import Dict
-from pathlib import Path
-import gzip
-import glob
+from typing import Dict, TypeVar
 import itertools
 from collections import Counter
 import numpy as np
@@ -17,7 +14,9 @@ from loguru import logger
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.core.schema import Stats5
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.utils import IPyradError, clustdealer
+from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.clustmap_within_denovo_utils import iter_clusters
+from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
 from ipyrad.assemble.consens_utils import (
     Processor,
     concat_catgs,
@@ -25,7 +24,10 @@ from ipyrad.assemble.consens_utils import (
     concat_reference_consens,
 )
 
+Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
 logger = logger.bind(name="ipyrad")
+
 
 class Step5(BaseStep):
     """Run Step3 clustering/mapping using vsearch or bwa"""
@@ -34,25 +36,23 @@ class Step5(BaseStep):
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
         self.max_frag = self.data.hackers.max_fragment_length
-        self.nclusters_dict: Dict[str,int] = {}
-        self.data.tmpdir = Path(self.tmpdir)
-        self.data.stepdir = Path(self.stepdir)
+        self.keep_masks: Dict[str, np.ndarray] = {}
 
         # sample paths to be used
         for sname, sample in self.samples.items():
-            sample.files.depths = self.stepdir / f"{sname}.catg.hdf5"
+            sample.files.depths = self.data.stepdir / f"{sname}.catg.hdf5"
             if self.data.is_ref:
-                sample.files.consens = self.stepdir / f"{sname}.bam"
+                sample.files.consens = self.data.stepdir / f"{sname}.bam"
             else:
-                sample.files.consens = self.stepdir / f"{sname}.consens.gz"
+                sample.files.consens = self.data.stepdir / f"{sname}.consens.gz"
 
     def run(self):
         """Submit jobs to run either denovo, reference, or complex."""
         self.calculate_depths_and_max_frag()
         self.make_chunks()
         self.process_chunks()
-        self.concatenate_chunks()
-        self.data.save_json()
+        # self.concatenate_chunks()
+        # self.data.save_json()
 
     def calculate_depths_and_max_frag(self):
         """Check whether mindepth has changed and calc nclusters and maxlen
@@ -60,8 +60,8 @@ class Step5(BaseStep):
         # send jobs to be processed on engines
         jobs = {}
         for sname, sample in self.samples.items():
-            args = (self.data, sample)
-            rasync = self.lbview.apply(recal_hidepth_majrule, *args)
+            kwargs = dict(data=self.data, sample=sample, majrule=True)
+            rasync = self.lbview.apply(recal_hidepth_cluster_stats, **kwargs)
             jobs[sname] = rasync
         msg = "calculating depths"
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
@@ -69,14 +69,13 @@ class Step5(BaseStep):
         prog.check()
 
         # check for failures and collect results
-        for sname in prog.results:
-            n_hidepth_clusts, max_frag = prog.results[sname]
+        for sname, res in prog.results.items():
+            keep_mask, max_frag = res
             self.data.max_frag = int(max(self.max_frag, max_frag))
-            self.nclusters_dict[sname] = n_hidepth_clusts
+            self.keep_masks[sname] = keep_mask
+            logger.debug(f"high depth clusters in {sname}: {keep_mask.sum()}")
         logger.debug(
             f"max_fragment_length will be constrained to {self.data.max_frag}")
-        logger.debug(
-            f"high depth clusters for consensus calling: {self.nclusters_dict}")
 
     def make_chunks(self):
         """Split clusters into chunks for parallel processing
@@ -84,13 +83,8 @@ class Step5(BaseStep):
         msg = "chunking clusters"
         jobs = {}
         for sname, sample in self.samples.items():
-            args = (
-                self.data,
-                sample,
-                self.nclusters_dict[sname],
-                len(self.ipyclient),
-            )
-            rasync = self.lbview.apply(make_chunks_remote, *args)
+            args = (self.data, sample, self.keep_masks[sname])
+            rasync = self.lbview.apply(make_chunk_files, *args)
             jobs[sname] = rasync
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
@@ -100,7 +94,7 @@ class Step5(BaseStep):
         """Process the cluster chunks into arrays and consens or bam files
         """
         def processor_wrap(data, sample, chunkfile):
-            "wrapper for class function"
+            """Send job to Processor class on remote engine."""
             proc = Processor(data, sample, chunkfile)
             proc.run()
             return proc.counters, proc.filters
@@ -117,11 +111,11 @@ class Step5(BaseStep):
 
         # submit jobs (10 per sample === can be hundreds of jobs...)
         jobs = {sname: [] for sname in self.samples}
-        for sname in self.samples:
-            chunks = self.tmpdir.glob(f"{sname}.chunk.*")
-            chunks.sort(key=lambda x: int(x.split('.')[-1]))
+        for sname, sample in self.samples.items():
+            chunks = list(self.data.tmpdir.glob(f"{sname}_chunk_[0-9]*"))
+            chunks.sort(key=lambda x: int(x.name.split('_')[-1]))
             for chunk in chunks:
-                args = (self.data, self.samples[sname], chunk)
+                args = (self.data, sample, chunk)
                 jobs[sname].append(self.lbview.apply(processor_wrap, *args))
 
         # send chunks to be processed
@@ -148,7 +142,7 @@ class Step5(BaseStep):
             # STORE STATS
             self.samples[sname].stats_s5 = Stats5()
             stats = self.samples[sname].stats_s5
-            stats.cluster_total = self.nclusters_dict[sname]
+            stats.cluster_total = self.keep_masks[sname].sum()
             stats.consensus_total = stat_dict["nconsens"]
             stats.filtered_by_depth = filter_dict["depth"]
             stats.filtered_by_max_h = filter_dict["maxh"]
@@ -164,13 +158,13 @@ class Step5(BaseStep):
             stats.min_depth_stat_during_step5 = self.data.params.min_depth_statistical
 
         # WRITE TO STATS FILE and LOGGER
-        stats_file = self.stepdir / "s5_stats_consensus.txt"
+        stats_file = self.data.stepdir / "s5_stats_consensus.txt"
         statsdf = pd.DataFrame(
             index=sorted(self.samples),
             columns=list(self.samples[sname].stats_s5.dict()),
         )
-        for sname in self.samples:
-            istats = self.samples[sname].stats_s5.dict()
+        for sname, sample in self.samples.items():
+            istats = sample.stats_s5.dict()
             for column in statsdf.columns:
                 statsdf.loc[sname, column] = istats[column]
         with open(stats_file, 'w', encoding="utf-8") as out:
@@ -207,100 +201,35 @@ class Step5(BaseStep):
         prog.check()
 
 
-def recal_hidepth_majrule(data, sample):
-    """Returns the number of loci above the majrule threshold and the
-    max fragment length that will be allowed.
+def make_chunk_files(data: Assembly, sample: Sample, keep_mask: np.ndarray) -> None:
+    """Split job into 5_000 hidepth clusters each.
     """
-    # if nothing changed then return max fragment length
-    check1 = data.params.min_depth_majrule == sample.stats_s3.min_depth_maj_during_step3
-    check2 = data.params.min_depth_statistical == sample.stats_s3.min_depth_stat_during_step3
-    if check1 and check2:
-        maxfrag = (
-            4 + sample.stats_s3.mean_hidepth_cluster_length +
-            (2 * sample.stats_s3.std_hidepth_cluster_length)
-        )
-        return sample.stats_s3.clusters_hidepth, maxfrag
+    # open to cluster generator
+    clusters = iter_clusters(sample.files.clusters, gzipped=True)
 
-    # otherwise calculate depth again given the new mindepths settings.
-    with gzip.open(sample.files.clusters, 'rt') as infile:
-        pairdealer = zip(*[infile] * 2)
+    # load in high depth clusters and then write to chunk
+    chunk = []
+    sidx = 0
+    for idx, clust in enumerate(clusters):
+        if not keep_mask[idx]:
+            continue
+        chunk.append("".join(clust))
 
-        # storage
-        counts = []
-        depths = []
-        maxlen = []
+        # write to chunk file and reset        
+        if len(chunk) == 5_000:
+            end = sidx + len(chunk)
+            handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
+            with open(handle, 'w', encoding="utf-8") as out:
+                out.write("//\n//\n".join(chunk) + "//\n//\n")
+            chunk = []
+            sidx += 5000
 
-        # start with cluster 0
-        tdepth = 0
-        tlen = 0
-        tcount = 0
-
-        # iterate until empty
-        while 1:
-            try:
-                name, seq = next(pairdealer)
-            except StopIteration:
-                break
-
-            # if at the end of a cluster
-            if name == "//\n":
-                depths.append(tdepth)
-                maxlen.append(tlen)
-                counts.append(tcount)
-                tlen = 0
-                tdepth = 0
-                tcount = 0
-            else:
-                tdepth += int(name.strip().split("=")[-1][:-2])
-                tlen = len(seq)
-                tcount += 1
-
-    # convert to arrays
-    maxlens, depths = np.array(maxlen), np.array(depths)
-
-    # get mask of clusters that are hidepth
-    stat_mask = depths >= data.params.min_depth_statistical
-
-    # get frag lenths of clusters that are hidepth
-    lens_above_st = maxlens[stat_mask]
-
-    # calculate frag length from hidepth lens
-    try:
-        maxfrag = 4 + int(lens_above_st.mean() + (2. * lens_above_st.std()))
-    except Exception as inst:
-        raise IPyradError(
-            "No clusts with depth sufficient for statistical basecalling. "
-            f"I recommend you branch to drop this sample: {sample.name}"
-            ) from inst
-    return stat_mask.sum(), maxfrag
-
-def make_chunks_remote(data, sample, nclusters, ncpus):
-    """Split job into bits and pass to the client
-    """
-    # counter for split job submission
-    num = 0
-
-    # set optim size for chunks in N clusters. The first few chunks take longer
-    # because they contain larger clusters, so we create 4X as many chunks as
-    # processors so that they are split more evenly.
-    optim = int((nclusters // ncpus) + (nclusters % ncpus))
-
-    # open to clusters
-    with gzip.open(sample.files.clusters, 'rt') as clusters:
-        pairdealer = zip(*[clusters] * 2)
-
-        # Use iterator to sample til end of cluster
-        done = 0
-        while not done:
-            # grab optim clusters and write to file.
-            done, chunk = clustdealer(pairdealer, optim)
-            chunkhandle = data.tmpdir / f"{sample.name}.chunk.{optim}.{num * optim}"
-
-            # write to file
-            if chunk:
-                with open(chunkhandle, 'wt') as outchunk:
-                    outchunk.write("//\n//\n".join(chunk) + "//\n//\n")
-                num += 1
+    # write any remaining
+    if chunk:
+        end = sidx + len(chunk)        
+        handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
+        with open(handle, 'w', encoding="utf-8") as out:
+            out.write("//\n//\n".join(chunk) + "//\n//\n")
 
 
 if __name__ == "__main__":
