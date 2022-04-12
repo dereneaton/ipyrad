@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
-"""Jointly estimate heterozygosity and error rate."""
+"""Jointly estimate heterozygosity and error rate.
+"""
 
 from typing import TypeVar, Tuple
-from pathlib import Path
-from collections import Counter
 from itertools import combinations
 from loguru import logger
 from scipy.optimize import minimize
@@ -58,37 +57,25 @@ class Step4(BaseStep):
             for i in statsdf.columns:
                 statsdf.loc[sname, i] = stats[i]
         logger.info("\n" + statsdf.to_string())
-        outfile = self.stepdir / "s4_joint_estimate.txt"
+        outfile = self.data.stepdir / "s4_joint_estimate.txt"
         with open(outfile, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
 
 
-def optim2(data, sample, haploid):
+def optim2(data: Assembly, sample: Sample, haploid: bool):
     """Maximum likelihood optimization with scipy."""
 
     # get array of all clusters data: (maxclusts, maxlen, 4)
-    stacked = get_stackarray(data, sample)
+    stacked = get_stack_array(data, sample)
 
     # get base frequencies
     bfreqs = stacked.sum(axis=0) / float(stacked.sum())
-    if np.isnan(bfreqs).any():
-        raise IPyradError(
-            f"Bad stack in getfreqs; {sample.name} {bfreqs}")
 
-    # put into array, count array items as Byte strings
-    tstack = Counter([j.tostring() for j in stacked])
+    # count each unique site count pattern
+    ustacks, counts = np.unique(stacked, axis=0, return_counts=True)
 
-    # get keys back as arrays and store vals as separate arrays
-    ustacks = np.array(
-        [np.frombuffer(i, dtype=np.uint64) for i in tstack.keys()]
-    )
-    counts = np.array(list(tstack.values()))
-
-    # cleanup
-    del tstack
-
+    # fit haploid or diploid model to counts
     if haploid:
-        # fit haploid model
         fit = minimize(
             get_haploid_loglik, 
             x0=(0.001,),
@@ -99,7 +86,6 @@ def optim2(data, sample, haploid):
         hetero = 0.0
         error = fit.x[0]
     else:
-        # fit haploid model
         fit = minimize(
             nget_diploid_loglik, 
             x0=(0.01, 0.001),
@@ -126,8 +112,13 @@ def get_haploid_loglik(errors, bfreqs, ustacks, counts):
     score = -logliks.sum()
     return score
 
-def nget_diploid_loglik(pstart, bfreqs, ustacks, counts):
-    """Log likelihood score given values [H,E]"""
+def nget_diploid_loglik(
+    pstart: Tuple[float, float], 
+    bfreqs: np.ndarray, 
+    ustacks: np.ndarray, 
+    counts: np.ndarray,
+    ) -> float:
+    """Return Log likelihood score given values [H,E]"""
     hetero, errors = pstart
     lik1 = (1. - hetero) * likelihood1(errors, bfreqs, ustacks)
     lik2 = (hetero) * nlikelihood2(errors, bfreqs, ustacks)
@@ -157,8 +148,7 @@ def nlikelihood2(errors, bfreqs, ustacks):
 
 @numba.jit(nopython=True)
 def nblik2_build(ustacks):
-    """
-    JIT'd function builds array that can be used to calc binom pmf
+    """JIT'd function builds array that can be used to calc binom pmf
     """
     # fill for pmf later
     tots = np.empty((ustacks.shape[0], 1))
@@ -199,7 +189,8 @@ def lik2_calc(err, one, tots, twos, thrs, four):
     return np.sum(one * _twos * (_thrs / four), axis=1)
 
 
-def recal_hidepth_stat(data: Assembly, sample: Sample) -> Tuple[np.ndarray, int]:
+def recal_hidepth_cluster_stats(
+    data: Assembly, sample: Sample, majrule: bool=False) -> Tuple[np.ndarray, int]:
     """Return a mask for cluster depths, and the max frag length.
 
     This is useful to run first to get a sense of the depths and lens
@@ -216,10 +207,13 @@ def recal_hidepth_stat(data: Assembly, sample: Sample) -> Tuple[np.ndarray, int]
     clens, depths = np.array(clens), np.array(depths)
 
     # get mask of clusters that are hidepth
-    stat_mask = depths >= data.params.min_depth_statistical
+    if majrule:
+        keep = depths >= data.params.min_depth_majrule
+    else:
+        keep = depths >= data.params.min_depth_statistical
 
     # get frag lenths of clusters that are hidepth
-    lens_above_st = clens[stat_mask]
+    lens_above_st = clens[keep]
 
     # calculate frag length from hidepth lens
     try:       
@@ -229,10 +223,10 @@ def recal_hidepth_stat(data: Assembly, sample: Sample) -> Tuple[np.ndarray, int]
             "No clusts with depth sufficient for statistical basecalling. "
             f"I recommend you branch to drop this sample: {sample.name}"
             ) from inst
-    return stat_mask, maxfrag
+    return keep, maxfrag
 
 
-def get_stackarray(data: Assembly, sample: Sample, size: int=10_000) -> np.ndarray:
+def get_stack_array(data: Assembly, sample: Sample, size: int=10_000) -> np.ndarray:
     """Stacks clusters into arrays using at most 10K clusters.
 
     Uses maxlen to limit the end of arrays, and also masks the first
@@ -241,7 +235,7 @@ def get_stackarray(data: Assembly, sample: Sample, size: int=10_000) -> np.ndarr
     trimmed later.
     """
     # only use clusters with depth > min_depth_statistical for param estimates
-    stat_mask, maxfrag = recal_hidepth_stat(data, sample)
+    stat_mask, maxfrag = recal_hidepth_cluster_stats(data, sample)
 
     # sample many (e.g., 10_000) clusters to use for param estimation.
     maxclusts = min(size, stat_mask.sum())
@@ -249,60 +243,46 @@ def get_stackarray(data: Assembly, sample: Sample, size: int=10_000) -> np.ndarr
     dims = (maxclusts, maxfrag, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
-    # mask restriction overhangs
-    cutlens = [None, None]
-    cutlens[0] = len(data.params.restriction_overhang[0])
-    cutlens[1] = maxfrag - len(data.params.restriction_overhang[1])
-
     # fill stacked    
     clustgen = iter_clusters(sample.files.clusters, gzipped=True)
+    sidx = 0  # stored row number
     for idx, clust in enumerate(clustgen):
 
         # skip masked (lowdepth) clusters
         if not stat_mask[idx]:
             continue
 
+        # if maxclusts are stored then no need to do more.
+        if sidx >= maxclusts:
+            continue
+
         # parse cluster and expand derep depths
         names = clust[0::2]
         seqs = clust[1::2]
-        reps = [int(i.split("=")[-1][:-2]) for i in names]
-        sseqs = [list(seq) for seq in seqs]
-        arrayed = np.concatenate([
-            [seq] * rep for seq, rep in zip(sseqs, reps)
-        ])
+        reps = [int(i.split(";")[-2][5:]) for i in names]
+        sseqs = [list(i.strip()) for i in seqs]
+        arr = np.concatenate([[seq] * rep for seq, rep in zip(sseqs, reps)])
 
         # select at most random 500 reads in a cluster
-        if arrayed.shape[0] > 500:
-            idxs = np.random.choice(
-                range(arrayed.shape[0]), 
-                size=500, 
-                replace=False,
-            )
-            arrayed = arrayed[idxs]
+        if arr.shape[0] > 500:
+            ridxs = range(arr.shape[0])
+            ridxs = np.random.choice(ridxs, size=500, replace=False)
+            arr = arr[ridxs]
                 
-        # trim edges for restriction lengths
-        arrayed = arrayed[:, cutlens[0]:cutlens[1]]               
-                
-        # remove cols that are in or near pair separators or all Ns
-        arrayed = arrayed[:, ~np.any(arrayed == "n", axis=0)]
-        arrayed[arrayed == "-"] = "N"
-        arrayed = arrayed[:, ~np.all(arrayed == "N", axis=0)]
+        # mask edges, indels, and pair inserts and remove empty columns.
+        arr[:, :8] = "N"
+        arr[:, -8:] = "N"
+        arr[arr == "-"] = "N"
+        arr[:, np.any(arr == "n", axis=0)] = "N"
+        arr = arr[:, ~np.all(arr == "N", axis=0)]
 
-        # store in stack
-        catg = np.array([
-            np.sum(arrayed == i, axis=0) for i in list("CATG")
-            ],
-            dtype=np.uint64
-        ).T
+        # store in stack shape=(nsites, 4)
+        catg = [np.sum(arr == i, axis=0) for i in list("CATG")]
+        catg = np.array(catg, dtype=np.uint64).T
 
-        # Ensure catg honors the maxlen setting. If not you get a nasty
-        # broadcast error.
-        stacked[nclust, :catg.shape[0], :] = catg[:maxfrag, :]
-        nclust += 1
-
-        # maxclusters is enough, no need to do more.
-        if done or (nclust == maxclusts):
-            break
+        # limit stored catg data to maxfrag len
+        stacked[sidx, :catg.shape[0], :] = catg[:maxfrag, :]
+        sidx += 1
 
     # drop the empty rows in case there are fewer loci than the size of array
     newstack = stacked[stacked.sum(axis=2) > 0]
@@ -316,5 +296,5 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG", log_file="/tmp/test.log")
    
-    TEST = ip.load_json("/tmp/TEST5.json")
+    TEST = ip.load_json("/tmp/TEST3.json")
     TEST.run("4", force=True, quiet=False)
