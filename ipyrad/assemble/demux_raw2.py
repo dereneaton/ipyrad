@@ -350,7 +350,7 @@ class SimpleDemux:
         # create samples and store fastq paths
         for name, fastqs in prog2.results.items():
             sample = SampleSchema(name=name)
-            sample.files.fastqs.append(fastqs)
+            sample.files.fastqs.append(tuple(str(i) for i in fastqs))
             self.data.samples[name] = sample
 
         # store stats for writing the verbose output file

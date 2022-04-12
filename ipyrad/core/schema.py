@@ -47,7 +47,7 @@ class Stats2(BaseModel):
 
 class Stats3(BaseModel):
     merged_pairs: int = 0
-    merged_pairs_prop: float = 0    
+    merged_pairs_prop: float = 0
     min_depth_maj_during_step3: int = 0
     min_depth_stat_during_step3: int = 0
     reads_mapped_to_ref: int = None
@@ -94,7 +94,10 @@ class Stats7(BaseModel):
     nloci: int = 0
 
 class SampleFiles(BaseModel):
-    """A dict-like class for storing file paths to samples."""
+    """A dict-like class for storing file paths to samples.
+
+    These are purposefully stored as str rather than Path.
+    """
     fastqs: List[Tuple[str, str]] = Field(default_factory=list)
     edits: List[Tuple[str, str]] = Field(default_factory=list)
     mapped_reads: Tuple[str, str] = None
