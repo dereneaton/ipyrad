@@ -43,13 +43,14 @@ class SimpleDemux:
     """: A map of barcode strings to sample names, pre-expanded by off-by-N."""
     filenames_to_fastqs: Dict[str, List[Tuple[str,str]]] = None
     """: Dict mapping file short names to tuples of paired fastqs."""
-    cutters: List[Tuple[str,str]] = None
-    """: List of enzyme overhang sites as two tuples with two strings each."""
+    cuts1: List[str] = None
+    """: List of enzyme overhang sites to match on read1s."""
+    cuts2: List[str] = None
+    """: List of enzyme overhang sites to match on read2s."""
     barcodes_to_names: Dict[str, str] = None
     """: Dict of all acceptable barcodes (e.g., off-by-1) mapped to sample names."""
-
-    # longbar: int = None
     file_stats: Dict[str, List] = None
+    """: Store stats per raw data file (pair)."""
 
     def __post_init__(self):
         """Run subfunctions to setup object."""
@@ -61,7 +62,7 @@ class SimpleDemux:
         self._get_barcodes_to_names_map()
 
     def run(self):
-        """Run each file (pair) on separatre engine."""        
+        """Run each file (pair) on separatre engine."""
         self._distribute_remote_jobs()
         self._write_stats()
 
@@ -85,7 +86,7 @@ class SimpleDemux:
     def _get_filenames_to_fastqs(self) -> None:
         """Fill `names_to_fastqs` with paired fastq files.
 
-        If technical replicates are being merged then a sample can 
+        If technical replicates are being merged then a sample can
         be assigned multiple pairs of paired fastqs files. Paired
         file names may differ by having the following diffs, which
         may occur anywhere in the file name.
@@ -126,7 +127,7 @@ class SimpleDemux:
                     self.fastq_paths,
                     key=lambda x: drop_from_right(x, "_", idx))
                 assert groups
-                groups = {i.with_suffix("").name: sorted(j) for (i, j) in groups}                
+                groups = {i.with_suffix("").name: sorted(j) for (i, j) in groups}
                 assert len(groups) == len(self.fastq_paths) / 2
                 assert all(len(j) == 2 for i, j in groups.items())
                 logger.debug(f"found PE matches: {groups}")
@@ -154,9 +155,9 @@ class SimpleDemux:
         This logs a WARNING if technical replicates are detected to
         make sure the user is aware of how they are being handled.
         """
-        # parse the tabular barcodes file on whitespace. Expects 
-        # there to be no header. There will be >=2 columns, >2 if 
-        # combinatorial barcodes. 
+        # parse the tabular barcodes file on whitespace. Expects
+        # there to be no header. There will be >=2 columns, >2 if
+        # combinatorial barcodes.
         bardata = pd.read_csv(
             self.barcodes_path, header=None, delim_whitespace=True,
             ).dropna()
@@ -164,7 +165,7 @@ class SimpleDemux:
         # the dataframe COULD have >3 columns, in which case we will
         # discard any extra columns to keep at most 3.
         bardata = bardata.iloc[:, :3]
- 
+
         # set names on barcodes dataframe
         if bardata.shape[1] == 2:
             bardata.columns = ["sample", "barcode1"]
@@ -176,7 +177,7 @@ class SimpleDemux:
 
         # check for replicate sample names in the barcodes file. These
         # are allowed, since a single sample can be sequenced multiple
-        # times on the same plate with different barcodes attached, 
+        # times on the same plate with different barcodes attached,
         # representing technical replicates. THere is a hackers option
         # for whether to combine tech reps, or keep as diff samples.
         if bardata['sample'].value_counts().max() > 1:
@@ -247,20 +248,32 @@ class SimpleDemux:
                 self.names_to_barcodes[newname] = self.names_to_barcodes.pop(name)
 
     def _get_cutters_expanded(self) -> None:
-        """Fills self.cutters with both resolutions if IUPAC ambig present.
-        
-        - ('TGCAG', '') -> [('TGCAG', ''), ('', '')]
-        - ('TWGC', '') -> [('TAGC', 'TTGC'), ('', '')]
-        - ('TWGC', 'AATT') -> [('TAGC', 'TTGC'), ('AATT', '')]
+        """Fill `.cuts1` and `.cuts2` with ordered list of resolutions.
+
+        Sequences will be searched for cut sites starting with the
+        entered value and then proceeding to allow off-by-n matches.
+        The first tested sequences will be the user entered value,
+        with IUPAC resolved, followed by off-by-1 matches.
         """
-        self.cutters = []
-        for cutter in self.data.params.restriction_overhang:
-            if not any(i in 'RKSYWM' for i in cutter):
-                self.cutters.append((cutter, ""))
-            else:
-                cutter1 = [AMBIGS[i][0] if i in "RKSYWM" else i for i in cutter]
-                cutter2 = [AMBIGS[i][1] if i in "RKSYWM" else i for i in cutter]
-                self.cutters.append((cutter1, cutter2))
+        cuts1 = self.data.params.restriction_overhang[0]
+        if any(i in 'RKSYWM' for i in cuts1):
+            res1 = [AMBIGS[i][0] if i in "RKSYWM" else i for i in cuts1]
+            res2 = [AMBIGS[i][1] if i in "RKSYWM" else i for i in cuts1]
+            cuts1 = [res1, res2]
+        else:
+            cuts1 = [cuts1]
+        self.cuts1 = cuts1 + list(set(itertools.chain(*[mutate(i) for i in cuts1])))
+
+        cuts2 = self.data.params.restriction_overhang[1]
+        if any(i in 'RKSYWM' for i in cuts2):
+            res1 = [AMBIGS[i][0] if i in "RKSYWM" else i for i in cuts2]
+            res2 = [AMBIGS[i][1] if i in "RKSYWM" else i for i in cuts2]
+            cuts2 = [res1, res2]
+        else:
+            cuts2 = [cuts2]
+        self.cuts2 = cuts2 + list(set(itertools.chain(*[mutate(i) for i in cuts2])))
+        # logger.info(self.cuts1)
+        # logger.info(self.cuts2)
 
     def _get_barcodes_to_names_map(self) -> None:
         """Fills .barcodes_to_names with all acceptable barcodes: name.
@@ -284,7 +297,7 @@ class SimpleDemux:
 
         # iterate over barcodes: names
         for name, barcode in self.names_to_barcodes.items():
-            
+
             # get generators of off-by-n barcodes
             if self.data.params.max_barcode_mismatch == 1:
                 gen1 = mutate(barcode[0])
@@ -328,8 +341,8 @@ class SimpleDemux:
         jobs = {}
         for fidx, fname in enumerate(self.filenames_to_fastqs):
             fastqs = self.filenames_to_fastqs[fname]
-            args = (self.data, fastqs, self.barcodes_to_names, self.cutters, fidx)
-            jobs[fname] = lbview.apply(barmatch, *args)    
+            args = (self.data, fastqs, self.barcodes_to_names, self.cuts1, self.cuts2, fidx)
+            jobs[fname] = lbview.apply(barmatch, *args)
         msg = "demultiplexing reads"
         prog1 = AssemblyProgressBar(jobs, msg, step=1)
         prog1.update()
@@ -419,7 +432,7 @@ class SimpleDemux:
         # write verbose barcode information --------------------------
         outfile.write("# Barcode detection statistics\n######################\n")
 
-        # record matches 
+        # record matches
         data = []
         bar_obs = Counter()
         for key in self.file_stats:
@@ -457,19 +470,19 @@ class SimpleDemux:
 ######################################################################
 ######################################################################
 ##
-##  Barcode matching classes for different types 
-## 
+##  Barcode matching classes for different types
+##
 ######################################################################
 ######################################################################
 
 
 @dataclass
 class BarMatching:
-    """Base class for barcode matching. 
+    """Base class for barcode matching.
 
     See subclasses which have different versions of the function
-    `_iter_matched_barcode` to find barcode matches based on i7, 
-    combinatorial, or single inline barcodes. The subclasses all 
+    `_iter_matched_barcode` to find barcode matches based on i7,
+    combinatorial, or single inline barcodes. The subclasses all
     share the functions of this class, which includes iterating
     over the fastq(s), storing stats, and writing to tmp files.
     """
@@ -479,8 +492,10 @@ class BarMatching:
     """: A tuple with paired R1 and R2 fastq files."""
     barcodes_to_names: Dict[str, str]
     """: Dict matching barcodes to sample names."""
-    cutters: Tuple[str, str]
-    """: List of Tuples of RE overhangs."""
+    cuts1: List[str]
+    """: List of RE overhangs to match on R1."""
+    cuts2: List[str]
+    """: List of RE overhangs to match on R2."""
     fidx: int
     """: File index."""
 
@@ -494,7 +509,7 @@ class BarMatching:
 
     def _iter_fastq_reads(self):
         """Yields fastq quartets of lines from fastqs (gzip OK)."""
-        # create first read iterator for paired data    
+        # create first read iterator for paired data
         opener = gzip.open if self.fastqs[0].suffix == ".gz" else io.open
         ofile1 = opener(self.fastqs[0], 'rt', encoding="utf-8")
         quart1 = zip(ofile1, ofile1, ofile1, ofile1)
@@ -550,7 +565,7 @@ class BarMatching:
         yield read1s, read2s
 
     def run(self):
-        """Iterate over all lines matching barcodes and recording stats, 
+        """Iterate over all lines matching barcodes and recording stats,
         and write the matched reads to unique files in chunks.
 
         Write chunks to tmp files for each sample w/ data.
@@ -597,7 +612,7 @@ class BarMatchingI7(BarMatching):
     """
     def _iter_matched_barcode(self) -> Iterator[Tuple[str, str, str]]:
         """Find barcode in read and check for match.
-        
+
         In i7 matching there is nothing to be trimmed from the reads.
         """
         for read1, read2 in self._iter_fastq_reads():
@@ -612,7 +627,7 @@ class BarMatchingI7(BarMatching):
                 self.barcode_hits[barcode] = self.barcode_hits.get(barcode, 0) + 1
                 yield read1, read2, match
             else:
-                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1                
+                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1
 
 
 @dataclass
@@ -629,17 +644,22 @@ class BarMatchingSingleInline(BarMatching):
     >>> +
     >>> AA<FFJJJJJJJJJJJJJJJJJJJJ........JJJJJJJJJJJJJJJJJJJJJJJJJJJJJ
     """
+    maxlen1: int = 0
+    """: Max len of the read1 inline barcodes."""
+
+    def __post_init__(self):
+        self.maxlen1 = max([len(i) for i in self.barcodes_to_names])
+        self.maxlen1 += len(self.data.params.restriction_overhang[0])
+
     def _iter_matched_barcode(self):
         """Find barcode in read and check for match.
-        
+
         In i7 matching there is nothing to be trimmed from the reads.
         """
-        cuts0 = list(self.cutters[0]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[0]])))
-        cuts0 = [i for i in cuts0 if i]
         for read1, read2 in self._iter_fastq_reads():
-            
+
             # find barcode from start of R1 (barcode1 + RE1 overhang)
-            barcode = cut_matcher(read1[1], cuts0)
+            barcode = cut_matcher(read1[1], self.cuts1)
 
             # look for matches
             match = self.barcodes_to_names.get(barcode)
@@ -650,7 +670,7 @@ class BarMatchingSingleInline(BarMatching):
                 self.barcode_hits[barcode] = self.barcode_hits.get(barcode, 0) + 1
                 yield read1, read2, match
             else:
-                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1                
+                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1
 
 
 @dataclass
@@ -677,24 +697,30 @@ class BarMatchingCombinatorialInline(BarMatching):
     >>> +
     >>> AAFFFJJJJJJJJJFJFJJJJJJ-F........AFJ<JFJJJJAJFFAA-F<A-AAF-AFFJ
     """
+    maxlen1: int = 0
+    """: Max len of the read1 inline barcodes + re."""
+    maxlen2: int = 0
+    """: Max len of the read2 inline barcodes + re."""
+
+    def __post_init__(self):
+        self.maxlen1 = max([len(i.split("_")[0]) for i in self.barcodes_to_names])
+        self.maxlen1 += len(self.data.params.restriction_overhang[0])
+        self.maxlen2 = max([len(i.split("_")[1]) for i in self.barcodes_to_names])
+        self.maxlen2 += len(self.data.params.restriction_overhang[1])
+
     def _iter_matched_barcode(self):
         """Find barcode in read and check for match.
-        
+
         In i7 matching there is nothing to be trimmed from the reads.
         """
         # get a list of cutters and off-by-one's
-        cuts0 = list(self.cutters[0]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[0]])))
-        cuts0 = [i for i in cuts0 if i]
-        cuts1 = list(self.cutters[1]) + list(set(itertools.chain(*[mutate(i) for i in self.cutters[1]])))
-        cuts1 = [i for i in cuts1 if i]
-
         for read1, read2 in self._iter_fastq_reads():
-            
-            # find barcode from start of R1 (barcode1 + RE1 overhang) 
-            match_r1 = cut_matcher(read1[1], cuts0)
 
-            # pull barcode from start of R2 (barcode2 + RE2 overhang) 
-            match_r2 = cut_matcher(read2[1], cuts1)
+            # find barcode from start of R1 (barcode1 + RE1 overhang)
+            match_r1 = cut_matcher(read1[1][:self.maxlen1], self.cuts1)
+
+            # pull barcode from start of R2 (barcode2 + RE2 overhang)
+            match_r2 = cut_matcher(read2[1][:self.maxlen2], self.cuts2)
 
             # look for matches
             barcode = f"{match_r1}_{match_r2}"
@@ -706,27 +732,20 @@ class BarMatchingCombinatorialInline(BarMatching):
                 self.barcode_hits[barcode] = self.barcode_hits.get(barcode, 0) + 1
                 yield read1, read2, match
             else:
-                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1                
+                self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1
 
 
-def cut_matcher(
-    read: str,
-    cutters: List[str], 
-    minsize: int=3, 
-    maxsize: int=20,
-    ) -> int:
-    """Returns the index where a valid cut site occurs.
+def cut_matcher(read: str, cutters: List[str]) -> str:
+    """Returns the barcode sequence before the detected re overhang.
 
     This will test each of the input cutters, which are multiple if it
-    contains an ambiguity code, and then also tests cutters that are 
-    differ from the cutter sequence by `offby` (default=1). This 
+    contains an ambiguity code, and then also tests cutters that are
+    differ from the cutter sequence by `offby` (default=1). This
     generator stops when the first valid hit occurs, for speed.
     """
-    for idx, cut in enumerate(cutters):
+    for cut in cutters:
         pos = read.find(cut)
-        if minsize < pos < maxsize:
-            # if idx > 1:
-                # print(f"extended cut: {pos} {cut} {read}")            
+        if pos > 0:
             return read[:pos]
     return "XXX"
 
@@ -745,29 +764,29 @@ class BarMatch2BRADInline(BarMatching):
         read1[1] = read1[1][lenbar1:]
         read1[3] = read1[3][lenbar1:]
     """
-    
+
 
 
 ######################################################################
 ######################################################################
 ##
 ##  Functions run on remote engines
-## 
+##
 ######################################################################
 ######################################################################
 
 
-def barmatch(data, fastqs, barcodes_to_names, cutters, fidx):
+def barmatch(data, fastqs, barcodes_to_names, cuts1, cuts2, fidx):
     """Starts barmatch process using the appropriate subclass."""
     if data.hackers.demultiplex_on_i7_tags:
         barmatcher = BarMatchingI7(
-            data, fastqs, barcodes_to_names, cutters, fidx)
+            data, fastqs, barcodes_to_names, cuts1, cuts2, fidx)
     elif "_" in list(barcodes_to_names)[0]:
         barmatcher = BarMatchingCombinatorialInline(
-            data, fastqs, barcodes_to_names, cutters, fidx)
+            data, fastqs, barcodes_to_names, cuts1, cuts2, fidx)
     else:
         barmatcher = BarMatchingSingleInline(
-            data, fastqs, barcodes_to_names, cutters, fidx)
+            data, fastqs, barcodes_to_names, cuts1, cuts2, fidx)
     barmatcher.run()
     return barmatcher.barcode_misses, barmatcher.barcode_hits, barmatcher.sample_hits
 
@@ -819,7 +838,7 @@ def mutate(barcode: str) -> Iterator[str]:
 def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     """Return a name with an underscore separated portion removed.
 
-    This is used within `_get_filenames_to_fastqs` to find matching 
+    This is used within `_get_filenames_to_fastqs` to find matching
     pairs when R1 and R2 are removed from file names.
 
     Example
@@ -850,14 +869,14 @@ if __name__ == "__main__":
 
 
     DATA = ip.Assembly("TEST1")
-    DATA.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
+    DATA.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"
     DATA.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
     DATA.params.project_dir = "/tmp"
     DATA.params.max_barcode_mismatch = 0
     DATA.run('1', force=True, quiet=True)
     print(DATA.stats)
 
-    # DATA.params.raw_fastq_path = "../../tests/ipsimdata/pairddrad_example_*.gz"    
+    # DATA.params.raw_fastq_path = "../../tests/ipsimdata/pairddrad_example_*.gz"
     # DATA.params.barcodes_path = "../../tests/ipsimdata/pairddrad_example_barcodes.txt"
     # DATA.params.datatype = "pairddrad"
 
@@ -887,7 +906,7 @@ if __name__ == "__main__":
     #     print(tool.filenames_to_fastqs)
 
         # barm = BarMatchingI7(
-        #     tool.data, 
+        #     tool.data,
         #     list(tool.filenames_to_fastqs.values())[0],
         #     tool.barcodes_to_names,
         #     tool.cutters,
@@ -896,6 +915,6 @@ if __name__ == "__main__":
         # barm.run()
         # for i in barm._iter_fastq_reads():
             # print(i)
-        # self.data, self.barcodes_to_names, 
+        # self.data, self.barcodes_to_names,
         # self.filenames_to_fastqs[fname],
         # self.cutters, self.barcodes_to_names, fidx)
