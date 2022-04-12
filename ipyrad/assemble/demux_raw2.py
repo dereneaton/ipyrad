@@ -5,7 +5,6 @@
 
 from typing import Dict, Tuple, List, TypeVar, Iterator
 import io
-import glob
 import gzip
 import itertools
 import subprocess
@@ -68,14 +67,16 @@ class SimpleDemux:
 
     def _get_file_paths(self) -> None:
         """Get fastq and barcodes file paths as Path objects."""
-        self.fastq_paths = glob.glob(str(self.data.params.raw_fastq_path))
+        raws = self.data.params.raw_fastq_path
+        self.fastq_paths = list(raws.parent.glob(raws.name))
         if not self.fastq_paths:
             raise IPyradError(
                 f"No fastq data found in {self.data.params.raw_fastq_path}")
         self.fastq_paths = [Path(i) for i in self.fastq_paths]
 
         # if regular expression pick first barcode path.
-        self.barcodes_path = glob.glob(str(self.data.params.barcodes_path))
+        bars = self.data.params.barcodes_path
+        self.barcodes_path = list(bars.parent.glob(bars.name))
         if not self.barcodes_path:
             raise IPyradError(
                 f"No barcodes file found at {self.data.params.barcodes_path}")
@@ -146,16 +147,6 @@ class SimpleDemux:
             self.filenames_to_fastqs[name] = tuple(paths)
         logger.debug(self.filenames_to_fastqs)
         return None
-
-    def _replace_bad_name_chars(self) -> None:
-        """Replaces bad characters in names in .names_to_barcodes."""
-        names = list(self.names_to_barcodes)
-        for name in names:
-            if any(i in name for i in BADCHARS):
-                newname = "".join([i.replace(i, "_") for i in BADCHARS])
-                logger.warning(
-                    f"changing name {name} to {newname} (bad characters).")
-                self.names_to_barcodes[newname] = self.names_to_barcodes.pop(name)
 
     def _get_names_to_barcodes(self) -> None:
         """Fill .names_to_barcodes dict w/ info from barcodes file.
@@ -242,6 +233,18 @@ class SimpleDemux:
             ))
         # report to logger
         logger.debug(f"barcodes map:\n{bardata}")
+
+    def _replace_bad_name_chars(self) -> None:
+        """Replaces bad characters in names in .names_to_barcodes."""
+        names = list(self.names_to_barcodes)
+        for name in names:
+            if any(i in name for i in BADCHARS):
+                newname = name
+                for badchar in BADCHARS:
+                    newname = newname.replace(badchar, "_")
+                # newname = "".join([i.replace(i, "_") for i in BADCHARS])
+                logger.warning(f"changing name {name} to {newname} (bad characters).")
+                self.names_to_barcodes[newname] = self.names_to_barcodes.pop(name)
 
     def _get_cutters_expanded(self) -> None:
         """Fills self.cutters with both resolutions if IUPAC ambig present.
