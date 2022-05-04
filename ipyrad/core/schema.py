@@ -78,7 +78,7 @@ class Stats4(BaseModel):
     min_depth_stat_during_step4: int = 0
 
 class Stats5(BaseModel):
-    cluster_total: int = None
+    clusters_total: int = None
     consensus_total: int = None
     filtered_by_depth: int = None
     filtered_by_max_h: int = None

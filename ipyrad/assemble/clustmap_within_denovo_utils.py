@@ -17,7 +17,7 @@ import numpy as np
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError, comp
 
-# pylint: disable=too-many-branches, too-many-statements, consider-using-with
+# pylint: disable=too-many-branches, too-many-statements, consider-using-with, too-many-lines
 
 logger = logger.bind(name="ipyrad")
 
@@ -29,7 +29,7 @@ BIN_MUSCLE = str(BIN / "muscle")
 BIN_VSEARCH = str(BIN / "vsearch")
 BIN_BWA = str(BIN / "bwa")
 BIN_SAMTOOLS = str(BIN / "samtools")
-
+SPACER = "N" * 10
 
 ################################################
 ####
@@ -56,7 +56,7 @@ def concat_multiple_edits(data: Assembly, sample: Sample) -> None:
                 cmd, stderr=PIPE, stdout=cout, close_fds=True) as proc:
                 res = proc.communicate()[1]
                 if proc.returncode:
-                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")                
+                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
 
     read2s = [i[1] for i in sample.files.edits if i[1]]
     if len(read2s) > 1:
@@ -137,7 +137,7 @@ def merge_pairs_with_vsearch(data: Assembly, sample: Sample) -> int:
     in1 = [
         data.tmpdir / f"{sample.name}_unmapped_R1.fastq",
         data.tmpdir / f"{sample.name}_concat_R1.fq.gz",
-        sample.files.edits[0][0],        
+        sample.files.edits[0][0],
     ]
     in2 = [
         data.tmpdir / f"{sample.name}_unmapped_R2.fastq",
@@ -171,7 +171,7 @@ def merge_pairs_with_vsearch(data: Assembly, sample: Sample) -> int:
         "--fasta_width", "0",
         "--fastq_minmergelen", str(minlen),
         "--fastq_maxns", str(maxn),
-        "--fastq_minovlen", "10", # default value, 
+        "--fastq_minovlen", "10", # default value,
         "--fastq_maxdiffs", "4",  # <- fastp has done pe overlap correction
         # "--label_suffix", "_m1",
         "--fastq_qmax", "93",     # <- Set high to allow FASTQ+64
@@ -183,7 +183,7 @@ def merge_pairs_with_vsearch(data: Assembly, sample: Sample) -> int:
         res = proc.communicate()[0].decode()
         if proc.returncode:
             raise IPyradError(f"Error merge pairs:\n {cmd}\n{res}")
-    
+
     # count number of lines / 2 from output
     with open(mergedfile, 'r', encoding="utf-8") as merged:
         nlines = sum(1 for line in merged)
@@ -206,7 +206,7 @@ def join_end_to_end(data: Assembly, sample: Sample) -> None:
         with open(
             nonmerged1, 'r', encoding="utf-8") as in1, open(
             nonmerged2, 'r', encoding="utf-8") as in2:
-            
+
             # generator to sample 4 lines
             quart1 = zip(*[in1] * 4)
             quart2 = zip(*[in2] * 4)
@@ -235,9 +235,9 @@ def join_end_to_end(data: Assembly, sample: Sample) -> None:
 def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
     """Tag reads w/ i5 inline prior to dereplicating.
 
-    Pull i5 tag from Illumina index and insert into the fastq name 
-    header so we can use it later to declone even after the fastq 
-    indices are gone. THIS IS DONE BEFORE DEREPLICATION, so that 
+    Pull i5 tag from Illumina index and insert into the fastq name
+    header so we can use it later to declone even after the fastq
+    indices are gone. THIS IS DONE BEFORE DEREPLICATION, so that
     identical reads are not collapsed if they have different i5s.
 
     3rad uses random adapters to identify pcr duplicates. For removing
@@ -249,14 +249,14 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
     >>> AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
     the i5 is inserted to the read with "F" quality score
-    
-    >>> ******** 
-    >>> >NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
+
+    >>> ********
+    >>> >NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
     >>> CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     """
     # paired reads are merged or joined in the merged file
     # tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
-    tmpin = data.tmpdir / f"{sample.name}_merged.fa"    
+    tmpin = data.tmpdir / f"{sample.name}_merged.fa"
     tmpout = data.tmpdir / f"{sample.name}_decloned.fa"
 
     # Remove adapters from head of sequence and write out
@@ -272,7 +272,7 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
             tmp = []
             for idx, read in enumerate(duo):
 
-                # extract i5 if it exists else use empty string           
+                # extract i5 if it exists else use empty string
                 try:
                     indices = read[0].split(":")[-1]
                     index = indices.split("+")[1].strip()
@@ -280,7 +280,7 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
                 except (IndexError, AssertionError):
                     index = ""
 
-                # add i5 to the 5' end of the sequence and insert the 
+                # add i5 to the 5' end of the sequence and insert the
                 # length of the i5 index (usually 8) into the header.
                 newread = f"{read[0]}{index}{read[1]}"
                 tmp.append(newread)
@@ -327,14 +327,14 @@ def dereplicate(data: Assembly, sample: Sample) -> None:
         "--fastaout", str(data.tmpdir / f"{sample.name}_derep.fa"),
         "--fasta_width", str(0),
         "--minseqlength", str(data.params.filter_min_trim_len),
-        "--sizeout", 
+        "--sizeout",
         "--relabel_md5",
         "--quiet",
         # "--threads", str(4),
-        # "--fastq_qmax", "1000",        
+        # "--fastq_qmax", "1000",
     ]
 
-    # decompress argument (IF ZLIB is missing this will not work!!) 
+    # decompress argument (IF ZLIB is missing this will not work!!)
     # zlib is part of the conda installation.
     if infile.suffix == ".gz":
         cmd.append("--gzip_decompress")
@@ -366,7 +366,7 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
     """
     # paired reads are merged or joined in the merged file
     # tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
-    tmpin = data.tmpdir / f"{sample.name}_derep.fa"    
+    tmpin = data.tmpdir / f"{sample.name}_derep.fa"
     tmpout = data.tmpdir / f"{sample.name}_derep_tag.fa"
 
     with open(tmpout, 'w', encoding="utf-8") as out:
@@ -382,7 +382,7 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
                 # extract i5 from inline (assumes len=8 !!!)
                 barcode, seq = read[1][:8], read[1][8:]
 
-                # add i5 to the 5' end of the sequence and insert the 
+                # add i5 to the 5' end of the sequence and insert the
                 # length of the i5 index (usually 8) into the header.
                 newread = f">{barcode}_{read[0][1:]}{seq}"
                 tmp.append(newread)
@@ -393,7 +393,7 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
                     tmp = []
             if tmp:
                 out.write("".join(tmp))
-    print(f"moved i5 tags to headers after derep: {sample.name}") 
+    print(f"moved i5 tags to headers after derep: {sample.name}")
 
 ################################################
 ####
@@ -447,12 +447,12 @@ def cluster(data: Assembly, sample: Sample) -> None:
 
     # get call string
     # we used to do --cluster_smallmem w/ --usersort to sort by depth
-    # but now there is an option --cluster_size to accomplish this, 
+    # but now there is an option --cluster_size to accomplish this,
     # however, --cluster_fast sorts by length, and this MAY be better
     # when most sequences are similar depths (e.g., 2-3).
     cmd = [
         BIN_VSEARCH,
-        "--cluster_fast", str(derephandle), # 
+        "--cluster_fast", str(derephandle), #
         # "--cluster_smallmem", str(derephandle),
         # "--usersort",  # paired w/ cluster_smallmem  sorted by depth
         "--strand", strand,
@@ -473,7 +473,7 @@ def cluster(data: Assembly, sample: Sample) -> None:
 
     # run vsearch
     print(" ".join(cmd))  # engine sends to logger.info
-    with subprocess.Popen(cmd, 
+    with subprocess.Popen(cmd,
         stderr=subprocess.STDOUT, stdout=subprocess.PIPE, close_fds=True,
         ) as proc:
         res = proc.communicate()[0]
@@ -503,14 +503,14 @@ def iter_build_clusters(data: Assembly, sample: Sample) -> Iterator[str]:
     cmd = ["sort", "-k", "2", str(uhandle), "-o", str(usorthandle)]
     subprocess.run(cmd, check=True)
 
-    # load ALL derep reads into a dictionary (this can be a few 
-    # GB of RAM) and is larger if names are larger and if there are 
+    # load ALL derep reads into a dictionary (this can be a few
+    # GB of RAM) and is larger if names are larger and if there are
     # more unique sequences. We are grabbing two lines at a time.
     alldereps = {}
     with open(derepfile, 'r', encoding="utf-8") as derepio:
         dereps = zip(*[derepio] * 2)
         for namestr, seq in dereps:
-            nnn, sss = [i.strip() for i in (namestr, seq)]  
+            nnn, sss = [i.strip() for i in (namestr, seq)]
             alldereps[nnn[1:]] = sss
 
     # func to sort clusters by size (used below)
@@ -535,7 +535,7 @@ def iter_build_clusters(data: Assembly, sample: Sample) -> Iterator[str]:
                 # store the last cluster (fseq), count it, and clear fseq
                 if fseqs:
                     # sort to seed then hits by size
-                    fsort = sorted(fseqs[1:], key=sorter, reverse=True)                        
+                    fsort = sorted(fseqs[1:], key=sorter, reverse=True)
                     fseqs = [fseqs[0]] + fsort
                     yield "\n".join(fseqs)
                     fseqs = []
@@ -569,8 +569,8 @@ def iter_build_clusters(data: Assembly, sample: Sample) -> Iterator[str]:
     del alldereps
 
 def write_clusters(data: Assembly, sample: Sample) -> None:
-    """Write built clusters to .clust.txt file in chunks. 
-    
+    """Write built clusters to .clust.txt file in chunks.
+
     Gets clusters from iter_build_clusters generator func.
     """
     clusthandle = data.tmpdir / f"{sample.name}_clust.txt"
@@ -582,7 +582,7 @@ def write_clusters(data: Assembly, sample: Sample) -> None:
             # occasionally write/dump stored clusters to file and clear mem
             if not idx % 10_000:
                 clustio.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
-                clusters = []    
+                clusters = []
         if clusters:
             clustio.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
 
@@ -596,7 +596,7 @@ def declone_clusters(data: Assembly, sample: Sample) -> Tuple[int, float]:
 
     Example
     -------
-    >>> # before 
+    >>> # before
     >>> >AAAAAAAA_680d22c94822c118a0a66b323c4ca18d;size=1;*
     >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
     >>> >AGGAGGCT_48b02ab5740ada18223b52237881abc8;size=1;+
@@ -604,7 +604,7 @@ def declone_clusters(data: Assembly, sample: Sample) -> Tuple[int, float]:
     >>> >AGTGCAAG_d85f1da0579587b46d46b79d4bdf8590;size=1;+
     >>> ATCGGTAAGTCGTCTATTCAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
     >>>
-    >>> # after 
+    >>> # after
     >>> >680d22c94822c118a0a66b323c4ca18d;size=2;*
     >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
     >>> >d85f1da0579587b46d46b79d4bdf8590;size=1;+
@@ -651,7 +651,7 @@ def declone_clusters(data: Assembly, sample: Sample) -> Tuple[int, float]:
 
 ################################################
 ####
-#### Align clusters 
+#### Align clusters
 ####
 ################################################
 
@@ -673,11 +673,11 @@ def muscle_chunker(data: Assembly, sample: Sample) -> None:
 
     Each file is split into at most 10 chunks. Each chunk will be
     run on a separate core, with the largest cluster files starting
-    first. Because the largest clusters are at the beginning of the 
-    clusters file, the chunks contain varying number of clusters to 
+    first. Because the largest clusters are at the beginning of the
+    clusters file, the chunks contain varying number of clusters to
     try to equalize their speed.
     """
-    # only chunk up denovo data, refdata has its own chunking method which 
+    # only chunk up denovo data, refdata has its own chunking method which
     # makes equal size chunks, instead of uneven chunks like in denovo
     clustfiles = [
         data.tmpdir / (sample.name + "_clust.txt"),
@@ -708,12 +708,13 @@ def muscle_chunker(data: Assembly, sample: Sample) -> None:
             nloci = left
 
         # write the chunk to file
-        tmpfile = data.tmpdir / f"{sample.name}_chunk_{idx}.ali"
-        with open(tmpfile, 'w', encoding="utf-8") as out:
-            grabclust = ["".join(i) for i in grabchunk]
-            out.write("//\n//\n".join(grabclust) + "\n//\n//\n")
+        if grabchunk:
+            tmpfile = data.tmpdir / f"{sample.name}_chunk_{idx}.ali"
+            with open(tmpfile, 'w', encoding="utf-8") as out:
+                grabclust = ["".join(i) for i in grabchunk]
+                out.write("//\n//\n".join(grabclust).strip() + "\n//\n//\n")
 
-def iter_muscle_alignments(handle: Path) -> Iterator[List[str]]:
+def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str]]:
     """Align .ali tmp cluster files using mucle.
 
     Note
@@ -725,7 +726,7 @@ def iter_muscle_alignments(handle: Path) -> Iterator[List[str]]:
     # muscle -quiet  -threads 1 -align /dev/fd/63 -output /dev/stdout
     cmd = [
         BIN_MUSCLE, "-quiet", "-threads", "1",
-        "-align", "<(printf '{}')", 
+        "-align", "<(printf '{}')",
         "-output", "/dev/stdout",
         ";", "echo", "@@\n",
     ]
@@ -733,14 +734,14 @@ def iter_muscle_alignments(handle: Path) -> Iterator[List[str]]:
 
     # Popen kwargs to pass a sequence alignment in
     kwargs = dict(
-        stdout=subprocess.PIPE, stdin=subprocess.PIPE, 
+        stdout=subprocess.PIPE, stdin=subprocess.PIPE,
         stderr=subprocess.STDOUT, bufsize=0,
     )
 
-    # create two persistent bash shells 
+    # create two persistent bash shells
     with subprocess.Popen(
         'bash', **kwargs) as proc1, subprocess.Popen(
-        'bash', **kwargs) as proc2: 
+        'bash', **kwargs) as proc2:
 
         # iterate over clusters
         for clust in iter_clusters(handle):
@@ -750,47 +751,87 @@ def iter_muscle_alignments(handle: Path) -> Iterator[List[str]]:
                 yield clust, []
                 continue
 
-            # limit to first 100 unique sequences (pre-sorted by depth)
+            # limit to first N unique sequences (pre-sorted by depth)
             # (this MAY be a bit limiting if decloning pcr duplicates.)
-            clust = clust[:100]
+            clust = clust[:maxdepth]
 
-            # pair separator is not consistently found, do single align
-            if not all('nnnn' in i for i in clust[1::2]):
+            # ---------------------------------------------------------
+            # pair separator is not consistently found. Single align it.
+            # NOTE: this often leads to problems later, with poor alignment
+            # in the middle and sometimes no data on one side of the nnnn.
+            # Therefore this option was deprecated for the option below where
+            # any merged sequence (w/o nnnn) are removed and only pairs kept.
+            # ---------------------------------------------------------
+            # if not all('nnnn' in i for i in clust[1::2]):
+            #     proc1.stdin.write(cmd.format("\n".join(clust)).encode())
+            #     ali = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
+            #     if ">" not in ali[0]:
+            #         raise IPyradError(
+            #             f"error in muscle alignment: {''.join(ali)}")
+            #     yield ali, []
+
+            # no pairs present, do single alignment
+            if not any('nnnn' in i for i in clust[1::2]):
+                for idx, line in enumerate(clust):
+                    if line[0] != ">":
+                        clust[idx] = SPACER + line.strip() + SPACER
                 proc1.stdin.write(cmd.format("\n".join(clust)).encode())
                 ali = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
                 if ">" not in ali[0]:
                     raise IPyradError(
                         f"error in muscle alignment: {''.join(ali)}")
                 yield ali, []
+                continue
 
-            # split paired data on 'nnnn' separator. It must be present
-            # in EVERY read to align pairs separately, else single align.
-            else:
-                headers = []
-                read1s = []
-                read2s = []
+            # pairs present SOME of the time. Remove unpaired reads.
+            if not all('nnnn' in i for i in clust[1::2]):
+                reclust = []
                 for line in clust:
-                    if line[0] == ">":
-                        headers.append(line)
+                    if ">" in line:
+                        header = line
                     else:
-                        pos = line.find("nnnn")
-                        read1s.append(line[:pos])
-                        read2s.append(line[pos + 4:])
-                clust1 = ["\n".join(i) for i in zip(headers, read1s)]
-                clust2 = ["\n".join(i) for i in zip(headers, read2s)]
+                        if "nnnn" in line:
+                            reclust.append(header)
+                            reclust.append(line)
+                clust = reclust
 
-                # align reads simultaneously on separate subprocesses
-                proc1.stdin.write(cmd.format("\n".join(clust1)).encode())
-                proc2.stdin.write(cmd.format("\n".join(clust2)).encode())
+                # if reduced to a single uniq read then don't align it.
+                if len(clust) == 2:
+                    header = clust[0].strip()
+                    if header[-1] != "*":
+                        clust[0] = header[:-1] + "*\n"
+                    yield clust, []
+                    continue
 
-                # collect alignments, they will be re-paired in next func
-                ali1 = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
-                ali2 = [i.decode() for i in iter(proc2.stdout.readline, b'@@\n')]
-                for ali in (ali1, ali2):
-                    if ">" not in ali[0]:
-                        raise IPyradError(
-                            f"error in muscle alignment: {''.join(ali)}")
-                yield ali1, ali2
+            # pairs present. Split paired data on 'nnnn' separator.
+            # Attaches 'edge blocks' "NNNNNN" to improve alignment at
+            # edges of clusters. These don't need to be removed since
+            # they will be trimmed in step 5.
+            headers = []
+            read1s = []
+            read2s = []
+            for line in clust:
+                if line[0] == ">":
+                    headers.append(line)
+                else:
+                    pos = line.find("nnnn")
+                    read1s.append(SPACER + line[:pos] + SPACER)
+                    read2s.append(SPACER + line[pos + 4:].strip() + SPACER)
+            clust1 = ["\n".join(i) for i in zip(headers, read1s)]
+            clust2 = ["\n".join(i) for i in zip(headers, read2s)]
+
+            # align reads simultaneously on separate subprocesses
+            proc1.stdin.write(cmd.format("\n".join(clust1)).encode())
+            proc2.stdin.write(cmd.format("\n".join(clust2)).encode())
+
+            # collect alignments, they will be re-paired in next func
+            ali1 = [i.decode() for i in iter(proc1.stdout.readline, b'@@\n')]
+            ali2 = [i.decode() for i in iter(proc2.stdout.readline, b'@@\n')]
+            for ali in (ali1, ali2):
+                if ">" not in ali[0]:
+                    raise IPyradError(
+                        f"error in muscle alignment: {''.join(ali)}")
+            yield ali1, ali2
 
 def iter_alignment_format(handle: Path) -> Iterator[str]:
     """Generator to yield filtered, aligned, paired, and sorted clusters.
@@ -823,10 +864,14 @@ def iter_alignment_format(handle: Path) -> Iterator[str]:
                     head_to_seq2[key] = line.strip()
 
         # sort the first reads
-        keys = sorted(head_to_seq1, key=lambda x: int(x.split("=")[-1].split(";")[0]))
-        seed = [i for i in keys if i[-1] == "*"][0]
-        seed = keys.pop(keys.index(seed))
-        order = [seed] + keys
+        try:
+            keys = sorted(head_to_seq1, key=lambda x: int(x.split(";")[-2][5:]))
+            seed = [i for i in keys if i[-1] == "*"][0]
+            seed = keys.pop(keys.index(seed))
+            order = [seed] + keys
+        except IndexError:
+            print(f"TRY:\n\n{keys}\n\n{ali1}\n\n{ali2}")
+            continue
 
         alignment = []
         if head_to_seq2:
@@ -840,7 +885,7 @@ def iter_alignment_format(handle: Path) -> Iterator[str]:
 
 def write_alignments(handle: Path) -> None:
     """Writes alignments to tmpfiles.
-    
+
     Iterates over chunks of aligned loci from generator and
     writes to a concatenated output file.
     """
@@ -854,7 +899,7 @@ def write_alignments(handle: Path) -> None:
                 out.write("\n//\n//\n".join(chunk) + "\n//\n//\n")
                 chunk = []
         if chunk:
-            out.write("\n//\n//\n".join(chunk) + "\n//\n//\n")            
+            out.write("\n//\n//\n".join(chunk) + "\n//\n//\n")
 
 def reconcat(data: Assembly, sample: Sample) -> None:
     """Concatenate .aligned chunks into a single .clusters.gz file.
@@ -879,10 +924,10 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
     """Sets step3 stats to Samples from clusters files.
 
     This is used for both denovo and reference assemblies.
-    Iterates over clustS files to count data, returns maxlen and 
+    Iterates over clustS files to count data, returns maxlen and
     depths arrays for each sample.
     """
-    clustfile = data.stepdir / f"{sample.name}.clusters.gz"    
+    clustfile = data.stepdir / f"{sample.name}.clusters.gz"
     sample.state = 3
     sample.files.clusters = clustfile
 
@@ -939,7 +984,7 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
 def alignment_indel_filter(clust: Dict[str,str], max_internal_indels: int) -> bool:
     """Return True if internal indels exceeds the allowed maximum."""
     return any(
-        i.strip("-").count("-") > max_internal_indels 
+        i.strip("-").count("-") > max_internal_indels
         for i in clust.values()
     )
 
@@ -948,7 +993,7 @@ def gbs_trim(align1):
     """Trimming method applied to gbs and pairgbs denovo assemblies only.
 
     No reads can go past the left of the seed, or right of the least extended
-    reverse complement match. Example below. m is a match. u is an area where 
+    reverse complement match. Example below. m is a match. u is an area where
     lots of mismatches typically occur. The cut sites are shown.
 
     Original locus*
@@ -989,7 +1034,7 @@ def gbs_trim(align1):
     # ...
     if revs:
         subright = max([
-            [i != "-" for i in seq[::-1]].index(True) 
+            [i != "-" for i in seq[::-1]].index(True)
             for seq in [ddd[i] for i in revs]
         ])
     else:
@@ -999,7 +1044,7 @@ def gbs_trim(align1):
     # if locus got clobbered then print place-holder NNN
     names, seqs = zip(*[i.rsplit("\n", 1) for i in align1])
     if rightmost > leftmost:
-        newalign1 = [n + "\n" + i[leftmost:rightmost] 
+        newalign1 = [n + "\n" + i[leftmost:rightmost]
                      for i, n in zip(seqs, names)]
     else:
         newalign1 = [n + "\nNNN" for i, n in zip(seqs, names)]
