@@ -5,7 +5,6 @@
 """
 
 from typing import Dict, TypeVar
-import itertools
 from collections import Counter
 import numpy as np
 import pandas as pd
@@ -14,7 +13,6 @@ from loguru import logger
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.core.schema import Stats5
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.clustmap_within_denovo_utils import iter_clusters
 from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
 from ipyrad.assemble.consens_utils import (
@@ -35,24 +33,24 @@ class Step5(BaseStep):
         super().__init__(data, 5, quiet, force)
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
-        self.max_frag = self.data.hackers.max_fragment_length
+        self.data.max_frag = self.data.hackers.max_fragment_length
         self.keep_masks: Dict[str, np.ndarray] = {}
 
         # sample paths to be used
         for sname, sample in self.samples.items():
-            sample.files.depths = self.data.stepdir / f"{sname}.catg.hdf5"
+            sample.files.depths = str(self.data.stepdir / f"{sname}.catg.hdf5")
             if self.data.is_ref:
-                sample.files.consens = self.data.stepdir / f"{sname}.bam"
+                sample.files.consens = str(self.data.stepdir / f"{sname}.bam")
             else:
-                sample.files.consens = self.data.stepdir / f"{sname}.consens.gz"
+                sample.files.consens = str(self.data.stepdir / f"{sname}.consens.gz")
 
     def run(self):
         """Submit jobs to run either denovo, reference, or complex."""
         self.calculate_depths_and_max_frag()
         self.make_chunks()
         self.process_chunks()
-        # self.concatenate_chunks()
-        # self.data.save_json()
+        self.concatenate_chunks()
+        self.data.save_json()
 
     def calculate_depths_and_max_frag(self):
         """Check whether mindepth has changed and calc nclusters and maxlen
@@ -71,7 +69,7 @@ class Step5(BaseStep):
         # check for failures and collect results
         for sname, res in prog.results.items():
             keep_mask, max_frag = res
-            self.data.max_frag = int(max(self.max_frag, max_frag))
+            self.data.max_frag = int(max(self.data.max_frag, max_frag))
             self.keep_masks[sname] = keep_mask
             logger.debug(f"high depth clusters in {sname}: {keep_mask.sum()}")
         logger.debug(
@@ -109,53 +107,51 @@ class Step5(BaseStep):
             for i in self.data.samples
         ])
 
-        # submit jobs (10 per sample === can be hundreds of jobs...)
-        jobs = {sname: [] for sname in self.samples}
+        # submit jobs (can be many per sample)
+        msg = "consens calling"
+        prog = AssemblyProgressBar({}, msg, 5, self.quiet)
         for sname, sample in self.samples.items():
             chunks = list(self.data.tmpdir.glob(f"{sname}_chunk_[0-9]*"))
             chunks.sort(key=lambda x: int(x.name.split('_')[-1]))
-            for chunk in chunks:
+            for cidx, chunk in enumerate(chunks):
                 args = (self.data, sample, chunk)
-                jobs[sname].append(self.lbview.apply(processor_wrap, *args))
+                jid = (sname, cidx)
+                prog.jobs[jid] = self.lbview.apply(processor_wrap, *args)
 
         # send chunks to be processed
-        allsyncs = itertools.chain(*jobs.values())
-        allsyncs = dict(enumerate(allsyncs))
-        msg = "consens calling"
-        prog = AssemblyProgressBar(allsyncs, msg, 5, self.quiet)
         prog.block()
         prog.check()
 
         # collect results from jobs since where they're grouped by sname
-        for sname in jobs:
-            rdicts = [i.get() for i in jobs[sname]]
-            stat_dict = Counter()
-            filter_dict = Counter()
-            for tup in rdicts:
-                stat_dict.update(tup[0])
-                filter_dict.update(tup[1])
+        stats = {i: [Counter(), Counter()] for i in self.data.samples}
+        for key, result in prog.results.items():
+            sname, _ = key
+            stats[sname][0].update(result[0])
+            stats[sname][1].update(result[1])
 
-            # ONLY ADVANCE STATE IF CONSENS READS EXIST
-            if stat_dict['nconsens']:
-                self.samples[sname].state = 5
+        # ONLY ADVANCE STATE IF CONSENS READS EXIST
+        for sname, (counters, filters) in stats.items():
+            sample = self.samples[sname]
+            if counters['nconsens']:
+                sample.state = 5
+
+            prefiltered_by_depth = np.invert(self.keep_masks[sname]).sum()
 
             # STORE STATS
-            self.samples[sname].stats_s5 = Stats5()
-            stats = self.samples[sname].stats_s5
-            stats.cluster_total = self.keep_masks[sname].sum()
-            stats.consensus_total = stat_dict["nconsens"]
-            stats.filtered_by_depth = filter_dict["depth"]
-            stats.filtered_by_max_h = filter_dict["maxh"]
-            stats.filtered_by_max_alleles = filter_dict["maxalleles"]
-            stats.filtered_by_max_n = filter_dict["maxn"]
-            stats.nsites = stat_dict["nsites"]
-            stats.nhetero = stat_dict["heteros"]
-            stats.heterozygosity = (
-                0. if stat_dict['nsites'] == 0
-                else stat_dict['heteros'] / stat_dict['nsites']
+            sample.stats_s5 = Stats5(
+                clusters_total=self.keep_masks[sname].size,
+                consensus_total=counters["nconsens"],
+                nsites=counters["nsites"],
+                nhetero=counters["nheteros"],
+                heterozygosity = (0. if counters['nsites'] == 0
+                    else counters['nheteros'] / counters['nsites']),
+                filtered_by_depth=filters["depth"] + prefiltered_by_depth,
+                filtered_by_max_h=filters["maxh"],
+                filtered_by_max_n=filters["maxn"],
+                filtered_by_max_alleles=filters["maxalleles"],
+                min_depth_maj_during_step5=self.data.params.min_depth_majrule,
+                min_depth_stat_during_step5=self.data.params.min_depth_statistical,
             )
-            stats.min_depth_maj_during_step5 = self.data.params.min_depth_majrule
-            stats.min_depth_stat_during_step5 = self.data.params.min_depth_statistical
 
         # WRITE TO STATS FILE and LOGGER
         stats_file = self.data.stepdir / "s5_stats_consensus.txt"
@@ -172,26 +168,26 @@ class Step5(BaseStep):
             logger.info("\n" + statsdf.iloc[:, :7].to_string())
 
     def concatenate_chunks(self):
-        """Concatenate chunks and relabel for joined chunks. This spends
-        most of its time storing CATG data that will probably not be used,
+        """Concatenate processed chunks into final stepdir.
+
+        Relabels chunks by new consensus IDs. This spends most of its
+        time storing CATG data that will probably not be used,
         but is important for saving SNP depths info.
         """
         # concat catgs for each sample
         jobs1 = {}
         jobs2 = {}
-        for sname in self.samples:
+        for sname, sample in self.samples.items():
+            args = (self.data, sample)
 
             # submit h5 counts concat
-            jobs1[sname] = self.lbview.apply(
-                concat_catgs, *(self.data, self.samples[sname]))
+            jobs1[sname] = self.lbview.apply(concat_catgs, *args)
 
             # submit seq file concat
             if not self.data.is_ref:
-                jobs2[sname] = self.lbview.apply(
-                    concat_denovo_consens, *(self.data, self.samples[sname]))
+                jobs2[sname] = self.lbview.apply(concat_denovo_consens, *args)
             else:
-                jobs2[sname] = self.lbview.apply(
-                    concat_reference_consens, *(self.data, self.samples[sname]))
+                jobs2[sname] = self.lbview.apply(concat_reference_consens, *args)
 
         jobs = list(jobs1.values()) + list(jobs2.values())
         jobs = dict(enumerate(jobs))

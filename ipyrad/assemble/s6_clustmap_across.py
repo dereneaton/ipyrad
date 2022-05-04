@@ -22,8 +22,6 @@ class Step6(BaseStep):
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
         self.data.ncpus = len(self.ipyclient.ids)
-        self.data.tmpdir = self.tmpdir
-        self.data.stepdir = self.stepdir        
         self.regions = []
 
     def run(self):
