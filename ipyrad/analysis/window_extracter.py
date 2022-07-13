@@ -317,9 +317,15 @@ class WindowExtracter(object):
         with h5py.File(self.data, 'r') as io5:
 
             # get sample names
-            self.pnames = np.array([
-                i.decode() for i in io5["phymap"].attrs["phynames"]
-            ])
+            try:
+                self.pnames = np.array([
+                    i.decode() for i in io5["phymap"].attrs["phynames"]
+                ])
+            except AttributeError:
+                # If "names" aren't encoded as bytes then it's an older version
+                # of the snps.hdf5 file, so allow for this.
+                self.pnames = [i for i in io5["phymap"].attrs["phynames"]]
+
             self.allnames = [i.strip() for i in self.pnames]
 
             # auto-generate exclude from imap difference
