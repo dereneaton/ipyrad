@@ -9,7 +9,7 @@ ipyrad can be installed using pip or conda. We strongly recommend the conda vers
 
 Conda install
 -------------
-ipyrad is available for Python >=3.5.
+ipyrad is available for Python >=3.5 (3.10 is recommended).
 
 .. code:: bash
 
