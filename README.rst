@@ -20,7 +20,7 @@ If you have `conda` installed you can simply run:
 
 
 If you do not have `conda` installed then you will enjoy our 
-`complete installation instructions <http://ipyrad.readthedocs.io/installation.html>`_.
+`complete installation instructions <https://ipyrad.readthedocs.io/en/master/3-installation.html>`_.
 
 
 Getting Help
