@@ -104,6 +104,8 @@ class BaseStep(ABC):
         # no samples to get yet
         if self.step == 1:
             return
+        if not self.data.samples:
+            raise IPyradError("No samples found. You must first run step 1.")
 
         # check samples for current states
         not_ready = {}
