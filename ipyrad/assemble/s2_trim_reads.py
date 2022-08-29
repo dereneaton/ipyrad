@@ -6,10 +6,20 @@ This processes the demultiplexed data files, and expects that
 the files have not been preprocessed by other tools already.
 
 Further read processing to merge pairs or derep takes place in Step3.
+
+Notes
+------
+The behavior in v.1.0 changed to automatically trim the restriction
+overhangs from sequences during step2. They had previously been
+retained because it improved subsqeuent alignments, and made is easier
+to tell that reads were oriented properly. However, we now include
+NNNNN padding which serves fine for improving edge alignements, and
+so removing the overhangs altogether makes for cleaner results. To
+suppress this automatic trimming behavior you can set
+Assembly.params.trim_reads = ()
 """
 
 from typing import TypeVar
-import os
 import sys
 import json
 from pathlib import Path
@@ -66,7 +76,7 @@ class Step2(BaseStep):
             for ftuple in sample.files.fastqs:
                 for fastq in ftuple:
                     if fastq:
-                        if not os.path.exists(fastq):
+                        if not Path(fastq).exists():
                             raise IOError(
                                 f"fastq files from step 1 are missing: {fastq}")
 
@@ -153,6 +163,7 @@ class Step2(BaseStep):
         # store file paths and stats
         for sname, result in prog.results.items():
             jdata, filepaths = result
+            # store a list of tuples of strings
             self.data.samples[sname].files.edits = filepaths
             stats = Stats2()
             stats.reads_raw = jdata['summary']['before_filtering']['total_reads']
@@ -244,7 +255,7 @@ class ReadTrimming:
         # output file paths (do not bother gzipping since these are tmp files)
         self.out1 = self.data.stepdir / f"{sname}.trimmed_R1.fastq.gz"
         self.out2 = (
-            self.data.stepdir / f"{sname}.trimmed_R2.fastq.gz" 
+            self.data.stepdir / f"{sname}.trimmed_R2.fastq.gz"
             if self.data.is_pair else "")
 
         # paths to stats files
@@ -286,19 +297,28 @@ class ReadTrimming:
             ]
 
         # by default we trim the adapter lengths from the start of R1
-        # and R2 reads based on `restriction_overhang` params, but this
-        # will be overriden by `trim_reads` params.
+        # and R2 reads based on `restriction_overhang` params.
         trim_front1 = len(self.data.params.restriction_overhang[0])
         trim_front2 = len(self.data.params.restriction_overhang[1])
+
+        # HOwever, this can be overriden by setting `trim_reads` param.
+        # if set to a nonzero
+        # argument. HACK: To disable trimming set to a negative number.
         if self.data.params.trim_reads[0]:
-            trim_front1 = self.data.params.trim_reads[0]
-        if self.data.params.trim_reads[2]:
-            trim_front2 = self.data.params.trim_reads[2]
+            if self.data.params.trim_reads[0] < 0:
+                trim_front1 = 0
+            else:
+                trim_front1 = abs(self.data.params.trim_reads[0])
+        if self.data.params.trim_reads[1]:
+            if self.data.params.trim_reads[1] < 0:
+                trim_front2 = 0
+            else:
+                trim_front2 = abs(self.data.params.trim_reads[1])
 
         cmd.extend([
             "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
             "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
-            # "-a", str(self.data.hackersonly.p5_adapter), # allow auto-detection
+            # "-a", str(self.data.hackersonly.p5_adapter), # disable to allow auto-detection
             "-q", str(20 + self.data.hackers.phred_qscore_offset - 33),  # minqual
             "-l", str(self.data.params.filter_min_trim_len),  # minlen
             "-y", "-Y", "50",  # turns on and sets complexity filter to 50
@@ -308,9 +328,9 @@ class ReadTrimming:
             "-j", str(self.json),
             "-h", str(self.html),
             "--trim_front1", str(trim_front1),
-            "--trim_tail1", str(self.data.params.trim_reads[1]),
             "--trim_front2", str(trim_front2),
-            "--trim_tail2", str(self.data.params.trim_reads[3]),
+            # "--trim_tail1", str(abs(self.data.params.trim_reads[1])),
+            # "--trim_tail2", str(abs(self.data.params.trim_reads[3])),
         ])
 
         # turn off filters if settings are lower than 2
@@ -337,7 +357,7 @@ class ReadTrimming:
         """Get stats from the fastp JSON file."""
         with open(self.json, 'r', encoding="utf-8") as indata:
             jdata = json.loads(indata.read())
-        return (jdata, [(self.out1, self.out2)])
+        return (jdata, [(str(self.out1), str(self.out2))])
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ class HackersSchema(BaseModel):
     merge_technical_replicates: bool = True
     exclude_reference: bool = True
     trim_loci_min_sites: int = 4
-    phred_qscore_offset: int = 33    
+    phred_qscore_offset: int = 33
 
 class AssemblyMethod(str, Enum):
     """supported assembly method categories"""
@@ -75,8 +75,8 @@ class ParamsSchema(BaseModel):
     max_snps_locus: float = 0.2
     max_indels_locus: int = 8
     max_shared_h_locus: float = 0.5
-    trim_reads: Tuple[int, int, int, int] = (0, 0, 0, 0)
-    trim_loci: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    trim_reads: List[int] = (0, 0)
+    trim_loci: List[int] = (0, 0, 0, 0)
     output_formats: List[str] = ("p", "s", "l")
     pop_assign_file: Path = None
     reference_as_filter: Path = None
@@ -91,16 +91,24 @@ class ParamsSchema(BaseModel):
         return self.json(indent=2)
 
     def __repr__(self):
-        return self.json(indent=2)        
+        return self.json(indent=2)
 
     ##################################################################
     # Below here, custom validator funcs in addition to type checking.
+    # These can be modified to support older params files when options
+    # change, or to add extra validations.
+    #
+    # API: This is run during ip.load_json
+    # CLI: This is run during ip.load_json w/ existing JSON file and
+    # then run again to update the Assembly.ParamsSchema by setting
+    # new values from the params file.
     ##################################################################
 
     @validator('assembly_name')
     def _name_validator(cls, value):
-        """Names cannot have whitespace. Other strange characters are 
-        simply replaced with a warning message printed.
+        """Names cannot have whitespace. Other strange characters are
+        simply replaced with a warning message printed. This is
+        immutable anyways.
         """
         if ' ' in value:
             raise ValueError('assembly_name cannot contain spaces')
@@ -139,7 +147,7 @@ class ParamsSchema(BaseModel):
         if value:
             value = value.expanduser().resolve()
             if not value.exists():
-                raise ValueError(f"no files match the input string: {value}")                
+                raise ValueError(f"no files match the input string: {value}")
             if value.suffix == ".gz":
                 raise ValueError(f"reference {value} must be decompressed.")
         return value
@@ -151,14 +159,35 @@ class ParamsSchema(BaseModel):
         return value
 
     @validator("datatype")
-    def _datatype_validator(cls, value):
+    def _datatype_validator(cls, value) -> str:
         """Return the Enum value (string)"""
         return value.value
 
     @validator("assembly_method")
-    def _method_validator(cls, value):
+    def _method_validator(cls, value) -> str:
         """Return the Enum value (string)."""
-        return value.value        
+        return value.value
+
+    @validator("trim_reads")
+    def _trim_reads_validator(cls, value) -> Tuple[int,int]:
+        """Default is (0, 0). User can set to any integers. Negative
+        values have special meaning of
+        """
+        # handle older format with 4 values by selecting the first,last
+        if len(value) == 4:
+            value = value[0], value[-1]
+        if len(value) == 1:
+            return (value, 0)
+        assert len(value) == 2, "trim_reads must contain 2 values, e.g., (0, 0)"
+        return value
+
+    @validator("trim_loci")
+    def _trim_loci_validator(cls, value) -> Tuple[int,int,int,int]:
+        """Return a tuple[int,int]."""
+        if value is None:
+            return (0, 0, 0, 0)
+        assert len(value) == 4, "trim_loci must contain 4 values, e.g., (0, 0, 0, 0)"
+        return value
 
 
     ### TODO...
