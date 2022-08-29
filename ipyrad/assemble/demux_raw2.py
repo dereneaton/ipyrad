@@ -188,12 +188,12 @@ class SimpleDemux:
             if self.data.hackers.merge_technical_replicates:
                 logger.warning(
                     "\nTechnical replicates are present (samples with same name "
-                    "in the barcodes file)\nand will be merged into one sample."
-                    "To not merge replicate samples set\n"
+                    "in the barcodes file)\nand will be merged into one sample. "
+                    "To instead NOT merge replicate samples set\n"
                     "`hackers.merge_technical_replicates = False), which will "
-                    "instead rename \nthe samples with a '-technical-replicate-x'"
+                    "instead rename \nsamples with a '-technical-replicate-x' "
                     "suffix.\nYou can change this in the 'hacker' settings "
-                    "in the project JSON file.")
+                    "in the project JSON file.\n")
             # warn that dups are present and WILL NOT be merged.
             else:
                 logger.warning(
@@ -569,9 +569,7 @@ class BarMatching:
         and write the matched reads to unique files in chunks.
 
         Write chunks to tmp files for each sample w/ data.
-        Opens a file handle that is unique to this process/sample
-
-        TODO: what if only writing was parallelized...?
+        Opens a file handle that is unique to this process/sample.
         """
         for read1s, read2s in self._iter_matched_chunks():
             for name in read1s:
@@ -668,6 +666,9 @@ class BarMatchingSingleInline(BarMatching):
             if match:
                 self.sample_hits[match] = self.sample_hits.get(match, 0) + 1
                 self.barcode_hits[barcode] = self.barcode_hits.get(barcode, 0) + 1
+
+                # TRIM inline barcode
+                read1 = [read1[0], read1[1][len(match):], read1[2], read1[3][len(match):]]
                 yield read1, read2, match
             else:
                 self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1
@@ -730,6 +731,10 @@ class BarMatchingCombinatorialInline(BarMatching):
             if match:
                 self.sample_hits[match] = self.sample_hits.get(match, 0) + 1
                 self.barcode_hits[barcode] = self.barcode_hits.get(barcode, 0) + 1
+
+                # TRIM INLINE BARCODE(S)
+                read1 = [read1[0], read1[1][len(match_r1):], read1[2], read1[3][len(match_r1):]]
+                read2 = [read2[0], read2[1][len(match_r2):], read2[2], read2[3][len(match_r2):]]
                 yield read1, read2, match
             else:
                 self.barcode_misses[barcode] = self.barcode_misses.get(barcode, 0) + 1
