@@ -312,62 +312,62 @@ class Assembly:
                 tool.run()
                 # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
 
-    async def _run_async(
-        self,
-        steps: str,
-        cores: Optional[int]=None,
-        force: bool=False,
-        quiet: bool=False,
-        ipyclient: Optional["ipyparallel.Client"]=None,
-        **ipyclient_kwargs,
-        ) -> None:
-        """Run one or more assembly steps (1-7) of an ipyrad assembly.
+    # async def _run_async(
+    #     self,
+    #     steps: str,
+    #     cores: Optional[int]=None,
+    #     force: bool=False,
+    #     quiet: bool=False,
+    #     ipyclient: Optional["ipyparallel.Client"]=None,
+    #     **ipyclient_kwargs,
+    #     ) -> None:
+    #     """Run one or more assembly steps (1-7) of an ipyrad assembly.
 
-        This starts and shutsdown the ipyparallel cluster asynchronously
-        (faster). It is currently only designed for use with in the CLI,
-        not in the Python API, and will cause problems in jupyter, thus
-        it is a private func.
+    #     This starts and shutsdown the ipyparallel cluster asynchronously
+    #     (faster). It is currently only designed for use with in the CLI,
+    #     not in the Python API, and will cause problems in jupyter, thus
+    #     it is a private func.
 
-        FIXME: interrupt not working yet for this func...?
+    #     FIXME: interrupt not working yet for this func...?
 
-        Parameters
-        ----------
-        steps: str
-            A string of steps to run, e.g., "1", or "123".
-        force: bool
-            Force overwrite of existing results for this step.
-        quiet: bool
-            Suppress printed headers to stdout.
-        ipyclient: None or ipyparallel.Client
-            Optional ipyparallel client to connect to for distributing
-            jobs in parallel. This option is generally only useful if
-            you start a Client using MPI to connect to multiple nodes
-            of an HPC cluster. See ipyrad HPC docs for details.
+    #     Parameters
+    #     ----------
+    #     steps: str
+    #         A string of steps to run, e.g., "1", or "123".
+    #     force: bool
+    #         Force overwrite of existing results for this step.
+    #     quiet: bool
+    #         Suppress printed headers to stdout.
+    #     ipyclient: None or ipyparallel.Client
+    #         Optional ipyparallel client to connect to for distributing
+    #         jobs in parallel. This option is generally only useful if
+    #         you start a Client using MPI to connect to multiple nodes
+    #         of an HPC cluster. See ipyrad HPC docs for details.
 
-        Examples
-        --------
-        >>> data = ip.load_json("test.json")
-        >>> data.run("123", cores=4)
-        """
-        # save the current JSON file (and a backup?)
-        self.save_json()
+    #     Examples
+    #     --------
+    #     >>> data = ip.load_json("test.json")
+    #     >>> data.run("123", cores=4)
+    #     """
+    #     # save the current JSON file (and a backup?)
+    #     self.save_json()
 
-        # init the ipyparallel cluster class wrapper
-        if ipyclient is not None:
-            raise NotImplementedError(
-                "Usage of an external ipyclient is currently deprecated.")
+    #     # init the ipyparallel cluster class wrapper
+    #     if ipyclient is not None:
+    #         raise NotImplementedError(
+    #             "Usage of an external ipyclient is currently deprecated.")
 
-        # init first step before starting cluster to check for
-        # simple errors like missing file paths.
-        STEP_MAP[steps[0]](self, force=force, quiet=True, ipyclient=None)
+    #     # init first step before starting cluster to check for
+    #     # simple errors like missing file paths.
+    #     STEP_MAP[steps[0]](self, force=force, quiet=True, ipyclient=None)
 
-        # start cluster asynchronously, run jobs, and shutdown.
-        async with Cluster(cores=cores, **ipyclient_kwargs) as client:
-            # use client for any/all steps of assembly
-            for step in steps:
-                tool = STEP_MAP[step](self, force, quiet, client)
-                tool.run()
-                # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
+    #     # start cluster asynchronously, run jobs, and shutdown.
+    #     async with Cluster(cores=cores, **ipyclient_kwargs) as client:
+    #         # use client for any/all steps of assembly
+    #         for step in steps:
+    #             tool = STEP_MAP[step](self, force, quiet, client)
+    #             tool.run()
+    #             # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
 
 
 # the Class functions to run for each entered step.
