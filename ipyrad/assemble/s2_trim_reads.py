@@ -297,7 +297,7 @@ class ReadTrimming:
             ]
 
         # by default we trim the adapter lengths from the start of R1
-        # and R2 reads based on `restriction_overhang` params.
+        # and R2 reads based on length of `restriction_overhang` params.
         trim_front1 = len(self.data.params.restriction_overhang[0])
         trim_front2 = len(self.data.params.restriction_overhang[1])
 
