@@ -2,7 +2,7 @@
 
 """Utilities for s5_consensus
 
-Alignment files have been broken into chunked files with X clusters in 
+Alignment files have been broken into chunked files with X clusters in
 each, containing only high depth clusters. This iterates through the
 clusters to apply site and locus/allele filtering.
 
@@ -38,7 +38,8 @@ BIN_SAMTOOLS = Path(sys.prefix) / "bin" / "samtools"
 
 
 class Locus:
-    def __init__(self, names: List[str], seqs: np.ndarray, refpos: Tuple[int,int,int]):
+    def __init__(self, cidx: int, names: List[str], seqs: np.ndarray, refpos: Tuple[int,int,int]):
+        self.cidx = cidx
         self.names = names
         self.seqs = seqs
         self.refpos = refpos
@@ -60,9 +61,9 @@ class Processor:
         self.data = data
         """: Assembly object with param settings."""
         self.sample = sample
-        """: Sample object with file paths and stats."""        
+        """: Sample object with file paths and stats."""
         self.chunkfile = chunkfile
-        """: Path of tmp file with chunk of alignments from Sample."""                
+        """: Path of tmp file with chunk of alignments from Sample."""
 
         # set max limits and params from data
         self.maxlen = self.data.max_frag
@@ -76,11 +77,11 @@ class Processor:
 
         # these will be filled and then dumped to out files.
         self.nalleles: List[int] = []
-        """: Number of alleles found in each consensus locus."""
+        """: Number of alleles found in each kept consensus locus."""
         self.refpos: List[Tuple[int,int,int]] = []
         """: Tuple of scaffid, start, end positions (0-indexed)."""
         self.consens_seqs: List[str] = []
-        """: List of consensus sequences with ambiguity codes."""
+        """: List of consensus sequences (w/ ambiguity codes)."""
         self.catgs: List[np.ndarray] = []
         """: List of arrays with base depths."""
 
@@ -124,9 +125,9 @@ class Processor:
         self.collect_data()
         self.write_chunk()
 
-    def iter_process_chunks(self) -> Iterator:
-        """Iterates over clusters to apply filters."""
-        for clust in iter_clusters(self.chunkfile):
+    def _iter_process_chunks(self) -> Iterator[Locus]:
+        """Yields Locus objects with data parsed from clusters."""
+        for cidx, clust in enumerate(iter_clusters(self.chunkfile)):
 
             # parse names and sequences from cluster
             names = clust[::2]
@@ -162,30 +163,38 @@ class Processor:
                 ref_position = (int(chromint), int(pos0), int(pos1))
 
             # yield result as a Locus
-            loc = Locus(names=names, seqs=sarr, refpos=ref_position)
+            loc = Locus(cidx=cidx, names=names, seqs=sarr, refpos=ref_position)
             yield loc
 
-    def iter_mask_repeats(self) -> Iterator:
-        """denovo only: mask repeats, returns True if clust is filtered."""
-        for loc in self.iter_process_chunks():
+    def _iter_mask_repeats(self) -> Iterator[Locus]:
+        """Yields Locus objects that have been filtered to remove
+        padding of ns, Ns, and dashes (filter applies to DENOVO ONLY)
+        """
+        for loc in self._iter_process_chunks():
 
             # if reference assembly then no filter applies (return False)
             if self.data.is_ref:
                 yield loc
 
+            # denovo only masking: handle ----, NNNN, and nnnn padding
             else:
                 # get column counts of dashes
                 idepths = np.sum(loc.seqs == 45, axis=0).astype(float)
+                idepths += np.sum(loc.seqs == 78, axis=0).astype(float)
 
                 # get proportion of bases that are dashes at each site
                 props = idepths / loc.seqs.shape[0]
 
-                # if prop dash sites is more than 0.9 drop as bad align
-                keep = props < 0.9
+                # Drop sites
+                # if prop dash sites is more than 0.9 drop as a region
+                # that is either bad alignment, or intentional padding
+                keep = props <= 0.9
                 loc.seqs = loc.seqs[:, keep]
+
+                # Convert any remaining dash sites to Ns
                 loc.seqs[loc.seqs == 45] = 78
 
-                # if 'n' spacer is in any site then convert col to 'n'
+                # if 'n' spacer is in any site then convert column to 'n'
                 loc.seqs[:, np.any(loc.seqs == 110, axis=0)] = 110
 
                 # apply filter in case ALL sites were dropped
@@ -194,20 +203,20 @@ class Processor:
                 else:
                     self.filters['depth'] += 1
 
-    def iter_filter_mindepth(self) -> Iterator:
+    def _iter_filter_mindepth(self) -> Iterator:
         """filter for mindepth: returns True if clust is filtered."""
-        for loc in self.iter_mask_repeats():
+        for loc in self._iter_mask_repeats():
             sumreps = loc.seqs.shape[0]
             bool1 = sumreps >= self.data.params.min_depth_majrule
             bool2 = sumreps <= self.data.params.max_depth
-            if bool1 & bool2:
+            if bool1 and bool2:
                 yield loc
             else:
                 self.filters['depth'] += 1
 
-    def iter_build_consens(self) -> Iterator:
+    def _iter_build_consens(self) -> Iterator:
         """Filter..."""
-        for loc in self.iter_filter_mindepth():
+        for loc in self._iter_filter_mindepth():
 
             # get unphased genotype call of this sequence
             loc.consens, loc.triallele = new_base_caller(
@@ -218,11 +227,8 @@ class Processor:
                 self.data.error_est,
             )
 
-            # TODO: for denovo we could consider trimming Ns from internal
-            # split near pair separator, applied here.
-            # logger.debug(consens)
-
             # trim Ns (uncalled genos) from the left and right
+            # Note: now trimming from consens instead of from cluster.
             trim = np.where(loc.consens != 78)[0]
 
             # if everything was trimmed then return empty
@@ -250,9 +256,9 @@ class Processor:
             # return triallele filter, mindepth2 filter
             yield loc
 
-    def iter_filter_heteros(self) -> Iterator:
+    def _iter_filter_heteros(self) -> Iterator:
         """..."""
-        for loc in self.iter_build_consens():
+        for loc in self._iter_build_consens():
             hsites = np.any([
                 loc.consens == 82,
                 loc.consens == 75,
@@ -275,7 +281,7 @@ class Processor:
             else:
                 yield loc
 
-    def iter_filter_alleles(self) -> Iterator:
+    def _iter_filter_alleles(self) -> Iterator:
         """Infer the number of alleles from haplotypes.
 
         Easy case
@@ -298,7 +304,7 @@ class Processor:
         - C
         - T
         """
-        for loc in self.iter_filter_heteros():
+        for loc in self._iter_filter_heteros():
 
             # if only one hetero site then there are only two bi-alleles
             if loc.nheteros == 1:
@@ -352,24 +358,24 @@ class Processor:
 
     def collect_data(self):
         """Store the site count data for writing to HDF5, and stats.
-        
+
         Iterates through all loci that passed filtering, and computed
         filter stats on the way, and stores the stats to the Processor
         and collects the Locus data into arrays for storing in HDF5.
         The temp arrays will be concatenated back on the main processor
         instead of on the remote engine.
         """
-        for loc in self.iter_filter_alleles():
+        for loc in self._iter_filter_alleles():
 
             # advance counters
-            # self.counters["chunk_start"] += 1            
+            # self.counters["chunk_start"] += 1
             self.counters["nconsens"] += 1
             self.counters["nheteros"] += loc.nheteros
 
             # store nsites w/o counting missing or spacer sites.
             self.counters["nsites"] += loc.consens.size
             self.counters["nsites"] -= sum(loc.consens == 78)
-            self.counters["nsites"] -= sum(loc.consens == 110)            
+            self.counters["nsites"] -= sum(loc.consens == 110)
 
             # store the sequence until writing
             self.consens_seqs.append(bytes(loc.consens).decode())
@@ -386,17 +392,17 @@ class Processor:
         """Write chunk of consens reads to disk, store data and stats.
 
         depths, alleles, and chroms. For denovo data writes consens
-        chunk as a fasta file. For reference data it writes as a 
-        SAM file that is compatible to be converted to BAM (very 
+        chunk as a fasta file. For reference data it writes as a
+        SAM file that is compatible to be converted to BAM (very
         stringent about cigars).
         """
-        # enter catgs data into an array
+        # Convert list of small catgs arrs into one big catg arr.
         catgs = np.zeros((len(self.catgs), self.maxlen, 4), dtype=np.uint16)
         for idx, arr in enumerate(self.catgs):
             subset = arr[:self.maxlen]
             catgs[idx, :subset.shape[0]] = subset
 
-        # store the database data
+        # write H5 database w/ catgs, nalleles, and reference positions
         with h5py.File(self.chunkfile.with_suffix(".tmpcatgs.hdf5"), 'w') as io5:
             io5.create_dataset(name="catgs", data=catgs, dtype=np.uint16)
             io5.create_dataset(name="nalleles", data=np.array(self.nalleles), dtype=np.uint8)
@@ -409,13 +415,14 @@ class Processor:
         handle = self.chunkfile.with_suffix(".tmpconsens")
 
         # write consens data to the consens file
-        if not self.data.is_ref:    
+        if not self.data.is_ref:
             with open(handle, 'w', encoding="utf-8") as out:
                 out.write("\n".join(self.consens_seqs))
 
         # reference needs to store if the read is revcomp to reference
         else:
-            with open(handle, 'w', encoding="utf-8") as out:            
+            raise NotImplementedError("TODO")
+            with open(handle, 'w', encoding="utf-8") as out:
                 data = [
 
                 ]
@@ -493,7 +500,8 @@ def new_base_caller(sarr, mindepth_mj, mindepth_st, est_het, est_err):
         counts[rbase] = 0
 
         # if third allele occurs >X% then fill N and mark as paralog
-        # 1/6 as the cutoff
+        # 1/6 as the cutoff. This allows for discarding as a paralog
+        # earlier without requiring examining alleles later.
         if (numr / (nump + numq + numr)) >= 0.15:
             triallele = 1
 
@@ -600,19 +608,21 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
     The catg hdf5 array stores the depths of all bases at each site
     that was retained in a consensus allele. These will be used later
     in the VCF output file to print depths and base call scores.
+
+    Note: called from s5_consens.py
     """
     # collect tmpcat files written by write_chunks()
     tmpcats = list(data.tmpdir.glob(f"{sample.name}_chunk_[0-9]*.tmpcatgs.hdf5"))
     tmpcats.sort(key=lambda x: int(x.name.split("_")[-2]))
 
     # dimensions of final h5
-    optim = 5_000  # chunksize for low-mem fetching later
     nrows = sample.stats_s5.consensus_total
+    optim = min(5_000, nrows)  # chunksize for low-mem fetching later
     maxlen = data.max_frag
 
     # fill in the chunk array
     with h5py.File(sample.files.depths, 'w') as ioh5:
-        
+
         h5_catgs = ioh5.create_dataset(
             name="catgs",
             shape=(nrows, maxlen, 4),
@@ -647,11 +657,12 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
             start = end
             icat.unlink()
 
+
 def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
     """Concatenate consens bits into fasta file for denovo assemblies.
-    
-    Writes to fasta-like format. For denovo pair data it also checks 
-    that there exists data on both sides of the nnnn separator, and 
+
+    Writes to fasta-like format. For denovo pair data it also checks
+    that there exists data on both sides of the nnnn separator, and
     if not it adds an N block, to provide a minimum length for muscle
     alignment.
 
@@ -667,6 +678,7 @@ def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
     >name_1                    ->  >name_1
     nnnnTTTTTTTT               ->  NNNNNNNNNNnnnnTTTTTTTTTT
 
+    Note: called from s5_consens.py
     """
     # collect consens chunk files
     combs1 = list(data.tmpdir.glob(f"{sample.name}_chunk_[0-9]*.tmpconsens"))
@@ -679,7 +691,9 @@ def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
             cstack = []
             with open(fname, 'r', encoding="utf-8") as infile:
                 for line in infile:
-                    # ensure data exists on both sides of the nnnn
+                    # ensure data exists on both sides of the n separator. The
+                    # particular case where only some pairs had the separator
+                    # can lead to unaligned
                     if "nnnn" in line:
                         try:
                             before, after = line.split("nnnn")
@@ -697,12 +711,13 @@ def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
                 out.write("".join(cstack) + "\n")
             #fname.unlink()
 
+
 def concat_reference_consens(data, sample):
     """
     Concatenates consens bits into SAM for reference assemblies
     """
     # write sequences to SAM file
-    chunks = list(data.tmpdir.glob(f"{sample.name}_[0-9]*.tmpconsens"))    
+    chunks = list(data.tmpdir.glob(f"{sample.name}_[0-9]*.tmpconsens"))
     chunks.sort(key=lambda x: int(x.split(".")[-1]))
 
     # open sam handle for writing to bam
