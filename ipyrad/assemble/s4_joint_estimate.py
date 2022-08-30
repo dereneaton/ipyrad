@@ -81,7 +81,7 @@ def optim2(data: Assembly, sample: Sample, haploid: bool):
             x0=(0.001,),
             args=(bfreqs, ustacks, counts),
             method="L-BFGS-B",
-            bounds=[1e-10, 1.0],
+            bounds=[1e-6, 0.1],
         )
         hetero = 0.0
         error = fit.x[0]
@@ -91,7 +91,7 @@ def optim2(data: Assembly, sample: Sample, haploid: bool):
             x0=(0.01, 0.001),
             args=(bfreqs, ustacks, counts),
             method="L-BFGS-B",            
-            bounds=[(1e-10, 1.0), (1e-10, 1.0)],
+            bounds=[(1e-6, 0.1), (1e-6, 0.1)],
         )
         hetero, error = fit.x
 
