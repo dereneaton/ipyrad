@@ -5,7 +5,6 @@
 """
 
 from typing import TypeVar, Iterator, List, Dict, Tuple
-import os
 import sys
 import gzip
 from pathlib import Path
@@ -144,7 +143,7 @@ def merge_pairs_with_vsearch(data: Assembly, sample: Sample) -> int:
         data.tmpdir / f"{sample.name}_concat_R2.fq.gz",
         sample.files.edits[0][1],
     ]
-    index = min([i for i, j in enumerate(in1) if os.path.exists(j)])
+    index = min([i for i, j in enumerate(in1) if Path(j).exists()])
     infile1 = in1[index]
     infile2 = in2[index]
 
@@ -215,7 +214,7 @@ def join_end_to_end(data: Assembly, sample: Sample) -> None:
             for idx, (read1s, read2s) in enumerate(zip(quart1, quart2)):
                 header = read1s[0][1:]
                 read1 = read1s[1].strip()
-                read2 = read2s[1].strip()
+                read2 = comp(read2s[1].strip())[::-1]
                 newread = f">{header}{read1}nnnn{read2}"
                 tmp.append(newread)
 
@@ -721,6 +720,15 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
     ----
     There is still some trouble with interrupting this when running
     on ipp engines; it can leave muscle jobs running.
+
+    Parameters
+    ----------
+    handle: Path
+    maxdepth: int
+        This the max number of unique sequences that will be aligned.
+        By using this we COULD greatly improve aligning speed for some 
+        datasets. Currently we set it to 100 so it usually has no 
+        effect.
     """
     # muscle command to return alignment and then a spacer
     # muscle -quiet  -threads 1 -align /dev/fd/63 -output /dev/stdout
@@ -842,6 +850,10 @@ def iter_alignment_format(handle: Path) -> Iterator[str]:
     >>> align_gen = iter_alignment_format(tmpfile)
     >>> print(next(align_gen))
     """
+    # lambda func to sort hits by size
+    sorter = lambda x: int(x.split(";")[-2][5:])
+
+    # iterate over aligned chunks
     for ali1, ali2 in iter_muscle_alignments(handle):
         # get dict mapping headers to sequences
         head_to_seq1 = {}
@@ -865,7 +877,7 @@ def iter_alignment_format(handle: Path) -> Iterator[str]:
 
         # sort the first reads
         try:
-            keys = sorted(head_to_seq1, key=lambda x: int(x.split(";")[-2][5:]))
+            keys = sorted(head_to_seq1, key=sorter, reverse=True)
             seed = [i for i in keys if i[-1] == "*"][0]
             seed = keys.pop(keys.index(seed))
             order = [seed] + keys

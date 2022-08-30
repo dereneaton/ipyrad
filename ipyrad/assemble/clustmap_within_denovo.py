@@ -30,6 +30,8 @@ from ipyrad.assemble.clustmap_within_denovo_utils import (
     set_sample_stats
 )
 
+logger = logger.bind(name="ipyrad")
+
 
 class ClustMapDenovo:
     """de novo within-sample assembly pipeline."""

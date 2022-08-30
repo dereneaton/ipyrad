@@ -48,9 +48,24 @@ class Step5(BaseStep):
         """Submit jobs to run either denovo, reference, or complex."""
         self.calculate_depths_and_max_frag()
         self.make_chunks()
+        self.set_s4_params()
         self.process_chunks()
         self.concatenate_chunks()
+        self.store_stats()
         self.data.save_json()
+
+    def debug(self, sname: str) -> Processor:
+        """Function for developers only.
+
+        Used to debug and check consensus calling algorithms. This
+        returns a Processor object for an unchunked file for a sample.
+        """
+        self.calculate_depths_and_max_frag()
+        self.set_s4_params()
+        self.make_chunks(chunksize=int(1e9))
+        tmpfile = list(self.data.tmpdir.glob(f"{sname}_chunk_*"))[0]
+        sample = self.data.samples[sname]
+        return Processor(self.data, sample, tmpfile)
 
     def calculate_depths_and_max_frag(self):
         """Check whether mindepth has changed and calc nclusters and maxlen
@@ -75,28 +90,21 @@ class Step5(BaseStep):
         logger.debug(
             f"max_fragment_length will be constrained to {self.data.max_frag}")
 
-    def make_chunks(self):
+    def make_chunks(self, chunksize: int=5000):
         """Split clusters into chunks for parallel processing
         """
         msg = "chunking clusters"
         jobs = {}
         for sname, sample in self.samples.items():
-            args = (self.data, sample, self.keep_masks[sname])
+            args = (self.data, sample, self.keep_masks[sname], chunksize)
             rasync = self.lbview.apply(make_chunk_files, *args)
             jobs[sname] = rasync
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
         prog.check()
 
-    def process_chunks(self):
-        """Process the cluster chunks into arrays and consens or bam files
-        """
-        def processor_wrap(data, sample, chunkfile):
-            """Send job to Processor class on remote engine."""
-            proc = Processor(data, sample, chunkfile)
-            proc.run()
-            return proc.counters, proc.filters
-
+    def set_s4_params(self):
+        """Set values from step4 results to the data object."""
         # get mean values across all samples
         self.data.error_est = np.mean([
             self.data.samples[i].stats_s4.error_est
@@ -106,6 +114,15 @@ class Step5(BaseStep):
             self.data.samples[i].stats_s4.error_est
             for i in self.data.samples
         ])
+
+    def process_chunks(self):
+        """Process the cluster chunks into arrays and consens or bam files
+        """
+        def processor_wrap(data, sample, chunkfile):
+            """Send job to Processor class on remote engine."""
+            proc = Processor(data, sample, chunkfile)
+            proc.run()
+            return proc.counters, proc.filters
 
         # submit jobs (can be many per sample)
         msg = "consens calling"
@@ -122,18 +139,17 @@ class Step5(BaseStep):
         prog.block()
         prog.check()
 
-        # collect results from jobs since where they're grouped by sname
+        # return stats in a dict. This will be stored to the objects
+        # later after we complete the concatenation steps.
         stats = {i: [Counter(), Counter()] for i in self.data.samples}
         for key, result in prog.results.items():
             sname, _ = key
             stats[sname][0].update(result[0])
             stats[sname][1].update(result[1])
 
-        # ONLY ADVANCE STATE IF CONSENS READS EXIST
+        # store stats to the samples, but don't advance the state yet.
         for sname, (counters, filters) in stats.items():
             sample = self.samples[sname]
-            if counters['nconsens']:
-                sample.state = 5
 
             prefiltered_by_depth = np.invert(self.keep_masks[sname]).sum()
 
@@ -153,11 +169,16 @@ class Step5(BaseStep):
                 min_depth_stat_during_step5=self.data.params.min_depth_statistical,
             )
 
+    def store_stats(self):
+        """Collect stats and write to Samples and statsfile."""
+        # collect results from jobs since where they're grouped by sname
+
         # WRITE TO STATS FILE and LOGGER
         stats_file = self.data.stepdir / "s5_stats_consensus.txt"
+        snames = sorted(self.samples)
         statsdf = pd.DataFrame(
-            index=sorted(self.samples),
-            columns=list(self.samples[sname].stats_s5.dict()),
+            index=snames,
+            columns=list(self.samples[snames[0]].stats_s5.dict()),
         )
         for sname, sample in self.samples.items():
             istats = sample.stats_s5.dict()
@@ -166,6 +187,10 @@ class Step5(BaseStep):
         with open(stats_file, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
             logger.info("\n" + statsdf.iloc[:, :7].to_string())
+        # advance sample states
+        for sample in self.samples.values():
+            if sample.stats_s5.consensus_total:
+                sample.state = 5
 
     def concatenate_chunks(self):
         """Concatenate processed chunks into final stepdir.
@@ -197,8 +222,23 @@ class Step5(BaseStep):
         prog.check()
 
 
-def make_chunk_files(data: Assembly, sample: Sample, keep_mask: np.ndarray) -> None:
+def make_chunk_files(
+    data: Assembly, sample: Sample, keep_mask: np.ndarray, chunksize: int=5000) -> None:
     """Split job into 5_000 hidepth clusters each.
+
+    Parameters
+    ----------
+    data: Assembly
+        params and samples
+    sample: Sample
+        filepaths and stats
+    keep_mask: np.ndarray
+        Used to filter which consens reads will be included in chunk
+        files used for parallel processing.
+    chunksize: int
+        Chunksize used for breaking the problem into parallel chunks.
+        The chunks are unzipped. Default is 5K, but is set to very
+        large when using debug() function to not split files.
     """
     # open to cluster generator
     clusters = iter_clusters(sample.files.clusters, gzipped=True)
@@ -211,18 +251,18 @@ def make_chunk_files(data: Assembly, sample: Sample, keep_mask: np.ndarray) -> N
             continue
         chunk.append("".join(clust))
 
-        # write to chunk file and reset        
-        if len(chunk) == 5_000:
+        # write to chunk file and reset
+        if len(chunk) == int(chunksize):
             end = sidx + len(chunk)
             handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
             with open(handle, 'w', encoding="utf-8") as out:
                 out.write("//\n//\n".join(chunk) + "//\n//\n")
             chunk = []
-            sidx += 5000
+            sidx += int(chunksize)
 
     # write any remaining
     if chunk:
-        end = sidx + len(chunk)        
+        end = sidx + len(chunk)
         handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
         with open(handle, 'w', encoding="utf-8") as out:
             out.write("//\n//\n".join(chunk) + "//\n//\n")
