@@ -2,6 +2,20 @@
 
 """Call consensus alleles from clustered stacks within samples.
 
+Example
+-------
+>>> # load data as `consens_utils.Processor` object 
+>>> data = ip.load_json(JSON_FILE)
+>>> with ip.Cluster(cores=2) as ipyclient:
+>>>     step = Step5(data, 1, 0, ipyclient)
+>>>     proc = step.debug(SAMPLE_NAME)
+>>>
+>>> # interrogate within generator funcs
+>>> for loc in proc._iter_filter_heteros():
+>>>     print(loc.cidx, loc.filters)
+>>>
+>>> # or, run call filter generators 
+>>> proc.collect_data()
 """
 
 from typing import Dict, TypeVar
