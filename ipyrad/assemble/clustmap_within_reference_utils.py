@@ -61,7 +61,8 @@ def index_ref_with_bwa(data: Assembly, alt: bool=False) -> None:
 
     # If reference sequence already exists then bail out of this func
     suffs = [".amb", ".ann", ".bwt", ".pac", ".sa"]
-    if all(refseq_file.with_suffix(i).exists() for i in suffs):
+    # don't use Path.with_suffix here b/c '.fa.ann' double suffix is messy.
+    if all(Path(str(refseq_file) + i).exists() for i in suffs):
         print(f"reference is bwa indexed: {refseq_file}")
         return
 
@@ -108,72 +109,20 @@ def index_ref_with_sam(data: Assembly, alt: bool=False) -> None:
             f"{data.params.reference_as_filter}")
 
     # If reference index exists then bail out unless force
-    if refseq_file.with_suffix(".fai").exists():
+    if Path(str(refseq_file) + ".fai").exists():
         print(f"reference is sam indexed: {refseq_file}")
         return
 
     # complain if file is bzipped
     if refseq_file.suffix == ".gz":
         raise IPyradError(
-            "You must decompress the genome file: {refseq_file}.") 
+            f"You must decompress the genome file: {refseq_file}.") 
 
     # index the file
     print(f"indexing {refseq_file} with pysam/samtools")
     pysam.faidx(str(refseq_file))
 
-def mapping_reads_minus(data: Assembly, sample: Sample, nthreads: int) -> None:
-    """Map reads to the reference-filter fasta to get unmapped fastq
-    files to use for downstream analyses.
-    """
-    if not data.params.reference_as_filter:
-        return
-    reference = data.params.reference_as_filter
-
-    # input reads are concat if present else trims
-    read1 = data.tmpdir / f"{sample.name}_concat_R1.fastq.gz"
-    read2 = data.tmpdir / f"{sample.name}_concat_R2.fastq.gz"
-    read1 = str(read1) if read1.exists() else sample.files.edits[0][0]
-    read2 = str(read2) if read2.exists() else sample.files.edits[0][1]
-
-    # setup cmd1 (mapping w/ bwa)
-    cmd1 = [BIN_BWA, "mem", "-t", str(max(1, nthreads)), "-M", reference]
-    cmd1 += [read1, read2 if read2 else ""]
-    if data.hackers.bwa_args:
-        for arg in data.hackers.bwa_args.split()[::-1]:
-            cmd1.insert(2, arg)
-    cmd1 += ['-o', str(data.tmpdir / f"{sample.name}.sam")]
-    print(" ".join(cmd1))
-
-    # run cmd1
-    with Popen(cmd1, stderr=PIPE, stdout=DEVNULL) as proc1:
-        error1 = proc1.communicate()[1]
-        if proc1.returncode:
-            raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
-
-    # setup cmd2 (sam to bam)
-    cmd2 = [BIN_SAMTOOLS, 'view', '-b', '-F', '0x904']
-    cmd2 += ['-U', str(data.tmpdir / f"{sample.name}.unmapped.bam")]
-    cmd2 += [str(data.tmpdir / f"{sample.name}.sam")]
-    print(' '.join(cmd2))
-
-    # run cmd2
-    with Popen(cmd2, stderr=PIPE, stdout=DEVNULL) as proc2:
-        error2 = proc2.communicate()[1]
-        if proc2.returncode:
-            raise IPyradError(f"cmd: {' '.join(cmd2)}\nerror: {error2}")
-
-    # setup cmd3 (bam to fastq unmapped)
-    cmd3 = [BIN_SAMTOOLS, 'fastq', '-v', '45']
-    cmd3 += ['-1', str(data.tmpdir / f"{sample.name}.unmapped_R1.fastq")]
-    cmd3 += ['-2', str(data.tmpdir / f"{sample.name}.unmapped_R2.fastq")]
-    cmd3 += [str(data.tmpdir / f"{sample.name}.unmapped.bam")]
-    print(' '.join(cmd3))
-
-    # run cmd3
-    with Popen(cmd3, stderr=PIPE, stdout=DEVNULL) as proc3:
-        error3 = proc3.communicate()[1]
-        if proc3.returncode:
-            raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
+# clustmap_within_denovo_utils.mapping_reads_minus
 
 def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
     """Temporarily join pairs for dereplication.

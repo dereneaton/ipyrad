@@ -11,7 +11,6 @@ from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.clustmap_within_reference_utils import (
     index_ref_with_bwa,
     index_ref_with_sam,
-    mapping_reads_minus,
     join_pairs_for_derep_ref,
     tag_for_decloning,
     dereplicate_func,
@@ -22,6 +21,7 @@ from ipyrad.assemble.clustmap_within_reference_utils import (
 )
 from ipyrad.assemble.clustmap_within_denovo_utils import (
     concat_multiple_edits,
+    mapping_reads_minus,
     # reconcat,
     set_sample_stats
 )
@@ -31,13 +31,10 @@ logger = logger.bind(name="ipyrad")
 
 class ClustMapReference:
     """Reference mapping assembly pipeline."""
-    def __init__(self, step):
+    def __init__(self, step: "Step3"):
         # inherit attrs from step
         self.data = step.data
         self.samples = step.samples
-        self.data.tmpdir = step.tmpdir
-        self.data.stepdir = step.stepdir
-
         self.quiet = step.quiet
         self.lbview = step.lbview
         self.thview = step.thview
@@ -93,23 +90,32 @@ class ClustMapReference:
             prog.block()
             prog.check()
 
-    def mapping_to_refminus(self):
-        """Map reads to altref to get unmapped fastq files.
+    def mapping_to_reference_filter(self):
+        """Map reads to filter reference to get unmapped fastq.
 
-        # i: tmpdir/{}_R[1,2]-tmp.fa
-        # o: tmpdir/{}-tmp-umap[1,2].FASTQ
+        # i1: edits/{}_edits_R[1,2].fastq
+        # i0: tmpdir/{}_concat_edits_R[1,2].fastq
+        # o: tmpdir/{}_unmapped_R[1,2].fastq
         """
+        if not self.data.params.reference_as_filter:
+            return        
         jobs = {}
         for sname in self.samples:
-            jobs[sname] = self.thview.apply(
-                mapping_reads_minus,
-                *(self.data, self.samples[sname], self.data.ipcluster['threads'])
-            )
+            args = (self.data, self.samples[sname])
+            jobs[sname] = self.thview.apply(mapping_reads_minus, *args)
         if jobs:
-            msg = "joining pairs for dereplication"
+            msg = "mapping to reference as filter"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
             prog.check()
+
+        # store stats
+        for sname, val in prog.results.items():
+            sample = self.data.samples[sname]
+            sample.stats_s3.reads_mapped_to_ref_filter = val[0]
+            sample.stats_s3.reads_mapped_to_ref_filter_prop = val[1]
+            logger.debug(
+                f"{sname} proportion refmap filtered reads: {val[1]:.4f}")            
 
     def join_pairs_for_derep(self):
         """Joins pairs end to end for decloning and dereplicating.
@@ -291,7 +297,7 @@ class ClustMapReference:
         """
         self.index_references()
         self.concat_trimmed_files_from_assembly_merge()
-        self.mapping_to_refminus()
+        self.mapping_to_reference_filter()
         self.join_pairs_for_derep()
         self.tag_for_decloning()
         self.dereplicate()
@@ -307,14 +313,29 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
+    TEST = ip.load_json("/tmp/ama-denovo.json")
+    TEST = TEST.branch("ama-ref")
+    TEST.params.assembly_method = "reference"
+    TEST.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
+    
+    with ip.Cluster(cores=2) as ipyclient:
+        step = ip.assemble.s3_clustmap_within.Step3(TEST, 1, 0, ipyclient)
+        c = ClustMapReference(step)
+        c.index_references()
+        c.concat_trimmed_files_from_assembly_merge()
+        c.mapping_to_reference_filter()
+        c.join_pairs_for_derep()
+
+
+    # TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
 
     # practice with concat of some samples
-    DATA = ip.load_json("/home/deren/Documents/ipyrad/sandbox/ama3rad/assembly/amaranth.json")
+    # DATA = ip.load_json("/home/deren/Documents/ipyrad/sandbox/ama3rad/assembly/amaranth.json")
     # DATA1 = DATA.branch("test-branch1", subsample=["SLH_AL_1000", "SLH_AL_1009"])
     # DATA2 = DATA.branch("test-branch2", subsample=["SLH_AL_1000", "SLH_AL_1009"])
     # DATA = ip.merge("merge", [DATA1, DATA2])
 
     # print(DATA.params)
-    DATA.params.reference_as_filter = "../../tests/ipsimdata/rad_example_genome.fa"
-    DATA.ipcluster['threads'] = 4
-    DATA.run("3", force=True, cores=8, quiet=True)
+    # DATA.params.reference_as_filter = "../../tests/ipsimdata/rad_example_genome.fa"
+    # DATA.ipcluster['threads'] = 4
+    # DATA.run("3", force=True, cores=8, quiet=True)
