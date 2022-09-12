@@ -10,27 +10,28 @@ If denovo:
 If reference w/ hackers.exclude_reference=False:
     - SNPs are called among the samples including ref data.
     - Trimming removes low coverage edges and RE overhangs.
-    - Positional information is shifted for trimming.    
-    - stats on coverage and polymorphism include the ref.    
+    - Positional information is shifted for trimming.
+    - stats on coverage and polymorphism include the ref.
     - Loci outputs includes all samples + reference.
 
 If reference w/ hackers.exclude_reference=True:
     - SNPs are called among the samples but NOT including ref data.
     - Trimming removes low coverage edges and RE overhangs.
     - Positional information is shifted for trimming.
-    - stats on coverage and polymorphism do not include ref.    
+    - stats on coverage and polymorphism do not include ref.
     - Loci outputs includes all samples + reference (because we still
     need the ref information for filling VCF later. It is still good
-    to have it in .loci for visual validation. But ref seq will be 
+    to have it in .loci for visual validation. But ref seq will be
     excluded from the other output files as a sample.)
 """
 
-from typing import Iterable, List, Tuple, Dict, TypeVar
+from typing import Iterator, List, Tuple, Dict, TypeVar
 from dataclasses import dataclass, field
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from numba import njit
-from ipyrad.assemble.write_outputs_new_edge_trim import EdgeTrimmer
+from ipyrad.assemble.write_outputs_new_edge_trim import Locus
 from ipyrad.assemble.utils import chroms2ints
 
 Assembly = TypeVar("Assembly")
@@ -42,13 +43,15 @@ AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
 @dataclass
 class ChunkProcess:
     data: Assembly
+    """: Assembly object with paths and params."""
+    samples: Dict[str, 'SampleSchema']
+    """: Dict of samples in Step7 object."""
     chunksize: int
-    chunkfile: str
-
+    """: int with max number of alignment in chunk file."""
+    chunkfile: Path
+    """: Chunk of alignments file."""
     nsamples: int = 0
     """: Number of samples that is updated given drop_ref."""
-    drop_ref: bool = False
-    """: boolean for whether to include ref sample when finding SNPs"""
     filters: pd.DataFrame = None
     """: DataFrame with filters applied to each locus."""
     stats: Dict[str, Dict] = None
@@ -57,13 +60,18 @@ class ChunkProcess:
     """: List of loci that will be written to disk."""
     pnames: Dict[str,str] = None
     """: Dict of padded names for loci file."""
+    snames: List[str] = None
+    """: Alphanumerically sorted names but with 'reference' on top if present."""
+    shift_tables: List = field(default_factory=list)
+    """: ...."""
+    start_lidx: int = 0
+    """: Locus index at the start of this chunk."""
 
     def __post_init__(self):
-        # get boolean for whether 'reference' will be written to files.
-        self.drop_ref = self.data.is_ref & self.data.hackers.exclude_reference
-
-        # get dict with padding for the samples that will be written
-        self.pnames = self._get_padded_names()
+        # fill some attrs
+        self._get_lidx()
+        self._get_snames()
+        self._get_pnames()
 
         # filters dataframe is size of nloci (chunksize)
         self.filters = pd.DataFrame(
@@ -73,30 +81,37 @@ class ChunkProcess:
             dtype=bool,
         )
 
-        # get tmp list of sample names that will be written to file.
-        # This is may or may not include reference, since when drop_ref
-        # is on the ref should not be included in stats.
-        samples = list(self.data.samples)
-        if self.drop_ref:
-            samples.remove("reference")
-
         # sets stats defaults, using nsamples that will be written
         self.stats = {
             'nbases': 0,
-            'sample_cov': {i: 0 for i in samples},
-            'locus_cov': {i: 0 for i in range(1, len(samples) + 1)},
+            'sample_cov': {i: 0 for i in self.samples},
+            'locus_cov': {i: 0 for i in range(1, len(self.samples) + 1)},
             'var_sites': {i: 0 for i in range(2000)},
             'pis_sites': {i: 0 for i in range(2000)},
             'var_props': {},
             'pis_props': {},
         }
 
-    def _get_padded_names(self) -> Dict[str,str]:
+    # ======== INIT FUNCTIONS =================================== ##
+    def _get_lidx(self) -> None:
+        """Get raw locus index at start of this chunkfile."""
+        self.start_lidx = int(self.chunkfile.name.split("-")[-1][:-4])
+
+    def _get_snames(self) -> None:
+        """Get sorted names with 'reference' on top if present."""
+        self.snames = sorted(self.samples)
+        if self.data.drop_ref:
+            self.snames.remove("reference")
+        elif self.data.is_ref:
+            self.snames.remove("reference")
+            self.snames = ['reference'] + self.snames
+
+    def _get_pnames(self) -> None:
         """Return a dict mapping names to padded left-aligned names
         and padding for the SNP line.
 
-        Name padding is created relative to ALL samples that could 
-        be present in any locus, including the reference, since if 
+        Name padding is created relative to ALL samples that could
+        be present in any locus, including the reference, since if
         present if is always written to the .loci outputs.
 
         Note
@@ -105,186 +120,13 @@ class ChunkProcess:
         which may exclude the 'reference' sample and thus pad the names
         slightly differently (e.g., phy and snps outputs).
         """
-        names = list(self.data.samples)
-        longname = max(len(i) for i in names)
-        pnames = {i: i.ljust(longname + 5) for i in names}
-        pnames["snpstring"] = "//".ljust(longname + 5)
-        return pnames
+        # get length of names for padding.
+        longname = max(len(i) for i in self.snames)
+        self.pnames = {i: i.ljust(longname + 5) for i in self.snames}
+        self.pnames["snpstring"] = "//".ljust(longname + 5)
 
-    def run(self):
-        """Iterates over all loci in the chunkfile applying filters.
-
-        - Writes the filtered loci to {chunkfile}.loci
-        - Writes the filters array to {chunkfile}.csv
-        """
-        # keep lists of variation among loci that passed filtering for
-        # making histograms at the end.
-        pis_list = []
-        var_list = []
-
-        # yields only the data of samples in data.samples from each locus
-        # INCLUDING the reference if is_ref even if excluding later.
-        for lidx, names, seqs, nidxs, is_dup in self._iter_loci():
-
-            # filter if duplicate samples are present in locus
-            if is_dup:
-                self.filters.loc[lidx, "dups"] = True
-                continue
-
-            # filter if sample coverage is too low in locus
-            if self._filter_minsamp_pops(names):
-                self.filters.loc[lidx, "minsamp"] = True
-                continue
-
-            # get seqs with edges trimmed, and names and nidxs potentially
-            # subsampled if a sample no longer had data after trimming,
-            # which can occur sometimes with highly tiled data.
-            # The `trimmer.sumlens` is used later to update positions
-            # to make sure new locus sites align with depths info positions.
-            trimmer = EdgeTrimmer(self.data, names, seqs, nidxs, debug=True)
-            names, seqs, nidxs, over_trimmed = trimmer.run()
-
-            # filter if sample coverage is too low after trimming edges.
-            if over_trimmed:
-                self.filters.loc[lidx, "minsamp"] = True
-                continue
-
-            # [denovo-only] FIXME: are the inserts Ns or -s here?...
-            # ...
-
-            # [reference-only] mask the insert region made up on 'N's.
-            # this is used for counting nsites to not include the insert
-            # region when computing % variable sites, etc.
-            if self.data.is_pair and self.data.params.min_samples_locus > 1:
-                if self.drop_ref:
-                    insert_mask = np.all(seqs[1: :] == 78, axis=0)
-                else:
-                    insert_mask = np.all(seqs[:] == 78, axis=0)
-                # insert_mask = seqs[:, np.invert(insert)]
-
-            # filter is number of indels is too high.
-            if self._filter_maxindels(seqs):
-                self.filters.loc[lidx, "maxindels"] = True
-                continue
-
-            # find all variable sites in seqs.
-            snpsarr = self._get_snps_array(seqs)
-
-            # calculate stats on the proportion of sites polymorphic.
-            # we'll store these in a bit if the locus passes remaining filters.
-            nsnps = np.sum(snpsarr > 0)
-            npis = np.sum(snpsarr == 2)
-            nsites = seqs.shape[1] - insert_mask.sum()
-            prop_var = nsnps / nsites
-            prop_pis = npis / nsites
-
-            # filter for max polymorphic sites per locus.
-            if prop_var > self.data.params.max_snps_locus:
-                self.filters.loc[lidx, "maxsnps"] = True
-                continue
-
-            # filter for max shared polymorphisms per site.
-            if self._filter_maxshared(seqs):
-                self.filters.loc[lidx, "maxshared"] = True
-                continue
-
-            # -----------------------
-            # LOCUS PASSED FILTERING
-            # -----------------------
-
-            # store statistics. If drop_ref this will not 
-            pis_list.append(prop_pis)
-            var_list.append(prop_var)
-            for name in names:
-                if name == "reference":
-                    if self.drop_ref:
-                        continue
-                self.stats['sample_cov'][name] += 1
-            self.stats['locus_cov'][len(names) - int(self.drop_ref)] += 1
-            self.stats['var_sites'][nsnps] += 1
-            self.stats['pis_sites'][npis] += 1
-            self.stats['nbases'] += nsites
-
-            # convert to string and store it.
-            locus = self._to_locus(names, seqs, nidxs, snpsarr, trimmer)
-            self.loci_passed_filters.append(locus)
-
-        # clean up large stats dicts by dropping where values = 0
-        self.stats['var_sites'] = {
-            i: j for (i, j) in self.stats['var_sites'].items() if j}
-        self.stats['pis_sites'] = {
-            i: j for (i, j) in self.stats['pis_sites'].items() if j}
-
-        # if no loci passed filtering then don't write to file.
-        if self.loci_passed_filters:
-
-            # write to output chunk file.
-            with open(self.chunkfile + ".loci", 'w', encoding="utf-8") as out:
-                out.write("\n".join(self.loci_passed_filters) + "\n")
-
-            # save dataframe of filters for loci that were removed for stats
-            mask = self.filters.sum(axis=1).astype(bool).values
-            self.filters.loc[mask, :].to_csv(self.chunkfile + ".csv")
-
-            # calculate histograms for polymorphism stats, using evenly spaced
-            # bins but with the inclusion of one extra bin >0 but very low, 
-            # so that invariant can be distinguished from low number variants.
-            nice_bins = [0, 0.001] + [round(i, 2) for i in np.linspace(0.01, 0.25, 25)]
-            mags, bins = np.histogram(var_list, bins=nice_bins)
-            self.stats['var_props'] = dict(zip(bins, mags))
-            mags, bins = np.histogram(pis_list, bins=nice_bins)
-            self.stats['pis_props'] = dict(zip(bins, mags))
-
-    def _filter_maxindels(self, seqs: np.ndarray) -> bool:
-        """Max size of internal indels. Denovo vs. Ref, single versus paired."""
-        # get max indels for read1, read2
-        inds = maxind_numba(seqs)
-        if inds > self.data.params.max_indels_locus:
-            return True
-        return False
-
-    def _filter_minsamp_pops(self, names: List[str]) -> bool:
-        """Return True if locus is filtered by min_samples_locus.
-
-        The format of the .populations dict is {'popname': minsamp, ...}
-        and can be set in CLI by entering a popfile that is parsed,
-        or in the API by setting it directly on Assembly.populations.
-        """
-        # default: no population information
-        if not self.data.populations:
-            nsamples = len(names) - int(self.drop_ref)
-            if nsamples < self.data.params.min_samples_locus:
-                return True
-            return False
-
-        # use populations
-        minfilters = []
-        for pop in self.data.populations:
-            samps = self.data.populations[pop][1]
-            minsamp = self.data.populations[pop][0]
-            if len(set(samps).intersection(set(names))) < minsamp:
-                minfilters.append(pop)
-        if any(minfilters):
-            return True
-        return False
-
-    def _filter_maxshared(self, seqs: np.ndarray) -> bool:
-        """Return True if too many samples share a polymorphism at a site.
-
-        This is a paralog filter. If a polymorphism is shared across
-        N% of samples it is more likely to be a fixed difference at
-        paralogous sites that were erroneously treated a orthologs,
-        than it is likely to be a true widespread polymorphism. Or
-        at least that's the idea.'
-        """
-        n_heteros = count_maxheteros_numba(seqs)
-        n_samples = seqs.shape[0] - int(self.drop_ref)
-        max_heteros = int(self.data.params.max_shared_h_locus * n_samples)
-        if n_heteros > max_heteros:
-            return True
-        return False
-
-    def _iter_loci(self) -> Iterable[Tuple[int, List[str], np.ndarray, List[str], bool]]:
+    # ==== MAIN FUNCTIONS ======================================== ##
+    def _iter_loci(self) -> Iterator[Locus]:
         """Generator to yield loci names, seqs, and nidxs (meta strings).
 
         Iterates over the chunk file yielding each time it reaches the
@@ -294,11 +136,11 @@ class ChunkProcess:
         Also checks whether a name exists >1 time in locus, indicating
         a poor clustering that led to duplicate.
         """
+        lidx = self.start_lidx
         with open(self.chunkfile, 'r', encoding="utf-8") as io_chunk:
             names = []
             nidxs = [] # reference mapping info
             seqs = []
-            lidx = 0
             store_sequence = False
 
             for line in io_chunk:
@@ -308,7 +150,7 @@ class ChunkProcess:
                     if names:
                         is_dup = len(names) != len(set(names))
                         seqarr = np.array(seqs).astype(np.uint8)
-                        yield (lidx, names, seqarr, nidxs, is_dup)
+                        yield Locus(lidx, self.data, names, nidxs, seqarr, is_dup=is_dup)
 
                         # reset.
                         names.clear()
@@ -334,7 +176,199 @@ class ChunkProcess:
             if names:
                 is_dup = len(names) != len(set(names))
                 seqarr = np.array(seqs).astype(np.uint8)
-                yield (lidx, names, seqarr, nidxs, is_dup)
+                yield Locus(lidx, self.data, names, nidxs, seqarr, is_dup=is_dup)
+
+    def run(self):
+        """Fills .loci_passed_filters and .stats by applying trimming
+        and filters to all loci in _iter_loci.
+        """
+        # keep lists of variation among loci that passed filtering for
+        # making histograms at the end.
+        pis_list = []
+        var_list = []
+
+        # yields only the data of samples in data.samples from each locus
+        # INCLUDING the reference if is_ref even if excluding later.
+        for locus in self._iter_loci():
+
+            # filter if duplicate samples are present in locus
+            if locus.is_dup:
+                self.filters.loc[locus.lidx, "dups"] = True
+                continue
+
+            # filter if sample coverage is too low in locus
+            if self._filter_minsamp_pops(locus.names):
+                self.filters.loc[locus.lidx, "minsamp"] = True
+                continue
+
+            # get sample coverages that will be used for trimming.
+            locus.get_sample_covs()
+
+            # apply edge trimming to locus to update:
+            # creates .tseqs as trimmed version of .seqs
+            # possibly subsamples .names to remove empty samples.
+            # fills .nidxs with refpos info
+            # fills .trimmed with n bases trimmed from each end.
+            # fills .over_trimmed boolean if sample coverage becomes too low.
+            locus.run()
+            if locus.over_trimmed:
+                self.filters.loc[locus.lidx, "minsamp"] = True
+                continue
+
+            # [reference-only] mask the insert region made up on 'N's.
+            # this is used for counting nsites to not include the insert
+            # region when computing % variable sites, etc.
+            # if self.data.is_pair and self.data.params.min_samples_locus > 1:
+                # if self.data.drop_ref:
+                    # insert_mask = np.all(seqs[1: :] == 78, axis=0)
+                # else:
+                    # insert_mask = np.all(seqs[:] == 78, axis=0)
+                # insert_mask = seqs[:, np.invert(insert)]
+
+            # mask PE insert region to be Ns in .tseqs
+            locus.mask_inserts()
+
+            # find all variable sites in .tseqs. At this point this can
+            # call SNPs within the PE insert region (on edges usually)
+            # which we will want to mask after masking inserts.
+            snpsarr = self._get_snps_array(locus.tseqs)
+
+            # [denovo-only] Store shifted positions of each SNP
+            # (see docstring). This uses indels (dashes) in the orig
+            # .seqs array (before masking the insert).
+            shift_table = self._get_shift_table(locus, snpsarr)
+
+            # filter is number of indels is too high.
+            if self._filter_maxindels(locus.tseqs):
+                self.filters.loc[locus.lidx, "maxindels"] = True
+                continue
+
+            # calculate stats on the proportion of sites polymorphic.
+            # we'll store these in a bit if the locus passes remaining filters.
+            nsnps = np.sum(snpsarr > 0)
+            npis = np.sum(snpsarr == 2)
+
+            # mask PE insert region when counting nsites
+            if locus.pe_insert[1]:
+                insert_mask_size = locus.pe_insert[1] - locus.pe_insert[0]
+            else:
+                insert_mask_size = 0
+            nsites = locus.tseqs.shape[1] - insert_mask_size
+            prop_var = nsnps / nsites
+            prop_pis = npis / nsites
+
+            # filter for max polymorphic sites per locus.
+            if prop_var > self.data.params.max_snps_locus:
+                self.filters.loc[locus.lidx, "maxsnps"] = True
+                continue
+
+            # filter for max shared polymorphisms per site.
+            if self._filter_maxshared(locus.tseqs):
+                self.filters.loc[locus.lidx, "maxshared"] = True
+                continue
+
+            # -----------------------
+            # LOCUS PASSED FILTERING
+            # -----------------------
+
+            # store statistics. If drop_ref this will not
+            pis_list.append(prop_pis)
+            var_list.append(prop_var)
+            for name in locus.names:
+                if name == "reference":
+                    if self.data.drop_ref:
+                        continue
+                self.stats['sample_cov'][name] += 1
+            self.stats['locus_cov'][len(locus.names) - int(self.data.drop_ref)] += 1
+            self.stats['var_sites'][nsnps] += 1
+            self.stats['pis_sites'][npis] += 1
+            self.stats['nbases'] += nsites
+
+            # convert to string and store it.
+            locstr = self._to_locus(locus, snpsarr)
+            self.loci_passed_filters.append(locstr)
+            self.shift_tables.extend(shift_table)
+
+        # clean up large stats dicts by dropping where values = 0
+        self.stats['var_sites'] = {
+            i: j for (i, j) in self.stats['var_sites'].items() if j}
+        self.stats['pis_sites'] = {
+            i: j for (i, j) in self.stats['pis_sites'].items() if j}
+
+        # - Writes the filtered loci to {chunkfile}.loci
+        # - Writes the filters array to {chunkfile}.csv
+        # if no loci passed filtering then don't write to file.
+        if self.loci_passed_filters:
+
+            # write to output chunk file.
+            with open(self.chunkfile.with_suffix(".loci"), 'w', encoding="utf-8") as out:
+                out.write("\n".join(self.loci_passed_filters) + "\n")
+
+            # save dataframe of filters for loci that were removed for stats
+            mask = self.filters.sum(axis=1).astype(bool).values
+            self.filters.loc[mask, :].to_csv(self.chunkfile.with_suffix(".csv"))
+
+            # calculate histograms for polymorphism stats, using evenly spaced
+            # bins but with the inclusion of one extra bin >0 but very low,
+            # so that invariant can be distinguished from low number variants.
+            nice_bins = [0, 0.001] + [round(i, 2) for i in np.linspace(0.01, 0.25, 25)]
+            mags, bins = np.histogram(var_list, bins=nice_bins)
+            self.stats['var_props'] = dict(zip(bins, mags))
+            mags, bins = np.histogram(pis_list, bins=nice_bins)
+            self.stats['pis_props'] = dict(zip(bins, mags))
+
+            # ...
+            with open(self.chunkfile.with_suffix('.npy'), 'wb') as out:
+                np.save(out, np.array(self.shift_tables, dtype=np.uint64))
+
+    def _filter_maxindels(self, seqs: np.ndarray) -> bool:
+        """Max size of internal indels. Denovo vs. Ref, single versus paired."""
+        # get max indels for read1, read2
+        inds = maxind_numba(seqs)
+        if inds > self.data.params.max_indels_locus:
+            return True
+        return False
+
+    def _filter_minsamp_pops(self, names: List[str]) -> bool:
+        """Return True if locus is filtered by min_samples_locus.
+
+        The format of the .populations dict is {'popname': minsamp, ...}
+        and can be set in CLI by entering a popfile that is parsed,
+        or in the API by setting it directly on Assembly.populations.
+        """
+        # default: no population information
+        if not self.data.populations:
+            nsamples = len(names) - int(self.data.drop_ref)
+            if nsamples < self.data.params.min_samples_locus:
+                return True
+            return False
+
+        # use populations
+        minfilters = []
+        for pop in self.data.populations:
+            samps = self.data.populations[pop][1]
+            minsamp = self.data.populations[pop][0]
+            if len(set(samps).intersection(set(names))) < minsamp:
+                minfilters.append(pop)
+        if any(minfilters):
+            return True
+        return False
+
+    def _filter_maxshared(self, seqs: np.ndarray) -> bool:
+        """Return True if too many samples share a polymorphism at a site.
+
+        This is a paralog filter. If a polymorphism is shared across
+        N% of samples it is more likely to be a fixed difference at
+        paralogous sites that were erroneously treated a orthologs,
+        than it is likely to be a true widespread polymorphism. Or
+        at least that's the idea.'
+        """
+        n_heteros = count_maxheteros_numba(seqs)
+        n_samples = seqs.shape[0] - int(self.data.drop_ref)
+        max_heteros = int(self.data.params.max_shared_h_locus * n_samples)
+        if n_heteros > max_heteros:
+            return True
+        return False
 
     def _get_snps_array(self, seqs: np.ndarray) -> np.ndarray:
         """Return an array with two types of SNP calls.
@@ -348,17 +382,83 @@ class ChunkProcess:
 
         The core function is jit'd for speed.
         """
-        return snpcount_numba(seqs, int(self.drop_ref))
+        return snpcount_numba(seqs, int(self.data.drop_ref))
 
-    def _to_locus(
-        self,
-        names: List[str],
-        seqs: np.ndarray,
-        nidxs: List[str],
-        snpsarr: np.ndarray,
-        trimmer: EdgeTrimmer,
-        ) -> str:
+    def _get_shift_table(self, locus: Locus, snpsarr: np.ndarray) -> List[List[int]]:
+        """Return table with positions of SNPs in .seqs.
+
+        Record the shift for every sample that has data for a locus,
+        even if it is N or dash at the SNP site. This is stored by
+        the snames sample index (Sidx), the consens locus index for
+        that sample (Cidx) from the nidx string, and then the locus
+        and position of the trimmed alignment (output .loci fragment).
+        Finally, the shift (see below) is recorded.
+
+        Format
+        ------
+        >>>  Sidx    Cidx    Locus      Pos      Shift
+        >>>    0      10       0        10        0
+        >>>    0     200       0       100       10
+        >>>    ...
+        >>>   100    150K     500K     300       100
+        >>> # should store as dtype=uint64 to be safe.
+
+        Shift
+        -----
+        >>>    ...............                    .=trimmed
+        >>>  0 -----NNNNNNNNNNCCCCCCCCCCCCCCCCC
+        >>>  1 -----NNNNNNNNNNCCCCCCCCCCCCCCCCC
+        >>>  2 NNNNNNNNNNTTTTTCCCCCTCCCCCCCCCCC
+        >>>  3 NNNNNNNNNNTTTTTCC--CTCCCCCCCCCCC
+        >>>                        *              *=SNP
+        >>>  sample 0 shift at SNP = 0 [consens has not been trimmed]
+        >>>  sample 2 shift at SNP = 5 [5 bases trimmed from consens]
+        >>>  sample 3 shift at SNP = 3 [5 trimmed - 2 skipped indels]
+
+        The "shift" records how many sites a position in the alignment
+        is offset from its position in the individual consens sequence.
+        It is used to fetch the depths of base calls for VCF output
+        from the step5 HDF5 files. Step7 trimming and alignment indels
+        cause the shifts.
+
+        To find the shift we first check the orientation and start
+        from 5' or 3' end. Then, we count how many non N or dash
+        bases were trimmed from that side. This is the base shift.
+        Then, for each SNP we subtract from the base shift the number
+        of indels between the start trim position and the SNP.
+        """
+        # for each SNP in locus.
+        shift_table = []
+        pxs = np.where(snpsarr != 0)[0]
+        for pos in pxs:
+            for nidx, name in enumerate(locus.names):
+                sidx = self.snames.index(name)
+                nidxstring = locus.nidxs[nidx]
+                cidx = int(nidxstring[:-2])
+                ori = nidxstring[-1]
+
+                # FIXME
+                if ori == "-":
+                    raise NotImplementedError('todo')
+                else:
+                    # get baseshift - 10 (N padding) from SEQS
+                    base_shift = np.argmax((locus.seqs[nidx] != 78) & (locus.seqs[nidx] != 45))
+                    base_shift -= 10
+
+                    # get indel shift from TSEQS
+                    # subtract for each indels between start and SNP
+                    indels = np.sum(locus.tseqs[nidx, :pos] == 45)
+
+                    # get shift and store full record
+                    shift = base_shift - indels
+                    shift_table.append([sidx, cidx, locus.lidx, pos, shift])
+        return shift_table
+
+    def _to_locus(self, locus: Locus, snpsarr: np.ndarray) -> str:
         """Return a locus as a .loci formatted str.
+
+        This is a tmpfile, not the final .loci output. It includes
+        additional metadata that is stored in the snpstring.
 
         The most important thing here is the updating of the 'nidx'
         metadata, which records the scaffold/locus ID and POSITION
@@ -368,7 +468,7 @@ class ChunkProcess:
 
         snpstring
         ---------
-        denovo: |{chromint}|
+        denovo: |{...}|{lefttrim,righttrim;}
         ref:    |{chromint}:{chromname}:{start}-{end}|
         """
         # convert uint8: 0->32 " ", 1->46 '.', 2->42 '*'
@@ -378,9 +478,9 @@ class ChunkProcess:
         snpstring = bytes(snpsarr).decode()
 
         # [denovo]: ...
-        # TODO...
         if not self.data.is_ref:
-            pass
+            refpos = str(locus.lidx)
+            nidxstring = ";".join(locus.nidxs)
 
         # [reference]: all samples have the same nidx = 'scaff:start-end'
         # TODO: is the above True? check with empirical data...
@@ -404,6 +504,7 @@ class ChunkProcess:
                f"trim positions alignment error: {end-start} != {seqs.shape[1]}")
 
             # shift reference position string from edge trims
+            # TODO: IF REFERENCE?
             nidbits = []
             for bit in nidxs[1:]:
                 bkey = []
@@ -420,17 +521,22 @@ class ChunkProcess:
             refpos = f"{chrom}:{chrom_name}:{start}-{end}"
             nidxstring = ",".join(nidbits)
 
-        # write sample data for the locus
-        locus = []
-        for idx, name in enumerate(names):
+        # [applies to both denovo and reference]
+        # write sample data for the locus in sorted name order
+        locdict = {}
+        for idx, name in enumerate(locus.names):
+            sidx = self.snames.index(name)
             name_space = self.pnames[name]
-            seq = seqs[idx].tobytes().decode()
-            locus.append(f"{name_space}{seq}")
+            seq = locus.tseqs[idx].tobytes().decode()
+            locdict[sidx] = f"{name_space}{seq}"
 
-        # write SNP string for the locus
+        # convert dict to an ordered list
+        loclist = [locdict[i] for i in sorted(locdict)]
+
+        # add SNP string and NIDX info to the end of the locus list
         name_space = self.pnames["snpstring"]
-        locus.append(f"{name_space}{snpstring}|{refpos}|{nidxstring}|")
-        return "\n".join(locus)
+        loclist.append(f"{name_space}{snpstring}|{refpos}|{nidxstring}|")
+        return "\n".join(loclist)
 
 @njit
 def maxind_numba(seqs: np.ndarray) -> int:
@@ -534,6 +640,9 @@ def count_maxheteros_numba(seqs: np.ndarray) -> int:
             subcount += np.sum(seqs[:, fidx] == ambig)
         counts[fidx] = subcount
     return counts.max()
+
+
+
 
 
 if __name__ == "__main__":
