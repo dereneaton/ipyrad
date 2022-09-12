@@ -352,9 +352,11 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
     >>> >NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
     >>> CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     """
-    # paired reads are merged or joined in the merged file
-    # tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
-    tmpin = data.tmpdir / f"{sample.name}_merged.fa"
+    # The input files are different depending on ref or not.
+    if data.is_ref:
+        tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
+    else:
+        tmpin = data.tmpdir / f"{sample.name}_merged.fa"
     tmpout = data.tmpdir / f"{sample.name}_decloned.fa"
 
     # Remove adapters from head of sequence and write out
