@@ -9,7 +9,7 @@ or mapping to a reference.
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.clustmap_within_denovo import ClustMapDenovo
 from ipyrad.assemble.clustmap_within_reference import ClustMapReference
-
+from ipyrad.core.schema import Stats3
 
 class Step3(BaseStep):
     """Run Step3 clustering/mapping using vsearch or bwa
@@ -21,6 +21,14 @@ class Step3(BaseStep):
         self.thview = self.ipyclient.load_balanced_view(
             ipyclient.ids[:self.data.ipcluster['threads']]
         )
+
+        # set empty stats_s3 on each Sample
+        for sample in self.samples.values():
+            sample.stats_s3 = Stats3(
+                min_depth_maj_during_step3=self.data.params.min_depth_majrule,
+                min_depth_stat_during_step3=self.data.params.min_depth_statistical,
+            )
+
         if self.data.params.assembly_method == "denovo":
             self.child = ClustMapDenovo(self)
         else:
@@ -29,6 +37,7 @@ class Step3(BaseStep):
     def run(self):
         """Submit jobs to run either denovo, reference, or complex."""
         self.child.run()
+
 
 
 if __name__ == "__main__":
