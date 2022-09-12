@@ -1,82 +1,73 @@
 #!/usr/bin/env python
 
-"""
-Denovo clustering across samples using vsearch and muscle.
+"""Denovo clustering across samples using vsearch and muscle.
+
 """
 
-import os
+from typing import TypeVar, Iterator
 import sys
 import gzip
-import glob
 import time
 import random
-import itertools
-import subprocess as sps
-import concurrent.futures
+from pathlib import Path
+from subprocess import Popen, PIPE, STDOUT
+
 from loguru import logger
 import numpy as np
+from ipyrad.assemble.clustmap_within_denovo_utils import iter_muscle_alignments
 from ipyrad.assemble.utils import IPyradError, fullcomp
 from ipyrad.core.progress_bar import AssemblyProgressBar
 
-
-BIN_MUSCLE = os.path.join(sys.prefix, "bin", "muscle")
-BIN_VSEARCH = os.path.join(sys.prefix, "bin", "vsearch")
+Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
+logger = logger.bind(name="ipyrad")
+BIN = Path(sys.prefix) / "bin"
+BIN_MUSCLE = str(BIN / "muscle")
+BIN_VSEARCH = str(BIN / "vsearch")
 
 
 class ClustMapAcrossDenovo:
     def __init__(self, step):
         self.lbview = step.lbview
         self.data = step.data
-        self.data.samples = step.samples
-        self.tmpdir = step.tmpdir
-        self.stepdir = step.stepdir
         self.quiet = step.quiet
-        self.clust_database = os.path.join(
-            self.stepdir, "alignment_database.fa")
-
+        self.clust_database = self.data.stepdir / "alignment_database.fa.gz"
+        self.samples = step.samples
 
     def run(self):
-        """
-        Runs the set of methods for denovo or reference method
-        """
-        # DENOVO
-        if self.data.params.assembly_method == "denovo":
+        """Runs the set of methods for denovo or reference method."""
+        # prepare clustering inputs for hierarchical clustering
+        self.concat_consens_files()
 
-            # prepare clustering inputs for hierarchical clustering
-            self.concat_consens_files()
+        # big clustering
+        self.cluster_all()
 
-            # big clustering
-            self.cluster_all()
+        # build clusters
+        self.build_denovo_clusters()
 
-            # build clusters
-            self.build_denovo_clusters()
+        # align denovo clusters
+        self.align_denovo_clusters()
 
-            # align denovo clusters
-            self.align_denovo_clusters()
+        # concat aligned files
+        self.concat_alignments()
 
-            # concat aligned files
-            self.concat_alignments()
-
-        for sname in self.data.samples:
-            self.data.samples[sname].files.database = self.clust_database
-            self.data.samples[sname].state = 6
+        # in addition to advancing sample state, store its clust_database
+        for sample in self.samples.values():
+            sample.files.database = self.clust_database
+            sample.state = 6
         self.data.save_json()
 
-
     def concat_consens_files(self):
+        """Prepares ONE large randomized concatenated consens input file.
         """
-        Prepares ONE large randomized concatenated consens input file.
-        """
-        jobs = {0: self.lbview.apply(build_concat_files, self.data)}
+        jobs = {0: self.lbview.apply(build_concat_files, *(self.data, self.samples))}
         msg = "concatenating inputs"
         prog = AssemblyProgressBar(jobs, msg, 6, self.quiet)
         prog.block()
         prog.check()
 
-
     def cluster_all(self):
-        """
-        Hierarchical cluster. Uses vsearch output to track progress.
+        """Cluster. Uses vsearch output to track progress.
         """
         # nthreads=0 defaults to using all cores
         jobs = {0: self.lbview.apply(cluster, self.data)}
@@ -85,16 +76,14 @@ class ClustMapAcrossDenovo:
         prog.block()
         prog.check()
 
-
     def build_denovo_clusters(self):
-        """
-        build denovo clusters from vsearch clustered seeds
+        """build denovo clusters from vsearch clustered seeds
         """
         # filehandles; if not multiple tiers then 'x' is jobid 0
         jobs = {}
 
         # sort utemp files, count seeds.
-        utemp = os.path.join(self.tmpdir, "across.utemp")
+        utemp = self.data.tmpdir / "across.utemp"
         jobs[0] = self.lbview.apply(sort_seeds, utemp)
         jobs[1] = self.lbview.apply(count_seeds, utemp)
         msg = "counting clusters"
@@ -102,75 +91,71 @@ class ClustMapAcrossDenovo:
         prog.block()
         prog.check()
         nseeds = int(jobs[1].get())
-        jobs[2] = self.lbview.apply(
-            build_denovo_clusters, *(self.data, nseeds)
-        )
+        args = (self.data, nseeds)
+        jobs[2] = self.lbview.apply(write_denovo_cluster_chunks, *args)
         msg = "building clusters"
         prog = AssemblyProgressBar(jobs, msg, 6, self.quiet)
         prog.block()
         prog.check()
 
-
     def align_denovo_clusters(self):
+        """Distributes parallel jobs to align_to_array() function. 
         """
-        Distributes parallel jobs to align_to_array() function. 
-        """
-        globpath = os.path.join(self.tmpdir, "unaligned.chunk_*")
-        clustbits = glob.glob(globpath)
+        path = self.data.tmpdir / "across_[0-9]*.unaligned_chunk"
+        clustbits = list(path.parent.glob(path.name))
         jobs = {}
         start = time.time()
         for idx, clustbit in enumerate(clustbits):
-            jobs[idx] = self.lbview.apply(threaded_muscle, clustbit)
-            # args = (self.data, list(self.data.samples.values()), clustbits[idx])
-            # jobs[idx] = self.lbview.apply(align_to_array, *args)
+            jobs[idx] = self.lbview.apply(write_alignments_across, clustbit)            
         msg = "aligning clusters"
         prog = AssemblyProgressBar(jobs, msg, 6, self.quiet)
         prog.block()
         prog.check()
         logger.debug(f"aligning took: {time.time() - start}")
 
-
     def concat_alignments(self):
-        """
+        """Concatenate aligned chunks.
+
         This step is not necessary... we just chunk it up again in step 7...
         it's nice having a file as a product, but why bother...
         It creates a header with names of all samples that were present when
         step 6 was completed. 
         """
         # get files
-        globpath = os.path.join(self.tmpdir, "aligned_*.fa")
-        alignbits = glob.glob(globpath)
-        alignbits = sorted(
-            alignbits,
-            key=lambda x: int(os.path.basename(x).rsplit("_")[1].split(".")[0])
-        )
+        globpath = self.data.tmpdir.glob("across_*.alignment")
+        alignbits = sorted(globpath, 
+            key=lambda x: int(x.name.split("_", 1)[1].split(".")[0]))
 
         # store path to clust database 
-        with open(self.clust_database, 'wt') as out:
-            snames = sorted(self.data.samples)
-            out.write("#" + ",".join(["@" + i for i in snames]) + "\n")
+        with gzip.open(self.clust_database, 'w') as out:
+            snames = sorted(self.samples)
+            namestr = "#" + ",".join(["@" + i for i in snames]) + "\n"
+            out.write(namestr.encode())
             for alignbit in alignbits:
-                with open(alignbit, 'rt') as indat:
-                    dat = indat.read()
+                with open(alignbit, 'r', encoding="utf-8") as indat:
+                    dat = indat.read().strip()
                     if dat:
-                        out.write(dat)
+                        out.write(dat.encode() + b"\n")
 
 
-def build_concat_files(data):
+def build_concat_files(data, samples):
+    """Write a concatenated file of consensus alleles (no RSWYMK/rswymk).
+
+    Orders reads by length and shuffles randomly within length classes.
     """
-    Make a concatenated consens file with sampled alleles 
-    (no RSWYMK/rswymk). Orders reads by length and shuffles randomly 
-    within length classes
-    """
-    conshandles = [data.samples[i].files.consens for i in data.samples]
-    conshandles.sort()
+    # tmp and output file paths
+    catfile = data.tmpdir / "across-catcons.gz"
+    allhaps = data.tmpdir / "across-cathaps.fa"
+    allsort = data.tmpdir / "across-catsort.fa"
+    allshuf = data.tmpdir / "across-catshuf.fa"
 
     # concatenate all of the gzipped consens files
+    conshandles = [j.files.consens for i, j in samples.items()]
+    conshandles.sort()
     cmd = ['cat'] + conshandles
-    catfile = os.path.join(data.tmpdir, "across-catcons.gz")
-    with open(catfile, 'w') as output:
-        call = sps.Popen(cmd, stdout=output, close_fds=True)
-        call.communicate()
+    with open(catfile, 'w', encoding="utf-8") as out:
+        with Popen(cmd, stdout=out, close_fds=True) as proc:
+            proc.communicate()
 
     # a string of sed substitutions for temporarily replacing hetero sites
     # skips lines with '>', so it doesn't affect taxon names
@@ -184,73 +169,60 @@ def build_concat_files(data):
     # pipe passed data from gunzip to sed.
     cmd1 = ["gunzip", "-c", catfile]
     cmd2 = ["sed", subs]
-
-    proc1 = sps.Popen(cmd1, stdout=sps.PIPE, close_fds=True)
-    allhaps = catfile.replace("-catcons.gz", "-cathaps.fa")
-    with open(allhaps, 'w') as output:
-        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=output, close_fds=True)
-        proc2.communicate()
-    proc1.stdout.close()
+    with Popen(cmd1, stdout=PIPE, close_fds=True) as proc1:
+        with open(allhaps, 'w', encoding="utf-8") as out:
+            with Popen(cmd2, stdin=proc1.stdout, stdout=out, close_fds=True) as proc2:
+                proc2.communicate()
+        proc1.stdout.close()
 
     # now sort the file using vsearch
-    allsort = catfile.replace("-catcons.gz", "-catsort.fa")
     cmd1 = [
         BIN_VSEARCH,
         "--sortbylength", allhaps,
         "--fasta_width", "0",
         "--output", allsort,
     ]
-    proc1 = sps.Popen(cmd1, close_fds=True)
-    proc1.communicate()
+    with Popen(cmd1, close_fds=True) as proc1:
+        proc1.communicate()
 
     # shuffle sequences within size classes. Tested seed (8/31/2016)
     # shuffling works repeatably with seed.
     random.seed(data.hackers.random_seed)
 
     # open an iterator to lengthsorted file and grab two lines at at time
-    allshuf = catfile.replace("-catcons.gz", "-catshuf.fa")
-    outdat = open(allshuf, 'wt')
-    indat = open(allsort, 'rt')
-    idat = zip(iter(indat), iter(indat))
-    done = 0
+    with open(allshuf, 'w', encoding="utf-8") as out:
+        with open(allsort, 'r', encoding="utf-8") as indat:
 
-    chunk = [next(idat)]
-    while not done:
-        # grab 2-lines until they become shorter (unless there's only one)
-        oldlen = len(chunk[-1][-1])
-        while 1:
-            try:
-                dat = next(idat)
-            except StopIteration:
-                done = 1
-                break
-            if len(dat[-1]) == oldlen:
-                chunk.append(dat)
-            else:
-                # send the last chunk off to be processed
+            # generator yields two lines at a time
+            pairgen = zip(iter(indat), iter(indat))
+            pair = next(pairgen)
+            chunk = ["".join(pair)]
+            oldlen = len(pair[1])
+
+            # get all consens reads of the same length and write
+            for pair in pairgen:
+                if len(pair[1]) != oldlen:
+                    random.shuffle(chunk)
+                    out.write("".join(chunk))
+                    chunk = ["".join(pair)]
+                else:
+                    chunk.append("".join(pair))
+
+            # do the last chunk
+            if chunk:
                 random.shuffle(chunk)
-                outdat.write("".join(itertools.chain(*chunk)))
-                # start new chunk
-                chunk = [dat]
-                break
+                out.write("".join(chunk))
 
-    # do the last chunk
-    random.shuffle(chunk)
-    outdat.write("".join(itertools.chain(*chunk)))
-    indat.close()
-    outdat.close()
+def cluster(data):
+    """Runs vsearch cluster_smallmem on the concatenated data. 
 
-
-def cluster(data, nthreads=0):
-    """
-    Runs vsearch cluster_smallmem on the concatenated data. This can 
-    be very time consuming for super large and non-overlapping data
-    sets.
+    This can be very time consuming for super large and 
+    non-overlapping data sets.
     """
     # get files for this jobid
-    catshuf = os.path.join(data.tmpdir, "across-catshuf.fa")
-    uhaplos = os.path.join(data.tmpdir, "across.utemp")
-    hhaplos = os.path.join(data.tmpdir, "across.htemp")
+    catshuf = data.tmpdir / "across-catshuf.fa"
+    uhaplos = data.tmpdir / "across.utemp"
+    hhaplos = data.tmpdir / "across.htemp"
 
     # parameters that vary by datatype
     # (too low of cov values yield too many poor alignments)
@@ -263,23 +235,24 @@ def cluster(data, nthreads=0):
         strand = "both"
         cov = 0.75     # 0.90
 
+    # cluster using our custom sorted file (sorted by len)
     cmd = [
         BIN_VSEARCH,
-        "-cluster_smallmem", catshuf,
-        "-strand", strand,
-        "-query_cov", str(cov),
-        "-minsl", str(0.5),
-        "-id", str(data.params.clust_threshold),
-        "-userout", uhaplos,
-        "-notmatched", hhaplos,
-        "-userfields", "query+target+qstrand",
-        "-maxaccepts", "1",
-        "-maxrejects", "0",
-        "-fasta_width", "0",
+        "--cluster_smallmem", str(catshuf),
+        "--usersort",
+        "--strand", strand,
+        "--query_cov", str(cov),
+        "--minsl", str(0.5),
+        "--id", str(data.params.clust_threshold),
+        "--userout", str(uhaplos),
+        "--notmatched", str(hhaplos),
+        "--userfields", "query+target+qstrand",
+        "--maxaccepts", "1",
+        "--maxrejects", "0",
+        "--fasta_width", "0",
         "--minseqlength", str(data.params.filter_min_trim_len),
-        "-threads", str(nthreads),
-        "-fulldp",
-        "-usersort",
+        "--threads", str(max(1, data.ipcluster['threads'])),
+        # "-fulldp", # no longer necessary w/ new vsearch
     ]
 
     # send command to logger and wait a second so it clears.
@@ -287,48 +260,43 @@ def cluster(data, nthreads=0):
     time.sleep(1.01)
 
     # get progress from the stdout of the subprocess
-    proc = sps.Popen(
-        cmd, stdout=sps.PIPE, stderr=sps.STDOUT, close_fds=True,
-    )
-    proc.communicate()
+    with Popen(cmd, stdout=PIPE, stderr=STDOUT, close_fds=True) as proc:
+        proc.communicate()
     print(100)
 
 
-def count_seeds(uhandle):
-    """
-    uses bash commands to quickly count N seeds from utemp file
-    """
-    with open(uhandle, 'r') as insort:
+def count_seeds(uhandle: Path) -> int:
+    """Use bash commands to quickly count N seeds from utemp file"""
+    with open(uhandle, 'r', encoding="utf-8") as insort:
         cmd1 = ["cut", "-f", "2"]
         cmd2 = ["uniq"]
         cmd3 = ["wc"]
-        proc1 = sps.Popen(cmd1, stdin=insort, stdout=sps.PIPE, close_fds=True)
-        proc2 = sps.Popen(cmd2, stdin=proc1.stdout, stdout=sps.PIPE, close_fds=True)
-        proc3 = sps.Popen(cmd3, stdin=proc2.stdout, stdout=sps.PIPE, close_fds=True)
-        res = proc3.communicate()
-        nseeds = int(res[0].split()[0])
-        proc1.stdout.close()
-        proc2.stdout.close()
-        proc3.stdout.close()
+        with Popen(cmd1, stdin=insort, stdout=PIPE, close_fds=True
+            ) as proc1:
+            with Popen(cmd2, stdin=proc1.stdout, stdout=PIPE, close_fds=True
+                ) as proc2:
+                with Popen(cmd3, stdin=proc2.stdout, stdout=PIPE, close_fds=True
+                    ) as proc3:
+                    res = proc3.communicate()
+                    nseeds = int(res[0].split()[0])
+                    proc1.stdout.close()
+                    proc2.stdout.close()
+                    proc3.stdout.close()
     return nseeds
 
+def sort_seeds(uhandle: Path) -> None:
+    """sort seeds from cluster results"""
+    cmd = ["sort", "-k", "2", str(uhandle), "-o", str(uhandle) + ".sort"]
+    with Popen(cmd, close_fds=True) as proc:
+        proc.communicate()
 
-def sort_seeds(uhandle):
-    """
-    sort seeds from cluster results
-    """
-    cmd = ["sort", "-k", "2", uhandle, "-o", uhandle + ".sort"]
-    proc = sps.Popen(cmd, close_fds=True)
-    proc.communicate()
+def iter_build_denovo_clusters(data: Assembly) -> Iterator:
+    """Build unaligned clusters from vsearch output. 
 
-
-def build_denovo_clusters(data, nseeds):
-    """
-    Builds unaligned clusters from vsearch output. Splits paired 
-    read clusters into before and after the nnnn separator.
+    Splits paired clusters into before and after the nnnn separator.
     """
     # load all concat fasta files into a dictionary (memory concerns here...)
-    conshandle = os.path.join(data.tmpdir, "across-catcons.gz")
+    conshandle = data.tmpdir / "across-catcons.gz"
     allcons = {}
     with gzip.open(conshandle, 'rt') as iocons:
         cons = zip(*[iocons] * 2)
@@ -336,309 +304,171 @@ def build_denovo_clusters(data, nseeds):
             nnn, sss = [i.strip() for i in (namestr, seq)]
             allcons[nnn[1:]] = sss
 
-    # chunksize to break into parallel aligning jobs
-    optim = np.ceil(nseeds / (data.ncpus * 4))
-
     # iterate through usort grabbing seeds and matches
-    usort_file = os.path.join(data.tmpdir, "across.utemp.sort")
-    with open(usort_file, 'rt') as insort:
-        # iterator, seed null, and seqlist null
-        isort = iter(insort)
-        loci = 0
-        lastseed = 0
+    usort_file = data.tmpdir / "across.utemp.sort"
+    with open(usort_file, 'r', encoding="utf-8") as insort:
+        lastseed = None
         fseqs = []
-        seqlist = []
-        seqsize = 0
 
-        while 1:
-            try:
-                hit, seed, ori = next(isort).strip().split()
-            except StopIteration:
-                break
+        for line in insort:
+            hit, seed, orient = line.strip().split()
         
-            # store hit if still matching to same seed
-            if seed == lastseed:
-                if ori == "-":
-                    seq = fullcomp(allcons[hit])[::-1]
-                else:
-                    seq = allcons[hit]
-                fseqs.append(">{}\n{}".format(hit, seq))
-
-            # store seed and hit (to a new cluster) if new seed.
-            else:  
-                # store the last fseq, count it, and clear it
+            # this is a new seed.
+            if seed != lastseed:
+                # should we bother to return singleton?
                 if fseqs:
-                    seqlist.append("\n".join(fseqs))
-                    seqsize += 1
-                    fseqs = []
-
-                # occasionally write to file
-                if seqsize >= optim:
-                    if seqlist:
-                        loci += seqsize
-                        pathname = os.path.join(
-                            data.tmpdir, f"unaligned.chunk_{loci}")
-                        with open(pathname, 'wt') as clustout:
-                            clustout.write(
-                                "\n//\n//\n".join(seqlist) + "\n//\n//\n")
-                        # reset counter and list
-                        seqlist = []
-                        seqsize = 0
-
-                # store the new seed on top of fseqs
-                fseqs.append(">{}\n{}".format(seed, allcons[seed]))
+                    yield "\n".join(fseqs)
+                fseqs = [f">{seed};*\n{allcons[seed]}"]
                 lastseed = seed
 
-                # store the first hit to the seed
+            # this is a hit to the seed.
+            if orient == "-":
+                seq = fullcomp(allcons[hit])[::-1]
+            else:
                 seq = allcons[hit]
-                if ori == "-":
-                    seq = fullcomp(seq)[::-1]
-                fseqs.append(">{}\n{}".format(hit, seq))
-
-    # write whatever is left over to the clusts file
+            fseqs.append(f">{hit};{orient}\n{seq}")
     if fseqs:
-        seqlist.append("\n".join(fseqs))
-        seqsize += 1
-        loci += seqsize
-    if seqlist:
-        pathname = os.path.join(data.tmpdir, f"unaligned.chunk_{loci}")
-        with open(pathname, 'wt') as clustsout:
-            clustsout.write("\n//\n//\n".join(seqlist) + "\n//\n//\n")
-    # final progress and cleanup
+        yield "\n".join(fseqs)
     del allcons
 
+def write_denovo_cluster_chunks(data: Assembly, nseeds: int):
+    """Write built clusters to chunk files."""
+    # chunksize to break into parallel aligning jobs
+    optim = int(np.ceil(nseeds / (data.ncpus * 4)))
+    print(f"chunking align files; optim={optim}")
 
-def muscle_align(clust):
+    # iterate over built clusters
+    idx = 0
+    clusters = []
+    for idx, clust in enumerate(iter_build_denovo_clusters(data)):
+        clusters.append(clust)
+
+        if not idx % optim:
+            path = data.tmpdir / f"across_{idx}.unaligned_chunk"
+            with open(path, 'w', encoding="utf-8") as out:
+                out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+                clusters = []
+
+    # write whatever is left over to the clusts file
+    if clusters:
+        path = data.tmpdir / f"across_{idx}.unaligned_chunk"        
+        with open(path, 'w', encoding="utf-8") as out:
+            out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+
+def iter_alignment_across_format(handle: Path) -> Iterator:
+    """Generator to yield filtered, aligned, paired, and sorted clusters.
+
+    This differs from the within-sample function by allowing any
+    size of cluster (no upper limit) and not using the derep numbers
+    to sort names after alignment.
+
+    Example for testing
+    -------------------
+    >>> tmpfile = "/tmp/test_tmp_clustmap/1A_0_chunk_0.ali"
+    >>> align_gen = iter_alignment_format(tmpfile)
+    >>> print(next(align_gen))
     """
-    Run muscle alignment on a subprocess
-    """
-    # easy peezy for unpaired data
-    if "nnnn" not in clust:
-        proc = sps.Popen(
-            [BIN_MUSCLE, '-in', '-'], 
-            stdin=sps.PIPE, 
-            stdout=sps.PIPE,
-            universal_newlines=True,
-        )
-        out, _ = proc.communicate(clust)
-
-        # remove the newline breaks in the sequences
-        lines = out.strip().split("\n>")
-        pairs = [i.replace("\n", "@@@", 1) for i in lines]
-        out = [i.replace("\n", "") for i in pairs]
-        out = [i.replace("@@@", "\n") for i in out]
-        out = "\n>".join(out)
-        return out
-
-    # for paired data, split and align each separate, then rejoin
-    # split the read1s and read2s
-    inseqs = {}
-    for line in clust.split():
-        if line.startswith(">"):
-            name = line.strip()
-            inseqs[name] = ""
-        else:
-            if "nnnn" in line:
-                inseqs[name] = line.strip().split("nnnn", 1)
+    for ali1, ali2 in iter_muscle_alignments(handle, int(1e9)):
+        # get dict mapping headers to sequences
+        head_to_seq1 = {}
+        for line in ali1:
+            if line[0] == ">":
+                key = line.strip()
             else:
-                inseqs[name] = (line.strip(), "NNNNNNNNNN")
-    
-    # make back into strings
-    clust1 = "\n".join([f"{key}\n{inseqs[key][0]}" for key in inseqs])
-    clust2 = "\n".join([f"{key}\n{inseqs[key][1]}" for key in inseqs])
-    
-    # run each individually on subprocess
-    proc = sps.Popen(
-        [BIN_MUSCLE, '-in', '-'], 
-        stdin=sps.PIPE, 
-        stdout=sps.PIPE,
-        universal_newlines=True,
-    )
-    out1, _ = proc.communicate(clust1)
-    proc = sps.Popen(
-        [BIN_MUSCLE, '-in', '-'], 
-        stdin=sps.PIPE, 
-        stdout=sps.PIPE,
-        universal_newlines=True,
-    )
-    out2, _ = proc.communicate(clust2)
-    
-    # split the clust1s and clust2s to align reads w/ names b/c 
-    # muscle doesn't retain the input order.
-    inseqs = {}
-    for line in out1.split():
-        if line.startswith(">"):
-            name = line.strip()
-            inseqs[name] = ""
-        else:
-            inseqs[name] += line.strip()
-
-    for line in out2.split():
-        if line.startswith(">"):
-            name = line.strip()
-        else:
-            if "nnnn" not in inseqs[name]:
-                inseqs[name] += "nnnn" + line.strip()
+                if key in head_to_seq1:
+                    head_to_seq1[key] += line.strip()
+                else:
+                    head_to_seq1[key] = line.strip()
+        head_to_seq2 = {}
+        for line in ali2:
+            if line[0] == ">":
+                key = line.strip()
             else:
-                inseqs[name] += line.strip()
-    
-    return "\n".join([f"{key}\n{inseqs[key]}" for key in sorted(inseqs)])
+                if key in head_to_seq2:
+                    head_to_seq2[key] += line.strip()
+                else:
+                    head_to_seq2[key] = line.strip()
 
-
-def threaded_muscle(chunk):
-    """
-    Runs the i/o limited muscle calls on non-blocking threads.
-    """
-    # get all clusters
-    with open(chunk, 'rt') as infile:
-        clusts = infile.read().split("//\n//\n")
-
-    # submit jobs on THIS ENGINE to run on 5 threads.
-    futures = []
-    with concurrent.futures.ThreadPoolExecutor(5) as pool:
-        for clust in clusts:
-            futures.append(pool.submit(muscle_align, clust))
-        for fut in concurrent.futures.as_completed(futures):
-            assert fut.done() and not fut.cancelled()
-    stacks = [i.result() for i in futures]
-
-    # write to file when chunk is finished
-    odx = chunk.rsplit("_")[-1]
-    odir = os.path.dirname(chunk)
-    alignfile = os.path.join(odir, "aligned_{}.fa".format(odx))
-    with open(alignfile, 'wt') as outfile:
-        outfile.write("\n//\n//\n".join(stacks))
-
-
-def align_to_array(data, samples, chunk):
-    """
-    DEPRECATED FOR THREADED MUSCLE.
-    Opens a tmp clust chunk and iterates over align jobs.
-    """
-    # data are already chunked, read in the whole thing
-    with open(chunk, 'rt') as infile:
-        clusts = infile.read().split("//\n//\n")[:-1]    
-
-    # snames to ensure sorted order
-    samples.sort(key=lambda x: x.name)
-
-    # create a persistent shell for running muscle in. 
-    proc = sps.Popen(["bash"], stdin=sps.PIPE, stdout=sps.PIPE, bufsize=0)
-
-    # iterate over clusters until finished
-    allstack = []
-    for ldx, _ in enumerate(clusts):
-        istack = []
-        lines = clusts[ldx].strip().split("\n")
-        names = lines[::2]
-        seqs = lines[1::2]
-
-        # skip aligning and continue if duplicates present (locus too big)
-        # but reshape locs to be same lengths by adding --- to end, this 
-        # simplifies handling them in step7 (they're still always filtered)
-        unames = set(i.rsplit("_", 1)[0] for i in names)
-        if len(unames) < len(names):
-            longname = max([len(i) for i in seqs])
-            seqs = [i.ljust(longname, "-") for i in seqs]
-            istack = [">{}\n{}".format(i[1:], j) for i, j in zip(names, seqs)]
-            allstack.append("\n".join(istack))
-            continue
-
-        # else locus looks good, align it.
-        # is there a paired-insert in any samples in the locus?
+        # sort the first reads
         try:
+            keys = sorted(head_to_seq1)
+            seed = [i for i in keys if i[-1] == "*"][0]
+        except IndexError as inst:
+            print(keys)
+            raise IndexError(f"{keys}\n\n{ali1}") from inst
 
-            # try to split cluster list at nnnn separator for each read
-            left = [i.split("nnnn")[0] for i in seqs]
-            right = [i.split("nnnn")[1] for i in seqs]
+        seed = keys.pop(keys.index(seed))
+        order = [seed] + keys
 
-            # align separately
-            istack1 = muscle_it(proc, names, left)
-            istack2 = muscle_it(proc, names, right)
+        alignment = []
+        if head_to_seq2:
+            for key in order:
+                alignment.append(
+                    f"{key}\n{head_to_seq1[key]}nnnn{head_to_seq2[key]}")
+        else:
+            for key in order:
+                alignment.append(f"{key}\n{head_to_seq1[key]}")
+        yield "\n".join(alignment)        
 
-            # combine in order
-            for sdx, _ in enumerate(istack1):
-                n1, s1 = istack1[sdx].split("\n")
-                s2 = istack2[sdx].split("\n")[-1]
-                istack.append(n1 + "\n" + s1 + "nnnn" + s2)
-
-        # no insert just align a single locus
-        except IndexError:
-            istack = muscle_it(proc, names, seqs)
-
-        # store the locus
-        if istack:
-            allstack.append("\n".join(istack))
-
-    # cleanup
-    proc.stdout.close()
-    if proc.stderr:
-        proc.stderr.close()
-    proc.stdin.close()
-    proc.wait()
-
-    # write to file when chunk is finished
-    odx = chunk.rsplit("_")[-1]
-    alignfile = os.path.join(data.tmpdir, "aligned_{}.fa".format(odx))
-    with open(alignfile, 'wt') as outfile:
-        outfile.write("\n//\n//\n".join(allstack) + "\n//\n//\n")
-
-
-def muscle_it(proc, names, seqs):
-    """
-    DEPRECATED FOR THREADED MUSCLE
-    Align with muscle, ensure name order, and return as string
-    """  
-    istack = []
-
-    # append counter to names because muscle doesn't retain order
-    nnames = [">{};*{}".format(j[1:], i) for i, j in enumerate(names)]
+def write_alignments_across(handle: Path) -> None:
+    """Writes alignments to tmpfiles.
     
-    # make back into strings
-    cl1 = "\n".join(["\n".join(i) for i in zip(nnames, seqs)])
+    Iterates over chunks of aligned loci from generator and
+    writes to a concatenated output file.
+    """
+    print(f"aligning: {handle}") # engine sends to logger.info
+    tmpout = handle.with_suffix(".alignment")
+    chunk = []
+    with open(tmpout, 'w', encoding="utf-8") as out:
+        for idx, alignment in enumerate(iter_alignment_across_format(handle)):
+            chunk.append(alignment)
+            if not idx % 1_000:
+                out.write("\n//\n//\n".join(chunk) + "\n//\n//\n")
+                chunk = []
+        if chunk:
+            out.write("\n//\n//\n".join(chunk) + "\n//\n//\n")
 
-    # store allele (lowercase) info, returns mask with lowercases
-    # amask, abool = store_alleles(seqs)
+def reconcat_across(data: Assembly, sample: Sample) -> None:
+    """Concatenate .aligned chunks into a single .clusters.gz file.
+    """
+    chunks = list(data.tmpdir.glob(f"{sample.name}_chunk_[0-9].alignment"))
+    chunks.sort(key=lambda x: int(x.name.rsplit("_", 1)[-1][:-10]))
 
-    # send align1 to the bash shell (TODO: check for pipe-overflow)
-    cmd1 = ("echo -e '{}' | {} -quiet -in - ; echo {}"
-            .format(cl1, BIN_MUSCLE, "//\n"))
-    proc.stdin.write(cmd1.encode())
+    # concatenate finished clusters
+    clustfile = data.stepdir / f"{sample.name}.clusters.gz"
+    with gzip.open(clustfile, 'w') as out:
+        for fname in chunks:
+            with open(fname, 'r', encoding="utf-8") as infile:
+                dat = infile.read().strip()
+                if dat:
+                    out.write(dat.encode() + b"\n")
 
-    # read the stdout by line until splitter is reached
-    align1 = []
-    for line in iter(proc.stdout.readline, b'//\n'):
-        align1.append(line.decode())
 
-    # reorder b/c muscle doesn't keep order
-    lines = "".join(align1)[1:].split("\n>")
-    dalign1 = dict([i.split("\n", 1) for i in lines])
-    keys = sorted(
-        dalign1.keys(), 
-        key=lambda x: int(x.rsplit("*")[-1])
-    )
-    seqarr = np.zeros(
-        (len(names), len(dalign1[keys[0]].replace("\n", ""))),
-        dtype='S1',
-    )
-    for kidx, key in enumerate(keys):
-        concatseq = dalign1[key].replace("\n", "")
-        seqarr[kidx] = list(concatseq)
 
-    # get alleles back using fast jit'd function.
-    if np.sum(amask):
-        intarr = seqarr.view(np.uint8)
-        iamask = retrieve_alleles_after_aligning(intarr, amask)
-        seqarr[iamask] = np.char.lower(seqarr[iamask])
+# def threaded_muscle(chunk):
+#     """
+#     Runs the i/o limited muscle calls on non-blocking threads.
+#     """
+#     # get all clusters
+#     with open(chunk, 'rt') as infile:
+#         clusts = infile.read().split("//\n//\n")
 
-    # sort in sname (alphanumeric) order. 
-    istack = []    
-    wkeys = np.argsort([i.rsplit("_", 1)[0] for i in keys])
-    for widx in wkeys:
-        wname = names[widx]
-        istack.append(
-            "{}\n{}".format(wname, b"".join(seqarr[widx]).decode()))
-    return istack
+#     # submit jobs on THIS ENGINE to run on 5 threads.
+#     futures = []
+#     with concurrent.futures.ThreadPoolExecutor(5) as pool:
+#         for clust in clusts:
+#             futures.append(pool.submit(muscle_align, clust))
+#         for fut in concurrent.futures.as_completed(futures):
+#             assert fut.done() and not fut.cancelled()
+#     stacks = [i.result() for i in futures]
+
+#     # write to file when chunk is finished
+#     odx = chunk.rsplit("_")[-1]
+#     odir = os.path.dirname(chunk)
+#     alignfile = os.path.join(odir, "aligned_{}.fa".format(odx))
+#     with open(alignfile, 'wt') as outfile:
+#         outfile.write("\n//\n//\n".join(stacks))
+
 
 
 # def store_alleles(seqs):
