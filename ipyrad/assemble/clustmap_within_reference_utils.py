@@ -34,7 +34,7 @@ BIN = Path(sys.prefix) / "bin"
 BIN_VSEARCH = str(BIN / "vsearch")
 BIN_BWA = str(BIN / "bwa")
 BIN_SAMTOOLS = str(BIN / "samtools")
-BIN_SAMTOOLS = str(BIN / "bedtools")
+BIN_BEDTOOLS = str(BIN / "bedtools")
 
 
 def index_ref_with_bwa(data: Assembly, alt: bool=False) -> None:
@@ -302,7 +302,7 @@ def dereplicate_func(data, sample):
 
     # build PIPEd job
     print(" ".join(cmd))
-    proc = sps.Popen(cmd, stderr=sps.PIPE, close_fds=True)
+    proc = Popen(cmd, stderr=PIPE, close_fds=True)
     errmsg = proc.communicate()[1]
     if proc.returncode:
         raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {errmsg}")
@@ -459,7 +459,7 @@ def mapping_reads(data, sample, nthreads):
     print(" ".join(cmd1))
 
     # run cmd1
-    proc1 = sps.Popen(cmd1, stderr=sps.PIPE, stdout=sps.DEVNULL)
+    proc1 = Popen(cmd1, stderr=PIPE, stdout=DEVNULL)
     error1 = proc1.communicate()[1]
     if proc1.returncode:
         raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
@@ -470,7 +470,7 @@ def mapping_reads(data, sample, nthreads):
     print(' '.join(cmd2))
 
     # run cmd2
-    proc2 = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
+    proc2 = Popen(cmd2, stderr=STDOUT, stdout=PIPE)
 
     # setup cmd3 (sort sam)
     cmd3 = [
@@ -482,8 +482,8 @@ def mapping_reads(data, sample, nthreads):
     print(' '.join(cmd3))
 
     # run cmd3
-    proc3 = sps.Popen(
-        cmd3, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc2.stdout)
+    proc3 = Popen(
+        cmd3, stderr=STDOUT, stdout=PIPE, stdin=proc2.stdout)
     error3 = proc3.communicate()[1]
     if proc3.returncode:
         raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
@@ -493,7 +493,7 @@ def mapping_reads(data, sample, nthreads):
     cmd4 = [BIN_SAMTOOLS, "index", "-c", os.path.join(data.stepdir, f"{sample.name}.bam")]
 
     # run cmd4
-    proc4 = sps.Popen(cmd4, stderr=sps.PIPE, stdout=sps.DEVNULL)
+    proc4 = Popen(cmd4, stderr=PIPE, stdout=DEVNULL)
     error4 = proc4.communicate()[1]
     if proc4.returncode:
         raise IPyradError(f"cmd: {' '.join(cmd4)}\nerror: {error4}")
@@ -778,8 +778,8 @@ def bedtools_merge(data, sample) -> List[str]:
         cmd2.insert(2, "-d")
 
     # pipe output from bamtobed into merge
-    with sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE) as proc1:
-        with sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE, stdin=proc1.stdout) as proc2:
+    with Popen(cmd1, stderr=STDOUT, stdout=PIPE) as proc1:
+        with Popen(cmd2, stderr=STDOUT, stdout=PIPE, stdin=proc1.stdout) as proc2:
             result = proc2.communicate()[0].decode()
         proc1.stdout.close()
 
