@@ -27,7 +27,7 @@ from loguru import logger
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.core.schema import Stats5
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.clustmap_within_denovo_utils import iter_clusters
+from ipyrad.assemble.clustmap_within_both import iter_clusters
 from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
 from ipyrad.assemble.consens_utils import (
     Processor,
