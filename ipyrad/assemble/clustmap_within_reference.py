@@ -4,40 +4,25 @@
 
 """
 
-import os
 from loguru import logger
-import pandas as pd
 from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.assemble.clustmap_within_both import ClustMapBase
 from ipyrad.assemble.clustmap_within_reference_utils import (
     index_ref_with_bwa,
     index_ref_with_sam,
     join_pairs_for_derep_ref,
-    tag_for_decloning,
-    dereplicate_func,
-    tag_to_header_for_decloning,
     split_derep_pairs_ref,
     mapping_reads,
     build_clusters_from_cigars,
-)
-from ipyrad.assemble.clustmap_within_denovo_utils import (
-    concat_multiple_edits,
-    mapping_reads_minus,
-    # reconcat,
-    set_sample_stats
 )
 
 logger = logger.bind(name="ipyrad")
 
 
-class ClustMapReference:
+class ClustMapReference(ClustMapBase):
     """Reference mapping assembly pipeline."""
     def __init__(self, step: "Step3"):
-        # inherit attrs from step
-        self.data = step.data
-        self.samples = step.samples
-        self.quiet = step.quiet
-        self.lbview = step.lbview
-        self.thview = step.thview
+        super().__init__(step)
 
     def index_references(self):
         """Index reference and/or reference_filter files."""
@@ -62,61 +47,6 @@ class ClustMapReference:
         prog.block()
         prog.check()
 
-    def concat_trimmed_files_from_assembly_merge(self):
-        """Combine merged assembly files.
-
-        If assembly merging was performed after step2 and before step3
-        then multiple 'trim' fastq files must be merged within samples
-        to be used as inputs for step3.
-
-        i: edits/{sname}_edits_[R1,R2].fastq
-        o: tmpdir/{sname}_concat_edits_[R1,R2].fastq
-        """
-        # skip if no merge happened.
-        if not any(len(self.samples[i].files.edits) > 1 for i in self.samples):
-            return
-        # else run the job
-        jobs = {}
-        for sname in self.samples:
-            if len(self.samples[sname].files.edits) > 1:
-                logger.debug(f"concatenating merged inputs: {sname}")
-                jobs[sname] = self.lbview.apply(
-                    concat_multiple_edits,
-                    *(self.data, self.samples[sname])
-                )
-        if jobs:
-            msg = "concatenating merged assembly inputs"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-    def mapping_to_reference_filter(self):
-        """Map reads to filter reference to get unmapped fastq.
-
-        # i1: edits/{}_edits_R[1,2].fastq
-        # i0: tmpdir/{}_concat_edits_R[1,2].fastq
-        # o: tmpdir/{}_unmapped_R[1,2].fastq
-        """
-        if not self.data.params.reference_as_filter:
-            return        
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.thview.apply(mapping_reads_minus, *args)
-        if jobs:
-            msg = "mapping to reference as filter"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-        # store stats
-        for sname, val in prog.results.items():
-            sample = self.data.samples[sname]
-            sample.stats_s3.reads_mapped_to_ref_filter = val[0]
-            sample.stats_s3.reads_mapped_to_ref_filter_prop = val[1]
-            logger.debug(
-                f"{sname} proportion refmap filtered reads: {val[1]:.4f}")            
-
     def join_pairs_for_derep(self):
         """Joins pairs end to end for decloning and dereplicating.
 
@@ -133,64 +63,6 @@ class ClustMapReference:
             )
         if jobs:
             msg = "joining pairs for derep/declone"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-    def tag_for_decloning(self):
-        """Joins pairs end to end for decloning and dereplicating.
-
-        i: tmpdir/[trim, concat, or unmapped].fastq[.gz]
-        o: tmpdir/joined.fastq
-        """
-        if not self.data.hackers.declone_PCR_duplicates:
-            return
-        jobs = {}
-        for sname in self.samples:
-            jobs[sname] = self.lbview.apply(
-                tag_for_decloning,
-                *(self.data, self.samples[sname])
-            )
-        if jobs:
-            msg = "tagging reads for decloning    "
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-    def dereplicate(self):
-        """Dereplicate read(pairs) to fasta format using vsearch.
-
-        i: tmpdir/{}_[trimmed_R1, joined, declone].fastq
-        o: tmpdir/{}_derep.fa
-        """
-        jobs = {}
-        for sname in self.samples:
-            jobs[sname] = self.lbview.apply(
-                dereplicate_func,
-                *(self.data, self.samples[sname])
-            )
-        if jobs:
-            msg = "dereplicating reads              "
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-    def tag_to_header(self):
-        """Dereplicate read(pairs) to fasta format using vsearch.
-
-        i: tmpdir/{}_[trimmed_R1, joined, declone].fastq
-        o: tmpdir/{}_derep.fa
-        """
-        if not self.data.hackers.declone_PCR_duplicates:
-            return
-        jobs = {}
-        for sname in self.samples:
-            jobs[sname] = self.lbview.apply(
-                tag_to_header_for_decloning,
-                *(self.data, self.samples[sname])
-            )
-        if jobs:
-            msg = "tagging headers for decloning  "
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
             prog.check()
@@ -247,48 +119,6 @@ class ClustMapReference:
             prog.block()
             prog.check()
 
-    def calculate_sample_stats(self):
-        """Send samples to calc depths on remote, and then enter stats
-        to sample objects non-parallel.
-        """
-        jobs = {}
-        for sname in self.samples:
-            jobs[sname] = self.lbview.apply(
-                set_sample_stats,
-                *(self.data, self.samples[sname])
-            )
-
-        # progress bar
-        msg = "calculating stats"
-        prog = AssemblyProgressBar(jobs, msg, 3, self.quiet)
-        prog.block()
-        prog.check()
-
-        # store/save
-        self.data.samples = prog.results  # {i: j for (i, j) in prog.results.items()}
-        self.data.save_json()
-
-        # write stats text file
-        statsdf = pd.DataFrame(
-            index=sorted(self.data.samples),
-            columns=[
-                "clusters_total",
-                "clusters_hidepth",
-                "mean_depth_mj",
-                "mean_depth_stat",
-                "reads_mapped_to_ref_prop",
-            ],
-        )
-        for sname in self.data.samples:
-            statsdict = self.data.samples[sname].stats_s3.dict()
-            for i in statsdf.columns:
-                statsdf.loc[sname, i] = statsdict[i]
-
-        handle = os.path.join(self.data.stepdir, 's3_cluster_stats.txt')
-        with open(handle, 'w', encoding="utf-8") as outfile:
-            statsdf.to_string(outfile)
-        logger.info("\n" + statsdf.to_string())
-
     def run(self):
         """Run steps of the reference-based step3.
 
@@ -297,12 +127,12 @@ class ClustMapReference:
         """
         self.index_references()
         self.concat_trimmed_files_from_assembly_merge()
-        self.mapping_to_reference_filter()
-        self.join_pairs_for_derep()
-        self.tag_for_decloning()
+        self.mapping_to_reference_filter()   # get unmapped as data
+        self.join_pairs_for_derep()          # join pairs for derep
+        self.decloning_transfer_tags_inline()
         self.dereplicate()
-        self.tag_to_header()
-        self.split_derep_pairs_for_mapping()
+        self.decloning_transfer_tags_to_header()
+        self.split_derep_pairs_for_mapping() # split pairs for mapping
         self.mapping_to_reference()
         self.build_clusters_from_cigars()
         self.calculate_sample_stats()

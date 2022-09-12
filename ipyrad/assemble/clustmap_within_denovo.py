@@ -12,46 +12,26 @@ import itertools
 from loguru import logger
 import pandas as pd
 from ipyrad.core.progress_bar import AssemblyProgressBar
-from ipyrad.core.schema import Stats3
+from ipyrad.assemble.clustmap_within_reference import ClustMapBase
 from ipyrad.assemble.clustmap_within_reference_utils import index_ref_with_bwa 
 from ipyrad.assemble.clustmap_within_denovo_utils import (
-    concat_multiple_edits,
-    mapping_reads_minus,
     merge_pairs_with_vsearch,
     join_end_to_end,
-    tag_seq_for_decloning,
-    dereplicate,
-    retag_header_after_derep_for_decloning,
     cluster,
     write_clusters,
     muscle_chunker,
     write_alignments,
     reconcat,
-    set_sample_stats
 )
 
 logger = logger.bind(name="ipyrad")
 
 
-class ClustMapDenovo:
+class ClustMapDenovo(ClustMapBase):
     """de novo within-sample assembly pipeline."""
     def __init__(self, step):
-        # attach all relevent attributes to data (Assembly)
-        self.data = step.data
+        super().__init__(step)
         self.data.max_indels = 8
-
-        # job submitting, parallel, or progress bar relevant
-        self.samples = step.samples
-        self.quiet = step.quiet
-        self.lbview = step.lbview
-        self.thview = step.thview
-
-        # set empty stats_s3 on each Sample
-        for sample in self.samples.values():
-            sample.stats_s3 = Stats3(
-                min_depth_maj_during_step3=self.data.params.min_depth_majrule,
-                min_depth_stat_during_step3=self.data.params.min_depth_statistical,
-            )
 
     def index_reference_as_filter(self):
         """Index reference_filter with BWA for mapping reads.
@@ -69,54 +49,6 @@ class ClustMapDenovo:
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
         prog.check()
-
-    def concat_trimmed_files_from_assembly_merge(self):
-        """Concat when assemblies were merged before step3.
-
-        # i: edits/{sname}_edits_[R1,R2].fastq
-        # o: tmpdir/{sname}_concat_edits_[R1,R2].fastq
-        """
-        # skip if no merge happened.
-        if not any(len(self.samples[i].files.edits) > 1 for i in self.samples):
-            return
-        # else run the job
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            if len(self.samples[sname].files.edits) > 1:
-                jobs[sname] = self.lbview.apply(concat_multiple_edits, *args)
-        if jobs:
-            msg = "concatenating merged assembly inputs"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-    def mapping_to_reference_filter(self):
-        """Map reads to filter reference to get unmapped fastq.
-
-        # i1: edits/{}_edits_R[1,2].fastq
-        # i0: tmpdir/{}_concat_edits_R[1,2].fastq
-        # o: tmpdir/{}_unmapped_R[1,2].fastq
-        """
-        if not self.data.params.reference_as_filter:
-            return        
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.thview.apply(mapping_reads_minus, *args)
-        if jobs:
-            msg = "mapping to reference as filter"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()
-
-        # store stats
-        for sname, val in prog.results.items():
-            sample = self.data.samples[sname]
-            sample.stats_s3.reads_mapped_to_ref_filter = val[0]
-            sample.stats_s3.reads_mapped_to_ref_filter_prop = val[1]
-            logger.debug(
-                f"{sname} proportion refmap filtered reads: {val[1]:.4f}")            
 
     def pair_merge_overlaps_with_vsearch(self):
         """Merge reads based on overlapping using vsearch.
@@ -168,61 +100,6 @@ class ClustMapDenovo:
         prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
         prog.block()
         prog.check()
-
-    def decloning_transfer_tags_inline(self):
-        """Moves the i5 tags from the index to start of reads for decloning.
-
-        # i: tmpdir/{}_merged.fa
-        # o: tmpdir/{}_decloned.fa
-        """
-        if (not self.data.is_pair) or (not self.data.hackers.declone_PCR_duplicates):
-            return
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.lbview.apply(tag_seq_for_decloning, *args)
-        if jobs:
-            msg = "tagging reads for decloning    "
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()            
-
-    def dereplicate(self):
-        """Dereplicate sequences (read pairs are merged).
-
-        # i3: edits/{}_edits.fastq                 # se data
-        # i2: tmpdir/{}_concat_edits.fastq         # se assembly merge
-        # i1: tmpdir/{}_merged.fa                  # pe data
-        # i0: tmpdir/{}_decloned.fa                # pe w/ declone
-        # o: tmpdir/{}_derep.fa
-        """
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.thview.apply(dereplicate, *args)
-        msg = "dereplicating"
-        prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-        prog.block()
-        prog.check()
-
-    def decloning_retag_to_header(self):
-        """Moves the i5 tags from the index to start of reads for decloning.
-
-        # i: tmpdir/{}_derep.fa
-        # o: tmpdir/{}_derep_tag.fa
-        """
-        if (not self.data.is_pair) or (not self.data.hackers.declone_PCR_duplicates):
-            return
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.lbview.apply(
-                retag_header_after_derep_for_decloning, *args)
-        if jobs:
-            msg = "moving tags to header"
-            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
-            prog.block()
-            prog.check()            
 
     def cluster_build_and_chunk(self):
         """Cluster reads and build cluster output files.
@@ -325,37 +202,6 @@ class ClustMapDenovo:
         prog.block()
         prog.check()
 
-    def calculate_sample_stats(self):
-        """Send samples to calc depths on remote, and then enter stats
-        to sample objects non-parallel.
-        """
-        jobs = {}
-        for sname in self.samples:
-            args = (self.data, self.samples[sname])
-            jobs[sname] = self.lbview.apply(set_sample_stats, *args)
-
-        # progress bar
-        msg = "calculating stats"
-        prog = AssemblyProgressBar(jobs, msg, 3, self.quiet)
-        prog.block()
-        prog.check()
-
-        # store/save
-        self.data.samples = prog.results
-        self.data.save_json()
-
-        # write stats text file
-        handle = self.data.stepdir / "s3_cluster_stats.txt"
-        with open(handle, 'w', encoding="utf-8") as out:
-            table = pd.DataFrame({
-                i: self.data.samples[i].stats_s3.dict() 
-                for i in self.data.samples
-            }).T
-            table.sort_index(inplace=True)
-            table.to_string(out)
-            cols=["clusters_total", "clusters_hidepth", "mean_depth_stat"]
-            logger.info("\n" + table.loc[:, cols].to_string())
-
     def run(self):
         """Run the core functions."""
         self.index_reference_as_filter()
@@ -365,7 +211,7 @@ class ClustMapDenovo:
         self.pair_join_unmerged_end_to_end()
         self.decloning_transfer_tags_inline()
         self.dereplicate()
-        self.decloning_retag_to_header()
+        self.decloning_transfer_tags_to_header()
         self.cluster_build_and_chunk()
         self.muscle_align_chunks()
         self.calculate_sample_stats()
@@ -377,12 +223,12 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
-    TEST = ip.load_json("/tmp/TEST5.json")
-    TEST = TEST.branch("TEST5-denovo")
-    TEST.params.assembly_method = "denovo"
-    TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
+    # TEST = ip.load_json("/tmp/TEST5.json")
+    # TEST = TEST.branch("TEST5-denovo")
+    # TEST.params.assembly_method = "denovo"
+    # TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
 
-    ClustMapDenovo(TEST)
+    # ClustMapDenovo(TEST)
 
     # TEST.run("3", force=True, quiet=True)
 

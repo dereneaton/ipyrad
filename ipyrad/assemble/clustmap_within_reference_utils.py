@@ -122,7 +122,7 @@ def index_ref_with_sam(data: Assembly, alt: bool=False) -> None:
     print(f"indexing {refseq_file} with pysam/samtools")
     pysam.faidx(str(refseq_file))
 
-# clustmap_within_denovo_utils.mapping_reads_minus
+# uses clustmap_within_denovo_utils.mapping_reads_minus
 
 def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
     """Temporarily join pairs for dereplication.
@@ -147,7 +147,7 @@ def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
     read2 = [i for i in order2 if i.exists()][-1]
 
     # read in paired end read files 4 lines at a time
-    xopen = gzip.open if read1.endswith(".gz") else open
+    xopen = gzip.open if '.gz' in read1.suffix else open
     readio1 = xopen(read1, 'rt')
     readio2 = xopen(read2, 'rt')
     quart1 = zip(*[readio1] * 4)
@@ -156,35 +156,33 @@ def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
 
     # output file
     handle = data.tmpdir / f"{sample.name}_joined.fastq"
-    out = open(handle, 'w', encoding="utf-8")
+    with open(handle, 'w', encoding="utf-8") as out:
 
-    # a list to store until writing
-    writing = []
-    counts = 0
+        # a list to store until writing
+        writing = []
+        counts = 0
 
-    # iterate until done
-    for read1s, read2s in quarts:
-        writing.append(
-            "".join([
-                read1s[0],
-                read1s[1].strip() + "nnnn" + read2s[1],
-                read1s[2],
-                read1s[3].strip() + "nnnn" + read2s[3],
-            ])
-        )
-        counts += 1
-        if not counts % 5000:
+        # iterate until done
+        for read1s, read2s in quarts:
+            writing.append(
+                "".join([
+                    read1s[0],
+                    read1s[1].strip() + "nnnn" + read2s[1],
+                    read1s[2],
+                    read1s[3].strip() + "nnnn" + read2s[3],
+                ])
+            )
+            counts += 1
+            if not counts % 5000:
+                out.write("".join(writing))
+                writing = []
+        if writing:
             out.write("".join(writing))
-            writing = []
-    if writing:
-        out.write("".join(writing))
 
     # close handles
     readio1.close()
     readio2.close()
-    out.close()
     print(f"joined read pairs of {sample.name}")
-
 
 def tag_for_decloning(data, sample):
     """
@@ -793,3 +791,7 @@ def bedtools_merge(data, sample) -> List[str]:
     regions = result.strip().split("\n")
     print(f"{sample.name}: max_insert={max_insert}, nregions={len(regions)}")
     return regions
+
+
+if __name__ == "__main__":
+    pass
