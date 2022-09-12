@@ -302,8 +302,8 @@ class ReadTrimming:
         trim_front2 = len(self.data.params.restriction_overhang[1])
 
         # HOwever, this can be overriden by setting `trim_reads` param.
-        # if set to a nonzero
-        # argument. HACK: To disable trimming set to a negative number.
+        # to either a set of fixed positive integer lengths, or, if set
+        # to a negative value, then NO TRIMMING will be done.
         if self.data.params.trim_reads[0]:
             if self.data.params.trim_reads[0] < 0:
                 trim_front1 = 0
