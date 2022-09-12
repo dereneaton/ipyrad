@@ -1,3 +1,4 @@
+# This file can be used to build a conda env: `conda create -f environment.yml`
 name: ipyrad
 channels: 
   - conda-forge
