@@ -16,7 +16,7 @@ from ipyrad.assemble.base_step import BaseStep
 from ipyrad.core.schema import Stats4
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError
-from ipyrad.assemble.clustmap_within_denovo_utils import iter_clusters
+from ipyrad.assemble.clustmap_within_both import iter_clusters
 
 Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
