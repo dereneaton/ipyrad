@@ -4,6 +4,18 @@
 Release Notes
 =============
 
+0.9.85
+------
+**September 15, 2022**
+
+- Fix #493 - ValueError in step 6 if all R2s empty
+- Update 3-installation.rst
+- Update README.rst
+- Update faq.rst
+- Handle call to decode() in case older version of h5py file.
+- Clean up tempdir after step 5
+- Update faq.rst
+
 0.9.84
 ------
 **February 05, 2022**
