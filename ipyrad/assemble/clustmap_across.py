@@ -1354,6 +1354,13 @@ def align_to_array(data, samples, chunk):
             left = [i.split("nnnn")[0] for i in seqs]
             right = [i.split("nnnn")[1] for i in seqs]
 
+            if not any(right):
+                # If _all_ R2 seqs are empty then raise the IndexError
+                # and treat it as R1 only. Insane edge case, took one entire
+                # day to figure out. iao 9/15/22
+                seqs = left
+                raise IndexError()
+
             # align separately
             istack1 = muscle_it(proc, names, left)
             istack2 = muscle_it(proc, names, right)
