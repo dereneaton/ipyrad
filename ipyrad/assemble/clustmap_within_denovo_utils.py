@@ -328,69 +328,6 @@ def write_clusters(data: Assembly, sample: Sample) -> None:
         if clusters:
             clustio.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
 
-    # [optional] declone pcr duplicates and return (ndups, prop_dups)
-    if data.hackers.declone_PCR_duplicates and data.is_pair:
-        return declone_clusters(data, sample)
-    return 0, 0
-
-def declone_clusters(data: Assembly, sample: Sample) -> Tuple[int, float]:
-    """Removes pcr duplicates from clusters and returns counts.
-
-    Example
-    -------
-    >>> # before
-    >>> >AAAAAAAA_680d22c94822c118a0a66b323c4ca18d;size=1;*
-    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
-    >>> >AGGAGGCT_48b02ab5740ada18223b52237881abc8;size=1;+
-    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
-    >>> >AGTGCAAG_d85f1da0579587b46d46b79d4bdf8590;size=1;+
-    >>> ATCGGTAAGTCGTCTATTCAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
-    >>>
-    >>> # after
-    >>> >680d22c94822c118a0a66b323c4ca18d;size=2;*
-    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
-    >>> >d85f1da0579587b46d46b79d4bdf8590;size=1;+
-    >>> ATCGGTAAGTCGTCTATTCAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
-    >>> returned: (int, float)
-    """
-    tmpin = data.tmpdir / f"{sample.name}_clust.txt"
-    tmpout = data.tmpdir / f"{sample.name}_clust_decloned.txt"
-
-    duplicates = 0
-    sumseqs = 0
-    clusts = []
-    for clust in iter_clusters(tmpin):
-        data = {}
-        seq2name = {}
-
-        # iterate over fasta name\nseq pairs
-        for name, seq in zip(*[iter(clust)] * 2):
-            base = name.strip().split("_", 1)[1]
-            parts = base.split(";")
-            newname = parts[0]
-            size = int(parts[1][5:])
-            duplicates += size - 1
-            sumseqs += size
-            seq = seq.strip()
-
-            # store as {md5: [seq, int, sig]}
-            if seq not in seq2name:
-                seq2name[seq] = newname
-                data[newname] = [seq, size, parts[-1]]
-            else:
-                data[seq2name[seq]][1] += size
-
-        # store as {>name;size=int;*: seq}
-        rename = [
-            f">{i};size={j[1]};{j[2]}\n{j[0]}"
-            for i, j in data.items()
-        ]
-        clusts.append("\n".join(rename))
-
-    with open(tmpout, 'w', encoding="utf-8") as out:
-        out.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
-    return duplicates, duplicates / sumseqs
-
 ################################################
 ####
 #### Align clusters
