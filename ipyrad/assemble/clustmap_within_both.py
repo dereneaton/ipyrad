@@ -21,7 +21,7 @@ Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
 BIN = Path(sys.prefix) / "bin"
 BIN_BWA = str(BIN / "bwa")
-BIN_SAMTOOLS = str(BIN / "samtools")  # indexing 
+BIN_SAMTOOLS = str(BIN / "samtools")  # indexing
 BIN_VSEARCH = str(BIN / "vsearch")    # dereplicating
 
 
@@ -37,20 +37,20 @@ class ClustMapBase:
 
     def run(self):
         """Different methods apply to reference vs denovo."""
-        # reference: 
+        # reference:
         # [unique] .index_references
         # [shared] .concat_trimmed_files_from_assembly_merge
-        # [shared] .mapping_to_reference_filter        
+        # [shared] .mapping_to_reference_filter
         # [unique] .join_pairs_for_derep
         # [shared] .tag_for_decloning
         # [shared] .dereplicate
         # [shared] .tag_back_to_header
         # [unique] .mapping
 
-        # denovo: 
+        # denovo:
         # [unique] .index_reference_as_filter
         # [shared] .concat_trimmed_files_from_assembly_merge
-        # [shared] .mapping_to_reference_filter            
+        # [shared] .mapping_to_reference_filter
         # [unique] .pair_merge_overlaps_with_vsearch
         # [unique] .pair_join_unmerged_end_to_end
         # [shared] .tag_for_decloning
@@ -87,7 +87,7 @@ class ClustMapBase:
         # o: tmpdir/{}_unmapped_R[1,2].fastq
         """
         if not self.data.params.reference_as_filter:
-            return        
+            return
         jobs = {}
         for sname in self.samples:
             args = (self.data, self.samples[sname])
@@ -104,7 +104,7 @@ class ClustMapBase:
             sample.stats_s3.reads_mapped_to_ref_filter = val[0]
             sample.stats_s3.reads_mapped_to_ref_filter_prop = val[1]
             logger.debug(
-                f"{sname} proportion refmap filtered reads: {val[1]:.4f}")            
+                f"{sname} proportion refmap filtered reads: {val[1]:.4f}")
 
     def decloning_transfer_tags_inline(self):
         """Moves the i5 tags from the index to start of reads for decloning.
@@ -158,7 +158,33 @@ class ClustMapBase:
             msg = "moving tags to header"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
             prog.block()
-            prog.check() 
+            prog.check()
+
+    def declone_clusters(self):
+        """Writes clusters_decloned.gz and gets declone stats."""
+        if not (self.data.hackers.declone_PCR_duplicates and self.data.is_pair):
+            return
+        jobs = {}
+        for sname in self.samples:
+            jobs[sname] = self.thview.apply(
+                declone_clusters,
+                *(self.data, self.samples[sname]),
+            )
+        if jobs:
+            msg = "decloning clusters"
+            prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
+            prog.block()
+            prog.check()
+
+        # [optional] declone pcr duplicates and return (ndups, prop_dups)
+        # store declone pcr clusters stats to samples
+        for sname, val in prog.results.items():
+            pcr_dups, pcr_dups_prop = val
+            sample = self.data.samples[sname]
+            sample.stats_s3.pcr_duplicates = pcr_dups
+            sample.stats_s3.pcr_duplicates_prop = pcr_dups_prop
+            if self.data.hackers.declone_PCR_duplicates:
+                logger.info(f"{sname} proportion pcr duplicates: {pcr_dups_prop}")
 
     def calculate_sample_stats(self):
         """Send samples to calc depths on remote, and then enter stats
@@ -183,7 +209,7 @@ class ClustMapBase:
         handle = self.data.stepdir / "s3_cluster_stats.txt"
         with open(handle, 'w', encoding="utf-8") as out:
             table = pd.DataFrame({
-                i: self.data.samples[i].stats_s3.dict() 
+                i: self.data.samples[i].stats_s3.dict()
                 for i in self.data.samples
             }).T
             table.sort_index(inplace=True)
@@ -365,8 +391,11 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
     with open(tmpout, 'w', encoding="utf-8") as out:
         with open(tmpin, 'r', encoding="utf-8") as infile:
 
-            # iterate over 2 lines a time
-            duo = zip(*[infile] * 2)
+            # iterate over 2 lines a time if fasta else 4 for fastq
+            if data.is_ref:
+                duo = zip(*[infile] * 4)
+            else:
+                duo = zip(*[infile] * 2)
 
             # a list to store until writing
             tmp = []
@@ -382,7 +411,7 @@ def tag_seq_for_decloning(data: Assembly, sample: Sample) -> None:
 
                 # add i5 to the 5' end of the sequence and insert the
                 # length of the i5 index (usually 8) into the header.
-                newread = f"{read[0]}{index}{read[1]}"
+                newread = f">{read[0][1:]}{index}{read[1]}"
                 tmp.append(newread)
 
                 # Write the data in chunks
@@ -404,12 +433,14 @@ def dereplicate(data: Assembly, sample: Sample) -> None:
     # i3: edits/{}_edits.fastq                 # se data
     # i2: tmpdir/{}_concat_edits.fastq         # se assembly merge
     # i1: tmpdir/{}_merged.fa                  # pe data
+    # i1alt: tmpdir/{}_joined.fa                  # pe data
     # i0: tmpdir/{}_decloned.fa                # pe w/ declone
     # o: tmpdir/{}_derep.fa
     infiles = [
         Path(sample.files.edits[0][0]),
         data.tmpdir / f"{sample.name}_concat_edits.fastq",
         data.tmpdir / f"{sample.name}_merged.fa",
+        data.tmpdir / f"{sample.name}_joined.fa",
         data.tmpdir / f"{sample.name}_decloned.fa",
     ]
     infiles = [i for i in infiles if i.exists()]
@@ -453,18 +484,18 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
 
     Example
     -------
-    # input data derep file format
-    >594732b799a25eb9b8ab4925f3a9a992;size=8
-    GGGGGGGGATCGGAAGCACATACTATAATAAGGGGTAGGGTTTTATTGGCAGCAT
-    >a9154e2d5348a59230c5ecd19e0afdf6;size=6
-    GGGGGGGGATCGGTGCATTCCCCCAAGGGTGTCCTAAAGTTCCTCCACCAAACTG
-    ******** <- i5 tag
-
-    # output data derep_tag file
-    >GGGGGGGG_594732b799a25eb9b8ab4925f3a9a992;size=8
-    ATCGGAAGCACATACTATAATAAGGGGTAGGGTTTTATTGGCAGCATATTCAATC
-    >GGGGGGGG_a9154e2d5348a59230c5ecd19e0afdf6;size=6
-    ATCGGTGCATTCCCCCAAGGGTGTCCTAAAGTTCCTCCACCAAACTGTAGTACAG
+    >>> # input data derep file format
+    >>> >594732b799a25eb9b8ab4925f3a9a992;size=8
+    >>> GGGGGGGGATCGGAAGCACATACTATAATAAGGGGTAGGGTTTTATTGGCAGCAT
+    >>> >a9154e2d5348a59230c5ecd19e0afdf6;size=6
+    >>> GGGGGGGGATCGGTGCATTCCCCCAAGGGTGTCCTAAAGTTCCTCCACCAAACTG
+    >>> ******** <- i5 tag
+    >>>
+    >>> # output data derep_tag file
+    >>> >GGGGGGGG_594732b799a25eb9b8ab4925f3a9a992;size=8
+    >>> ATCGGAAGCACATACTATAATAAGGGGTAGGGTTTTATTGGCAGCATATTCAATC
+    >>> >GGGGGGGG_a9154e2d5348a59230c5ecd19e0afdf6;size=6
+    >>> ATCGGTGCATTCCCCCAAGGGTGTCCTAAAGTTCCTCCACCAAACTGTAGTACAG
     """
     # paired reads are merged or joined in the merged file
     # tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
@@ -500,8 +531,12 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
 
 def iter_clusters(clustfile: Path, gzipped: bool=False) -> Iterator[str]:
     """Yields clusters between //\n// separators."""
-    open_func = gzip.open if gzipped else open
-    with open_func(clustfile, 'rt', encoding="utf-8") as clustio:
+    if gzipped:
+        func = gzip.open
+    else:
+        func = open
+    kwargs = {"mode": "rt", "encoding": "utf-8"}
+    with func(clustfile, **kwargs) as clustio:
         data = []
         pairs = zip(*[iter(clustio)] * 2)
         for name, seq in pairs:
@@ -510,6 +545,66 @@ def iter_clusters(clustfile: Path, gzipped: bool=False) -> Iterator[str]:
             else:
                 yield data
                 data = []
+
+
+def declone_clusters(data: Assembly, sample: Sample) -> Tuple[int, float]:
+    """Removes pcr duplicates from clusters and update counts.
+
+    Example
+    -------
+    >>> # before
+    >>> >AAAAAAAA_680d22c94822c118a0a66b323c4ca18d;size=1;*
+    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
+    >>> >AGGAGGCT_48b02ab5740ada18223b52237881abc8;size=1;+
+    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
+    >>> >AGTGCAAG_d85f1da0579587b46d46b79d4bdf8590;size=1;+
+    >>> ATCGGTAAGTCGTCTATTCAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
+    >>>
+    >>> # after
+    >>> >680d22c94822c118a0a66b323c4ca18d;size=2;*
+    >>> ATCGGTAAGTCGTCTATTTAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
+    >>> >d85f1da0579587b46d46b79d4bdf8590;size=1;+
+    >>> ATCGGTAAGTCGTCTATTCAGTGTGCACTAATCCTCGCCAGACGTGTTTTGTATTGAAA
+    >>> returned: (int, float)
+    """
+    # ref versus denovo
+    tmpin = data.tmpdir / f"{sample.name}_clust.txt"
+    tmpout = data.tmpdir / f"{sample.name}_clust_decloned.txt"
+
+    duplicates = 0
+    sumseqs = 0
+    clusts = []
+    for clust in iter_clusters(tmpin):
+        data = {}
+        seq2name = {}
+
+        # iterate over fasta name\nseq pairs
+        for name, seq in zip(*[iter(clust)] * 2):
+            base = name.strip().split("_", 1)[1]
+            parts = base.split(";")
+            newname = parts[0]
+            size = int(parts[1][5:])
+            duplicates += size - 1
+            sumseqs += size
+            seq = seq.strip()
+
+            # store as {md5: [seq, int, sig]}
+            if seq not in seq2name:
+                seq2name[seq] = newname
+                data[newname] = [seq, size, parts[-1]]
+            else:
+                data[seq2name[seq]][1] += size
+
+        # store as {>name;size=int;*: seq}
+        rename = [
+            f">{i};size={j[1]};{j[2]}\n{j[0]}"
+            for i, j in data.items()
+        ]
+        clusts.append("\n".join(rename))
+
+    with open(tmpout, 'w', encoding="utf-8") as out:
+        out.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
+    return duplicates, duplicates / sumseqs
 
 
 def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
