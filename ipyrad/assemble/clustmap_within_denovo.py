@@ -10,7 +10,6 @@ and tagging PCR duplicates.
 import time
 import itertools
 from loguru import logger
-import pandas as pd
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.clustmap_within_reference import ClustMapBase
 from ipyrad.assemble.clustmap_within_reference_utils import index_ref_with_bwa 
@@ -32,6 +31,10 @@ class ClustMapDenovo(ClustMapBase):
     def __init__(self, step):
         super().__init__(step)
         self.data.max_indels = 8
+
+        # sort samples to start largest files clustering first
+        self.sorted_samples = sorted(
+            self.samples, key=lambda x: self.samples[x].stats_s2.reads_raw)
 
     def index_reference_as_filter(self):
         """Index reference_filter with BWA for mapping reads.
@@ -66,7 +69,7 @@ class ClustMapDenovo(ClustMapBase):
             return
         logger.info("merging overlapping pairs with vsearch")
         jobs = {}
-        for sname in self.samples:
+        for sname in self.sorted_samples:
             args = (self.data, self.samples[sname])
             jobs[sname] = self.lbview.apply(merge_pairs_with_vsearch, *args)
         msg = "merging overlapping paired reads"
@@ -93,7 +96,7 @@ class ClustMapDenovo(ClustMapBase):
             return
         logger.info("joining unmerged paired reads for derep")            
         jobs = {}
-        for sname in self.samples:
+        for sname in self.sorted_samples:
             args = (self.data, self.samples[sname])
             jobs[sname] = self.lbview.apply(join_end_to_end, *args)
         msg = "joining non-overlapping pairs"
@@ -101,7 +104,7 @@ class ClustMapDenovo(ClustMapBase):
         prog.block()
         prog.check()
 
-    def cluster_build_and_chunk(self):
+    def cluster_build(self):
         """Cluster reads and build cluster output files.
 
         Submit clustering/mapping job. All jobs will start in order
@@ -110,56 +113,47 @@ class ClustMapDenovo(ClustMapBase):
         sample can be passed through without waiting on all samples.
         """
         # sort samples by size to cluster/align largest first
-        sorted_samples = sorted(
-            self.samples, key=lambda x: self.samples[x].stats_s2.reads_raw)
         start = time.time()
         casyncs = {}
-        for sname in sorted_samples:
+        for sname in self.sorted_samples:
             args = (self.data, self.samples[sname])
             casyncs[sname] = self.thview.apply(cluster, *args)
 
         # submit cluster building job
         basyncs = {}
-        for sname in sorted_samples:
+        for sname in self.sorted_samples:
             args = (self.data, self.samples[sname])
             with self.lbview.temp_flags(after=casyncs[sname]):
                 basyncs[sname] = self.lbview.apply(write_clusters, *args)
 
-        # submit cluster chunking job
-        hasyncs = {}
-        for sname in sorted_samples:
-            args = (self.data, self.samples[sname])
-            with self.lbview.temp_flags(after=basyncs[sname]):
-                hasyncs[sname] = self.lbview.apply(muscle_chunker, *args)
-
-        # track job progress
+        # get cluster data: --> /tmp/_utemp.tsv /tmp/htemp.fa
         msg = "clustering"
         prog1 = AssemblyProgressBar(casyncs, msg, 3, self.quiet, start)
         prog1.block()
         prog1.check()
 
-        # track job progress
+        # build unaligned clusters: --> /tmp/_clust.txt
         start = time.time()
         msg = "building clusters"
         prog2 = AssemblyProgressBar(basyncs, msg, 3, self.quiet, start)
         prog2.block()
         prog2.check()
 
-        # track job progress
+    def muscle_chunk(self):
+        """Break unaligned cluster into chunks for aligning (/tmp/_[0-9].ali)
+
+        This will find either .clusters.txt or .clusters_decloned.txt
+        to use as input. Priority for second if present.
+        """
         start = time.time()
+        hasyncs = {}
+        for sname in self.sorted_samples:
+            args = (self.data, self.samples[sname])
+            hasyncs[sname] = self.thview.apply(muscle_chunker, *args)
         msg = "chunking clusters"
         prog3 = AssemblyProgressBar(hasyncs, msg, 3, self.quiet, start)
         prog3.block()
         prog3.check()
-
-        # store declone pcr clusters stats to samples
-        for sname, val in prog2.results.items():
-            pcr_dups, pcr_dups_prop = val
-            sample = self.data.samples[sname]
-            sample.stats_s3.pcr_duplicates = pcr_dups
-            sample.stats_s3.pcr_duplicates_prop = pcr_dups_prop
-            if self.data.hackers.declone_PCR_duplicates:
-                logger.info(f"{sname} proportion pcr duplicates: {pcr_dups_prop}")
 
     def muscle_align_chunks(self):
         """Aligns all chunked loci using muscle"""
@@ -208,12 +202,14 @@ class ClustMapDenovo(ClustMapBase):
         self.mapping_to_reference_filter()
         self.concat_trimmed_files_from_assembly_merge()
         self.pair_merge_overlaps_with_vsearch()
-        self.pair_join_unmerged_end_to_end()
-        self.decloning_transfer_tags_inline()
-        self.dereplicate()
-        self.decloning_transfer_tags_to_header()
-        self.cluster_build_and_chunk()
-        self.muscle_align_chunks()
+        self.pair_join_unmerged_end_to_end()      # -> ...
+        self.decloning_transfer_tags_inline()     # -> tmp/_decloned.fa
+        self.dereplicate()                        # -> tmp/_derep.fa
+        self.decloning_transfer_tags_to_header()  # -> tmp/_derep_tag.fa
+        self.cluster_build()                      # -> tmp/.clusters.txt
+        self.declone_clusters()                   # -> tmp/.clusters_decloned.txt
+        self.muscle_chunk()                       # -> tmp/.ali
+        self.muscle_align_chunks()                # -> tmp/.alignment
         self.calculate_sample_stats()
 
 
