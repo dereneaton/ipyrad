@@ -131,10 +131,11 @@ class ClustMapReference(ClustMapBase):
         self.join_pairs_for_derep()          # join pairs for derep
         self.decloning_transfer_tags_inline()
         self.dereplicate()
-        self.decloning_transfer_tags_to_header()
-        self.split_derep_pairs_for_mapping() # split pairs for mapping
-        self.mapping_to_reference()
-        self.build_clusters_from_cigars()
+        self.decloning_transfer_tags_to_header() # /tmp/_derep_tag.fa
+        self.split_derep_pairs_for_mapping() # /tmp/._derep_split_R[1,2].fa
+        self.mapping_to_reference()          # /tmp/.bam
+        self.build_clusters_from_cigars()    # /tmp/.clusters.gz
+        self.declone_clusters()              # /out/.clusters.gz
         self.calculate_sample_stats()
 
 
