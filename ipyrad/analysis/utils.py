@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-"""
-utility functions for the analysis tools
+"""utility functions for the analysis tools
 """
 
 import os
@@ -10,37 +9,38 @@ from numba import njit, prange
 
 
 def popfile_to_imap(path: str):
-    """
-    Parse popfile into an imap dictionary. The popfile should be
-    formatted with whitespace separated samplename, popname lines.
+    """Parse popfile to an imap dictionary.
 
-    Parameters:
-    -----------
+    The popfile should be formatted with whitespace separated
+    samplename, popname lines.
+
+    Parameters
+    ----------
     path: str
         The path to a popfile.
 
-    Example:
-    --------
-    imap = ipa.popfile_to_imap('popfile.txt')
+    Example
+    -------
+    >>> imap = ipa.popfile_to_imap('popfile.txt')
 
-    popfile format example:
-    -----------------------
+    popfile format example
+    ----------------------
     sample_A1   pop_A
     sample_A2   pop_A
     sample_B1   pop_B
     sample_B2   pop_B
 
-    imap format example:
-    ---------------------
-    {
-        'pop_A': ['sample_A1', 'sample_A2'],
-        'pop_B': ['sample_B1', 'sample_B2'],
-    }
+    imap format example
+    -------------------
+    >>> imap = {
+    >>>     'pop_A': ['sample_A1', 'sample_A2'],
+    >>>     'pop_B': ['sample_B1', 'sample_B2'],
+    >>> }
     """
     # TODO: support loading from a URL also.
     popfile = os.path.realpath(os.path.expanduser(path))
     imap = {}
-    with open(popfile) as indata:
+    with open(popfile, 'r') as indata:
         data = [i.strip().split() for i in indata.readlines()]
         for i in data:
             if i[0] not in imap:
@@ -96,7 +96,7 @@ def jsubsample_loci(snpsmap, seed):
 # def jsubsample_loci_full(snpsmap, seed):
 #     """
 #     Return SNPs from re-sampled loci (shape = (nsample, ...can change)
-#     including the possibility of sampling invariant loci, which 
+#     including the possibility of sampling invariant loci, which
 #     has the effect of reducing the size of the final returned array.
 #     """
 #     np.random.seed(seed)
@@ -126,7 +126,7 @@ def jsubsample_loci(snpsmap, seed):
 
 @njit(parallel=True)
 def get_spans(maparr, spans):
-    """ 
+    """
     Get span distance for each locus in original seqarray. This
     is used to create re-sampled arrays in each bootstrap to sample
     unlinked SNPs from. Used on snpsphy or str or ...
@@ -138,7 +138,7 @@ def get_spans(maparr, spans):
         if lines.size:
             end = lines[:, 3].max()
             spans[idx - 1] = [start, end]
-        else: 
+        else:
             spans[idx - 1] = [end, end]
         start = spans[idx - 1, 1]
 
