@@ -344,7 +344,7 @@ class CLI:
 
         # make sure the working directory exists.
         if not os.path.exists(project_dir):
-            os.mkdir(project_dir)
+            os.makedirs(project_dir, exist_ok=True)
 
         # Create new Assembly instead of loading if NEW 
         if self.args.steps:
