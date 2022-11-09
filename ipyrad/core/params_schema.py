@@ -155,7 +155,11 @@ class ParamsSchema(BaseModel):
     @validator("restriction_overhang")
     def _enzyme_validator(cls, value):
         """Check that the restriction enzymes do not contain bad chars?"""
-        # TODO:
+        # parse paramsfile str
+        if isinstance(value, str):
+            if "," in value:
+                value = value.strip().split(",")
+                print(value)
         return value
 
     @validator("datatype")
@@ -196,5 +200,9 @@ class ParamsSchema(BaseModel):
 if __name__ == "__main__":
 
     p = ParamsSchema(assembly_name="TEST", project_dir="./")
+    p.min_depth_majrule = '2'
+    p.restriction_overhang = tuple("TGC,".split(','))
     p.reference_as_filter = "../../tests/ipsimdata/gbs_example_genome.fa"
+    p.trim_reads = tuple("0, 0".split(","))
+    p.max_indels_locus = "0".split(",")
     print(p)
