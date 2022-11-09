@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
-"""sra tools wrapper to download archived seq data. 
+"""sra tools wrapper to download archived sequence data.
+
+This requires that you have 'sra-tools' > v.2.11 installed.
+Unfortunately, the conda installer for this is very unreliable,
 
 Example
 -------
@@ -29,20 +32,20 @@ logger = logger.bind(name="ipa")
 
 # raise warning if missing imports
 MISSING_IMPORTS = """
-To use the ipa.sratools module you must install the sra-tools
-software, which you can do with the following conda command. 
+To use the ipa.sratools module you must install the sra toolkit to a
+version >2.11 (2.8 will not work!). You can do this either by visting
+the ncbi download page: https://github.com/ncbi/sra-tools/wiki/01.-Downloading-SRA-Toolkit
+or by using conda. Unfortunately the conda recipe for this is quite
+unstable and often won't update to a recent enough version, but you
+can try with this command:
 
-  conda install 'sra-tools>=2.11' -c conda-forge -c bioconda 
+  conda install 'sra-tools>=2.11' -c conda-forge -c bioconda
 
-NB: The sra-tools software is updated frequently with changes that 
-are not backwards compatible, thus breaking this wrapper tool. If 
-you encounter an error please let us know on gitter. But first check
-that you have installed a recent sra-tools version.
 """
 
 
 ACCESSION_ID = """
-Accession ID must be either a Run or Study accession, i.e., 
+Accession ID must be either a Run or Study accession, i.e.,
 it must have one the following prefixes:
   Study: SRR, ERR, DRR
   Project: SRP, ERP, DRP
@@ -65,34 +68,34 @@ class SRA:
     workdir: str
         A path str to the directory where outputs should be written.
     name_fields: int or str
-        Provide the index (1-indexed) of the name fields to be used 
-        as a prefix for fastq output files. The default is (1,30), 
+        Provide the index (1-indexed) of the name fields to be used
+        as a prefix for fastq output files. The default is (1,30),
         which is the accession + SampleName fields. Use
-        sra.fetch_fields to see all available fields and their 
-        indices. If multiple are listed then they will be joined 
+        sra.fetch_fields to see all available fields and their
+        indices. If multiple are listed then they will be joined
         by a "_" character. For example (29,30) would yield something
         like: latin-name_sample-name (e.g., mus_musculus-NR10123).
     dry_run: bool
         If True then a table of file names that _would_ be downloaded
         will be shown, but the actual files will note be downloaded.
     split_pairs: bool or None
-        If True then pairs are split, if False they are not split, if 
+        If True then pairs are split, if False they are not split, if
         None then we will auto-detect if paired or not and split pairs
-        when detected. Forcing splitting can be helpful when the 
+        when detected. Forcing splitting can be helpful when the
         metadata was not set properly.
     binary_path: bool or None
-        If None then binaries are looked for in the conda path. Else, 
+        If None then binaries are looked for in the conda path. Else,
         user can override by entering a path to a `fastq-dump` binary.
     gzip: bool
         Gzip compress fastq files.
     """
     def __init__(
-        self, 
+        self,
         accessions: Sequence[str],
         workdir: str = "sra-fastq-data",
-        name_fields: Sequence[int] = (1, 30), 
-        name_separator: str = "_", 
-        dry_run: bool = False, 
+        name_fields: Sequence[int] = (1, 30),
+        name_separator: str = "_",
+        dry_run: bool = False,
         split_pairs: Optional[bool] = None,
         binary_path: Optional[str] = None,
         ):
@@ -107,9 +110,9 @@ class SRA:
         self.binary_path = (
             Path(sys.prefix) / "bin" if binary_path is None else
             Path(binary_path).expanduser().absolute().parent)
-        """Prefix directory where fastq-dump and vdb-config binaries are"""
+        """: Prefix directory where fastq-dump and vdb-config binaries are"""
         self.sra_tmpdir = None
-        """Auto-set by check_binaries function"""
+        """: Auto-set by check_binaries function"""
         self.is_sample = False
         self.is_project = False
 
@@ -120,7 +123,7 @@ class SRA:
             self.accessions = [self.accessions]
 
         # get type
-        if any(i in self.accessions[0] for i in ["SRR", "ERR", "DRR"]):        
+        if any(i in self.accessions[0] for i in ["SRR", "ERR", "DRR"]):
             self.is_sample = True
         elif any(i in self.accessions[0] for i in ["SRP", "ERP", "DRP"]):
             self.is_project = True
@@ -129,7 +132,7 @@ class SRA:
 
         # make sure required software if installed
         self.check_binaries()
-        self.check_vdb()        
+        self.check_vdb()
 
     def check_binaries(self):
         """Find the fastq-dump binary in user $PATH."""
@@ -173,7 +176,7 @@ class SRA:
             logger.info(f"vdb-config path (tmpdir) is {self.sra_tmpdir}")
 
     def run(self, cores: int=None):
-        """Download accessions as fastq files into a designated workdir. 
+        """Download accessions as fastq files into a designated workdir.
 
         Parameters
         ----------
@@ -225,7 +228,7 @@ class SRA:
                                 )
                             )
                 else:
-                    rundf.Accession = rundf.SampleName       
+                    rundf.Accession = rundf.SampleName
 
             # test run to see file names and location without download
             if self.dry_run:
@@ -267,7 +270,7 @@ class SRA:
 
     def fetch_runinfo(self, fields=None):
         """
-        Query the RunInfo for a Sample or Run, returned as a DataFrame. 
+        Query the RunInfo for a Sample or Run, returned as a DataFrame.
         The fields can be subselected. See <self>.fields for options.
         """
         logger.info("Fetching project data...")
@@ -278,13 +281,13 @@ class SRA:
 
         sra_ids = []
         for accession in self.accessions:
-            # SRA IDs from the SRP 
+            # SRA IDs from the SRP
             res = requests.get(
-                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi", 
+                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
                 params={
                     "db": "sra",
                     "term": accession,
-                    "tool": "ipyrad", 
+                    "tool": "ipyrad",
                     "email": "ipyrad@gmail.com",
                     "retmax": 1000,
                     },
@@ -301,14 +304,14 @@ class SRA:
         for block in range(0, len(sra_ids), 20):
 
             res = requests.get(
-                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi", 
+                url="https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
                 params={
                     "db": "sra",
                     "id": ",".join(sra_ids[block:block + 20]),
-                    "tool": "ipyrad", 
+                    "tool": "ipyrad",
                     "email": "ipyrad@gmail.com",
-                    "rettype": "runinfo", 
-                    "retmode": "text",                
+                    "rettype": "runinfo",
+                    "retmode": "text",
                     },
                 )
             time.sleep(3)
@@ -324,14 +327,14 @@ class SRA:
         """
         calls fastq-dump on SRRs, relabels fastqs by their accession
         names, and writes them to the workdir. Saves temp sra files
-        in the designated vdb config tmp folder and immediately 
+        in the designated vdb config tmp folder and immediately
         removes them.
         """
         # build command for fastq-dumping
         fd_cmd = [
             str(self.binary_path / "fastq-dump"), srr,
             "--accession", acc,
-            "--outdir", self.workdir, 
+            "--outdir", self.workdir,
             # "--disable-multithreading",
             ]
         if paired:
@@ -351,7 +354,7 @@ def download_file(url, outname):
     """NOTE the stream=True parameter"""
     res = requests.get(url, stream=True)
     with open(outname, 'wb') as fout:
-        for chunk in res.iter_content(chunk_size=1024): 
+        for chunk in res.iter_content(chunk_size=1024):
             if chunk:  # filter out keep-alive new chunks
                 fout.write(chunk)
     return outname
@@ -392,13 +395,13 @@ def fields_checker(fields):
 
 #     # call fasterq dump in a subprocess to write to .fastq
 #     cmd = [
-#         "fasterq-dump", path, 
+#         "fasterq-dump", path,
 #         "-o", fastqpath,
 #         "-t", os.path.join(tempfile.gettempdir(), "scratch"),
-#         "--split-files", 
+#         "--split-files",
 #     ]
-#     print("\n\n" + " ".join(cmd) + "\n\n")    
-#     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)   
+#     print("\n\n" + " ".join(cmd) + "\n\n")
+#     proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
 #     res = proc.communicate()
 
 #     # check for errors
@@ -417,7 +420,7 @@ def fields_checker(fields):
 
 FAILED_DOWNLOAD = """
 Warning: One or more files failed to finish downloading or converting to fastq.
-To avoid corruption the file was file was removed. Try downloading again to get
+To avoid corruption the file was removed. Try downloading again to get
 any missing files. The following samples were affected:
 {}
 """
@@ -480,7 +483,7 @@ if __name__ == "__main__":
     # conda install 'sra-tools>=2.11' -c conda-forge -c bioconda
     import ipyrad.analysis as ipa
     ipa.set_log_level("DEBUG")
-    
+
     # tool = ipa.sratools(accessions="SRP065788")
     tool = ipa.sratools(accessions=["SRR2895756", "SRR2895757"])
     metadata = tool.fetch_runinfo(fields=[1, 4, 6, 28, 29, 30])
