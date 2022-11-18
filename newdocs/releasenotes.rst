@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.86
+------
+**November 18, 2022**
+
+- step3: Filter by min MAPQ in samtools view #494
+- Allow project_dir directories to create recursively
+- mod rtfd reqs.txt to unpin jinja2 version
+- Add rtfd yml file
+
 0.9.85
 ------
 **September 15, 2022**
