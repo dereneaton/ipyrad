@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.87
+------
+**November 28, 2022**
+
+- Fix oops in clustmap.py #494
+
 0.9.86
 ------
 **November 18, 2022**
