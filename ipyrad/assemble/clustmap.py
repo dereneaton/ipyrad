@@ -1930,7 +1930,7 @@ def mapping_reads(data, sample, nthreads, altref=False):
     cmd2 = [
         ip.bins.samtools, "view",
         "-b",
-        "-q", 30,
+        "-q", "30",
         "-F", "0x904",
         "-U", ubamout,
         samout,
