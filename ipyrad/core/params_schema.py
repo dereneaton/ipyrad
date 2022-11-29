@@ -4,12 +4,13 @@
 
 Pydantic Models are similar to dataclases but they also include
 *type validation*, meaning that if you try to set an attribute to
-the wrong type it will raise an error.
+the wrong type it will raise an error. By using type validation the
+pydantic models can be easily serialized to JSON and then reloaded
+as the appropriate data types.
 """
 
 # pylint: disable=no-self-argument, no-name-in-module, no-self-use
 
-import glob
 from pathlib import Path
 from enum import Enum
 from typing import List, Tuple
@@ -52,7 +53,7 @@ class DataType(str, Enum):
 class ParamsSchema(BaseModel):
     """Assembly object parameters for ipyrad assembly."""
     assembly_name: str = Field(allow_mutation=False)
-    project_dir: Path = Path.cwd()
+    project_dir: Path = Field(default_factory=Path.cwd)
     raw_fastq_path: Path = None
     barcodes_path: Path = None
     sorted_fastq_path: Path = None
@@ -126,7 +127,14 @@ class ParamsSchema(BaseModel):
 
     @validator('raw_fastq_path', 'sorted_fastq_path', 'barcodes_path')
     def _path_validator(cls, value):
-        """If a path was entered then it must match >=1 files."""
+        """If a path was entered then it must match >=1 files.
+
+        Users are allowed to enter None to leave this field blank, in
+        which case it only raises an exception if you run steps 1 or 2
+        when these files are needed. However, if a user enters an
+        invalid path where no files exist this will always raise an
+        error during JSON or params file parsing.
+        """
         if not value:
             return value
         if "Merged:" in value.name:
@@ -137,7 +145,7 @@ class ParamsSchema(BaseModel):
                 "You entered a dir path where you must enter a file path.\n"
                 "To select multiple files in a dir you can use regular \n"
                 "expressions, e.g., './data/*.fastq.gz'.")
-        if not glob.glob(str(value)):
+        if not list(value.parent.glob(value.name)): # glob.glob(str(value)):
             raise ValueError(f"no files match the input string: {value}")
         return value
 

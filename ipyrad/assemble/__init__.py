@@ -9,6 +9,7 @@ from . import s4_joint_estimate
 from . import s5_consensus
 from . import s6_clustmap_across
 from . import clustmap_within_denovo
+from . import clustmap_within_reference
 from . import clustmap_across_denovo
 from . import clustmap_across_reference
 
