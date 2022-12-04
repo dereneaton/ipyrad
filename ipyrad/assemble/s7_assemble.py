@@ -26,12 +26,11 @@ Format of 'snpsmap' dset in '.snps.hdf5' database
 - 0-indexed SNP in this dataset counter     # [0, 1, 2, 3, 4, ...]
 """
 
-import os
-import glob
+from typing import TypeVar, Iterator, Dict
+import gzip
 from collections import Counter
 from pathlib import Path
 
-from typing import TypeVar
 from loguru import logger
 import pandas as pd
 import h5py
@@ -40,7 +39,7 @@ import h5py
 from ipyrad.core.schema import AssemblyStats, Stats7
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.utils import IPyradError, clustdealer
+from ipyrad.assemble.utils import IPyradError
 
 # helper classes ported to separate files.
 from ipyrad.assemble.write_outputs_processor import ChunkProcess
@@ -55,6 +54,20 @@ from ipyrad.assemble.write_outputs_to_snps import SnpsDatabase
 Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
 
+OUT_SUFFIX = {
+    'l': 'loci',
+    'p': 'phy',
+    's': 'snps',  # 'snpsmap'
+    'n': 'nex',
+    'k': 'str',
+    'g': 'geno',
+    'G': 'gphocs',
+    'u': 'usnps',  # 'ustr', 'ugeno',
+    'v': 'vcf',
+    't': 'treemix',
+    'm': 'migrate',
+    # 'a' ('alleles',),
+}
 
 class Step7(BaseStep):
     """Organization for step7 funcs.
@@ -64,40 +77,43 @@ class Step7(BaseStep):
     def __init__(self, data: Assembly, force: bool, quiet: bool, ipyclient: "Client"):
         super().__init__(data, 7, quiet, force)
 
-        self.data.tmpdir = self.tmpdir
-        self.data.stepdir = self.stepdir
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
 
-        self.drop_ref = self.data.hackers.exclude_reference and self.data.is_ref
+        # Store this to data b/c its used in remote functions.
+        self.data.drop_ref = self.data.hackers.exclude_reference and self.data.is_ref
         """: record whether the reference sample needs to be dropped."""
 
-        # store 'step samples' which is all samples that are ready for
-        # this step in the current Assembly, plus the addition of a
-        # 'reference' Sample if this is a reference assembly. These
-        # samples must have the same 'database' file, meaning they
-        # were run in step6 together, checked in `check_database_files()`.
-        # IF 'hackers.exclude_reference' it is excluded later.
-        self.data.samples = self.samples
-        logger.debug(f"samples: {sorted(self.data.samples)}")
+        # Samples includes all samples present in the step6 clust_database.
+        # Users cannot merge new samples between step6 and 7 or the 
+        # check_database func here will raise an exception. They can branch
+        # to drop samples which will be handled fine. If it is a REF assembly
+        # then BaseStep will add a reference Sample. If the hackers.exclude_reference
+        # option is turned on then the reference Sample will be excluded later.
+        logger.debug(f"samples: {sorted(self.samples)}")
 
         # info gathered from step6 results and ncpus
-        self.chunksize = 0
         self.clust_database = ""
+        """: Database file with aligned clusters from step 6."""        
         self._check_database_files()
+
+        self._n_raw_loci = 0
+        self.chunksize = 0
+        """: Chunk size used for parallel processing and mem limit."""
         self._get_chunksize()
 
-        # default output file formats.
+        # re-set default output file formats.
         self.data.outfiles = {
-            'loci': Path(self.stepdir) / f"{self.data.name}.loci",
-            'seqs_database': Path(self.stepdir) / f"{self.data.name}.seqs.hdf5",
-            'snps_database': Path(self.stepdir) / f"{self.data.name}.snps.hdf5",
+            'loci': self.data.stepdir / f"{self.data.name}.loci",
+            'seqs_database': self.data.stepdir / f"{self.data.name}.seqs_hdf5",
+            'snps_database': self.data.stepdir / f"{self.data.name}.snps_hdf5",
         }
+        """: Dict of output file paths."""
 
-        # create keys for additional file formats.
+        # create keys for additional file formats, rm if file exists.
         for letter in self.data.params.output_formats:
             oname = OUT_SUFFIX[letter]
-            self.data.outfiles[oname] = Path(self.stepdir) / f"{self.data.name}.{oname}"
+            self.data.outfiles[oname] = self.data.stepdir / f"{self.data.name}.{oname}"
             self.data.outfiles[oname].unlink(missing_ok=True)
 
         # init assembly stats object for storing results
@@ -106,6 +122,7 @@ class Step7(BaseStep):
         self.data.assembly_stats = AssemblyStats()
         """: Store Assembly stats from chunk processes."""
 
+    ###### INIT FUNCS #############################################
     def _check_database_files(self):
         """Check that samples match those in the clustdb.
 
@@ -133,56 +150,92 @@ class Step7(BaseStep):
     def _get_chunksize(self):
         """Get nloci and ncpus to chunk and distribute jobs."""
         # this file is inherited from step 6 to allow step7 branching.
-        with open(self.clust_database, 'r', encoding="utf-8") as inloci:
+        with gzip.open(self.clust_database, 'rt') as inloci:
             # skip header
             inloci.readline()
             # get nraw loci
-            nraws = sum(1 for i in inloci if i == "//\n") // 2
+            self._n_raw_loci = sum(1 for i in inloci if i == "//\n") // 2
 
         # chunk to approximately 4 chunks per core
         ncpus = len(self.ipyclient.ids)
         self.chunksize = sum([
-            (nraws // (ncpus * 4)),
-            (nraws % (ncpus * 4)),
+            (self._n_raw_loci // (ncpus * 4)),
+            (self._n_raw_loci % (ncpus * 4)),
         ])
-        logger.debug(f"using chunksize {self.chunksize} for {nraws} loci")
+        logger.debug(f"using chunksize {self.chunksize} for {self._n_raw_loci} loci")
 
-    def _split_clusters(self):
-        """Splits the step6 clust_database into chunks to be processed
-        in parallel by ChunkProcessor to apply filters.
+    ###### MAIN FUNC ##############################################
+    def run(self):
+        """All steps to complete step7 assembly."""
+        # split clusters into bits given n engines.
+        self._write_cluster_chunks()
 
-        TODO: replace this with a generator function.
-        """
-        with open(self.clust_database, 'r', encoding="utf-8") as clusters:
-            # skip header
-            clusters.readline()
+        # apply filters and trim to the aligned clusters
+        # and writes processed chunks to the tmpdir, and returns stats.
+        self._apply_filters_and_trimming()
+        self._collect_stats()
+        self._write_stats_files()
 
-            # build iterator
-            pairdealer = zip(*[clusters] * 2)
+        # write .loci, .snps_hdf5, and .seqs_hdf5.
+        self._write_databases()
 
-            # grab a chunk of clusters
-            idx = 0
-            while 1:
+        # write additional user-requested output formats from h5s.
+        # self._write_conversions()
 
-                # if an engine is available pull off a chunk
-                try:
-                    done, chunk = clustdealer(pairdealer, self.chunksize)
-                except IndexError as err:
-                    msg = f"clust_database formatting error in {chunk}"
-                    logger.error(msg)
-                    raise IPyradError from err
+        # send jobs to build vcf
+        # throttle job to avoid memory errors based on catg size
+        # if 'v' in self.formats:
+            # self.remote_fill_depths()
+            # self.remote_build_vcf()
 
-                # write to tmpdir and increment counter
-                if chunk:
-                    chunkpath = os.path.join(self.tmpdir, f"chunk-{idx}")
-                    with open(chunkpath, 'w', encoding="utf-8") as outfile:
-                        outfile.write("//\n//\n".join(chunk))
-                    idx += 1
+    ###### PARSE FUNCS #############################################
+    def _iter_clusters(self) -> Iterator[str]:
+        """Yields clusters between separators after skipping line 1."""
+        with gzip.open(self.clust_database, 'rt', ) as clustio:
 
-                # break on final chunk
-                if done:
-                    break
-            logger.debug(f"split loci into {idx} chunks for processing.")
+            # skip the first header line and create 2-line generator
+            clustio.readline()
+            pairs = zip(*[iter(clustio)] * 2)
+
+            # fill data with a cluster, then yield and reset.
+            data = []
+            for name, seq in pairs:
+                if name[0] == ">":
+                    data.extend([name, seq])
+                else:
+                    yield "".join(data)
+                    data = []
+
+    def _iter_chunks(self) -> Iterator[str]:
+        """Yields chunks of clusters of size CHUNKSIZE"""
+        chunk = []
+        for idx, cluster in enumerate(self._iter_clusters()):
+            if cluster:
+                chunk.append(cluster)
+            if not (idx + 1) % self.chunksize:
+                yield chunk
+                chunk = []
+        if chunk:
+            yield chunk
+
+    def _write_cluster_chunks(self) -> Iterator[str]:
+        """Writes chunk to be processed in parallel by ChunkProcessor"""
+        for idx, chunk in enumerate(self._iter_chunks()):
+            chunkpath = self.data.tmpdir / f"chunk-{idx}-{idx * self.chunksize}.pre"
+            with open(chunkpath, 'w', encoding="utf-8") as outfile:
+                outfile.write("//\n//\n".join(chunk) + "//\n//\n")
+                logger.debug(f"wrote chunk {idx} for processing.")
+
+    ###### MAIN SUBFUNCS #########################################
+    def debug(self):
+        """Return a ChunkProcessor object for a sample as one chunk."""
+        old_chunksize = self.chunksize
+        self.chunksize = int(1e9)
+        self._write_cluster_chunks()
+        self.chunksize = old_chunksize
+        cfile = list(self.data.tmpdir.glob("chunk-*.pre"))[0]
+        logger.warning("returned ChunkProcess for debugging.")
+        return ChunkProcess(self.data, self.samples, self._n_raw_loci, cfile)
 
     def _apply_filters_and_trimming(self):
         """Calls process_chunk() function in parallel.
@@ -192,18 +245,18 @@ class Step7(BaseStep):
         If `hackers.exclude_reference=True` it will filter the
         reference sequence from all loci
         """
-        def remote_process_chunk(data, chunksize, chunkfile, drop_ref):
+        def remote_process_chunk(data, samples, chunksize, chunkfile):
             """ChunkProcess writes to .loci chunks and returns stats."""
-            proc = ChunkProcess(data, chunksize, chunkfile, drop_ref)
+            proc = ChunkProcess(data, samples, chunksize, chunkfile)
             proc.run()
             return proc.stats
 
         # organize chunks and submit to job engine
-        chunks = glob.glob(os.path.join(self.tmpdir, "chunk-*"))
-        chunks = sorted(chunks, key=lambda x: int(x.rsplit("-")[-1]))
+        chunks = self.data.tmpdir.glob("chunk-*.pre")
+        chunks = sorted(chunks, key=lambda x: int(x.name.split("-")[1]))
         jobs = {}
         for chunk in chunks:
-            args = (self.data, self.chunksize, chunk, self.drop_ref)
+            args = (self.data, self.samples, self.chunksize, chunk)
             jobs[chunk] = self.lbview.apply(remote_process_chunk, *args)
         msg = "applying filters"
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
@@ -367,7 +420,7 @@ class Step7(BaseStep):
             out.write(
                 "\n\n# The distribution of N polymorphisms per locus.\n"
                 "# This should be interpreted like a histogram.\n"
-                "# pis = only parsimony informative variable sites (minor allele in >1 sample).\n\n"
+                "# pis = only parsimony informative variable sites (minor allele in >1 sample).\n"
                 "# var = any variable site (pis + autapomorphies).\n")
             maxval = max([
                 max(self.data.assembly_stats.var_sites.keys()),
@@ -413,19 +466,20 @@ class Step7(BaseStep):
         h5 databases to generate their data.
         """
         msg = "writing loci and database files"
-        jobs = {0: self.lbview.apply(remote_fill_loci, self.data)}
-        jobs = {1: self.lbview.apply(remote_fill_seqs, self.data)}
-        jobs = {2: self.lbview.apply(remote_fill_snps, self.data)}
+        jobs = {0: self.lbview.apply(remote_fill_loci, *(self.data, self.samples))}
+        jobs = {1: self.lbview.apply(remote_fill_seqs, *(self.data, self.samples))}
+        jobs = {2: self.lbview.apply(remote_fill_snps, *(self.data, self.samples))}
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
         prog.block()
         prog.check()
 
+    ###### CONVERSIONS ###########################################
     def _write_conversions(self):
         """Writes data to optional output formats from HDF5 arrays."""
         msg = "writing conversions"
         jobs = {}
-        for outf in self.outformats:
-            jobs[outf] = self.lbview.apply(convert_outputs, *(self.data, outf))
+        for outf in self.data.outfiles:
+            jobs[outf] = self.lbview.apply(remote_file_conversion, *(self.data, outf))
 
         # iterate until all chunks are processed
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
@@ -433,30 +487,11 @@ class Step7(BaseStep):
         prog.check()
 
         # store results to project
-        for key in prog.results:
-            outfile = prog.results[key]
-            outname = OUT_SUFFIX[key]
-            self.proj.outfiles[outname] = outfile
-        print(self.proj.outfiles)
-
-    def run(self):
-        """All steps to complete step7 assembly."""
-        # split clusters into bits given n engines.
-        self._split_clusters()
-
-        # apply filters and trim to the aligned clusters
-        # and writes processed chunks to the tmpdir, and returns stats.
-        self._apply_filters_and_trimming()
-        self._collect_stats()
-        self._write_stats_files()
-        self._write_databases()
-        # self._write_conversions()
-
-        # send jobs to build vcf
-        # throttle job to avoid memory errors based on catg size
-        # if 'v' in self.formats:
-            # self.remote_fill_depths()
-            # self.remote_build_vcf()
+        # for key in prog.results:
+            # outfile = prog.results[key]
+            # outname = OUT_SUFFIX[key]
+            # self.data.outfiles[outname] = outfile
+        print(self.data.outfiles)
 
     def _remote_build_vcf(self):
         """Build VCF format from snps HDF5, but w/o depths info."""
@@ -485,17 +520,17 @@ class Step7(BaseStep):
     #     prog.check()
 ###############################################################
 
-def remote_fill_loci(data: Assembly) -> None:
+def remote_fill_loci(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .loci file from chunks."""
-    LociWriter(data).run()
+    LociWriter(data, samples).run()
 
-def remote_fill_seqs(data: Assembly) -> None:
+def remote_fill_seqs(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .seqs.hdf5 file from chunks."""
-    SeqsDatabase(data).run()
+    SeqsDatabase(data, samples).run()
 
-def remote_fill_snps(data: Assembly) -> None:
+def remote_fill_snps(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .snps.hdf5 file from chunks."""
-    SnpsDatabase(data).run()
+    SnpsDatabase(data, samples).run()
 
 def remote_file_conversion(data: Assembly, outf: Path):
     """Remote function for converiting."""
@@ -531,33 +566,18 @@ You can alternatively create this type of file using ipyrad-analysis
 after assembling your data.
 """
 
-OUT_SUFFIX = {
-    'l': 'loci',
-    'p': 'phy',
-    's': 'snps',  # 'snpsmap'
-    'n': 'nex',
-    'k': 'str',
-    'g': 'geno',
-    'G': 'gphocs',
-    'u': 'usnps',  # 'ustr', 'ugeno',
-    'v': 'vcf',
-    't': 'treemix',
-    'm': 'migrate',
-    # 'a' ('alleles',),
-}
-
 
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG")# log_file="/tmp/test.log")
 
-
-    TEST = ip.load_json("/tmp/TEST5.json")
+    TEST = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
+    # TEST = ip.load_json("/tmp/TEST5.json")
 
     TEST.hackers.exclude_reference = True
     TEST.params.output_formats = ("v", "s")
-    TEST.run("7", force=True, quiet=True)
+    TEST.run("7", cores=4, force=True, quiet=True)
 
 
     # tdata = ip.load_json("/tmp/test-simpairddrad.json")

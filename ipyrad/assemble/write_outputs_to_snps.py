@@ -2,47 +2,68 @@
 
 """Loads processed .loci chunks and writes to HDF5 snps database.
 
+Attrs in snps.hdf5 
+------------------
+- version : int : 1 is current. Older will not have this attr.
+- names: List[str] : alphanumerically sorted sample names but with 
+    'reference ' as the first sample if present.
+- reference: str : filename of reference fasta file.
+
 Datasets in snps.hdf5
 ---------------------
-- snps    : shape=(nsamples, nsnps)
-- snpsmap : shape=(nsnps, 5)
-- genos   : shape=(nsamples, nsnps, 2)
-- alts    : shape=(nsnps, 4)
+- snps    : shape=(nsamples, nsnps)    : arr of diploid geno calls 
+- snpsmap : shape=(nsnps, 5)           : arr of SNP positions
+- genos   : shape=(nsamples, nsnps, 2) : arr of geno calls (0,1,2)
+- alts    : shape=(nsnps, 4)           : arr of alt calls (...)
 
-Format of snps.hdf5 'snpsmap'
-----------------------------
-- 1-indexed total locus counter.
+Attrs of the snpsmap dataset
+-----------------------------
+- scaffold_names: List[str]
+- scaffold_lengths: List[int]
+- columns: List[str] : ["loc_idx", "loc_snp_idx", "loc_snp_pos", "scaf_idx", "scaf_pos"]
+- indexing: List[int] : shows that each columns is indexed from 0.
+
+Format of data snps.hdf5 'snpsmap'
+----------------------------------
+- 0-indexed total locus counter.
 - 0-indexed index of nSNPs on this locus.
 - 0-indexed position of SNP on this locus.
-- 1-indexed index of scaffold (same as 1-index locus-index if denovo).
-- 1-indexed index of SNP on reference (just zeros if denovo).
+- 0-indexed index of scaffold name (.attrs['scaffold_names'][idx])
+- 0-indexed position of SNP on scaffold (same as pos of SNP on locus if denovo)
 
 Example snpsmap
 ---------------
->>> [0, 0, 10, 1, 10000],
->>> [0, 1, 22, 1, 10012],
->>> [0, 2, 65, 1, 10065],
->>> [1, 0, 80, 1, 20000],  # locus 1 has only 1 SNP at pos 80, which is pos 20K on scaff 1.
->>> [2, 0, 25, 1, 30000],
->>> [2, 1, 75, 1, 30050],
+The indexing of rows in .snpsmap corresponds to SNPs in .snps (i.e.,
+the column indexing of .snps). The first three columns of .snpsmap 
+describe the location of the SNP in each discrete RAD locus (i.e., 
+it matches up with the .loci file). The fourth and fifth columns
+describe the location of SNPs on scaffolds.
+
+>>> [0, 0, 10, 0, 10000],
+>>> [0, 1, 22, 0, 10012],
+>>> [0, 2, 65, 0, 10065],
+>>> [1, 0, 80, 0, 20000],
+>>> [2, 0, 25, 0, 30000],
+>>> [2, 1, 75, 0, 30050],
 >>> ...
 >>> [10000, 3, 88, 100, 200]  # scaff 100 is small and so SNP pos is low.
+# Loc0, SNP0, Pos10, Scaff0, ScaffPos10000
+# Loc0, SNP1, Pos22, Scaff0, ScaffPos10000
+# Loc1, SNP0, Pos80, Scaff0, ScaffPos20000
 
 Note
 ----
-The total locus counter index is 0-indexed as of v.1.0. This is 
-not the same as the scaffold index, which is 1-indexed. In denovo
-data they refer to the same thing, since loci are scaffolds, in 
-which case it can be confusing. Just remember, scaffold name
-"RAD_locus_0" is scaffold 1.
+The total locus counter index and the scaffold number index are both
+0-indexed as of v1. This is different from older ipyrad versions.
 """
 
-from typing import Iterator, Dict, List, Tuple, TypeVar
+from typing import TypeVar, Dict, Iterator, Tuple
 from pathlib import Path
 import h5py
 import numpy as np
 from numba import njit
 from ipyrad.assemble.utils import get_fai_values
+from ipyrad.assemble.write_outputs_base import DatabaseLoader
 
 Assembly = TypeVar("Assembly")
 
@@ -75,35 +96,12 @@ AMBIGS_FULL = np.array([
 # size of concatenated data processed at one time in memory.
 CHUNKSIZE = 10_000
 
-class SnpsDatabase:
-    def __init__(self, data: Assembly):
-        self.data = data
-        """: Assembly object."""
-        self.name = Path(data.stepdir) / f"{data.name}.snps.hdf5"
+class SnpsDatabase(DatabaseLoader):
+
+    def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
+        self.name = Path(data.stepdir) / f"{data.name}.snps_hdf5"
         """: Output HDF5 file name."""
-
-        # attributes to be filled.
-        self.snames: List[str] = []
-        """: A list of names in alphanumeric order, optionally including ref as sample."""
-        self.sidxs: Dict[str, str] = {}
-        """: A dict mapping names to the seqs database row index."""
-        self.drop_ref: bool = (
-            self.data.is_ref & self.data.hackers.exclude_reference)
-        """: Boolean for whether reference samples exists and should be dropped."""
-        self.nmissing: int = 0
-        """: Counter to record number of cells of missing data (N or -)."""
-        self.snppad: int = 0
-        """: Length of name region in .loci file before sequences start."""
-
-    def _get_sorted_loci_chunks(self) -> None:
-        """Gather all loci bits and sort by filename. And get snppad len."""
-        paths = sorted(
-            Path(self.data.tmpdir).glob("*.loci"),
-            key=lambda x: int(str(x).rsplit("-", 1)[-1][:-5]),
-        )
-        with open(paths[0], 'r', encoding="utf-8") as indata:
-            self.snppad = indata.readline().rfind(" ") + 1
-        return paths
+        super().__init__(data, samples)
 
     def _init_datasets(self) -> None:
         """Create the datasets in the snps database.
@@ -143,71 +141,33 @@ class SnpsDatabase:
                 dtype=np.uint8,
             )
 
-            # alphanumeric name order except 'reference' on top.
-            self.snames = sorted(self.data.samples)
-
-            # drop the reference sample, and add it back as first sample.
-            # EVEN if we plan to exclude it from the sample data later,
-            # we will still keep it in the array for now so that we can
-            # write it to the HDF5 as the reference seq. NOTE: this is
-            # different from how the seqs.hdf5 writing code works.
-            self.snames.remove("reference")
-            self.snames = ["reference"] + self.snames
+            # indices of sorted sample names 
             self.sidxs = {sample: i for (i, sample) in enumerate(self.snames)}
 
             # store the scaffold names and lengths. The name strings are
             # now always stored as strings in HDF5 attrs.
             if self.data.is_ref:
-                io5["scaffold_lengths"] = get_fai_values(self.data, "length")
-                io5["scaffold_names"] = get_fai_values(self.data, "scaffold").astype("S")
+                snpsmap.attrs["scaffold_lengths"] = get_fai_values(self.data, "length")
+                snpsmap.attrs["scaffold_names"] = get_fai_values(self.data, "scaffold").astype("S")
 
             # store the name of reference genome file.
             if self.data.is_ref:
-                snpsmap.attrs["reference"] = Path(self.data.params.reference_sequence).name
+                io5.attrs["reference"] = Path(self.data.params.reference_sequence).name
             else:
-                snpsmap.attrs["reference"] = "pseudoref"
+                io5.attrs["reference"] = "pseudoref"
+            snpsmap.attrs["columns"] = ["loc_idx", "loc_snp_idx", "loc_snp_pos", "scaf_idx", "scaf_pos"]
+            snpsmap.attrs["indexing"] = [0, 0, 0, 0, 0]
 
             # store ordered names and column labels
-            if self.drop_ref:
-                snpsmap.attrs["names"] = [i for i in self.snames if i != "reference"]
-            else:
-                snpsmap.attrs["names"] = self.snames
-            snpsmap.attrs["columns"] = ["locus", "locidx", "locpos", "scaf", "scafpos"]
-            snpsmap.attrs["indexing"] = [1, 0, 0, 1, 1]
-
-    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,str,int,int]]]:
-        """Yields loci from each ordered .loci file until empty.
-
-        The 'reference' sample is always included here when is_ref.
-        """
-        for locfile in self._get_sorted_loci_chunks():
-            with open(locfile, 'r', encoding="utf-8") as indata:
-
-                names_to_seqs = {}
-                for line in indata:
-
-                    # within a locus, fill the data.
-                    if line[0] != "/":
-                        name, seq = line.split()
-                        names_to_seqs[name] = bytes(seq, "utf-8")
-
-                    else:
-                        # store the snpstring too
-                        names_to_seqs['snpstring'] = line[self.snppad:].split("|")[0]
-
-                        # parse reference position from snpstring
-                        chrom_int, chrom_name, pos0, pos1 = 0, "", 0, 0
-                        if self.data.is_ref:
-                            line_chunks = line.split("|")
-                            chrom_int, chrom_name, pos = line_chunks[1].split(":")
-                            chrom_int = int(chrom_int)
-                            pos0, pos1 = [int(i) for i in pos.split("-")]
-
-                        # end of locus, yield the dict.
-                        yield names_to_seqs, (chrom_int, chrom_name, pos0, pos1)
+            # if self.drop_ref:
+                # snpsmap.attrs["names"] = [i for i in self.snames if i != "reference"]
+            # else:
+            io5.attrs["names"] = self.snames
+            io5.attrs["version"] = 1
 
     def _iter_supermatrix_chunks(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
-        """Yields chunks of supermatrix and snpsmap.
+        """Yields chunks of supermatrix, snpmap, and reference seq.
+
         """
         # concat size of chunks that will be yielded, with some overflow of columns
         nsamps = self.data.assembly_stats.nsamples
@@ -220,7 +180,7 @@ class SnpsDatabase:
         # iterate over loci from .loci files incrementing the locus every
         # time so that the locus IDs in snps.hdf5 match those in seqs.hdf5.
         # keep track of position in array to send a chunk when full.
-        locidx = 1
+        locidx = 0
         pos = 0
         for names_to_seqs, positions in self._iter_loci():
 
@@ -237,7 +197,8 @@ class SnpsDatabase:
                 continue
 
             # order the dict by alphanumeric names except with reference first.
-            ordered_seqs = (names_to_seqs[i] for i in self.snames if i in names_to_seqs)
+            # ordered_seqs = (names_to_seqs[i] for i in self.snames if i in names_to_seqs)
+            ordered_seqs = [names_to_seqs[i] for i in self.snames if i in names_to_seqs]
 
             # convert locus to uint8 array and subselect only SNP sites.
             loc = np.array([list(i) for i in ordered_seqs], dtype=np.uint8)
@@ -252,7 +213,7 @@ class SnpsDatabase:
             # enter snps data into the tmparr: (0, 'ref'), (1, 'A'), (2, 'B')...
             for tmp_sidx, name in enumerate(names_to_seqs):
                 pos_slice = slice(pos, pos + snps_sites.shape[1])
-                if self.drop_ref:
+                if self.data.drop_ref:
                     if name == "reference":
                         continue
                     global_sidx = self.sidxs[name] - 1
@@ -296,6 +257,8 @@ class SnpsDatabase:
 
     def _fill_database(self) -> None:
         """Iterates over chunks of data entering into the H5 database.
+
+        This fills 'snps' and 'snpsmap' dsets, and 'alts' if is_ref.
         """
         start_arr = 0
         start_map = 0
@@ -308,6 +271,8 @@ class SnpsDatabase:
                 # insert to dataset array
                 io5["snps"][:, start_arr:end_arr] = arr_chunk
                 io5["snpsmap"][start_map:end_map] = map_chunk
+
+                # if reference then use REF as the alt allele.
                 if self.data.is_ref:
                     io5["alts"][start_arr:end_arr, 0] = ref_chunk
 
@@ -318,6 +283,9 @@ class SnpsDatabase:
     def _fill_alts(self):
         """get REF, ALT genotypes for use in VCF and GENOS calls.
 
+        ALT is used to fill the VCF database later, and to make the
+        GENO calls. It doesn't really need to be stored in the SNPs 
+        database long term though, but it is for now.
         """
         with h5py.File(self.name, 'a') as io5:
 
@@ -353,7 +321,7 @@ class SnpsDatabase:
 
                 # get genos and enter into hdf5
                 genos = jit_get_genos(chunk, alts, AMBIGS_FULL)
-                io5["genos"][cslice, :, :] = genos
+                io5["genos"][:, cslice, :] = genos
 
     def _write_stats(self):
         """Write missing values in matrix to stats file, and logger.
@@ -373,12 +341,19 @@ class SnpsDatabase:
         with open(stats_file, 'a', encoding="utf-8") as out:
             outstr = (
                 f"snps matrix size: {shape}, "
-                f"{perc_missing:.2f}% missing sites.\n"
+                f"{100 * perc_missing:.2f}% missing sites.\n"
             )
             out.write(outstr)
 
     def run(self):
         """Initialize HDF5 database and then fill it in chunks."""
+
+        # parent class methods
+        self._get_sorted_loci_chunks()
+        self._get_snppad()
+        self._get_snames()
+
+        # child class methods
         self._init_datasets()
         self._fill_database()
         self._write_stats()
@@ -386,8 +361,7 @@ class SnpsDatabase:
         self._fill_genos()
 
 @njit
-def jit_get_ordered_alts(
-    arr: np.ndarray, cons: np.ndarray) -> np.ndarray:
+def jit_get_ordered_alts(arr: np.ndarray, cons: np.ndarray) -> np.ndarray:
     """Find all observed bases at each site in order of frequency.
 
     This is used when filling VCF to fill the ALTS index.
@@ -434,8 +408,7 @@ def jit_get_ordered_alts(
     return alt_refs
 
 @njit
-def jit_get_reordered_alts_by_reference(
-    alts: np.ndarray, ref: np.ndarray) -> np.ndarray:
+def jit_get_reordered_alts_by_reference(alts: np.ndarray, ref: np.ndarray) -> np.ndarray:
     """Returns ALTs so that the reference is first, and other 
     observations come after.
     """
@@ -466,10 +439,10 @@ def jit_get_reordered_alts_by_reference(
     return new_alts
 
 @njit
-def jit_get_genos(
-    snps: np.ndarray, alts: np.ndarray, cons: np.ndarray) -> np.ndarray:
+def jit_get_genos(snps: np.ndarray, alts: np.ndarray, cons: np.ndarray) -> np.ndarray:
     """Return genotype as 0/1/2/3 or 9 for missing as, e.g., (0, 1).
 
+    This function needs 
     """
     # create genos array for the chunk.
     genos = np.zeros((snps.shape[0], snps.shape[1], 2), dtype=np.uint8)
@@ -508,9 +481,11 @@ if __name__ == "__main__":
 
     import ipyrad as ip
     from ipyrad.assemble.s7_assemble import Step7    
-    ip.set_log_level("INFO", log_file="/tmp/test.log")
+    ip.set_log_level("INFO")#, log_file="/tmp/test.log")
 
-    DATA = ip.load_json("/tmp/TEST5.json")
+    DATA = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
+    # DATA = ip.load_json("/tmp/small.json")
+
     # uncomment to include the ref
     DATA.hackers.exclude_reference = True
     print("EXCLUDE REF=", DATA.hackers.exclude_reference)
@@ -518,25 +493,25 @@ if __name__ == "__main__":
     # run it.
     with ip.Cluster(4) as ipyclient:
         step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
-        step._split_clusters()
+        step._write_cluster_chunks()
         step._apply_filters_and_trimming()
         step._collect_stats()
+        step._write_stats_files()
 
-
-        db = SnpsDatabase(DATA)
+        db = SnpsDatabase(step.data, step.samples)
         db.run()
 
-        # print supermatrix parts from start and end of loci file.
-        with h5py.File(db.name, 'r') as IO5:
-            NAMES = IO5["snpsmap"].attrs["names"][:]
-            SNPS = IO5["snps"][:]
-            GENOS = IO5["genos"][:]
-            ALTS = IO5["alts"][:]
+        # # print supermatrix parts from start and end of loci file.
+        # with h5py.File(db.name, 'r') as IO5:
+        #     NAMES = IO5["snpsmap"].attrs["names"][:]
+        #     SNPS = IO5["snps"][:]
+        #     GENOS = IO5["genos"][:]
+        #     ALTS = IO5["alts"][:]
 
-            print(NAMES)
-            # print first ten sites in first chunk file
-            for i, n in enumerate(NAMES):            
-                print(f"{NAMES[i]:<10}", SNPS[i, :16].tobytes().decode())            
-            print(ALTS[:16])
-            # print(GENOS[-1, :16])
+        #     print(NAMES)
+        #     # print first ten sites in first chunk file
+        #     for i, n in enumerate(NAMES):            
+        #         print(f"{NAMES[i]:<10}", SNPS[i, :16].tobytes().decode())            
+        #     print(ALTS[:16])
+        #     # print(GENOS[-1, :16])
             

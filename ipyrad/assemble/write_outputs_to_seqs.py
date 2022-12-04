@@ -2,70 +2,67 @@
 
 """Loads processed .loci chunks and writes to HDF5 seqs database.
 
+Attrs in seqs_hdf5
+------------------
+- version: int : 1 is current. Older will not have this attr.
+- names: List[str] : alphanumerically sorted sample names but with 
+    'reference ' as the first sample if present.
+- reference: str : filename of reference fasta file.
+
 Datasets in seqs.hdf5
 ---------------------
-- phy
-- phymap
-- scaffold_names
-- scaffold_lengths
+- phy              : shape=(nsamples, nsites)     : arr of uint8 seqs
+- phymap           : shape=(nsites, 5)            : arr mapping seqs windows to genomic positions or loci.
+- scaffold_names   : shape=(nscaffolds or nloci,) : names of scaffolds or locus numbers
+- scaffold_lengths : shape=(nscaffolds or nloci,) : lengths of scaffolds or loci
 
 Format of seqs.hdf5 'phymap'
 ----------------------------
-- 1-indexed index of scaffold/locus names (in 'scaffold_names' str dataset)
-- 0-indexed 'phy' start position
+- 0-indexed index of scaffold (or locus idx if denovo)
+- 0-indexed 'phy' start position 
 - 0-indexed 'phy' end position
-- 1-indexed reference start position (just zeros if denovo)
-- 1-indexed reference end position (just zeros if denovo)
+- 0-indexed reference start position (always zero if denovo)
+- 0-indexed reference end position (always loclen if denovo)
 
 Example phymap
 --------------
->>> [1,   0, 300, 20000, 20300],     # early scaffolds are usually larger
->>> [1, 300, 600, 40000, 40300],     # and will have high ref start-end pos.
->>> [1, 600, 900, 55000, 55300],     # but low indices in the phy array.
+>>> [0,   0, 300, 20000, 20300],     # early scaffolds are usually larger
+>>> [0, 300, 600, 40000, 40300],     # and will have high ref start-end pos.
+>>> [0, 600, 900, 55000, 55300],     # but low indices in the phy array.
 >>> ...
 >>> [512, 50000, 50300, 3000, 3300], # late scaffolds are usually smaller,
 >>> [512, 50300, 50600, 5000, 5300]  # and so have low ref start-end, but
 >>>                                  # high indices in the phy array.
 
+# Scaff0, idx0, idx300, scaffpos20000, scaffpos20300       # RAD locus 0
+# Scaff0, idx300, idx600, scaffpos40000, scaffpos40300     # RAD locus 1
+# ...                                                      # RAD loci...
+# Scaff512, idx50300, idx50600, scaffpos5000, scaffpos5300 # RAD locus -1
+
 Note
 ----
-As much as I don't like it, the scaffolds in phymap are 1-indexed
-for compatibility reasons with other formats like VCF, which do not
-allow a 0-indexed scaffold or positions.
+The phy array includes extra columns at the end containing 0s. This is
+by design, albeit a little wasteful. The data should always be accessed
+from this file with respect to the phymap array which specifies which
+windows correspond to which loci.
 """
 
-from typing import Iterator, Dict, List, Tuple, TypeVar
+from typing import Dict, TypeVar, Iterator, Tuple
 from pathlib import Path
 import h5py
 import numpy as np
 from ipyrad.assemble.utils import get_fai_values
+from ipyrad.assemble.write_outputs_base import DatabaseLoader
 
 Assembly = TypeVar("Assembly")
+CHUNKSIZE = 50_000
 
-class SeqsDatabase:
-    def __init__(self, data: Assembly):
-        self.data = data
-        """: Assembly object."""
-        self.name = Path(data.stepdir) / f"{data.name}.seqs.hdf5"
+class SeqsDatabase(DatabaseLoader):
+
+    def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
+        self.name = Path(data.stepdir) / f"{data.name}.seqs_hdf5"
         """: Output HDF5 file name."""
-
-        # attributes to be filled.
-        self.snames: List[str] = []
-        """: A list of names in alphanumeric order, optionally including ref as sample."""
-        self.sidxs: Dict[str, str] = {}
-        """: A dict mapping names to the seqs database row index."""
-        self.drop_ref: bool = (
-            self.data.is_ref & self.data.hackers.exclude_reference)
-        """: Boolean for whether reference samples exists and should be dropped."""
-        self.nmissing: int = 0
-        """: Counter to record number of cells of missing data (N or -)."""
-
-    def _get_sorted_loci_chunks(self) -> None:
-        """Gather all loci bits and sort by filename."""
-        return sorted(
-            Path(self.data.tmpdir).glob("*.loci"),
-            key=lambda x: int(str(x).rsplit("-", 1)[-1][:-5]),
-        )
+        super().__init__(data, samples)
 
     def _init_datasets(self) -> None:
         """Create the datasets in the seqs database.
@@ -76,8 +73,16 @@ class SeqsDatabase:
         """
         with h5py.File(self.name, 'w') as io5:
 
-            # create the datasets.
-            io5.create_dataset(
+            # store meta-data
+            io5.attrs["names"] = self.snames
+            io5.attrs["version"] = 1
+            if self.data.is_ref:
+                io5.attrs["reference"] = Path(self.data.params.reference_sequence).name
+            else:
+                io5.attrs["reference"] = "pseudoref"
+
+            # create the seq and seq positions arr datasets.
+            _ = io5.create_dataset(
                 name="phy",
                 shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nbases),
                 dtype=np.uint8,
@@ -88,93 +93,53 @@ class SeqsDatabase:
                 dtype=np.uint64,
             )
 
-            # alphanumeric name order except 'reference' on top.
-            self.snames = sorted(self.data.samples)
-
-            # drop the reference sample, and add it back as first sample
-            # unless we're really dropping it for real. As first sample it
-            # is easy to use for filtering later.
-            self.snames.remove("reference")
-            if not self.drop_ref:
-                self.snames = ["reference"] + self.snames
-            self.sidxs = {sample: i for (i, sample) in enumerate(self.snames)}
-
+            # Store phymap meta-data
             # store the scaffold names and lengths. The name strings are
             # now always stored as strings in HDF5 attrs.
             if self.data.is_ref:
-                io5["scaffold_lengths"] = get_fai_values(self.data, "length")
-                io5["scaffold_names"] = get_fai_values(self.data, "scaffold").astype("S")
-
-            # store the name of reference genome file.
-            if self.data.is_ref:
-                phymap.attrs["reference"] = Path(self.data.params.reference_sequence).name
-            else:
-                phymap.attrs["reference"] = "pseudoref"
+                phymap["scaffold_lengths"] = get_fai_values(self.data, "length")
+                phymap["scaffold_names"] = get_fai_values(self.data, "scaffold").astype("S")
 
             # store ordered names and column labels
-            phymap.attrs["names"] = self.snames
+            phymap.attrs["indexing"] = [0, 0, 0, 0, 0]
             phymap.attrs["columns"] = ["chroms", "phy0", "phy1", "pos0", "pos1"]
 
-    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,str,int,int]]]:
-        """Yields loci from each ordered .loci file until empty.
+    def _iter_supermatrix_chunks(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Yields chunks of supermatrix, snpmap, and reference seq.
+
         """
-        for locfile in self._get_sorted_loci_chunks():
-            with open(locfile, 'r', encoding="utf-8") as indata:
-
-                names_to_seqs = {}
-                for line in indata:
-
-                    # within a locus, fill the data.
-                    if line[0] != "/":
-                        name, seq = line.split()
-                        if (name == "reference") & self.drop_ref:
-                            continue
-                        names_to_seqs[name] = bytes(seq, "utf-8")
-
-                    else:
-                        # parse reference position from snpstring
-                        chrom_int, chrom_name, pos0, pos1 = 0, "", 0, 0
-                        if self.data.is_ref:
-                            line_chunks = line.split("|")
-                            chrom_int, chrom_name, pos = line_chunks[1].split(":")
-                            chrom_int = int(chrom_int)
-                            pos0, pos1 = [int(i) for i in pos.split("-")]
-
-                        # end of locus, yield the dict.
-                        yield names_to_seqs, (chrom_int, chrom_name, pos0, pos1)
-
-    def _iter_supermatrix_chunks(self) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-        """Yields chunks of supermatrix and phymap.
-
-        yields (phy, phymap, nmissing) for chunks of ~50_000 columns
-        of the supermatrix at a time.
-        """
-        # size of chunks that will be yielded, with some overflow of columns
-        chunk_size = 50_000
-        nsamps = len(self.snames)
+        # concat size of chunks that will be yielded, with some overflow of columns
+        nsamps = self.data.assembly_stats.nsamples
 
         # make array to fill w/ overflow on column size.
-        tmparr = np.zeros((nsamps, chunk_size + 50_000), dtype=np.uint8)
+        tmparr = np.zeros((nsamps, CHUNKSIZE + 5_000), dtype=np.uint8)
+        # tmpref = np.zeros((CHUNKSIZE + 5_000), dtype=np.uint8)
         tmpmap = []
 
-        # iterate over loci from .loci files
+        # iterate over loci from .loci files incrementing the locus every
+        # time so that the locus IDs in snps.hdf5 match those in seqs.hdf5.
+        # keep track of position in array to send a chunk when full.
         pos = 0
         for names_to_seqs, positions in self._iter_loci():
 
             # get locus dict and ref positions
             chrom_int, _, pos0, pos1 = positions
 
-            # order the dict by alphanumeric names except with reference first.
-            ordered_seqs = (names_to_seqs[i] for i in self.snames if i in names_to_seqs)
+            # remove SNP string
+            _ = names_to_seqs.pop("snpstring")
 
-            # convert to a uint8 array so we can filter inserts and fill Ns
+            # order the dict by alphanumeric names except with reference first.
+            # ordered_seqs = (names_to_seqs[i] for i in self.snames if i in names_to_seqs)
+            ordered_seqs = [names_to_seqs[i] for i in self.snames if i in names_to_seqs]
+
+            # convert locus to uint8 array and subselect only SNP sites.
             loc = np.array([list(i) for i in ordered_seqs], dtype=np.uint8)
 
-            # filter PE inserts (all N in is_ref, or all N or -)
+            # create mask to filter PE insert (all N in is_ref, or all N or -)
             if self.data.is_ref:
                 # if ref was not excluded already then we need to pass over
                 # it when looking for inserts since it's inserts are not empty.
-                if not self.drop_ref:
+                if not self.data.drop_ref:
                     mask = np.all(loc[1:] == 78, axis=0)
                 else:
                     mask = np.all(loc == 78, axis=0)
@@ -188,11 +153,14 @@ class SeqsDatabase:
                 tmparr[global_sidx, pos:pos + loc.shape[1]] = loc[tmp_sidx]
 
             # enter position data into the tmpmap
-            tmpmap.append((chrom_int, pos, pos + loc.shape[1], pos0, pos1))
+            if not self.data.is_ref:
+                tmpmap.append((chrom_int, pos, pos + loc.shape[1], pos0, loc.shape[1]))
+            else:
+                tmpmap.append((chrom_int, pos, pos + loc.shape[1], pos0, pos1))
 
             # if the tmparr is full, yield it and refresh.
             pos += loc.shape[1]
-            if pos >= chunk_size:
+            if pos >= CHUNKSIZE:
 
                 # trim extra, fill empty cells to N (78), and convert map to array.
                 tmparr = tmparr[:, :pos]
@@ -202,7 +170,7 @@ class SeqsDatabase:
                 yield tmparr, tmpmap
 
                 # reset
-                tmparr = np.zeros((nsamps, chunk_size + 50_000), dtype=np.uint8)
+                tmparr = np.zeros((nsamps, CHUNKSIZE + 50_000), dtype=np.uint8)
                 tmpmap = []
                 pos = 0
 
@@ -258,6 +226,9 @@ class SeqsDatabase:
 
     def run(self):
         """Initialize HDF5 database and then fill it in chunks."""
+        self._get_sorted_loci_chunks()
+        self._get_snppad()
+        self._get_snames()
         self._init_datasets()
         self._fill_database()
         self._write_stats()
@@ -267,28 +238,30 @@ if __name__ == "__main__":
 
     import ipyrad as ip
     from ipyrad.assemble.s7_assemble import Step7
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
 
-    DATA = ip.load_json("/tmp/TEST5.json")
+    DATA = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
+    # DATA = ip.load_json("/tmp/TEST5.json")
     # uncomment to include the ref
     # DATA.hackers.exclude_reference = False
     print("EXCLUDE REF=", DATA.hackers.exclude_reference)
 
     with ip.Cluster(4) as ipyclient:
         step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
-        step._split_clusters()
+        step._write_cluster_chunks()
         step._apply_filters_and_trimming()
         step._collect_stats()
+        step._write_stats_files()
 
         # run it.
-        db = SeqsDatabase(DATA)
+        db = SeqsDatabase(step.data, step.samples)
         db.run()
 
         # print supermatrix parts from start and end of loci file.
-        with h5py.File(db.name, 'r') as io5:
+        with h5py.File(db.name, 'r') as _io5:
             # print first ten sites in first chunk file
             for i, n in enumerate(db.snames):
-                print(n, io5["phy"][i, :16].tobytes().decode())
+                print(n, _io5["phy"][i, :16].tobytes().decode())
             print()
             for i, n in enumerate(db.snames):
-                print(n, io5["phy"][i, -16:].tobytes().decode())
+                print(n, _io5["phy"][i, -16:].tobytes().decode())

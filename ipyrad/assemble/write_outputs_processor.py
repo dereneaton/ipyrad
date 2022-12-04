@@ -527,7 +527,19 @@ class ChunkProcess:
         for idx, name in enumerate(locus.names):
             sidx = self.snames.index(name)
             name_space = self.pnames[name]
-            seq = locus.tseqs[idx].tobytes().decode()
+
+            # convert terminal dashes into Ns
+            # ----AAATTTCCCCNNNNN--AAATTTCCCC---- (before)
+            # NNNNAAATTTCCCCNNNNN--AAATTTCCCCNNNN (after)
+            seq = locus.tseqs[idx]
+            # print("-" in seq, seq[:10])
+            if 45 in seq:
+                nondash = np.where(seq != 45)[0]
+                left = nondash.min()
+                right = nondash.max()
+                seq[:left] = 78
+                seq[right + 1:] = 78
+            seq = seq.tobytes().decode()
             locdict[sidx] = f"{name_space}{seq}"
 
         # convert dict to an ordered list
@@ -555,7 +567,7 @@ def maxind_numba(seqs: np.ndarray) -> int:
     return inds
 
 @njit
-def snpcount_numba(seqs: np.ndarray, rowstart: int = 0) -> np.ndarray:
+def snpcount_numba(seqs: np.ndarray, rowstart: int=0) -> np.ndarray:
     """Return the SNP array (see get_snps_array docstring).
 
     Parameters
