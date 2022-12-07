@@ -324,10 +324,6 @@ class WindowExtracter(object):
             except AttributeError:
                 # If "names" aren't encoded as bytes then it's an older version
                 # of the snps.hdf5 file, so allow for this.
-
-                #This fix is breaking window_extracter
-                # self.pnames = [i for i in io5["phymap"].attrs["phynames"]] 
-                #My proposal:
                 self.pnames = np.array([
                     i for i in io5["phymap"].attrs["phynames"]
                 ])
@@ -441,14 +437,7 @@ class WindowExtracter(object):
             # mask to select this scaff
             mask = io5["phymap"][:, 0] == self._scaffold_idx + 1
 
-            # load dataframe of this scaffold  
-            # BUG: this piece is not compatible with hdf5 that are not encoded
-            # self._phymap = pd.DataFrame(
-            #     data=io5["phymap"][:][mask],
-            #     columns=[i.decode() for i in colnames],
-            # )
-
-            # My proposal
+            # Handle old and new hdf5 formats (annoying)
             try:
                 self._phymap = pd.DataFrame(
                     data=io5["phymap"][:][mask],
