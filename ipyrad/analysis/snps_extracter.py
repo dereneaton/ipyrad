@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-"""
-Load SNPs array and SNPsMAP from ipyrad SNPs HDF5 database for use in
-created subsampled SNP data sets for ipyrad.analysis tools.
+"""Load SNPs array and SNPsMAP from ipyrad SNPs HDF5 database.
+
+These data can be used to create subsampled SNP data sets, or for
+imputation, in other ipyrad.analysis tools.
 
 This tool is used in: pca, structure, treemix, popgen, baba
 
@@ -14,21 +15,45 @@ snpsmap columns:
     2: 1-indexed scaffpos
     3: 0-indexed orig. scaffidx
     4: snpcounter]
+
+Example
+-------
+>>> import ipyrad.analysis as ipa
+>>> tool = ipa.snps_extracter(DATA)
+>>> tool.run()
+>>> ...
 """
 
-from typing import Optional, Dict, List, Union
-import h5py
+from typing import Optional, Dict, List, Union, Tuple
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from loguru import logger
+from ipyrad.core.cluster import Cluster
 from ipyrad.assemble.utils import IPyradError
 from ipyrad.analysis.utils import jsubsample_snps, jsubsample_loci
-from ipyrad.core.cluster import Cluster
 from ipyrad.analysis.progress import ProgressBar
-
+from ipyrad.analysis.database import SnpsDatabase
 
 logger = logger.bind(name="ipa")
 
+
+# how many cols of SNPs to load in at once from snps, genos, snpsmap
+CHUNKSIZE = 10_000
+STATS_HEADER = [
+    "samples",
+    "pre_filter_snps",
+    "pre_filter_percent_missing",
+    "filter_by_indels_present",
+    "filter_by_non_biallelic",
+    "filter_by_mincov",
+    "filter_by_minmap",
+    "filter_by_invariant_after_subsampling",
+    "filter_by_minor_allele_frequency",
+    "post_filter_snps",
+    "post_filter_snp_containing_linkage_blocks",
+    "post_filter_percent_missing",
+]
 
 class SNPsExtracter:
     """Extract SNP data from HDF5 after filtering.
@@ -71,16 +96,16 @@ class SNPsExtracter:
     """
     def __init__(
         self,
-        data: str,
-        imap: Optional[Dict]=None,
-        minmap: Optional[Dict]=None,
-        mincov: Union[float,int]=0.0,
-        minmaf: Union[float,int]=0.0,
+        data: Union[str, Path],
+        imap: Optional[Dict] = None,
+        minmap: Optional[Dict] = None,
+        mincov: Union[float,int] = 0.0,
+        minmaf: Union[float,int] = 0.0,
         # rmincov: float=0.0,
         ):
 
         # store params
-        self.data = data
+        self.data = Path(data)
         """String file path to a snps HDF5 file."""
         self.imap = imap if imap else {}
         """Dict mapping population names to a list of existing sample names."""
@@ -92,7 +117,7 @@ class SNPsExtracter:
         """The minimum frequency of the minor allele else SNP is filtered."""
 
         # attributes to be filled
-        self.nsnps: int=None
+        self.nsnps: int = None
         """Number of SNPs before filters are applied."""
         self.dbnames: np.ndarray=None
         """Array of ordered names in the HDF5 snps array."""
@@ -111,60 +136,60 @@ class SNPsExtracter:
         self.stats: pd.Series=None
         """DataFrame with filtering statistics."""
 
-        self._get_names_from_imap()
-        self._check_h5_files()
-        self._check_h5_names()
+        self._set_names_from_imap()
+        self._set_nsnps_and_check_h5_file_format()
+        self._set_names_sidxs_and_dbnames()
 
-    def _get_names_from_imap(self):
+    def _set_names_from_imap(self) -> None:
         """Fill names, nsnps, and check input H5 file."""
         self.names = []
-        for key in self.imap:
-            if isinstance(self.imap[key], (list, tuple, np.ndarray)):
-                self.names.extend(self.imap[key])
-            elif isinstance(self.imap[key], str):
-                self.names.append(self.imap[key])
+        for _, val in self.imap.items():
+            if isinstance(val, (list, tuple, np.ndarray)):
+                self.names.extend(val)
+            elif isinstance(val, str):
+                self.names.append(val)
         # report repeated names
         for name in self.names:
             if self.names.count(name) > 1:
                 raise IPyradError(f"Name {name} is repeated in imap.")
 
-    def _check_h5_files(self):
+    def _set_nsnps_and_check_h5_file_format(self) -> None:
         """Check input data is proper format, and get nsnps."""
-        if self.data.endswith(".seqs.hdf5"):
-            raise IPyradError("data should be .snps.hdf5 file not .seqs.hdf5.")
-        if self.data.endswith(".vcf"):
+        if self.data.suffix == ".vcf":
             raise IPyradError("input should be hdf5, see the vcf_to_hdf5 tool.")
-        # get number of snps while we're here.
-        with h5py.File(self.data, 'r') as io5:
-            self.nsnps = io5['snpsmap'].shape[0]
+        # this will raise an error msg if using an outdated version
+        with SnpsDatabase(self.data, 'r') as io5:
+            self.nsnps = int(io5.attrs['nsnps'])
 
-    def _check_h5_names(self):
-        """Check names in h5 file match those in imap dict."""
-        with h5py.File(self.data, 'r') as io5:
+    def _set_names_sidxs_and_dbnames(self) -> None:
+        """Check names in h5 file match those in imap dict. Also sets names."""
+        # this will raise an error msg if using an outdated version
+        with SnpsDatabase(self.data, 'r') as io5:
 
-            # all names in database
-            try:
-                self.dbnames = [i.decode() for i in io5["snps"].attrs["names"]]
-            except AttributeError:
-                self.dbnames = list(io5["snps"].attrs["names"])
+            # get all names in database as List[str]
+            self.dbnames = list(io5.attrs["names"])
 
-            # check for sample names not in the database file
+            # raise error if any imap sample names not in database names
             badnames = set(self.names).difference(self.dbnames)
             if badnames:
                 raise IPyradError(
                     f"Samples [{badnames}] are not in data file: {self.data}")
 
-            # if no names then use database names, else order imap in dborder
+            # if no imap names then use db names, else subset to imap
+            # names but order into db names order
             if not self.names:
                 self.names = self.dbnames
             else:
                 self.names = [i for i in self.dbnames if i in self.names]
 
-            # mask snp rows to only include selected samples
-            self.sidxs = np.array(
-                sorted([self.dbnames.index(i) for i in self.names]))
+            # update sidxs to mask rows not in selected samples
+            sidxs = sorted([self.dbnames.index(i) for i in self.names])
+            self.sidxs = np.array(sidxs)
 
-    def run(self, cores: int=1, log_level: str="INFO", ipyclient=None):
+    ################################################################
+    ## the main user function
+    ################################################################
+    def run(self, cores: int=1, log_level: str="INFO", ipyclient: "Client"=None):
         """Loads SNP data from HDF5, applies filters, and logs stats.
 
         The filtered statistics are saved in the .stats attribute, and
@@ -201,26 +226,7 @@ class SNPsExtracter:
         large datasets.
         """
         # df for reporting filter stats
-        stats = pd.Series(
-            index=[
-                "samples",
-                "pre_filter_snps",
-                "pre_filter_percent_missing",
-                "filter_by_indels_present",
-                "filter_by_non_biallelic",
-                "filter_by_mincov",
-                "filter_by_minmap",
-                "filter_by_invariant_after_subsampling",
-                "filter_by_minor_allele_frequency",
-                "post_filter_snps",
-                "post_filter_snp_containing_linkage_blocks",
-                "post_filter_percent_missing",
-            ],
-            dtype=int,
-        )
-
-        # how many cols of SNPs to load in at once from snps, genos, snpsmap
-        chunksize = 10000
+        stats = pd.Series(index=STATS_HEADER, dtype=int)
 
         # store masks to be concatenated at end
         mask_arrs = []
@@ -230,23 +236,19 @@ class SNPsExtracter:
         nmissing = 0
         ntotal = 0
 
-        # run in parallel
-        if ipyclient is not None:
+        # run `get_masks_chunk()` on a single core or in parallel
+        if ipyclient is None:
+            jobs = {}
+            for start in range(0, self.nsnps, CHUNKSIZE):
+                jobs[start] = self._get_masks_chunk(start)
+        else:
             lbview = ipyclient.load_balanced_view()
             prog = ProgressBar({}, "SNP filtering")
-            for chunkidx in range(0, self.nsnps, chunksize):
-                chunkslice = slice(chunkidx, chunkidx + chunksize)
-                prog.jobs[chunkidx] = lbview.apply(self._get_masks_chunk, chunkslice)
+            for start in range(0, self.nsnps, CHUNKSIZE):
+                prog.jobs[start] = lbview.apply(self._get_masks_chunk, start)
             prog.block()
             prog.check()
             jobs = prog.jobs
-
-        # run non-parallel
-        else:
-            jobs = {}
-            for chunkidx in range(0, self.nsnps, chunksize):
-                chunkslice = slice(chunkidx, chunkidx + chunksize)
-                jobs[chunkidx] = self._get_masks_chunk(chunkslice)
 
         # collect results from chunked jobs
         for job in jobs:
@@ -297,12 +299,16 @@ class SNPsExtracter:
         logger.log(log_level, f"filter statistics:\n{stats}")
         self.stats = stats
 
-    def _get_masks_chunk(self, chunkslice):
+    ################################################################
+    ## processing functions
+    ################################################################
+    def _get_masks_chunk(self, start: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, int]:
         """A single chunk iteration to load data and calc filters from h5.
 
         This could be parallelized. It only reads from h5.
         """
-        with h5py.File(self.data, 'r') as io5:
+        chunkslice = slice(start, start + CHUNKSIZE)
+        with SnpsDatabase(self.data, 'r') as io5:
 
             # snps is used to filter multi-allel and indel containing.
             snps = io5["snps"]
@@ -337,10 +343,10 @@ class SNPsExtracter:
             diplos = diplos[:, flat_mask]
         return snpsmap, snps, diplos, masks, nmissing, ntotal
 
-
-    def _masks_filter(self, nsnps, snps, genos):
+    def _masks_filter(self, nsnps: int, snps: np.ndarray, genos: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Return arrays with filter masks and diploid genotypes.
 
+        This is called wtihin `_get_masks_chunk()`.
         The filter masks are not yet applied to the genotype array. The
         snps and genos arrays have already been subsampled to include
         only this chunk of snps, and only the selected rows of
@@ -374,12 +380,12 @@ class SNPsExtracter:
             raise IPyradError("mincov should be an int or float.")
 
         # mask3 is True if any pop sample cov is below imap/minmap
-        for pop in self.imap:
+        for pop, samps in self.imap.items():
             # get min cov for this pop
             mincov = self.minmap[pop]
 
             # get the indices for samples in this pop
-            imap_sidxs = [self.names.index(i) for i in self.imap[pop]]
+            imap_sidxs = [self.names.index(i) for i in samps]
 
             # select the samples from the geno array
             subarr = genomask[:, imap_sidxs, :]
@@ -431,8 +437,10 @@ class SNPsExtracter:
         diplos[snps == 78] = 9
         return masks, diplos
 
-
-    def subsample_snps(self, random_seed=None, log_level="INFO"):
+    ################################################################
+    ## Subsampling/linkage functions
+    ################################################################
+    def subsample_snps(self, random_seed:Optional[int]=None, log_level: str="INFO") -> np.ndarray:
         """Return an array with 1 SNP sampled per locus/linkage-block.
 
         Uses numba jit function for speed, and snpsmap array to find
@@ -443,7 +451,7 @@ class SNPsExtracter:
         logger.log(log_level, f"subsampled {subarr.shape[1]} unlinked SNPs.")
         return subarr
 
-    def subsample_genos(self, random_seed=None, log_level="INFO"):
+    def subsample_genos(self, random_seed:Optional[int]=None, log_level: str="INFO") -> np.ndarray:
         """Return an array with 1 SNP geno sampled per locus/linkage-block.
 
         Uses numba jit function for speed, and snpsmap array to find
@@ -460,7 +468,7 @@ class SNPsExtracter:
         return_sites: bool=False,
         # invariant_loci: Optional[int]=None,
         log_level: str="INFO",
-        ):
+        ) -> np.ndarray:
         """Return an array of snps by re-sampling loci w/ replacement.
 
         Calls jitted functions to subsample loci/linkage-blocks with
@@ -645,12 +653,16 @@ if __name__ == "__main__":
 
     # write popfile and load back as an imap
     model.write_popfile(name='test', outdir="/tmp", diploid=True)
-    imap = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
+    IMAP = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
 
     # model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
-    tool = ipa.snps_extracter("/tmp/test.snps.hdf5", imap=imap, minmap={i:1 for i in imap}, minmaf=0.1)
+    tool = ipa.snps_extracter("/tmp/test.snps.hdf5",
+        imap=IMAP,
+        minmap={i:1 for i in IMAP},
+        minmaf=0.1,
+    )
     tool.run(cores=2)
-    # print(tool.subsample_snps().view())    
+    # print(tool.subsample_snps().view())
 
     # ipa.snps_imputer(tool.genos, tool.names, tool.imap, inplace=True).run()
     # print(tool.subsample_genos())

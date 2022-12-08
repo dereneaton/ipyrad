@@ -68,8 +68,9 @@ class SNPsImputer:
         self.impute_method = impute_method
         self.rng = np.random.default_rng(random_seed)
 
-    def run(self):
-        """Impute data in-place filling missing in self.snps (9)."""
+    def run(self) -> np.ndarray:
+        """Return imputed genos array with missing (9) replaced by 0, 1, or 2.
+        """
         if self.impute_method == "sample":
             self.genos = self._impute_sample()
         else:
