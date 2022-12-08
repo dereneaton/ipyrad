@@ -83,7 +83,7 @@ class ChunkProcess:
 
         # sets stats defaults, using nsamples that will be written
         self.stats = {
-            'nbases': 0,
+            'nsites': 0,
             'sample_cov': {i: 0 for i in self.samples},
             'locus_cov': {i: 0 for i in range(1, len(self.samples) + 1)},
             'var_sites': {i: 0 for i in range(2000)},
@@ -282,7 +282,7 @@ class ChunkProcess:
             self.stats['locus_cov'][len(locus.names) - int(self.data.drop_ref)] += 1
             self.stats['var_sites'][nsnps] += 1
             self.stats['pis_sites'][npis] += 1
-            self.stats['nbases'] += nsites
+            self.stats['nsites'] += nsites
 
             # convert to string and store it.
             locstr = self._to_locus(locus, snpsarr)

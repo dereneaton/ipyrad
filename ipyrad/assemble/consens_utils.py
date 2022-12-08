@@ -29,7 +29,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import scipy.stats
-from ipyrad.assemble.clustmap_within_denovo_utils import iter_clusters
+from ipyrad.assemble.clustmap_within_both import iter_clusters
 from ipyrad.assemble.utils import IPyradError, DCONS, TRANS, CIGARDICT
 
 Assembly = TypeVar("Assembly")
@@ -233,7 +233,7 @@ class Processor:
 
             # if everything was trimmed then return empty
             if not trim.any():
-                self.filters["mindepth"] += 1
+                self.filters["depth"] += 1
                 continue
 
             if loc.triallele and self.data.params.max_alleles_consens < 3:

@@ -294,9 +294,11 @@ class Locus:
 
     def _set_pe_inserts(self) -> None:
         """Fills .pe_insert Tuple with .tseqs index to mask."""
+        # if no n's present then skip this step.
         if not 110 in self.tseqs[0]:
             return
-        # find position of the 110 spacer
+
+        # find position of the 110 (n) spacer
         pos = np.where(self.tseqs[0] == 110)[0][0]
 
         # get rightmost position in tseqs with site cov left of pos
@@ -314,7 +316,7 @@ class Locus:
             self.min_sample_coverage_by_site)
 
         # index positions on .tseqs where pe_insert is located
-        print(right_)
+        print("RIGHT", right_)
         self.pe_insert = (left_, pos + 4 + right_)
 
     def mask_inserts(self, mask_int=78) -> None:
@@ -335,7 +337,7 @@ class Locus:
 
         Example
         --------
-        >>> # BEFORE   8866620000000000000000000000001011111127888
+        >>> # BEFORE   9966620000000000000000000000001011111127999
         >>>    get region   **********************************
         >>> GGTGGAAGTCATCAGTNNNN-NNNNNNnnnn--------NNN-NNNNNNNNCGATGTGAG
         >>> GGTGGAAGTCATCAGTTNNNNNNNNNNnnnnNNNNNNNNNNC-CCTAAACCCGATGTGAG
@@ -433,7 +435,8 @@ if __name__ == "__main__":
         list(b'NNNNNNNNNNATCGGTCCACCTCAGTATCGTAGTAGTACAATTTTTGAAGATGCAACACCCGAGATGGTWAGAGACTTCTTYTGGGATGATAAATTTCGACCAACGTTTGACCCYATGCTCATAAATTCTGAAACRCTTGAAGAGTCTCGTACTNNNNNNNNNNnnnnNNN---NNNNNNNRGTAKRGCATGTAACTGACTTTTGYTGGYTGTYTATGCAGTTTCCSTTCTTCTGYAGYGACCGAGAGTACATAATCGGCCGTAGGATATGGGAGTGTGAAAGAACATTTTACTGCGTGACAAAGGTATAGACTATAAAGCTANNNNNNNNNN'),
     ]).astype(np.uint8)
 
-    SEQS = np.array([
+    # start minsamp cols and internal n insert and neighboring Ns should be removed
+    SEQS4 = np.array([
         list(b"AAAATCGGACCTTNNNNTTCCAACCGNnnnnNTACAAGCTA"),
         list(b"NNNATCGGACCTTNNNNTTCCAANNNNnnnnNTACAAGCTA"),
         list(b"NNNATCGGTCCTTNNNNTTCCAACCGNnnnnNTACAAGCTA"),
@@ -441,7 +444,16 @@ if __name__ == "__main__":
         list(b"AAAANNNNNNNNNNNNNNNNNNNNNNNnnnnNNNNNNNTTT"),
     ]).astype(np.uint8)
 
-    SEQS = SEQS3
+    # terminal dashes should be replaced with Ns
+    SEQS5 = np.array([
+        list(b"AAAATCGGACCTTNNNNTTCCAACCGNnnnnNTACAAGCTA-----"),
+        list(b"---ATCGGACCTTNNNNTTCCAANNNNnnnnNTACAAGCTA-----"),
+        list(b"---ATCGGTCCTTNNNNTTCCAACCGNnnnnNTACAAGCTA-----"),
+        list(b"--NATCGGNCCTTNNNNTTCCAACCGNnnnnNTACAAGC-------"),
+        list(b"AAAANNNNNNNNNNNNNNNNNNNNNNNnnnnNNNNNNNTTT-----"),
+    ]).astype(np.uint8)    
+
+    SEQS = SEQS4
 
     NAMES = [f"sample-{i}" for i in range(len(SEQS))]
     NIDXS = ["..." for i in SEQS]

@@ -34,7 +34,7 @@ class AssemblyProgressBar:
         self.results = {}
 
     @property
-    def progress(self):
+    def progress(self) -> float:
         """returns the percent progress as a float"""
         if not self.jobs:
             return 0

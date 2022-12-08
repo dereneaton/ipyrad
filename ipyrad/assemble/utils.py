@@ -308,7 +308,7 @@ def splitalleles(consensus):
 
 NEXHEADER = """#nexus
 begin data;
-  dimensions ntax={} nchar={};
+  dimensions ntax={ntax} nchar={nchar};
   format datatype=dna missing=N gap=- interleave=yes;
   matrix
 """

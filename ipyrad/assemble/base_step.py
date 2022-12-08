@@ -44,6 +44,8 @@ class BaseStep(ABC):
         """: Tmp dir used during this step."""
         self.data.populations: Dict[str, Tuple[List[str], int]] = {}
         """: Population mapping {popname: ([sample_names], minsamp)}."""
+        self.data.outfiles: Dict[str, Path] = {}
+        """: Output files."""  # reset's to empty on any run() step.
 
         # Initiate the step.
         self._print_headers()

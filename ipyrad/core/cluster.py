@@ -134,12 +134,12 @@ def log_traceback(exc_type, exc_value, exc_traceback):
             if not color_support():
                 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                 trace = ansi_escape.sub('', trace)
-            logger.error(f"An error occurred on an ipengine:\n{trace}")
+            logger.error(f"An error occurred on an ipengine, see below:\n{trace}")
 
         # error not on remote engine, occurred anywhere else.
         else:
             trace = traceback.format_exc()
-            logger.error(f"An error occurred:\n{trace}")
+            logger.error(f"An error occurred, see below:\n{trace}")
             #logger.warning(exc_traceback)
 
 
