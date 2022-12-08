@@ -11,7 +11,7 @@ file at these variable sites.
 
 Format of .seqs.hdf5 database
 -----------------------------
-- 1-indexed scaff/locus ID
+- 0-indexed scaff/locus ID
 - 0-indexed 'phy' start position
 - 0-indexed 'phy' end position
 - ?-indexed reference start position
@@ -19,9 +19,9 @@ Format of .seqs.hdf5 database
 
 Format of 'snpsmap' dset in '.snps.hdf5' database
 -------------------------------------------------
-- 1-indexed locus ID                        # [1, 1, 2, 5, 5, ...]
+- 0-indexed locus ID                        # [0, 0, 1, 2, 2, ...]
 - 0-indexed SNP index on locus              # [0, 1, 0, 0, 1, ...]
-- 1-indexed SNP position on locus           # [10, 100, 25, 5, 15, ...]
+- 0-indexed SNP position on locus           # [10, 100, 30, 5, 15, ...]
 - 0-indexed locus in this dataset counter   # [0, 0, 1, 2, 2, ...]
 - 0-indexed SNP in this dataset counter     # [0, 1, 2, 3, 4, ...]
 """
@@ -45,8 +45,8 @@ from ipyrad.assemble.utils import IPyradError
 from ipyrad.assemble.write_outputs_processor import ChunkProcess
 from ipyrad.assemble.write_outputs_converter import Converter
 from ipyrad.assemble.write_outputs_to_loci import LociWriter
-from ipyrad.assemble.write_outputs_to_seqs import SeqsDatabase
-from ipyrad.assemble.write_outputs_to_snps import SnpsDatabase
+from ipyrad.assemble.write_outputs_to_seqs import SeqsDatabaseWriter
+from ipyrad.assemble.write_outputs_to_snps import SnpsDatabaseWriter
 # from ipyrad.assemble.write_outputs_vcf import FillVCF, build_vcf
 
 # pylint: disable=too-many-branches, too-many-statements, too-many-lines
@@ -55,7 +55,7 @@ Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
 
 OUT_SUFFIX = {
-    'l': 'loci',
+    # 'l': 'loci',
     'p': 'phy',
     's': 'snps',  # 'snpsmap'
     'n': 'nex',
@@ -110,11 +110,18 @@ class Step7(BaseStep):
         }
         """: Dict of output file paths."""
 
-        # create keys for additional file formats, rm if file exists.
-        for letter in self.data.params.output_formats:
-            oname = OUT_SUFFIX[letter]
-            self.data.outfiles[oname] = self.data.stepdir / f"{self.data.name}.{oname}"
-            self.data.outfiles[oname].unlink(missing_ok=True)
+        # set outfiles keys and rm if filepath exists.
+        for abb, suffix in OUT_SUFFIX.items():
+            fname = self.data.stepdir / f"{self.data.name}.{suffix}"
+            fname.unlink(missing_ok=True)
+            if abb in self.data.params.output_formats:
+                self.data.outfiles[suffix] = fname
+
+        # for letter in self.data.params.output_formats:
+            # if letter in OUT_SUFFIX:
+                # oname = OUT_SUFFIX[letter]
+                # self.data.outfiles[oname] = self.data.stepdir / f"{self.data.name}.{oname}"
+                # self.data.outfiles[oname].unlink(missing_ok=True)
 
         # init assembly stats object for storing results
         self.results = {}
@@ -180,7 +187,7 @@ class Step7(BaseStep):
         self._write_databases()
 
         # write additional user-requested output formats from h5s.
-        # self._write_conversions()
+        self._write_conversions()
 
         # send jobs to build vcf
         # throttle job to avoid memory errors based on catg size
@@ -272,7 +279,7 @@ class Step7(BaseStep):
         """
         # short name for entering stats
         stats = self.data.assembly_stats
-        stats.nbases = 0
+        stats.nsites = 0
         stats.locus_cov = Counter({})
         stats.sample_cov = Counter({})
         stats.var_sites = Counter({})
@@ -281,15 +288,14 @@ class Step7(BaseStep):
         stats.pis_props = Counter({})
 
         # join dictionaries into global stats
-        for chunkfile in self.results:
-            data = self.results[chunkfile]
+        for _, data in self.results.items():
             stats.sample_cov.update(data['sample_cov'])
             stats.locus_cov.update(data['locus_cov'])
             stats.var_sites.update(data['var_sites'])
             stats.pis_sites.update(data['pis_sites'])
             stats.var_props.update(data['var_props'])
             stats.pis_props.update(data['pis_props'])
-            stats.nbases += int(data['nbases'])
+            stats.nsites += int(data['nsites'])
         del self.results
 
         # reorder site dicts
@@ -466,9 +472,10 @@ class Step7(BaseStep):
         h5 databases to generate their data.
         """
         msg = "writing loci and database files"
-        jobs = {0: self.lbview.apply(remote_fill_loci, *(self.data, self.samples))}
-        jobs = {1: self.lbview.apply(remote_fill_seqs, *(self.data, self.samples))}
-        jobs = {2: self.lbview.apply(remote_fill_snps, *(self.data, self.samples))}
+        jobs = {}
+        jobs[0] = self.lbview.apply(remote_fill_loci, *(self.data, self.samples))
+        jobs[1] = self.lbview.apply(remote_fill_seqs, *(self.data, self.samples))
+        jobs[2] = self.lbview.apply(remote_fill_snps, *(self.data, self.samples))
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
         prog.block()
         prog.check()
@@ -479,19 +486,16 @@ class Step7(BaseStep):
         msg = "writing conversions"
         jobs = {}
         for outf in self.data.outfiles:
-            jobs[outf] = self.lbview.apply(remote_file_conversion, *(self.data, outf))
+            print(outf)
+            if outf not in ["loci", "seqs_database", "snps_database"]:
+                jobs[outf] = self.lbview.apply(
+                    remote_file_conversion, *(self.data, outf))
 
         # iterate until all chunks are processed
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
         prog.block()
         prog.check()
-
-        # store results to project
-        # for key in prog.results:
-            # outfile = prog.results[key]
-            # outname = OUT_SUFFIX[key]
-            # self.data.outfiles[outname] = outfile
-        print(self.data.outfiles)
+        # print(self.data.outfiles)
 
     def _remote_build_vcf(self):
         """Build VCF format from snps HDF5, but w/o depths info."""
@@ -526,11 +530,11 @@ def remote_fill_loci(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None
 
 def remote_fill_seqs(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .seqs.hdf5 file from chunks."""
-    SeqsDatabase(data, samples).run()
+    SeqsDatabaseWriter(data, samples).run()
 
 def remote_fill_snps(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .snps.hdf5 file from chunks."""
-    SnpsDatabase(data, samples).run()
+    SnpsDatabaseWriter(data, samples).run()
 
 def remote_file_conversion(data: Assembly, outf: Path):
     """Remote function for converiting."""
@@ -539,18 +543,15 @@ def remote_file_conversion(data: Assembly, outf: Path):
 def remote_write_vcf(data: Assembly) -> None:
     """..."""
 
-def remove_fill_vcf_depths(data, nsnps, sample):
+def remove_fill_vcf_depths(data: Assembly, sample: 'SampleSchema'):
     """Writes catg depths to a tmp HDF5 for this sample."""
-    filler = FillVCF(data, nsnps, sample)
+    filler = FillVCF(data, data.assembly_stats.nsnps, sample)
     filler.run()
 
     # write vcfd to file and cleanup
-    vcfout = os.path.join(data.tmpdir, sample.name + ".depths.hdf5")
+    vcfout = data.tmpdir / f"{sample.name}.depths.hdf5"
     with h5py.File(vcfout, 'w') as io5:
-        io5.create_dataset(
-            name="depths",
-            data=filler.vcfd,
-            )
+        io5.create_dataset(name="depths", data=filler.vcfd)
     del filler
 
 

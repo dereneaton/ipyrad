@@ -134,7 +134,7 @@ class AssemblyStats(BaseModel):
     filters: FilterStats = FilterStats()
     nsnps: int = 0
     nloci: int = 0
-    nbases: int = 0
+    nsites: int = 0
     nsamples: int = 0
     sample_cov: Dict[str, int] = Field(default_factory=dict)
     locus_cov: Dict[int, int] = Field(default_factory=dict)

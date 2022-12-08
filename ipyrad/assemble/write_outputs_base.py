@@ -13,7 +13,7 @@ Assembly = TypeVar("Assembly")
 # size of concatenated data processed at one time in memory.
 CHUNKSIZE = 50_000
 
-class DatabaseLoader(ABC):
+class DatabaseWriter(ABC):
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
         self.data: Assembly = data
         """: Assembly object."""
@@ -62,11 +62,11 @@ class DatabaseLoader(ABC):
 
         The 'reference' sample is always included here when is_ref.
         """
+        lidx = 0
         for locfile in self.loci_chunks:
             with open(locfile, 'r', encoding="utf-8") as indata:
 
                 # iterate over loci and yield one at a time.
-                lidx = 0
                 names_to_seqs = {}
                 for line in indata:
 
@@ -80,12 +80,13 @@ class DatabaseLoader(ABC):
                         names_to_seqs['snpstring'] = line[self.snppad:].split("|")[0]
 
                         # parse reference position from snpstring
-                        chrom_int, chrom_name, pos0, pos1 = lidx, "", 0, 0
                         if self.data.is_ref:
                             line_chunks = line.split("|")
                             chrom_int, chrom_name, pos = line_chunks[1].split(":")
                             chrom_int = int(chrom_int)
                             pos0, pos1 = [int(i) for i in pos.split("-")]
+                        else:
+                            chrom_int, chrom_name, pos0, pos1 = lidx, "RAD", 0, 0
 
                         # end of locus, yield the dict.
                         yield names_to_seqs, (chrom_int, chrom_name, pos0, pos1)

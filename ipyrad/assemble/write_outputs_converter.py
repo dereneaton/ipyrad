@@ -22,14 +22,14 @@ class Converter:
     """Functions for converting hdf5 arrays into output files."""
     def __init__(self, data: Assembly):
         self.data = data
-        self.snps_database: Path = data.output_formats["snps_database"]
-        self.seqs_database: Path = data.output_formats["seqs_database"]
+        self.snps_database: Path = data.outfiles["snps_database"]
+        self.seqs_database: Path = data.outfiles["seqs_database"]
         self.snames: List[str] = []
-        self.pnames: Dict[str,str] = {}
+        self.pnames: Dict[str, str] = {}
 
-        # fill ordered names from h5 database 
+        # fill ordered names from h5 database (ref handled already)
         with h5py.File(self.snps_database, 'r') as io5:
-            self.snames = list(io5["snpsmap"]["names"])
+            self.snames = list(io5.attrs["names"])
 
         # get padded names based on lengths.
         longname = max(len(i) for i in self.snames)
@@ -37,30 +37,31 @@ class Converter:
 
     def run(self, oformat: str) -> Path:
         """Write outputs one the selected output format."""
-        if oformat == "p":               # phylip format.
+        if oformat == "phy":               # phylip format.
             return self.write_phy()
-        if oformat == "n":               # nexus format.
+        if oformat == "nex":               # nexus format.
             return self.write_nex()
-        if oformat == "G":               # gphocs format.
+        if oformat == "gphocs":               # gphocs format.
             return self.write_gphocs()
-        if oformat == "s":               # snps + snpsmap outputs
+        if oformat == "snps":               # snps + snpsmap outputs
             snpsfile = self.write_snps()
             snpsmapfile = self.write_snps_map()
             return snpsfile, snpsmapfile
-        if oformat == "u":               # usnps
+        if oformat == "usnps":               # usnps
             return self.write_usnps()
-        if oformat == "k":               # str (structure)
+        if oformat == "str":               # str (structure)
             return self.write_str()
-        if oformat == "g":               # genos format
+        if oformat == "geno":               # genos format
             return self.write_geno()
-        if oformat == "t":               # treemix format
+        if oformat == "treemix":               # treemix format
             return self.write_treemix()
         raise IPyradError(f"output_format {oformat} not recognized.")
 
     def write_phy(self):
         """Write entire sequence matrix, names padded, with header.
     
-        If PE data the PE inserts have been removed.
+        If PE data the PE inserts have already been removed. This 
+        trims the empty space from the end of the phy h5.
 
         10 100
         taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
@@ -75,39 +76,74 @@ class Converter:
             # load seqarray 
             seqarr = io5['phy']
 
+            # get final data position (extra columns of 0s are trimmed)
+            # does this load too much data at once?
+            end = self.data.assembly_stats.nsites            
+            # end = np.all(seqarr[:] == 0, axis=0).argmax()
+
             with open(outpath, 'w', encoding="utf-8") as out:
-                out.write("{} {}".format(*seqarr.shape))               # pylint: disable=no-member
+                out.write(f"{len(self.snames)} {end}\n")
                 for idx, name in enumerate(self.snames):
-                    seq = seqarr[idx, :].tobytes().decode().upper()    # pylint: disable=no-member
+                    seq = seqarr[idx, :end].tobytes().decode().upper()   # pylint: disable=no-member
                     pname = self.pnames[name]
                     out.write(f"{pname}{seq}\n")
         return outpath
 
-
-    def _iter_nex_block(self, chunksize: int = 80) -> Iterator[np.ndarray]:
-        """Yields chunks of columns of phy array for nexus interleave."""
+    def _iter_nex_arr_block(self) -> Iterator[np.ndarray]:
+        """Read a large chunk from disk and yield as an array.
+        """
+        chunksize = 80_000
         with h5py.File(self.seqs_database, 'r') as io5:
 
-            # load seqarray (this could be chunked, this can be >50Gb)
+            # load seqarray object (but not reading all the data)
             seqarr = io5['phy']
             shape = seqarr.shape  # pylint: disable=no-member
 
             # iterate by blocks until all columns fetched
             for bidx in range(0, shape[1], chunksize):
-                # grab a big block of data (nsamples, 100_000)
-                yield seqarr[:, bidx:bidx + chunksize]
+                data = seqarr[:, bidx:bidx + chunksize]
 
-    def _iter_nex_blocks(self, nblocks: int = 100) -> Iterator[List[str]]:
-        """Yields lists of locus strings for writing nex interleaved."""
+                # filter to remove columns with 0s
+                mask = np.all(data == 0, axis=0)
+                data = data[:, np.invert(mask)]
+
+                # if any data left then yield it.
+                if data.size:   # pylint: disable=no-member
+                    yield data
+
+    def _iter_nex_arr_interleaved(self) -> Iterator[np.ndarray]:
+        """Yield blocks of 80 sequences at a time from a the loaded blocks.
+
+        This will combine one block with the next to yield filled 80
+        width blocks of sequence until the end of seqs.
+        """
+        isize = 80
+        for chunk in self._iter_nex_arr_block():
+
+            # load 80 chars at a time
+            for i in range(0, chunk.shape[1], isize):
+                sub = chunk[:, i:i + isize]
+                yield sub
+
+    def _iter_nex_formatted(self, nblocks: int = 1000) -> Iterator[List[str]]:
+        """Yields lists of locus strings for writing nex interleaved.
+        
+        Many chunks of blocks are yielded together for higher efficiency
+        of writing to disk in next step.
+        """
         blocks = []
         bidx = 0
-        for chunk in self._iter_nex_block():
+        for ichunk in self._iter_nex_arr_interleaved():
+            
+            # convert a block from uint arr to string 
             block = []
-            for sidx, name in enumerate(self.snames[::-1]):
+            for sidx, name in enumerate(self.snames):
                 pname = self.pnames[name]
-                seq = chunk[sidx].tobytes().decode()
+                seq = ichunk[sidx].tobytes().decode()
                 block.append(f"{pname}{seq}")
-            blocks.append("\n".join(block))
+
+            # join and store blocks
+            blocks.append("\n" + "\n".join(block))
             bidx += 1
             if bidx >= nblocks:
                 yield blocks
@@ -116,10 +152,10 @@ class Converter:
         if blocks:
             yield blocks
 
-    def write_nex(self):
+    def write_nex(self) -> Path:
         """Write interleaved sequence matrix, names padded, with header.
         
-        #nexus
+        #NEXUS
         begin data;
           dimensions ntax=10 nchar=100;
           format datatype=dna missing=N gap=- interleave=yes;
@@ -134,77 +170,72 @@ class Converter:
             taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
             taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
         end;
-        begin charset;
+        begin sets;
+          charset Loc0 = 1-100;                    [denovo example]
+          charset Loc1 = 101-200;
           ...
+          charset Scaff0_pos1000_1300 = 500-800;   [reference example]
+          charset Scaff0_pos5000_5300 = 800-1100; 
         end;
         """
         # open output file to write to
         outpath = Path(self.data.stepdir) / f"{self.data.name}.nex"
+        header = dict(ntax=len(self.snames), nchar=self.data.assembly_stats.nsites)
         with open(outpath, 'w', encoding="utf-8") as out:
-            out.write(NEXHEADER.format(*shape))
+            out.write(NEXHEADER.format(**header))
 
             # print intermediate result and clear
-            for block in self._iter_nex_blocks():
-                out.write("\n".join(block))
+            for block in self._iter_nex_formatted():
+                out.write("\n" + "\n".join(block))
                 
             # closer
             out.write(NEXCLOSER)
                 
-            # # add partition information from maparr
-            # maparr = io5["phymap"][:, 2]
-            # charsetblock = []
-            # charsetblock.append("BEGIN SETS;")
+            # add partition information from maparr
+            charsetblock = []
+            charsetblock.append("begin sets;")
+            for chunk in self._iter_phy_map(size=10_000):
             
-            # # the first block
-            # charsetblock.append("charset {} = {}-{};".format(
-            #     0, 1, maparr[0],
-            # ))
+                if not self.data.is_ref:
+                    for loc in range(chunk.shape[0]):
+                        lidx, start, end = chunk[loc, :3]
+                        start = int(start + 1)
+                        end = int(end)
+                        charsetblock.append(f"  charset Loc{lidx} = {start}-{end};")
 
-            # # all other blocks
-            # # nexus is 1-indexed. mapparr is dtype np.uint64, so adding
-            # # a standard int results in np.float64, so cast uint64 first
-            # for idx in range(0, maparr.shape[0] - 1):
-            #     charsetblock.append("charset {} = {}-{};".format(
-            #         idx + 1, maparr[idx] + np.uint64(1) , maparr[idx + 1]
-            #         )
-            #     )
-            # charsetblock.append("END;")
-            # out.write("\n".join(charsetblock))
+            charsetblock.append("END;")
+            out.write("\n".join(charsetblock))
         return outpath
 
+    def write_snps(self) -> Path:
+        """Write SNPs columns to phylip format. 
 
-    def write_snps(self):
-        """
-        Write all SNPs as a phylip format file. Users should generally
-        use ipa.snps_extracter for more fine tuned SNP sampling/filtering.
+        Users can also create SNPs alignment files with more filtering
+        options after assembly using the ipa.snps_extracter tool.
         """
         # write from hdf5 array
-        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.snps.phy")
-        with open(outfile, 'w') as out:
+        outfile = self.data.stepdir / f"{self.data.name}.snps_phy"
+        with open(outfile, 'w', encoding="utf-8") as out:
             with h5py.File(self.snps_database, 'r') as io5:
-                seqarr = io5['snps']
+                snpsarr = io5['snps']
                 nsamples = len(self.snames)
+                nsnps = self.data.assembly_stats.nsnps
 
                 # write dims
-                out.write("{} {}\n".format(nsamples, seqarr.shape[1]))
+                out.write(f"{nsamples} {nsnps}\n")
 
                 # write to disk one row at a time
-                for idx in range(io5['snps'].shape[0]):
-                    seq = seqarr[idx, :].view("S1")
-                    out.write(
-                        "{}{}".format(
-                            self.data.pnames[self.snames[idx]],
-                            b"".join(seq).decode().upper() + "\n",
-                        )
-                    )
+                for idx in range(snpsarr.shape[0]):                    # pylint: disable=no-member
+                    seq = snpsarr[idx, :].tobytes().decode().upper()   # pylint: disable=no-member
+                    padname = self.pnames[self.snames[idx]]
+                    out.write(f"{padname}{seq}\n")
         return outfile
-
 
     def write_usnps(self):
         """
         TODO: replace with ipa.snps_extracter
         """
-        with open(self.data.outfiles.usnps, 'w') as out:
+        with open(self.data.outfiles.usnps, 'w', encoding="utf-8") as out:
             with h5py.File(self.snps_database, 'r') as io5:
                 # load seqarray
                 snparr = io5['snps'][:]
@@ -235,7 +266,7 @@ class Converter:
 
                     out.write(
                         "{}{}".format(
-                            self.data.pnames[self.data.snames[idx]],
+                            self.pnames[self.data.snames[idx]],
                             b"".join(seq).decode().upper() + "\n",
                         )
                     )
@@ -244,7 +275,6 @@ class Converter:
                 self.write_ustr(snparr[:, subs])
                 genos = io5['genos'][:]
                 self.write_ugeno(genos[subs, :])
-
 
     def write_ustr(self, snparr):
         """
@@ -260,7 +290,7 @@ class Converter:
                 # get all SNPS from this sample
                 seq = snparr[idx, :].view("S1")
                 # get sample name
-                name = self.data.pnames[self.data.snames[idx]]
+                name = self.pnames[self.data.snames[idx]]
                 # get row of data
                 snps = snparr[idx, :].view("S1")
                 # expand for ambiguous bases
@@ -276,7 +306,6 @@ class Converter:
                     out.write(
                         "{}\t\t\t\t\t{}\n"
                         .format(name, sequence))
-
 
     def write_ugeno(self, genos):
         """
@@ -305,68 +334,81 @@ class Converter:
             # write to file
             np.savetxt(out, snpgenos, delimiter="", fmt="%d")
 
+    def _iter_snps_map(self, size: int=10_000) -> Iterator[np.ndarray]:
+        """Yield chunks of the snpsmap."""
+        with h5py.File(self.snps_database, 'r') as io5:
+            maparr = io5["snpsmap"]
+            for i in range(0, maparr.shape[0], 10_000):
+                chunk = maparr[i: i + size, :]
+                if chunk.size:
+                    yield chunk
 
-    def write_snps_map(self):
-        """
-        Write a map file with linkage information for SNPs file
+    def _iter_phy_map(self, size: int=10_000) -> Iterator[np.ndarray]:
+        """Yield chunks of the snpsmap."""
+        with h5py.File(self.seqs_database, 'r') as io5:
+            maparr = io5["phymap"]
+            for i in range(0, maparr.shape[0], 10_000):
+                chunk = maparr[i: i + size, :]
+                if chunk.size:
+                    yield chunk                    
+
+    def write_snps_map(self) -> Path:
+        """Write a map file with linkage information for SNPs phy.
+
         This dump is mostly unecessary, since ipa tools can read
         the snpsmap from HDF5, but maybe some users will want to see
         it for their own validation.
+        
+        Denovo
+        -------
+        scaff   name                      pos0  pos1
+        0       loc0_snp0_scaff0_pos20    20    21
+        0       loc0_snp1_scaff0_pos25    25    26
+
+        Reference
+        ---------
+        scaff   name                         pos0  pos1
+        0       loc0_snp0_scaff3_pos20000    20    21
+        0       loc0_snp1_scaff3_pos20500    20    21
         """
-        counter = 1
-        outfile = os.path.join(self.data.stepdir, f"{self.data.name}.snpsmap.tsv")
-        with open(outfile, 'w') as out:
-            with h5py.File(self.snps_database, 'r') as io5:
-                # access array of data
-                maparr = io5["snpsmap"]
+        outfile = self.data.stepdir / f"{self.data.name}.snpsmap.tsv"
+        with open(outfile, 'w', encoding="utf-8") as out:
 
-                ## write to map file in chunks of 10000
-                for start in range(0, maparr.shape[0], 10000):
-                    outchunk = []
+            for chunk in self._iter_snps_map(size=10_000):
+                outchunk = []
 
-                    # grab chunk
-                    rdat = maparr[start:start + 10000, :]
-
-                    # get chroms
-                    if self.data.is_ref:
-                        revdict = chroms2ints(self.data, 1)
-                        for i in rdat:
-                            outchunk.append(
-                                "{}\t{}:{}\t{}\t{}\n"
-                                .format(
-                                    i[0], 
-                                    # 1-index to 0-index fix (1/6/19)
-                                    revdict[i[3] - 1], i[4],
-                                    i[2] + 1,
-                                    counter,
-                                    #i[4], 
-                                )
+                # get chroms
+                if self.data.is_ref:
+                    revdict = chroms2ints(self.data, 1)
+                    for i in rdat:
+                        outchunk.append(
+                            "{}\t{}:{}\t{}\t{}\n"
+                            .format(
+                                i[0], 
+                                # 1-index to 0-index fix (1/6/19)
+                                revdict[i[3] - 1], i[4],
+                                i[2] + 1,
+                                # counter,
+                                #i[4], 
                             )
-                            counter += 1
-                    else:    
-                        # convert to text for writing
-                        for i in rdat:
-                            outchunk.append(
-                                "{}\tloc{}_snp{}_pos{}\t{}\t{}\n"
-                                .format(
-                                    i[0], 
-                                    i[0] - 1, i[4] - 1, i[2],
-                                    i[2] + 1, 
-                                    counter,
-                                    #i[4],
-                                )
+                        )
+                else:    
+                    # convert to text for writing
+                    for i, j in enumerate(chunk):
+                        outchunk.append(
+                            "{}\tloc{}_snp{}_scaff{}_pos{}\t{}\t{}\n"
+                            .format(i, j[0], j[1], j[0], j[2], j[0], j[2],
                             )
-                            counter += 1
+                        )
 
                     # write chunk to file
                     out.write("".join(outchunk))
                     outchunk = []
         return outfile
-                    
 
-    def write_str(self):
-        """
-        STRUCTURE OUTPUT
+    def write_str(self) -> Path:
+        """Write SNPs data in structure format.
+
         TODO: replace with ipa.structure... (without requiring structure
         to be installed).
         write data from snps database, resolve ambiguous bases and numeric.
@@ -383,7 +425,7 @@ class Converter:
 
                 for idx in range(rstart, len(self.data.snames)):
                     # get sample name
-                    name = self.data.pnames[self.data.snames[idx]]
+                    name = self.pnames[self.data.snames[idx]]
                     # get row of data
                     snps = snparr[idx, :].view("S1")
                     # expand for ambiguous bases
@@ -399,7 +441,6 @@ class Converter:
                         out.write(
                             "{}\t\t\t\t\t{}\n"
                             .format(name, sequence))
-
 
     def write_gphocs(self):
         """
@@ -447,12 +488,10 @@ class Converter:
             if loci:
                 out.write("\n".join(loci))
 
-
     def write_geno(self):
+        """Write SNPs data to GENO format.
         """
-        .geno output is used by ...
-        """
-        with open(self.data.outfiles.geno, 'w') as out:
+        with open(self.data.outfiles['geno'], 'w', encoding="utf-8") as out:
             with h5py.File(self.data.snps_database, 'r') as io5:
 
                 # option to skip ref
@@ -477,7 +516,6 @@ class Converter:
                 # write to file
                 np.savetxt(out, snpgenos, delimiter="", fmt="%d")
 
-
     def write_treemix(self):
         """
         # We pass in 'binary="ls"' here to trick the constructor into not
@@ -493,7 +531,6 @@ class Converter:
             binary="ls",
             )
         tmx.write_treemix_file()
-
 
     def write_migrate(self):
         """
@@ -531,5 +568,10 @@ def subsample(snpsmap):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    DATA = ip.load_json("/tmp/TEST5.json")
+
+    DATA = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")    
+    # DATA = ip.load_json("/tmp/TEST5.json")
+
+    print(DATA.outfiles)
+    Converter(DATA)
     

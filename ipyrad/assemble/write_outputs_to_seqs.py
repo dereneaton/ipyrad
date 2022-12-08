@@ -52,12 +52,12 @@ from pathlib import Path
 import h5py
 import numpy as np
 from ipyrad.assemble.utils import get_fai_values
-from ipyrad.assemble.write_outputs_base import DatabaseLoader
+from ipyrad.assemble.write_outputs_base import DatabaseWriter
 
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 50_000
 
-class SeqsDatabase(DatabaseLoader):
+class SeqsDatabaseWriter(DatabaseWriter):
 
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
         self.name = Path(data.stepdir) / f"{data.name}.seqs_hdf5"
@@ -76,6 +76,7 @@ class SeqsDatabase(DatabaseLoader):
             # store meta-data
             io5.attrs["names"] = self.snames
             io5.attrs["version"] = 1
+            io5.attrs["nsites"] = self.data.assembly_stats.nsites
             if self.data.is_ref:
                 io5.attrs["reference"] = Path(self.data.params.reference_sequence).name
             else:
@@ -84,7 +85,7 @@ class SeqsDatabase(DatabaseLoader):
             # create the seq and seq positions arr datasets.
             _ = io5.create_dataset(
                 name="phy",
-                shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nbases),
+                shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nsites),
                 dtype=np.uint8,
             )
             phymap = io5.create_dataset(
@@ -123,6 +124,8 @@ class SeqsDatabase(DatabaseLoader):
         for names_to_seqs, positions in self._iter_loci():
 
             # get locus dict and ref positions
+            # denovo = (0, 'RAD', 0, 0)         # the last three are fixed.
+            # refere = (0, 'scaff13', 500, 800) # all are real data.        
             chrom_int, _, pos0, pos1 = positions
 
             # remove SNP string
@@ -185,10 +188,14 @@ class SeqsDatabase(DatabaseLoader):
     def _fill_database(self) -> None:
         """Iterates over chunks of data entering into the H5 database.
         """
+        start_pos = 0
         start_arr = 0
         start_map = 0
         with h5py.File(self.name, 'a') as io5:
             for arr_chunk, map_chunk in self._iter_supermatrix_chunks():
+
+                # advance map_chunk
+                map_chunk[:, [1, 2]] += start_pos
 
                 # get end positions
                 end_arr = start_arr + arr_chunk.shape[1]
@@ -201,6 +208,7 @@ class SeqsDatabase(DatabaseLoader):
                 # increment start positions
                 start_arr += arr_chunk.shape[1]
                 start_map += map_chunk.shape[0]
+                start_pos = int(map_chunk[-1, 2])
 
     def _write_stats(self):
         """Write missing values in matrix to stats file, and logger.

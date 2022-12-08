@@ -19,9 +19,9 @@ Clean the snpstring to be: |{chromint}:{chrom}:{start}-{end}|
 """
 
 from typing import Iterator, List
-from ipyrad.assemble.write_outputs_base import DatabaseLoader
+from ipyrad.assemble.write_outputs_base import DatabaseWriter
 
-class LociWriter(DatabaseLoader):
+class LociWriter(DatabaseWriter):
     """Join locus bits into a single file."""
 
     def _iter_chunk_of_loci(self) -> Iterator[List[str]]:
@@ -29,6 +29,7 @@ class LociWriter(DatabaseLoader):
 
         Drops the reference sequence if .drop_ref.
         """
+        lidx = 0
         for locfile in self.loci_chunks:
             loci = []
             with open(locfile, 'r', encoding="utf-8") as indata:
@@ -41,8 +42,12 @@ class LociWriter(DatabaseLoader):
                         loc.append(line.strip())
                     else:
                         # store the snpstring and meta-info line.
-                        line = line.strip().rsplit("|", 2)[0]
-                        loc.append(line + "|")
+                        if self.data.is_ref:
+                            print("DO REF loCI string here..")
+                        else:
+                            line = line.strip().rsplit("|", 3)[0]
+                            loc.append(f"line|{lidx}|")
+                        lidx += 1
                 loci.append("\n".join(loc))
             # yield the locus for the entire chunk.
             yield loci

@@ -54,7 +54,9 @@ describe the location of SNPs on scaffolds.
 Note
 ----
 The total locus counter index and the scaffold number index are both
-0-indexed as of v1. This is different from older ipyrad versions.
+0-indexed as of v1. This is different from older ipyrad versions. 
+Also, for denovo data, the last two columns will match the first 
+and third columns, i.e., map[:, [3, 4]] == map[:, [0, 2]].
 """
 
 from typing import TypeVar, Dict, Iterator, Tuple
@@ -63,7 +65,7 @@ import h5py
 import numpy as np
 from numba import njit
 from ipyrad.assemble.utils import get_fai_values
-from ipyrad.assemble.write_outputs_base import DatabaseLoader
+from ipyrad.assemble.write_outputs_base import DatabaseWriter
 
 Assembly = TypeVar("Assembly")
 
@@ -96,7 +98,7 @@ AMBIGS_FULL = np.array([
 # size of concatenated data processed at one time in memory.
 CHUNKSIZE = 10_000
 
-class SnpsDatabase(DatabaseLoader):
+class SnpsDatabaseWriter(DatabaseWriter):
 
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
         self.name = Path(data.stepdir) / f"{data.name}.snps_hdf5"
@@ -113,6 +115,15 @@ class SnpsDatabase(DatabaseLoader):
         that the datasets are the right size.
         """
         with h5py.File(self.name, 'w') as io5:
+
+            # store meta-data
+            io5.attrs["names"] = self.snames
+            io5.attrs["version"] = 1
+            io5.attrs["nsnps"] = self.data.assembly_stats.nsnps
+            if self.data.is_ref:
+                io5.attrs["reference"] = Path(self.data.params.reference_sequence).name
+            else:
+                io5.attrs["reference"] = "pseudoref"
 
             # stores the snps sequence array.
             io5.create_dataset(
@@ -137,7 +148,7 @@ class SnpsDatabase(DatabaseLoader):
             # common allele in denovo.
             io5.create_dataset(
                 name="genos",
-                shape=(self.data.assembly_stats.nsamples, self.data.assembly_stats.nsnps, 2),
+                shape=(self.data.assembly_stats.nsnps, self.data.assembly_stats.nsamples, 2),
                 dtype=np.uint8,
             )
 
@@ -151,10 +162,6 @@ class SnpsDatabase(DatabaseLoader):
                 snpsmap.attrs["scaffold_names"] = get_fai_values(self.data, "scaffold").astype("S")
 
             # store the name of reference genome file.
-            if self.data.is_ref:
-                io5.attrs["reference"] = Path(self.data.params.reference_sequence).name
-            else:
-                io5.attrs["reference"] = "pseudoref"
             snpsmap.attrs["columns"] = ["loc_idx", "loc_snp_idx", "loc_snp_pos", "scaf_idx", "scaf_pos"]
             snpsmap.attrs["indexing"] = [0, 0, 0, 0, 0]
 
@@ -162,8 +169,6 @@ class SnpsDatabase(DatabaseLoader):
             # if self.drop_ref:
                 # snpsmap.attrs["names"] = [i for i in self.snames if i != "reference"]
             # else:
-            io5.attrs["names"] = self.snames
-            io5.attrs["version"] = 1
 
     def _iter_supermatrix_chunks(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """Yields chunks of supermatrix, snpmap, and reference seq.
@@ -184,7 +189,9 @@ class SnpsDatabase(DatabaseLoader):
         pos = 0
         for names_to_seqs, positions in self._iter_loci():
 
-            # get locus dict and ref positions
+            # get locus dict and ref positions: 
+            # denovo = (0, 'RAD', 0, 0)         # the last three are fixed.
+            # refere = (0, 'scaff13', 500, 800) # all are real data.
             chrom_int, _, pos0, _ = positions
 
             # get snpstring
@@ -264,6 +271,7 @@ class SnpsDatabase(DatabaseLoader):
         start_map = 0
         with h5py.File(self.name, 'a') as io5:
             for arr_chunk, map_chunk, ref_chunk in self._iter_supermatrix_chunks():
+
                 # get end positions
                 end_arr = start_arr + arr_chunk.shape[1]
                 end_map = start_map + map_chunk.shape[0]
@@ -321,7 +329,7 @@ class SnpsDatabase(DatabaseLoader):
 
                 # get genos and enter into hdf5
                 genos = jit_get_genos(chunk, alts, AMBIGS_FULL)
-                io5["genos"][:, cslice, :] = genos
+                io5["genos"][cslice, :, :] = genos
 
     def _write_stats(self):
         """Write missing values in matrix to stats file, and logger.
@@ -442,10 +450,10 @@ def jit_get_reordered_alts_by_reference(alts: np.ndarray, ref: np.ndarray) -> np
 def jit_get_genos(snps: np.ndarray, alts: np.ndarray, cons: np.ndarray) -> np.ndarray:
     """Return genotype as 0/1/2/3 or 9 for missing as, e.g., (0, 1).
 
-    This function needs 
+    why do 
     """
-    # create genos array for the chunk.
-    genos = np.zeros((snps.shape[0], snps.shape[1], 2), dtype=np.uint8)
+    # create genos array for the chunk shape=(nsnps, nsamples, 2)
+    genos = np.zeros((snps.shape[1], snps.shape[0], 2), dtype=np.uint8)
 
     # fill an array for the two resolutions of each base.
     snps1 = np.zeros(snps.shape, dtype=np.uint8)
@@ -470,9 +478,9 @@ def jit_get_genos(snps: np.ndarray, alts: np.ndarray, cons: np.ndarray) -> np.nd
             for sidx in range(arr.shape[0]):
                 xpos = np.where(alt == arr[sidx, cidx])[0]
                 if xpos.size:
-                    genos[sidx, cidx, aidx] = xpos[0]
+                    genos[cidx, sidx, aidx] = xpos[0]
                 else:
-                    genos[sidx, cidx, aidx] = 9
+                    genos[cidx, sidx, aidx] = 9
     return genos
 
 
