@@ -17,6 +17,9 @@ def load_json(json_file: str) -> Assembly:
     data.samples = {i: j for (i, j) in proj.samples.items() if i != "reference"}
     data.params = proj.params
     data.hackers = proj.hackers
+    data.outfiles = proj.outfiles
+    data.populations = proj.populations
+    data.assembly_stats = proj.assembly_stats
     logger.info(f"loaded Assembly {data.name} from JSON file")
     return data
 

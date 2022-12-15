@@ -15,7 +15,7 @@ import pandas as pd
 from ipyrad.core.params_schema import ParamsSchema, HackersSchema
 from ipyrad.core.schema import Project, SampleSchema
 from ipyrad.core.cluster import Cluster
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.utils import IPyradExit
 from ipyrad.assemble.s1_demux import Step1
 from ipyrad.assemble.s2_trim_reads import Step2
 from ipyrad.assemble.s3_clustmap_within import Step3
@@ -214,6 +214,10 @@ class Assembly:
             for i in subsample:
                 if i not in self.samples:
                     logger.warning(f"sample name {i} does not exist.")
+
+        # clear assembly_stats and outfiles
+        branch.assembly_stats = {}
+        branch.outfiles = {}
         return branch
 
     def write_params(self, force:bool=False) -> None:
@@ -232,8 +236,8 @@ class Assembly:
         # If not forcing, test for file and bail out if it exists
         if not force:
             if outpath.exists():
-                raise IPyradError(
-                    f"file {outpath} exists, you must use force to overwrite")
+                raise IPyradExit(
+                    f"Error: file {outpath} exists, you must use force to overwrite")
 
         params = self.params.dict()
         with open(outpath, 'w', encoding="utf-8") as out:
@@ -257,6 +261,8 @@ class Assembly:
             hackers=HackersSchema(**self.hackers.dict()),
             samples=self.samples,
             populations=self.populations,
+            assembly_stats=self.assembly_stats,
+            outfiles=self.outfiles,
         )
         with open(self.json_file, 'w', encoding="utf-8") as out:
             out.write(project.json(indent=2, exclude_none=True))
