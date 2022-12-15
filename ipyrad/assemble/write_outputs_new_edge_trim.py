@@ -44,12 +44,16 @@ advance from the left versus right to get the positions.
 >>> TTTTTATTTT... [trimmed left: 0]  [offset: 20]
 
 But we only need to store for the SNP. The offset from start adds
-to the position, whereas any internal indels subtract from it. An
-indel at the SNP position equates to NaN for its catg position.
-
->>> Locus      Pos       S0   S1  S2   S3   S4   S5   S6   ...
->>>   0          5        5    5   5    5    9   25   NaN  ...
->>>   0        200      197  196 197  NaN  203  219   NaN  ...
+to the position, whereas any internal indels subtract from it. 
+[/tmp/chunk-x-y.npy]
+>>> lidx   sidx    cidx    pos    shift
+>>>    0      0       0     21        0
+>>>    0      1     300     21        0
+>>>    0      2    5221     21        0
+>>>  ...
+>>>  999      0     520     52        2
+>>>  999      1    7628     52        2
+>>>  999      2    2993     52        2
 """
 
 from typing import TypeVar, Tuple, List
