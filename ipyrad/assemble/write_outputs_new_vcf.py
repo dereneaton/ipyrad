@@ -11,13 +11,15 @@ import time
 import h5py
 import numpy as np
 import pandas as pd
-
+from loguru import logger
 import ipyrad
 from ipyrad.assemble.utils import chroms2ints
+from ipyrad.analysis.database import SnpsDatabase
 
-
+logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 100 # 10_000
+CHUNKSIZE = 100
+CHUNKSIZE = 10_000
 
 
 VCFHEADER = """\
@@ -39,44 +41,57 @@ class BuildVcf:
         self.data = data
 
         # attributes to be filled.
-        self.revdict = chroms2ints(self.data, keys_as_ints=True)
+        # self.revdict = chroms2ints(self.data, keys_as_ints=True)
         """: A dict to convert chrom ints to chrom str names."""
         self.snames: List[str] = []
         """: A list of names in alphanumeric order, optionally including ref as sample."""
 
     def _iter_snps_data_chunk(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """Yield chunks of data from SNPS HDF5."""
-        with h5py.File(self.data.outfiles["snps_database"], 'r') as io5:
-            self.snames = list(io5['snpsmap'].attrs["names"])
+        with SnpsDatabase(self.data.outfiles["snps_database"], 'r') as io5:
+            self.snames = list(io5.attrs["names"])
             for start in range(0, io5['snpsmap'].shape[0], CHUNKSIZE): # pylint: disable=no-member
                 snpsmap = io5['snpsmap'][start:start + CHUNKSIZE, :]
                 alts = io5['alts'][start:start + CHUNKSIZE, :]
-                genos = io5['genos'][:, start:start + CHUNKSIZE, :]
+                genos = io5['genos'][start:start + CHUNKSIZE, :, :]
                 yield snpsmap, alts, genos
 
     def _iter_vcf_data_chunk(self) -> Iterator[pd.DataFrame]:
         """Writes chunks to VCF file."""
         for snpsmap, alts, genos in self._iter_snps_data_chunk():
 
-            # get scaffold names, positions, and ID string.
-            chrom_names = [self.revdict[i] for i in snpsmap[:, 3]]
-            rad_ids = [
-                f"loc_{i}_pos_{j}" for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 2])
-            ]
+            if self.data.is_ref:
+                # get scaffold names, positions, and ID string.
+                chrom_names = [self.revdict[i] for i in snpsmap[:, 3]]
+                rad_ids = [
+                    f"loc{i}_pos{j}_scaff{x}_pos{y}" 
+                    for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 2])
+                ]
 
-            # get ref and alternate calls.
+            else:
+                chrom_names = [f"RADtag{i}" for i in snpsmap[:, 0]]
+                rad_ids = [
+                    f"loc{i}_snp{j}" 
+                    for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 1])
+                ]
+
+            # get ref alleles as a list of strings: ["A", "T", "C", ...]
             ref = list(alts[:, 0].tobytes().decode())
+
+            # get alt alleles as a list of single or comma-joined strings: 
+            # ["T", "A,C", "G,T", ...]
             alleles = []
             for idx in range(alts.shape[0]):
                 calls = alts[idx, 1:]
                 calls = calls[calls > 0]
                 calls = ",".join(calls.tobytes().decode())
                 alleles.append(calls)
+                # print(f"{ref[idx]} | {calls}")
 
             # build vcf dataframe for first 7 columns.
             vcfdf = pd.DataFrame({
                 '#CHROM': chrom_names,                  # chrom str name
-                'POS': snpsmap[:, 4],                   # 1-indexed position on scaff
+                'POS': snpsmap[:, 4] + 1,  # *******    # 1-indexed position on scaff
                 'ID': rad_ids,                          # RAD locus (x-positioned) and position 0-indexed.
                 'REF': ref,                             # reference allele.
                 'ALT': alleles,                         # other alleles in order.
@@ -85,7 +100,7 @@ class BuildVcf:
             })
 
             # get sample coverage at each SNP site
-            nsamples = genos.shape[0] - np.any(genos == 9, axis=2).sum(axis=0)
+            nsamples = genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
             colinfo = pd.Series(
                 name="INFO", data=[f"NS={i}" for i in nsamples]
             )
@@ -97,11 +112,11 @@ class BuildVcf:
 
             # get genotypes relative to REF/ALTS as strings (0/0, 0/1, ...)
             colgenos = pd.DataFrame({})
-            for sname in self.snames:
+            for sidx, sname in enumerate(self.snames):
+
+                genlist = (list(j) for j in genos[:, sidx])
                 genostrs = [
-                    "{}/{}".format(*sorted(k)) for k in [
-                        list(j) for j in genos[self.snames.index(sname)]
-                    ]
+                    "{}/{}".format(*sorted(k)) for k in genlist
                 ]
                 genostrs = ["./." if i == "9/9" else i for i in genostrs]
                 colgenos[sname] = genostrs
@@ -128,7 +143,7 @@ class BuildVcf:
                 version=ipyrad.__version__,
                 reference=reference
             )
-            out.write(header + "\n")
+            out.write(header)
 
             # write data table
             head = True
@@ -299,25 +314,45 @@ class BuildVcf:
 
 if __name__ == "__main__":
 
+    # from ipyrad.assemble.s7_assemble import Step7, SnpsDatabase
     import ipyrad as ip
-    from ipyrad.assemble.s7_assemble import Step7, SnpsDatabase
     ip.set_log_level("INFO", log_file="/tmp/test.log")
 
-    DATA = ip.load_json("/tmp/TEST5.json")
-    DATA.params.output_formats.append("v")
+    DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+    DATA.outfiles['vcf'] = "/tmp/test.vcf"
 
-    # uncomment to include the ref
-    DATA.hackers.exclude_reference = False
-    print("EXCLUDE REF=", DATA.hackers.exclude_reference)
+    v = BuildVcf(DATA)    
+    i = v._iter_snps_data_chunk()
+    a, b, c = next(i)
+    print(a[:5])
+    print(b[:5])
+    print(c[0, :])    
+    # print(list(b[:5, 0].tobytes().decode()))
 
-    # run it.
-    with ip.Cluster(4) as ipyclient:
-        step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
-        step._split_clusters()
-        step._apply_filters_and_trimming()
-        step._collect_stats()
+    x = v._iter_vcf_data_chunk()
+    y = next(x)
 
-        db = SnpsDatabase(DATA)
-        db.run()
+    pd.set_option('max_colwidth', 1000)
+    print(y.iloc[:5, :])
+    print(y.iloc[-5:, :])
+    v.run()
 
-        BuildVcf(DATA).run()
+
+    # DATA = ip.load_json("/tmp/TEST5.json")
+    # DATA.params.output_formats.append("v")
+
+    # # uncomment to include the ref
+    # DATA.hackers.exclude_reference = False
+    # print("EXCLUDE REF=", DATA.hackers.exclude_reference)
+
+    # # run it.
+    # with ip.Cluster(4) as ipyclient:
+    #     step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
+    #     step._split_clusters()
+    #     step._apply_filters_and_trimming()
+    #     step._collect_stats()
+
+    #     db = SnpsDatabase(DATA)
+    #     db.run()
+
+    #     BuildVcf(DATA).run()
