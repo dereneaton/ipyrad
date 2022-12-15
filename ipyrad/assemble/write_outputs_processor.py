@@ -317,9 +317,9 @@ class ChunkProcess:
             mags, bins = np.histogram(pis_list, bins=nice_bins)
             self.stats['pis_props'] = dict(zip(bins, mags))
 
-            # ...
+            # store this chunk shift table to tmp dir
             with open(self.chunkfile.with_suffix('.npy'), 'wb') as out:
-                np.save(out, np.array(self.shift_tables, dtype=np.uint64))
+                np.save(out, np.array(self.shift_tables, dtype=np.int64))
 
     def _filter_maxindels(self, seqs: np.ndarray) -> bool:
         """Max size of internal indels. Denovo vs. Ref, single versus paired."""
@@ -385,7 +385,7 @@ class ChunkProcess:
         return snpcount_numba(seqs, int(self.data.drop_ref))
 
     def _get_shift_table(self, locus: Locus, snpsarr: np.ndarray) -> List[List[int]]:
-        """Return table with positions of SNPs in .seqs.
+        """Return table with shifted positions of SNPs in .seqs. (DENOVO)
 
         Record the shift for every sample that has data for a locus,
         even if it is N or dash at the SNP site. This is stored by
@@ -394,14 +394,19 @@ class ChunkProcess:
         and position of the trimmed alignment (output .loci fragment).
         Finally, the shift (see below) is recorded.
 
+        A table is created here for one locus at a time, but they are
+        concatenated outside this func to make a table like below. The
+        nrows of this will be nsamples x nloci which could be in the 
+        millions, so kind of big, but not insane, and its only a tmp
+        file for step7 then removed. Prob not >1Gb.
+
         Format
         ------
-        >>>  Sidx    Cidx    Locus      Pos      Shift
-        >>>    0      10       0        10        0
-        >>>    0     200       0       100       10
-        >>>    ...
-        >>>   100    150K     500K     300       100
-        >>> # should store as dtype=uint64 to be safe.
+        >>>  Lidx   Sidx    Cidx      Pos      Shift
+        >>>    0       0      10       10        0
+        >>>    0       1     200      100       10
+        >>>    ...           
+        >>> # should store as dtype=int64 to be safe.
 
         Shift
         -----
@@ -437,7 +442,7 @@ class ChunkProcess:
                 cidx = int(nidxstring[:-2])
                 ori = nidxstring[-1]
 
-                # FIXME
+                # FIXME; needed for gbs data 
                 if ori == "-":
                     raise NotImplementedError('todo')
                 else:
@@ -451,7 +456,7 @@ class ChunkProcess:
 
                     # get shift and store full record
                     shift = base_shift - indels
-                    shift_table.append([sidx, cidx, locus.lidx, pos, shift])
+                    shift_table.append([locus.lidx, sidx, cidx, pos, shift])
         return shift_table
 
     def _to_locus(self, locus: Locus, snpsarr: np.ndarray) -> str:
