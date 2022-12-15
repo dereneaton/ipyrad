@@ -194,6 +194,7 @@ class Step7(BaseStep):
         # if 'v' in self.formats:
             # self.remote_fill_depths()
             # self.remote_build_vcf()
+        self.data.save_json()
 
     ###### PARSE FUNCS #############################################
     def _iter_clusters(self) -> Iterator[str]:

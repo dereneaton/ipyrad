@@ -12,7 +12,7 @@ from pathlib import Path
 import shutil
 from abc import ABC
 from loguru import logger
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.utils import IPyradExit
 from ipyrad.core.schema import SampleSchema
 
 Assembly = TypeVar("Assembly")
@@ -107,7 +107,7 @@ class BaseStep(ABC):
         if self.step == 1:
             return
         if not self.data.samples:
-            raise IPyradError("No samples found. You must first run step 1.")
+            raise IPyradExit("Error: No samples found. You must first run step 1.")
 
         # check samples for current states
         not_ready = {}
@@ -126,7 +126,7 @@ class BaseStep(ABC):
         # warn about skipped samples that are not ready
         if not_ready:
             if len(not_ready) == len(self.data.samples):
-                raise IPyradError(f"No samples ready for step {self.step}")
+                raise IPyradExit(f"Error: No samples ready for step {self.step}")
             logger.warning(
                 f"Skipping samples not ready for step {self.step}. Create "
                 "a new branch and drop these samples to suppress this "
@@ -172,8 +172,8 @@ class BaseStep(ABC):
                 logger.debug(msg)
                 shutil.rmtree(self.data.stepdir)
             else:
-                msg = f"Directory {self.data.stepdir} exists. Use force to overwrite."
-                raise IPyradError(msg)                
+                msg = f"Error: Directory {self.data.stepdir} exists.\nUse force (-f) to overwrite."
+                raise IPyradExit(msg)
             
         # always clear tmpdir, and always make both new dirs.
         if self.data.tmpdir.exists():

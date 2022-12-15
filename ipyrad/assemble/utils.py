@@ -73,10 +73,22 @@ CDICT = dict(zip("CATG", "0123"))
 
 
 class IPyradError(Exception):
-    def __init__(self, *args, **kwargs):
-        # raise the exception with this string message and a traceback
-        Exception.__init__(self, *args, **kwargs)
+    """Raise a custom exception that will report with traceback.
 
+    This is used to catch and report internal errors in the code, 
+    and the traceback will include the source error and error type
+    for debugging.
+    """
+    # def __init__(self, *args, **kwargs):
+        # raise the exception with this string message and a traceback
+        # Exception.__init__(self, *args, **kwargs)
+
+class IPyradExit(SystemExit):
+    """Return code 1 to exit with an error message but NO TRACEBACK.
+
+    This is used to catch and report common user mistakes to return
+    an error message but not burden them with an ugly traceback.
+    """
 
 # used by clustmap
 def comp(seq):

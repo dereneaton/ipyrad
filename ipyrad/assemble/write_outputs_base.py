@@ -125,7 +125,7 @@ if __name__ == "__main__":
         step._collect_stats()
         step._write_stats_files()
 
-        db = DatabaseLoader(step.data, step.samples)
+        db = DatabaseWriter(step.data, step.samples)
         db.run()
 
         # # print supermatrix parts from start and end of loci file.
