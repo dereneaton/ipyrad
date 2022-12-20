@@ -43,11 +43,11 @@ class Converter:
             return self.write_nex()
         if oformat == "gphocs":               # gphocs format.
             return self.write_gphocs()
-        if oformat == "snps":               # snps + snpsmap outputs
+        if oformat == "snps.phy":               # snps + snpsmap outputs
             snpsfile = self.write_snps()
             snpsmapfile = self.write_snps_map()
             return snpsfile, snpsmapfile
-        if oformat == "usnps":               # usnps
+        if oformat == "usnps.phy":               # usnps
             return self.write_usnps()
         if oformat == "str":               # str (structure)
             return self.write_str()

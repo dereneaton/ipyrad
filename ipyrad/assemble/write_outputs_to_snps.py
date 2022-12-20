@@ -101,7 +101,8 @@ CHUNKSIZE = 10_000
 class SnpsDatabaseWriter(DatabaseWriter):
 
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
-        self.name = Path(data.stepdir) / f"{data.name}.snps_hdf5"
+        # self.name = Path(data.stepdir) / f"{data.name}.snps.hdf5"
+        self.name = data.outfiles['snps_database']
         """: Output HDF5 file name."""
         super().__init__(data, samples)
 

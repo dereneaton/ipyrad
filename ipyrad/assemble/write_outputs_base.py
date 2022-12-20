@@ -10,9 +10,6 @@ from pathlib import Path
 
 Assembly = TypeVar("Assembly")
 
-# size of concatenated data processed at one time in memory.
-CHUNKSIZE = 50_000
-
 class DatabaseWriter(ABC):
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
         self.data: Assembly = data
@@ -96,49 +93,7 @@ class DatabaseWriter(ABC):
     @abstractmethod
     def run(self):
         """Initialize HDF5 database and then fill it in chunks."""
-        self._get_sorted_loci_chunks()
-        self._get_snppad()
-        self._get_snames()
-
-        for i in zip(range(5), self._iter_loci()):
-            print(i)
 
 
 if __name__ == "__main__":
-
-    import ipyrad as ip
-    from ipyrad.assemble.s7_assemble import Step7
-    ip.set_log_level("INFO")#, log_file="/tmp/test.log")
-
-    DATA = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
-    # DATA = ip.load_json("/tmp/small.json")
-
-    # uncomment to include the ref
-    DATA.hackers.exclude_reference = True
-    print("EXCLUDE REF=", DATA.hackers.exclude_reference)
-
-    # run it.
-    with ip.Cluster(4) as ipyclient:
-        step = Step7(DATA, ipyclient=ipyclient, force=True, quiet=False)
-        step._write_cluster_chunks()
-        step._apply_filters_and_trimming()
-        step._collect_stats()
-        step._write_stats_files()
-
-        db = DatabaseWriter(step.data, step.samples)
-        db.run()
-
-        # # print supermatrix parts from start and end of loci file.
-        # with h5py.File(db.name, 'r') as IO5:
-        #     NAMES = IO5["snpsmap"].attrs["names"][:]
-        #     SNPS = IO5["snps"][:]
-        #     GENOS = IO5["genos"][:]
-        #     ALTS = IO5["alts"][:]
-
-        #     print(NAMES)
-        #     # print first ten sites in first chunk file
-        #     for i, n in enumerate(NAMES):            
-        #         print(f"{NAMES[i]:<10}", SNPS[i, :16].tobytes().decode())            
-        #     print(ALTS[:16])
-        #     # print(GENOS[-1, :16])
-            
+    pass

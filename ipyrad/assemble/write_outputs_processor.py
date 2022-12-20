@@ -57,7 +57,7 @@ advance from the left versus right to get the positions.
 >>> TTTTTATTTT... [trimmed left: 0]  [offset: 20]
 
 But we only need to store for the SNP. The offset from start adds
-to the position, whereas any internal indels subtract from it. 
+to the position, whereas any internal indels subtract from it.
 [/tmp/chunk-x-y.npy]
 >>> lidx   sidx    cidx    pos    shift
 >>>    0      0       0     21        0
@@ -66,7 +66,7 @@ to the position, whereas any internal indels subtract from it.
 >>>  ...
 >>>  999      0     520     52        2
 >>>  999      1    7628     52        2
->>>  999      2    2993     52        2    
+>>>  999      2    2993     52        2
 """
 
 from typing import Iterator, List, Tuple, Dict, TypeVar
@@ -76,7 +76,7 @@ import pandas as pd
 import numpy as np
 from numba import njit
 from ipyrad.assemble.write_outputs_new_edge_trim import Locus
-from ipyrad.assemble.utils import chroms2ints
+from ipyrad.assemble.utils import chroms2ints, IPyradError
 
 Assembly = TypeVar("Assembly")
 AMBIGARR = np.array(list(b"RSKYWM")).astype(np.uint8)
@@ -440,7 +440,7 @@ class ChunkProcess:
 
         A table is created here for one locus at a time, but they are
         concatenated outside this func to make a table like below. The
-        nrows of this will be nsamples x nloci which could be in the 
+        nrows of this will be nsamples x nloci which could be in the
         millions, so kind of big, but not insane, and its only a tmp
         file for step7 then removed. Prob not >1Gb.
 
@@ -449,7 +449,7 @@ class ChunkProcess:
         >>>  Lidx   Sidx    Cidx      Pos      Shift
         >>>    0       0      10       10        0
         >>>    0       1     200      100       10
-        >>>    ...           
+        >>>    ...
         >>> # should store as dtype=int64 to be safe.
 
         Shift
@@ -476,6 +476,18 @@ class ChunkProcess:
         Then, for each SNP we subtract from the base shift the number
         of indels between the start trim position and the SNP.
         """
+        # store base_shift for each sample
+        fshift = {}  # position of first consens base in seqs
+        bshift = {}  # shift relative to fshift
+        for nidx, name in enumerate(locus.names):
+            # index of first consens base
+            fshift[name] = np.argmax((locus.seqs[nidx] != 78) & (locus.seqs[nidx] != 45))
+
+            # if consens based were trimmed off then bshift will negative.
+            # if consens doesn't start until after trimmed (whether caused
+            # by N or - doesn't matter) then bshift will be positive.
+            bshift[name] = locus.trimmed[0] - fshift[name]
+
         # for each SNP in locus.
         shift_table = []
         pxs = np.where(snpsarr != 0)[0]
@@ -483,24 +495,39 @@ class ChunkProcess:
             for nidx, name in enumerate(locus.names):
                 sidx = self.snames.index(name)
                 nidxstring = locus.nidxs[nidx]
-                cidx = int(nidxstring[:-2])
-                ori = nidxstring[-1]
+                cidx = int(nidxstring[:-2])     # consens idx
+                ori = nidxstring[-1]            # alignment orientation
 
-                # FIXME; needed for gbs data 
+                # FIXME; needed for gbs data
                 if ori == "-":
                     raise NotImplementedError('todo')
                 else:
-                    # get baseshift - 10 (N padding) from SEQS
-                    base_shift = np.argmax((locus.seqs[nidx] != 78) & (locus.seqs[nidx] != 45))
-                    base_shift -= 10
 
-                    # get indel shift from TSEQS
-                    # subtract for each indels between start and SNP
-                    indels = np.sum(locus.tseqs[nidx, :pos] == 45)
+                    # is this site an indel for this sample?
+                    if locus.tseqs[nidx, pos] == 45:
+                        shift_table.append([locus.lidx, sidx, cidx, pos, 999])
+                    else:
+                        # else, get indel shift
+                        # subtract for each indels between start and SNP
+                        indels = np.sum(locus.seqs[nidx, fshift[name]:int(locus.trimmed[0] + pos)] == 45)
+                        shift = bshift[name] - indels
+                        shift_table.append([locus.lidx, sidx, cidx, pos, shift])
 
-                    # get shift and store full record
-                    shift = base_shift - indels
-                    shift_table.append([locus.lidx, sidx, cidx, pos, shift])
+        # DEBUGGING
+        # if locus.lidx == 71833:
+        #     for row in range(locus.seqs.shape[0]):
+        #         sname = locus.names[row]
+        #         print(f"{self.pnames[sname]}\t{locus.seqs[row].tobytes().decode().upper()} {fshift[sname]} {bshift[sname]}")
+
+        #     print("TRIMMED")
+        #     for row in range(locus.tseqs.shape[0]):
+        #         sname = locus.names[row]
+        #         print(f"{self.pnames[sname]}\t{locus.tseqs[row].tobytes().decode().upper()}")
+
+        #     # print(f"\n{locus.tseqs[4]}")
+        #     print(f"trimmed={locus.trimmed}")
+        #     print(f"SHIFT\n{shift_table[-6:]}")
+        #     print(pxs)
         return shift_table
 
     def _to_locus(self, locus: Locus, snpsarr: np.ndarray) -> str:
@@ -710,7 +737,31 @@ if __name__ == "__main__":
 
     import ipyrad as ip
     ip.set_log_level("DEBUG")
+    from ipyrad.assemble.s7_assemble import *
     # from dataclasses import asdict
+
+    DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+    P = []
+
+    with ip.Cluster(cores=4) as ipyclient:
+        step = Step7(DATA, force=True, quiet=False, ipyclient=ipyclient)
+        step._get_chunksize()
+
+        step._write_cluster_chunks()
+        chunks = step.data.tmpdir.glob("chunk-*.pre")
+        chunks = sorted(chunks, key=lambda x: int(x.name.split("-")[1]))
+        jobs = {}
+
+        samples = DATA.samples
+
+        for chunk in chunks:
+            proc = ChunkProcess(step.data, step.samples, step.chunksize, chunk)
+            P.append(proc)
+
+    P[13].run()
+
+
+    raise SystemExit()
 
     data = ip.load_json("/tmp/TEST5.json")
     data.params.restriction_overhang = ("TGCAG", "CGG")

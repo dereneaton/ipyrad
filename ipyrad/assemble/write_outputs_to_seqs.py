@@ -60,7 +60,8 @@ CHUNKSIZE = 50_000
 class SeqsDatabaseWriter(DatabaseWriter):
 
     def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
-        self.name = Path(data.stepdir) / f"{data.name}.seqs_hdf5"
+        self.name = data.outfiles['seqs_database'] 
+        # Path(data.stepdir) / f"{data.name}.seqs.hdf5"
         """: Output HDF5 file name."""
         super().__init__(data, samples)
 
@@ -262,7 +263,7 @@ if __name__ == "__main__":
         step._write_stats_files()
 
         # run it.
-        db = SeqsDatabase(step.data, step.samples)
+        db = SeqsDatabaseWriter(step.data, step.samples)
         db.run()
 
         # print supermatrix parts from start and end of loci file.

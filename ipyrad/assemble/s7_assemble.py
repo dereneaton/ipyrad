@@ -47,6 +47,8 @@ from ipyrad.assemble.write_outputs_converter import Converter
 from ipyrad.assemble.write_outputs_to_loci import LociWriter
 from ipyrad.assemble.write_outputs_to_seqs import SeqsDatabaseWriter
 from ipyrad.assemble.write_outputs_to_snps import SnpsDatabaseWriter
+from ipyrad.assemble.write_outputs_vcf_depths import SingleDepths
+from ipyrad.assemble.write_outputs_new_vcf import BuildVcfDenovo
 # from ipyrad.assemble.write_outputs_vcf import FillVCF, build_vcf
 
 # pylint: disable=too-many-branches, too-many-statements, too-many-lines
@@ -55,15 +57,15 @@ Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
 
 OUT_SUFFIX = {
-    # 'l': 'loci',
+    # 'l': 'loci',    # default
+    # 'v': 'vcf',     # default
     'p': 'phy',
-    's': 'snps',  # 'snpsmap'
+    's': 'snps.phy',  # 'snpsmap'
     'n': 'nex',
     'k': 'str',
     'g': 'geno',
     'G': 'gphocs',
-    'u': 'usnps',  # 'ustr', 'ugeno',
-    'v': 'vcf',
+    'u': 'usnps.phy',  # 'ustr', 'ugeno',
     't': 'treemix',
     'm': 'migrate',
     # 'a' ('alleles',),
@@ -85,7 +87,7 @@ class Step7(BaseStep):
         """: record whether the reference sample needs to be dropped."""
 
         # Samples includes all samples present in the step6 clust_database.
-        # Users cannot merge new samples between step6 and 7 or the 
+        # Users cannot merge new samples between step6 and 7 or the
         # check_database func here will raise an exception. They can branch
         # to drop samples which will be handled fine. If it is a REF assembly
         # then BaseStep will add a reference Sample. If the hackers.exclude_reference
@@ -94,7 +96,7 @@ class Step7(BaseStep):
 
         # info gathered from step6 results and ncpus
         self.clust_database = ""
-        """: Database file with aligned clusters from step 6."""        
+        """: Database file with aligned clusters from step 6."""
         self._check_database_files()
 
         self._n_raw_loci = 0
@@ -105,23 +107,19 @@ class Step7(BaseStep):
         # re-set default output file formats.
         self.data.outfiles = {
             'loci': self.data.stepdir / f"{self.data.name}.loci",
-            'seqs_database': self.data.stepdir / f"{self.data.name}.seqs_hdf5",
-            'snps_database': self.data.stepdir / f"{self.data.name}.snps_hdf5",
+            'seqs_database': self.data.stepdir / f"{self.data.name}.seqs.hdf5",
+            'snps_database': self.data.stepdir / f"{self.data.name}.snps.hdf5",
+            'vcf': self.data.stepdir / f"{self.data.name}.vcf",
         }
         """: Dict of output file paths."""
 
         # set outfiles keys and rm if filepath exists.
+        # btw: Assembly.outfiles is cleared in BaseStep.
         for abb, suffix in OUT_SUFFIX.items():
             fname = self.data.stepdir / f"{self.data.name}.{suffix}"
             fname.unlink(missing_ok=True)
             if abb in self.data.params.output_formats:
                 self.data.outfiles[suffix] = fname
-
-        # for letter in self.data.params.output_formats:
-            # if letter in OUT_SUFFIX:
-                # oname = OUT_SUFFIX[letter]
-                # self.data.outfiles[oname] = self.data.stepdir / f"{self.data.name}.{oname}"
-                # self.data.outfiles[oname].unlink(missing_ok=True)
 
         # init assembly stats object for storing results
         self.results = {}
@@ -180,10 +178,18 @@ class Step7(BaseStep):
         # apply filters and trim to the aligned clusters
         # and writes processed chunks to the tmpdir, and returns stats.
         self._apply_filters_and_trimming()
+
+        # distribute depth fetching function
+        self._write_ordered_depths()
+
+        # TODO: if population-based SNP call corrections were added
+        # they would need to occur here.
+
+        # collect/write stats on sample coverage and variation
         self._collect_stats()
         self._write_stats_files()
 
-        # write .loci, .snps_hdf5, and .seqs_hdf5.
+        # write .loci, .snps.hdf5, and .seqs.hdf5.
         self._write_databases()
 
         # write additional user-requested output formats from h5s.
@@ -193,7 +199,7 @@ class Step7(BaseStep):
         # throttle job to avoid memory errors based on catg size
         # if 'v' in self.formats:
             # self.remote_fill_depths()
-            # self.remote_build_vcf()
+        self._build_vcf()
         self.data.save_json()
 
     ###### PARSE FUNCS #############################################
@@ -245,7 +251,7 @@ class Step7(BaseStep):
         logger.warning("returned ChunkProcess for debugging.")
         return ChunkProcess(self.data, self.samples, self._n_raw_loci, cfile)
 
-    def _apply_filters_and_trimming(self):
+    def _apply_filters_and_trimming(self) -> None:
         """Calls process_chunk() function in parallel.
 
         The ChunkProcess class applies all of the step7 filters to
@@ -253,7 +259,7 @@ class Step7(BaseStep):
         If `hackers.exclude_reference=True` it will filter the
         reference sequence from all loci
         """
-        def remote_process_chunk(data, samples, chunksize, chunkfile):
+        def remote_process_chunk(data: Assembly, samples: Dict[str, 'Sample'], chunksize: int, chunkfile: Path):
             """ChunkProcess writes to .loci chunks and returns stats."""
             proc = ChunkProcess(data, samples, chunksize, chunkfile)
             proc.run()
@@ -271,6 +277,20 @@ class Step7(BaseStep):
         prog.block()
         prog.check()
         self.results = prog.results
+
+    def _write_ordered_depths(self) -> None:
+        """... (denovo only?) ..."""
+        def remote_write_single_depths(data, sname):
+            SingleDepths(data, sname).write()
+
+        jobs = {}
+        for sname, _ in self.samples.items():
+            args = (self.data, sname)
+            jobs[sname] = self.lbview.apply(remote_write_single_depths, *args)
+        msg = "fetching/ordering SNP depths"
+        prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
+        prog.block()
+        prog.check()
 
     def _collect_stats(self):
         """Collect results from ChunkProcess and write stats file.
@@ -335,9 +355,9 @@ class Step7(BaseStep):
 
         # write step7 json and report to logger
         self.data.save_json()
-        logger.debug(
-            "collecting statistics on assembly:\n"
-            f"{self.data.assembly_stats.json(indent=2)}")
+        # logger.debug(
+            # "collecting statistics on assembly:\n"
+            # f"{self.data.assembly_stats.json(indent=2)}")
 
     def _write_stats_files(self):
         """Write the s7_stats file using results stored in JSON file.
@@ -487,10 +507,10 @@ class Step7(BaseStep):
         msg = "writing conversions"
         jobs = {}
         for outf in self.data.outfiles:
-            print(outf)
-            if outf not in ["loci", "seqs_database", "snps_database"]:
-                jobs[outf] = self.lbview.apply(
-                    remote_file_conversion, *(self.data, outf))
+            # print(outf)
+            if outf not in ["loci", "vcf", "seqs_database", "snps_database"]:
+                args = (self.data, outf)
+                jobs[outf] = self.lbview.apply(remote_file_conversion, *args)
 
         # iterate until all chunks are processed
         prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
@@ -498,11 +518,12 @@ class Step7(BaseStep):
         prog.check()
         # print(self.data.outfiles)
 
-    def _remote_build_vcf(self):
-        """Build VCF format from snps HDF5, but w/o depths info."""
-        printstr = "writing vcf output"
-        jobs = {0: self.lbview.apply(remote_write_vcf, self.data)}
-        prog = AssemblyProgressBar(jobs, None, printstr, self.data)
+    def _build_vcf(self):
+        """Build VCF file from snps.hdf5 and  from snps HDF5, but w/o depths info."""
+        msg = "writing vcf output"
+        args = (self.data, self.samples)
+        jobs = {0: self.lbview.apply(remote_write_vcf, *args)}
+        prog = AssemblyProgressBar(jobs, msg, 7, self.quiet)
         prog.block()
         prog.check()
 
@@ -541,8 +562,12 @@ def remote_file_conversion(data: Assembly, outf: Path):
     """Remote function for converiting."""
     Converter(data).run(outf)
 
-def remote_write_vcf(data: Assembly) -> None:
+def remote_write_vcf(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """..."""
+    if data.is_ref:
+        pass
+    else:
+        BuildVcfDenovo(data, samples).run()
 
 def remove_fill_vcf_depths(data: Assembly, sample: 'SampleSchema'):
     """Writes catg depths to a tmp HDF5 for this sample."""

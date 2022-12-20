@@ -45,8 +45,8 @@ class LociWriter(DatabaseWriter):
                         if self.data.is_ref:
                             print("DO REF loCI string here..")
                         else:
-                            line = line.strip().rsplit("|", 3)[0]
-                            loc.append(f"line|{lidx}|")
+                            line = line.strip().split("|", 1)[0]
+                            loc.append(f"{line}|{lidx}|")
                         lidx += 1
                 loci.append("\n".join(loc))
             # yield the locus for the entire chunk.

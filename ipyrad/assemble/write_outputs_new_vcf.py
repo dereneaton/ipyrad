@@ -12,14 +12,15 @@ import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
-import ipyrad
-from ipyrad.assemble.utils import chroms2ints
-from ipyrad.analysis.database import SnpsDatabase
+# from ipyrad import __version__
+# from ipyrad.assemble.utils import chroms2ints
+from ipyrad.assemble.write_outputs_vcf_depths import CombinedDepths
+
 
 logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 100
-CHUNKSIZE = 10_000
+CHUNKSIZE = 2_000
 
 
 VCFHEADER = """\
@@ -36,7 +37,7 @@ VCFHEADER = """\
 """
 
 
-class BuildVcf:
+class BuildVcfBase:
     def __init__(self, data: Assembly):
         self.data = data
 
@@ -48,7 +49,7 @@ class BuildVcf:
 
     def _iter_snps_data_chunk(self) -> Iterator[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """Yield chunks of data from SNPS HDF5."""
-        with SnpsDatabase(self.data.outfiles["snps_database"], 'r') as io5:
+        with h5py.File(self.data.outfiles["snps_database"], 'r') as io5:
             self.snames = list(io5.attrs["names"])
             for start in range(0, io5['snpsmap'].shape[0], CHUNKSIZE): # pylint: disable=no-member
                 snpsmap = io5['snpsmap'][start:start + CHUNKSIZE, :]
@@ -56,39 +57,72 @@ class BuildVcf:
                 genos = io5['genos'][start:start + CHUNKSIZE, :, :]
                 yield snpsmap, alts, genos
 
+
+class BuildVcfReference(BuildVcfBase):
+    """Reference only object for building VCF. 
+    
+    This differs from the BuildVcfDenovo object in ...
+    """
     def _iter_vcf_data_chunk(self) -> Iterator[pd.DataFrame]:
         """Writes chunks to VCF file."""
         for snpsmap, alts, genos in self._iter_snps_data_chunk():
 
-            if self.data.is_ref:
-                # get scaffold names, positions, and ID string.
-                chrom_names = [self.revdict[i] for i in snpsmap[:, 3]]
-                rad_ids = [
-                    f"loc{i}_pos{j}_scaff{x}_pos{y}" 
-                    for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 2])
-                ]
+            # get scaffold names, positions, and ID string.
+            chrom_names = [self.revdict[i] for i in snpsmap[:, 3]]
+            rad_ids = [
+                f"loc{i}_pos{j}_scaff{x}_pos{y}" 
+                for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 2])
+            ]
 
-            else:
-                chrom_names = [f"RADtag{i}" for i in snpsmap[:, 0]]
-                rad_ids = [
-                    f"loc{i}_snp{j}" 
-                    for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 1])
-                ]
 
-            # get ref alleles as a list of strings: ["A", "T", "C", ...]
+class BuildVcfDenovo(BuildVcfBase):
+    """Denovo only object for building VCF. 
+    
+    This differs from the BuildVcfReference object in ...
+    """
+    def __init__(self, data: Assembly, snames: List[str]):
+        self.snames = snames
+        super().__init__(data)
+        self.idepths = self._iter_vcf_depths()        
+
+    def _iter_vcf_depths(self):
+        """Yield depths for each SNP in order."""
+        comb = CombinedDepths(self.data, self.snames)
+        comb.open_handles()
+        for snp in comb.iter_snp_depths():
+            yield snp
+        comb.close_handles()
+
+    def _iter_vcf_data_chunk(self) -> Iterator[pd.DataFrame]:
+        """Writes chunks to VCF file."""
+        for snpsmap, alts, genos in self._iter_snps_data_chunk():
+
+            # get CHROM strings of RAD locus at each SNP site.
+            # >>> ['RADtag0', RADtag0', 'RADtag1', ...]
+            chrom_names = [f"RADtag{i}" for i in snpsmap[:, 0]]
+
+            # get ID strings for description loc+pos 0-indexed
+            # >>> [loc0_snp0, loc0_snp1, loc1_snp0, ...]
+            loc_pos_gen = zip(snpsmap[:, 0], snpsmap[:, 1])
+            rad_ids = [f"loc{i}_snp{j}" for (i, j) in loc_pos_gen]
+
+            # get ref alleles as a list of strings: 
+            # >>> ["A", "T", "C", ...]
             ref = list(alts[:, 0].tobytes().decode())
 
             # get alt alleles as a list of single or comma-joined strings: 
-            # ["T", "A,C", "G,T", ...]
+            # >>> ["T", "A,C", "G,T", ...]
             alleles = []
             for idx in range(alts.shape[0]):
                 calls = alts[idx, 1:]
                 calls = calls[calls > 0]
                 calls = ",".join(calls.tobytes().decode())
                 alleles.append(calls)
-                # print(f"{ref[idx]} | {calls}")
 
             # build vcf dataframe for first 7 columns.
+            # >>> #CHROM  POS     ID            REF     ALT     QUAL    FILTER
+            # >>> RADtag0 8       loc0_snp0       G       A       13      PASS
+            # >>> ...
             vcfdf = pd.DataFrame({
                 '#CHROM': chrom_names,                  # chrom str name
                 'POS': snpsmap[:, 4] + 1,  # *******    # 1-indexed position on scaff
@@ -99,27 +133,62 @@ class BuildVcf:
                 'FILTER': ['PASS'] * snpsmap.shape[0],  # no filter applied.
             })
 
-            # get sample coverage at each SNP site
+            # fill depth information from ...
+            # >>> 0/0:10:10,0,0,0  1/1:20:10,10,0,0  0/0:5:5,5,5,5 ...
+            sumdepths = []
+            indepths = []
+            catgs = []
+            for _ in range(min(CHUNKSIZE, snpsmap.shape[0])):
+                site_depths = next(self.idepths)
+                isum = 0
+                idepth = []
+                icatg = []
+                for sample_depth in site_depths:
+                    depth = int(sample_depth[0])
+                    isum += depth
+                    idepth.append(depth)
+                    icatg.append(sample_depth[1])
+                sumdepths.append(isum)
+                indepths.append(idepth)
+                catgs.append(icatg)
+
+            # get sample coverage at each SNP site (column 8)
+            # >>> INFO
+            # >>> NS=10;DP=300
             nsamples = genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
             colinfo = pd.Series(
-                name="INFO", data=[f"NS={i}" for i in nsamples]
+                name="INFO", data=[f"NS={i};DP={j}" for i, j in zip(nsamples, sumdepths)]
             )
 
-            # get format column: what type of metadata to expect
+            # get format column: what type of metadata to expect (column 9)
+            # >>> FORMAT
+            # >>> GT:DP:CATG
             colform = pd.Series(
-                name="FORMAT", data=["GT"] * snpsmap.shape[0],
+                name="FORMAT", data=["GT:DP:CATG"] * snpsmap.shape[0],
             )
 
-            # get genotypes relative to REF/ALTS as strings (0/0, 0/1, ...)
+            # get genotype calls (index of REF+ALTS) as strings
+            # this makes up part of columns 9 -> 9+nsamples
+            # >>> 0/0, 0/1, 1/1, ...
             colgenos = pd.DataFrame({})
             for sidx, sname in enumerate(self.snames):
 
-                genlist = (list(j) for j in genos[:, sidx])
-                genostrs = [
-                    "{}/{}".format(*sorted(k)) for k in genlist
-                ]
+                genlist = (sorted(j) for j in genos[:, sidx])
+                genostrs = (f"{i[0]}/{i[1]}" for i in genlist)
                 genostrs = ["./." if i == "9/9" else i for i in genostrs]
                 colgenos[sname] = genostrs
+
+            # get depths [[10, 20, 12, 15, ...], [50, 55, 60, 33, ...]...]
+            coldepths = pd.DataFrame(np.array(indepths), columns=self.snames)
+
+            # get catgs [['0,0,0,10', '0,0,5,5', ...], ['50,0,0,0', '0,0,30,0'...]]
+            colcatgs = pd.DataFrame(np.array(catgs), columns=self.snames)
+
+            # join colgenos, coldepths and colcatgs
+            for sname in colgenos.columns:
+                colgenos[sname] = [f"{i}:{j}:{z}" for (i, j, z) in 
+                    zip(colgenos[sname], coldepths[sname], colcatgs[sname])
+                ]
 
             # concat and order columns correctly
             infocols = pd.concat([vcfdf, colinfo, colform], axis=1)
@@ -131,6 +200,7 @@ class BuildVcf:
 
     def run(self):
         """Write chunks of VCF table to file."""
+        # TODO: Gzip it? BGZip it?
         with open(self.data.outfiles["vcf"], 'w', encoding="utf-8") as out:
 
             # print the VCF header.
@@ -140,176 +210,17 @@ class BuildVcf:
                 reference = "pseudo-reference (most common base at site)"
             header = VCFHEADER.format(
                 date=time.strftime("%Y/%m/%d"),
-                version=ipyrad.__version__,
+                version="X",#ipyrad.__version__,
                 reference=reference
             )
             out.write(header)
 
-            # write data table
+            # write data table in chunks at a time.
             head = True
             for vcfdf in self._iter_vcf_data_chunk():
                 vcfdf.to_csv(out, sep='\t', index=False, header=head)
                 head = False
 
-
-
-
-# def build_vcf(data, chunksize=1000):
-#     """
-
-#     """
-#     # removed at init of Step function anyway.
-#     if os.path.exists(data.outfiles.vcf):
-#         os.remove(data.outfiles.vcf)
-
-#     # dictionary to translate locus numbers to chroms
-#     if data.isref:
-#         revdict = chroms2ints(data, True)
-
-#     # pull locus numbers and positions from snps database
-#     with h5py.File(data.snps_database, 'r') as io5:
-
-#         # iterate over chunks
-#         for chunk in range(0, io5['genos'].shape[0], chunksize):
-
-#             # if reference then psuedo ref is already ordered with REF first.
-#             pref = io5['pseudoref'][chunk:chunk + chunksize]
-#             snpmap = io5['snpsmap'][chunk:chunk + chunksize]
-
-#             # load array chunks
-#             if data.isref:
-#                 genos = io5['genos'][chunk:chunk + chunksize, 1:, :]
-#                 snames = data.snames[1:]
-
-#                 # 1-indexed to 0-indexed (1/9/2019)
-#                 chroms = [revdict[i - 1] for i in snpmap[:, 3]]
-#                 ids = [
-#                     "loc{}_pos{}".format(i - 1, j) for (i, j)
-#                     in snpmap[:, [0, 2]]
-#                 ]
-
-#                 # reference based positions: pos on scaffold: 4, yes. tested.
-#                 pos = snpmap[:, 4]
-#                 #offset = 1
-
-#             else:
-#                 genos = io5['genos'][chunk:chunk + chunksize, :, :]
-#                 snames = data.snames
-#                 chroms = ["RAD_{}".format(i - 1) for i in snpmap[:, 0]]
-#                 ids = [
-#                     "loc{}_pos{}".format(i - 1, j) for (i, j)
-#                     in snpmap[:, [0, 2]]
-#                 ]
-#                 # denovo based positions: pos on locus. tested. works. right.
-#                 # almost. POS is 1 indexed.
-#                 pos = snpmap[:, 2] + 1
-#                 # offset = 0
-
-#             # get alt genotype calls
-#             alts = [
-#                 b",".join(i).decode().strip(",")
-#                 for i in pref[:, 1:].view("S1")
-#             ]
-
-#             # build df label cols
-#             df_pos = pd.DataFrame({
-#                 '#CHROM': chroms,            # scaff str names
-#                 'POS': pos,                  # 1-indexed
-#                 'ID': ids,                   # 0-indexed
-#                 'REF': [i.decode() for i in pref[:, 0].view("S1")],
-#                 'ALT': alts,
-#                 'QUAL': [13] * genos.shape[0],
-#                 'FILTER': ['PASS'] * genos.shape[0],
-#             })
-
-#             # get sample coverage at each site
-#             nsamps = (
-#                 genos.shape[1] - np.any(genos == 9, axis=2).sum(axis=1)
-#             )
-
-#             # store sum of coverage at each site
-#             asums = []
-
-#             # build depth columns for each sample
-#             df_depth = pd.DataFrame({})
-#             for sname in snames:
-
-#                 # build geno strings
-#                 genostrs = [
-#                     "{}/{}".format(*k) for k in [
-#                         i for i in [
-#                             list(j) for j in genos[:, snames.index(sname)]
-#                         ]
-#                     ]
-#                 ]
-
-#                 # change 9's into missing
-#                 genostrs = ["./." if i == "9/9" else i for i in genostrs]
-
-#                 # genostrs = [
-#                 # b"/".join(i).replace(b"9", b".").decode()
-#                 # for i in genos[:, snames.index(sname)]
-#                 # .astype(bytes)
-#                 # ]
-
-#                 # build depth and depthsum strings
-#                 dpth = os.path.join(data.tmpdir, sname + ".depths.hdf5")
-#                 with h5py.File(dpth, 'r') as s5:
-#                     dpt = s5['depths'][chunk:chunk + chunksize]
-#                     sums = [sum(i) for i in dpt]
-#                     strs = [
-#                         ",".join([str(k) for k in i.tolist()])
-#                         for i in dpt
-#                     ]
-
-#                     # save concat string to name
-#                     df_depth[sname] = [
-#                         "{}:{}:{}".format(i, j, k) for (i, j, k) in
-#                         zip(genostrs, sums, strs)]
-
-#                     # add sums to global list
-#                     asums.append(np.array(sums))
-
-#             # make final columns
-#             nsums = sum(asums)
-#             colinfo = pd.Series(
-#                 name="INFO",
-#                 data=[
-#                     "NS={};DP={}".format(i, j) for (i, j) in zip(nsamps, nsums)
-#                 ])
-#             colform = pd.Series(
-#                 name="FORMAT",
-#                 data=["GT:DP:CATG"] * genos.shape[0],
-#                 )
-
-#             # concat and order columns correctly
-#             infocols = pd.concat([df_pos, colinfo, colform], axis=1)
-#             infocols = infocols[
-#                 ["#CHROM", "POS", "ID", "REF", "ALT",
-#                  "QUAL", "FILTER", "INFO", "FORMAT"]]
-#             arr = pd.concat([infocols, df_depth], axis=1)
-
-#             # debugging
-#             #print(arr.head())
-#             ## PRINTING VCF TO FILE
-#             ## choose reference string
-#             if self.data.is_ref:
-#                 reference = data.params.reference_sequence
-#             else:
-#                 reference = "pseudo-reference (most common base at site)"
-
-#             header = VCFHEADER.format(
-#                 date=time.strftime("%Y/%m/%d"),
-#                 version=ipyrad.__version__,
-#                 reference=os.path.basename(reference)
-#                 )
-
-#             with open(data.outfiles.vcf, 'a') as out:
-#                 if chunk == 0:
-#                     out.write(header)
-#                     arr.to_csv(out, sep='\t', index=False)
-#                 else:
-#                     arr.to_csv(out, sep='\t', index=False, header=False)
 
 
 if __name__ == "__main__":
@@ -318,24 +229,30 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("INFO", log_file="/tmp/test.log")
 
-    DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+    # DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+    DATA = ip.load_json("../../tests/ipsim.json")
+    DATA.tmpdir = DATA.params.project_dir / "ipsim_tmp_outfiles"
     DATA.outfiles['vcf'] = "/tmp/test.vcf"
+    DATA.drop_ref = False
 
-    v = BuildVcf(DATA)    
-    i = v._iter_snps_data_chunk()
-    a, b, c = next(i)
-    print(a[:5])
-    print(b[:5])
-    print(c[0, :])    
-    # print(list(b[:5, 0].tobytes().decode()))
-
-    x = v._iter_vcf_data_chunk()
-    y = next(x)
-
-    pd.set_option('max_colwidth', 1000)
-    print(y.iloc[:5, :])
-    print(y.iloc[-5:, :])
+    v = BuildVcfDenovo(DATA, DATA.samples)    
     v.run()
+
+    # for i in v._iter_snps_data_chunk():
+        # print([x.shape for x in i])
+
+    # for i in v.idepths:
+        # print(i)
+
+    # for i in v._iter_vcf_data_chunk():
+        # print(i.iloc[:, [2,3,4,7,8,9,10]])
+
+    raise SystemExit()
+
+    # pd.set_option('max_colwidth', 1000)
+    # print(y.iloc[:5, :])
+    # print(y.iloc[-5:, :])
+    # v.run()
 
 
     # DATA = ip.load_json("/tmp/TEST5.json")

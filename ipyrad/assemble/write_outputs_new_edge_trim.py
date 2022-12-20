@@ -13,47 +13,6 @@ Order of operations:
 2. Trim to remove RE overhang len if detected, or `params.trim_loci`,
 whichever is greater.
 
-New idea for denovo catgs
---------------------------
-Build a table for SNP position and offsets per sample. This info
-needs to be recorded here before we can mask all of the indel (dash)
-characters.
-
->>>     pre r1 aligns  |       internal aligns     |  post r2 aligns
->>> ---------NNNNNNNNNNTTTTTTTTTT...  --- ...  TTTTNNNNNNNNNN----
->>> ---------NNNNNNNNNNTTTTTTTTTT... ---- ...  TATTNNNNNNNNNN----
->>> ---------NNNNNNNNNNTTTTTTTTTT...  --- ...  TATTNNNNNNNNNN----
->>> ---------NNNNNNNNNNTTTTTTTTTT...  --- ...  T-TTNNNNNNNNNN----
->>> -----NNNNNNNNNNTTTTTTTTTATTTT...    - ...  TTTTNNNNNNNNNN----
->>> TTTTTTTTTTTTTTTTTTTTTTTTATTTT...    - ...  TTTTTTTTNNNNNNNNNN
->>>                         *                   *
-
-To align the catgs with the reads requires keeping track of the start
-position (offset) based on the number of bases trimmed from start.
-Then, we must also keep all dash inserts in the locus until after catgs
-are enumerated to advance for each one. For RAD and ddRAD this is easy,
-but for GBS and other dtypes where reads can reverse comp match this
-adds further complexity. The orientation (+/-) tells us whether to
-advance from the left versus right to get the positions.
-
->>> TTTTTTTTTT... [trimmed left: 20] [offset: 0]
->>> TTTTTTTTTT... [trimmed left: 20] [offset: 0]
->>> TTTTTTTTTT... [trimmed left: 20] [offset: 0]
->>> TTTTTTTTTT... [trimmed left: 20] [offset: 0]
->>> TTTTTATTTT... [trimmed left: 16] [offset: 4]
->>> TTTTTATTTT... [trimmed left: 0]  [offset: 20]
-
-But we only need to store for the SNP. The offset from start adds
-to the position, whereas any internal indels subtract from it. 
-[/tmp/chunk-x-y.npy]
->>> lidx   sidx    cidx    pos    shift
->>>    0      0       0     21        0
->>>    0      1     300     21        0
->>>    0      2    5221     21        0
->>>  ...
->>>  999      0     520     52        2
->>>  999      1    7628     52        2
->>>  999      2    2993     52        2
 """
 
 from typing import TypeVar, Tuple, List
@@ -149,10 +108,10 @@ class Locus:
         # update .edges for .trim lengths.
         self._trim_seqs_edges_2()
 
-        # check that all data was not filtered.
+        # check that all sites were not filtered by trimming.
         bad_trim = self._check_edges()
         if bad_trim:
-            print(f"edge trim filtered by overhang: {self._trim2}")
+            print(f"locus={self.lidx} | edge trim filtered by overhang: {self._trim2}")
             self.over_trimmed = True
 
         # get subsampled names, seqs, nidxs by removing any samples
@@ -405,6 +364,26 @@ if __name__ == "__main__":
 
     import ipyrad as ip
     ip.set_log_level("DEBUG")
+    from ipyrad.assemble.s7_assemble import *
+
+
+    DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+
+    with ip.Cluster(cores=4) as ipyclient:
+        step = Step7(DATA, force=True, quiet=False, ipyclient=ipyclient)
+        step._get_chunksize()
+
+        step._write_cluster_chunks()
+        chunks = step.data.tmpdir.glob("chunk-*.pre")
+        chunks = sorted(chunks, key=lambda x: int(x.name.split("-")[1]))
+        jobs = {}
+
+        samples = DATA.samples
+        proc = ChunkProcess(step.data, step.samples, step.chunksize, chunks[0])
+
+        proc.run()
+
+    raise SystemExit()
 
     # --
     DATA = ip.Assembly(name="test")

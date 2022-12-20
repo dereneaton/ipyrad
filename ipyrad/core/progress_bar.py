@@ -53,7 +53,7 @@ class AssemblyProgressBar:
         hashes = '#' * int(self.progress / 5.)
         nohash = ' ' * int(20 - len(hashes))
 
-        # print to stderr
+        # print
         message = (
             f"\r[{hashes + nohash}] "
             f"{int(self.progress):>3}% {self.elapsed} | "
