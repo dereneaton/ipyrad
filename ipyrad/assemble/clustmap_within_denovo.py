@@ -2,8 +2,8 @@
 
 """Denovo clustering of reads within samples.
 
-Identify reads from the same loci using clustering in vsearch. 
-Support for SE and PE denovo and denovo-reference assemblies, 
+Identify reads from the same loci using clustering in vsearch.
+Support for SE and PE denovo and denovo-reference assemblies,
 and tagging PCR duplicates.
 """
 
@@ -12,7 +12,7 @@ import itertools
 from loguru import logger
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.clustmap_within_reference import ClustMapBase
-from ipyrad.assemble.clustmap_within_reference_utils import index_ref_with_bwa 
+from ipyrad.assemble.clustmap_within_reference_utils import index_ref_with_bwa
 from ipyrad.assemble.clustmap_within_denovo_utils import (
     merge_pairs_with_vsearch,
     join_end_to_end,
@@ -38,7 +38,7 @@ class ClustMapDenovo(ClustMapBase):
 
     def index_reference_as_filter(self):
         """Index reference_filter with BWA for mapping reads.
-        
+
         This can be used in denovo assemblies for filtering reads from
         the 'reference_as_filter' param.
         """
@@ -59,7 +59,7 @@ class ClustMapDenovo(ClustMapBase):
         This returns the number of merged pairs stored to stats.
 
         # i2: edits/{}_edits_R[1,2].fastq
-        # i1: tmpdir/{}_concat_edits_R[1,2].fastq        
+        # i1: tmpdir/{}_concat_edits_R[1,2].fastq
         # i0: tmpdir/{}_unmapped_R[1,2].fastq
         # o: tmpdir/{}_merged.fa
         # o: tmpdir/{}_nonmerged_R[1,2].fa
@@ -94,7 +94,7 @@ class ClustMapDenovo(ClustMapBase):
         """
         if not self.data.is_pair:
             return
-        logger.info("joining unmerged paired reads for derep")            
+        logger.info("joining unmerged paired reads for derep")
         jobs = {}
         for sname in self.sorted_samples:
             args = (self.data, self.samples[sname])
@@ -108,7 +108,7 @@ class ClustMapDenovo(ClustMapBase):
         """Cluster reads and build cluster output files.
 
         Submit clustering/mapping job. All jobs will start in order
-        and the tracking progress bar will progress as each group 
+        and the tracking progress bar will progress as each group
         finishes. These functions are grouped together so that each
         sample can be passed through without waiting on all samples.
         """
@@ -159,7 +159,7 @@ class ClustMapDenovo(ClustMapBase):
         """Aligns all chunked loci using muscle"""
         # submit largest samples first
         sorted_samples = sorted(
-            self.samples, 
+            self.samples,
             key=lambda x: self.samples[x].stats_s2.reads_raw,
             reverse=True,
         )
@@ -168,7 +168,7 @@ class ClustMapDenovo(ClustMapBase):
         jobs = {}
         for sname in sorted_samples:
             jobs[sname] = []
-            for idx in range(10):            
+            for idx in range(10):
                 handle = self.data.tmpdir / f"{sname}_chunk_{idx}.ali"
                 jobs[sname].append(self.lbview.apply(write_alignments, handle))
 
@@ -192,7 +192,7 @@ class ClustMapDenovo(ClustMapBase):
 
         # track job 2 progress
         msg = "concat clusters"
-        prog = AssemblyProgressBar(basyncs, msg, 3, self.quiet)        
+        prog = AssemblyProgressBar(basyncs, msg, 3, self.quiet)
         prog.block()
         prog.check()
 
@@ -235,4 +235,4 @@ if __name__ == "__main__":
     # STEP.samples['1A_0'].concat = "A"
     # TOOL = ClustMapDenovo(STEP)
     # TOOL.run()
-# 
+#
