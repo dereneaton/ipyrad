@@ -231,6 +231,7 @@ class Assembly:
         """
         outname = f"params-{self.name}.txt"
         outpath = self.params.project_dir / outname
+        self.params.project_dir.mkdir(exist_ok=True)
 
         # Test if params file already exists?
         # If not forcing, test for file and bail out if it exists
@@ -256,6 +257,7 @@ class Assembly:
 
     def save_json(self) -> None:
         """Writes the current Assembly object to the project JSON file."""
+        self.params.project_dir.mkdir(exist_ok=True)
         project = Project(
             params=ParamsSchema(**self.params.dict()),
             hackers=HackersSchema(**self.hackers.dict()),
@@ -399,26 +401,26 @@ PARAMSINFO = {
     7: "Datatype (rad, gbs, pairddrad, etc)",
     8: "One or two sequences viewable in read data",
     9: "Bases with Q<20",
-    10: "33 is default, much older data may be 64",
-    11: "Cutoff for making statistical base calls",
-    12: "Only used if < min_depth_statistical",
-    13: "Clusters with > max_depth are excluded",
-    14: "Sequence similarity cutoff for denovo clustering",
-    15: "Matching cutoff for demultiplexing",
-    16: "2=default, 1=only quality filtering, 0=no filtering",
-    17: "Reads shorter after trimming are excluded",
-    18: "Consensus quality filter (max integer)",
+    # 10: "33 is default, much older data may be 64",
+    10: "Below this depth majrule calling is used.",
+    11: "Below this depth no call (N) is called.",
+    12: "Clusters with > max_depth are excluded",
+    13: "Sequence similarity cutoff for denovo clustering",
+    14: "Matching cutoff for demultiplexing",
+    15: "2=default, 1=only quality filtering, 0=no filtering",
+    16: "Reads shorter after trimming are excluded",
+    17: "Consensus quality filter (max integer)",
+    18: "Consensus quality filter (max proportion)",
     19: "Consensus quality filter (max proportion)",
-    20: "Consensus quality filter (max proportion)",
-    21: "Locus quality filter (min integer)",
-    22: "Locus quality filter (max proportion)",
-    23: "Locus quality filter (max integer)",
-    24: "Locus quality filter (max proportion)",
-    25: "Pre-align trim edges (R1>, <R1, R2>, <R2)",
-    26: "Post-align trim edges (R1>, <R1, R2>, <R2)",
-    27: "See documentation",
-    28: "Path to population assignment file",
-    29: "Reads mapped to this reference fasta are removed",
+    20: "Locus quality filter (min integer)",
+    21: "Locus quality filter (max proportion)",
+    22: "Locus quality filter (max integer)",
+    23: "Locus quality filter (max proportion)",
+    24: "Pre-align trim edges (R1>, <R1, R2>, <R2)",
+    25: "Post-align trim edges (R1>, <R1, R2>, <R2)",
+    26: "See documentation",
+    27: "Path to population assignment file",
+    28: "Reads mapped to this reference fasta are removed",
 }
 
 
