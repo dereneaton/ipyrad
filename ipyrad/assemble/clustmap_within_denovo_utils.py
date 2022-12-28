@@ -112,9 +112,9 @@ def join_end_to_end(data: Assembly, sample: Sample) -> None:
             nonmerged1, 'r', encoding="utf-8") as in1, open(
             nonmerged2, 'r', encoding="utf-8") as in2:
 
-            # generator to sample 4 lines
-            quart1 = zip(*[in1] * 4)
-            quart2 = zip(*[in2] * 4)
+            # generator to sample 2 lines at a time.
+            quart1 = zip(*[in1] * 2)
+            quart2 = zip(*[in2] * 2)
 
             # write out and fasta: >header\n{seq1}nnnn{seq2}
             for idx, (read1s, read2s) in enumerate(zip(quart1, quart2)):
@@ -268,7 +268,7 @@ def iter_build_clusters(data: Assembly, sample: Sample) -> Iterator[str]:
 
         # iterate over all lines in the usort file.
         for line in usortio:
-            hit, seed, _, indels, ori, _ = line.strip().split()
+            hit, seed, _, _, ori, _ = line.strip().split()
 
             # same seed, append match
             if seed != lastseed:
@@ -290,8 +290,11 @@ def iter_build_clusters(data: Assembly, sample: Sample) -> Iterator[str]:
             # revcomp if orientation is reversed (comp preserves nnnn)
             seq = alldereps[hit] if ori == "+" else comp(alldereps[hit])[::-1]
 
-            # only save if not too many indels
-            if int(indels) <= data.max_indels:
+            # only save if not too many indels. Here indels does not mean
+            # the number of dashes, but rather, the number of gap-openings.
+            # This is hard-coded here as a filter for bad alignments.
+            nindels = len([i for i in seq.split("-") if i])
+            if nindels <= data.max_indels:
                 fseqs.append(f">{hit};{ori}\n{seq}")
 
     # write whatever is left over to the clusts file
@@ -394,8 +397,8 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
     handle: Path
     maxdepth: int
         This the max number of unique sequences that will be aligned.
-        By using this we COULD greatly improve aligning speed for some 
-        datasets. Currently we set it to 100 so it usually has no 
+        By using this we COULD greatly improve aligning speed for some
+        datasets. Currently we set it to 100 so it usually has no
         effect.
     """
     # muscle command to return alignment and then a spacer
@@ -429,6 +432,12 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
 
             # limit to first N unique sequences (pre-sorted by depth)
             # (this MAY be a bit limiting if decloning pcr duplicates.)
+            # Here I considered that we could combine sequences with the
+            # same sequence (already done except for when unique i5 umi
+            # barcodes are present), but it would mess up the i5 tags
+            # unless we combine multiple tags into the same sequence header
+            # which could be done but hasn't been tried yet. Would require
+            # updates on the parser end later too.
             clust = clust[:maxdepth]
 
             # ---------------------------------------------------------
@@ -446,6 +455,58 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
             #             f"error in muscle alignment: {''.join(ali)}")
             #     yield ali, []
 
+
+            # pairs present SOME of the time. Keep only one set, either the ones
+            # with 'nnnn' or without, depending on which set is larger.
+            if not all('nnnn' in i for i in clust[1::2]):
+                size_w_n = 0
+                size_wo_n = 0
+                for line in clust:
+                    # get nreps if within-cluster, else 1 if across-cluster
+                    if ">" in line:
+                        try:
+                            reps = int(line.split(";")[1].split("=")[-1])
+                        except ValueError:
+                            reps = 1
+                    else:
+                        if "nnnn" in line:
+                            size_w_n += reps
+                        else:
+                            size_wo_n += reps
+
+                reclust = []
+                for line in clust:
+                    if ">" in line:
+                        header = line
+                    else:
+                        if size_wo_n >= size_w_n:
+                            if "nnnn" not in line:
+                                reclust.append(header)
+                                reclust.append(line)
+                        else:
+                            if "nnnn" in line:
+                                reclust.append(header)
+                                reclust.append(line)
+                clust = reclust
+
+                # in case seed was removed, relabel with *, +, -
+                header = clust[0].strip()
+                if header[-1] != "*":
+                    clust[0] = header[:-1] + "*\n"
+                    for lidx, line in enumerate(clust):
+                        if lidx >= 2:
+                            if ">" in line:
+                                if header[-1] == "-":
+                                    if line[-1] == "-":
+                                        clust[lidx] = line[:-1] + "+\n"
+                                    else:
+                                        clust[lidx] = line[:-1] + "-\n"
+
+                # if reduced to a single uniq read then don't align it.
+                if len(clust) == 2:
+                    yield clust, []
+                    continue
+
             # no pairs present, do single alignment
             if not any('nnnn' in i for i in clust[1::2]):
                 for idx, line in enumerate(clust):
@@ -458,26 +519,6 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
                         f"error in muscle alignment: {''.join(ali)}")
                 yield ali, []
                 continue
-
-            # pairs present SOME of the time. Remove unpaired reads.
-            if not all('nnnn' in i for i in clust[1::2]):
-                reclust = []
-                for line in clust:
-                    if ">" in line:
-                        header = line
-                    else:
-                        if "nnnn" in line:
-                            reclust.append(header)
-                            reclust.append(line)
-                clust = reclust
-
-                # if reduced to a single uniq read then don't align it.
-                if len(clust) == 2:
-                    header = clust[0].strip()
-                    if header[-1] != "*":
-                        clust[0] = header[:-1] + "*\n"
-                    yield clust, []
-                    continue
 
             # pairs present. Split paired data on 'nnnn' separator.
             # Attaches 'edge blocks' "NNNNNN" to improve alignment at
