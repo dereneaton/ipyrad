@@ -37,7 +37,7 @@ Sample = TypeVar("Sample")
 BIN_SAMTOOLS = Path(sys.prefix) / "bin" / "samtools"
 
 
-class Locus:
+class Stack:
     def __init__(self, cidx: int, names: List[str], seqs: np.ndarray, refpos: Tuple[int,int,int]):
         self.cidx = cidx
         self.names = names
@@ -49,7 +49,7 @@ class Locus:
         self.nalleles = 1
 
 
-class Processor:
+class ConsensusProcessor:
     """Consensus base and allele calling.
 
     The consensus calling process that calls alleles and genotypes and
@@ -125,8 +125,8 @@ class Processor:
         self.collect_data()
         self.write_chunk()
 
-    def _iter_process_chunks(self) -> Iterator[Locus]:
-        """Yields Locus objects with data parsed from clusters."""
+    def _iter_process_chunks(self) -> Iterator[Stack]:
+        """Yields Stack objects with data parsed from clusters."""
         for cidx, clust in enumerate(iter_clusters(self.chunkfile)):
 
             # parse names and sequences from cluster
@@ -162,12 +162,12 @@ class Processor:
                 chromint = self.faidict[chrom] + 1
                 ref_position = (int(chromint), int(pos0), int(pos1))
 
-            # yield result as a Locus
-            loc = Locus(cidx=cidx, names=names, seqs=sarr, refpos=ref_position)
+            # yield result as a Stack
+            loc = Stack(cidx=cidx, names=names, seqs=sarr, refpos=ref_position)
             yield loc
 
-    def _iter_mask_repeats(self) -> Iterator[Locus]:
-        """Yields Locus objects that have been filtered to remove
+    def _iter_mask_repeats(self) -> Iterator[Stack]:
+        """Yields Stack objects that have been filtered to remove
         padding of ns, Ns, and dashes (filter applies to DENOVO ONLY)
         """
         for loc in self._iter_process_chunks():
@@ -202,8 +202,11 @@ class Processor:
                     yield loc
                 else:
                     self.filters['depth'] += 1
+                    # DEBUGGING
+                    for row in range(loc.seqs.shape[0]):
+                        print(loc.seqs[row].tobytes().decode())
 
-    def _iter_filter_mindepth(self) -> Iterator:
+    def _iter_filter_mindepth(self) -> Iterator[Stack]:
         """filter for mindepth: returns True if clust is filtered."""
         for loc in self._iter_mask_repeats():
             sumreps = loc.seqs.shape[0]
@@ -213,8 +216,11 @@ class Processor:
                 yield loc
             else:
                 self.filters['depth'] += 1
+                # DEBUGGING
+                for row in range(loc.seqs.shape[0]):
+                    print(loc.seqs[row].tobytes().decode())
 
-    def _iter_build_consens(self) -> Iterator:
+    def _iter_build_consens(self) -> Iterator[Stack]:
         """Filter..."""
         for loc in self._iter_filter_mindepth():
 
@@ -229,34 +235,92 @@ class Processor:
 
             # trim Ns (uncalled genos) from the left and right
             # Note: now trimming from consens instead of from cluster.
-            trim = np.where(loc.consens != 78)[0]
+            nmask = loc.consens == 78    # mask w/ True for N sites
+            bmask = np.invert(nmask)     # mask w/ True for non-N sites
+            bindex = np.where(bmask)[0]  # index of non-N sites
 
             # if everything was trimmed then return empty
-            if not trim.any():
+            if not bindex.any():
                 self.filters["depth"] += 1
                 continue
 
+            # if evidence of >2 alleles and params=diploid then filter
             if loc.triallele and self.data.params.max_alleles_consens < 3:
                 self.filters['maxalleles'] += 1
                 continue
 
-            # otherwise trim edges
-            ltrim = trim.min()
-            rtrim = trim.max() + 1
-            loc.consens = loc.consens[ltrim: rtrim]
-            loc.seqs = loc.seqs[:, ltrim: rtrim]
+            # PE separator present, trim Ns from both sides.
+            if 110 in loc.consens:
+                # consens: NNNNNAAAAANNnnnnNNAAANTTTTNNNNN
+                # nsites   1111100000110000110001000011111
+                # nmask    0000000000001111000000000000000
+                # nonN     0000011111001111001110111100000
+                #                   *''$$$$''*
+                #          1111100000000000000000000000000  N at index < lowest nonN
+                #          0000000000000000000000000011111  N at index > hightst nonN
+                #
+                #          000000000011                     N at index > highest nonN on loc0
+                #                          110000000000000  N at index < lowest nonN on loc1
+                #          0000000000110000110000000000000  combined of last two
+                #
+                #          1111100000110000110000000011111  combined
+                cindex = np.arange(loc.consens.size)        # index of all sites
+                nindex = np.where(loc.consens == 110)[0]    # index of n spacers
+                r1mask = cindex < nindex.min()                # select R1
+                r2mask = cindex > nindex.max()                # select R2
+                bindex_on_r1 = np.where(bmask & r1mask)[0]
+                bindex_on_r2 = np.where(bmask & r2mask)[0]
+                mask = np.zeros(cindex.size, dtype=bool)
+                mask[np.arange(bindex_on_r1.min(), bindex_on_r1.max() + 1)] = True
+                mask[np.arange(bindex_on_r2.min(), bindex_on_r2.max() + 1)] = True
+                mask[nindex] = True
 
-            # update position for trimming
-            loc.refpos = (
-                loc.refpos[0],
-                loc.refpos[1] + ltrim,
-                loc.refpos[1] + ltrim + rtrim,
-            )
+                # r1trim = nmask & (cindex < bindex.min())          # R1 start Ns
+                # r2trim = nmask & (cindex > bindex.max() + 1)      # R2 end Ns
+                # r1mask = cindex < nindex.min()                # select R1
+                # bindex_on_r1 = np.where(bmask & r1mask)[0]    # select last non-N base on R1
+                # r1_end_idxs = np.arange(bindex_on_r1.max(), nindex.min())
+                # r1trim[r1_end_idxs] = True
+                # r2mask = cindex > nindex.max()                # select R2
+                # bindex_on_r2 = np.where(bmask & r2mask)[0]    # select first non-N base on R2
+                # r2_front_idxs = np.arange(nindex.max() + 1, bindex_on_r2.min())
+                # r2trim[r2_front_idxs] = True
+
+                # DEBUGGING
+                if 0 in mask:
+                    print("DEBUGGING:\n"
+                        f"{loc.consens.tobytes().decode()}\n"
+                        f"{loc.consens[mask].tobytes().decode()}\n"
+                        f"{mask.astype(int)}"
+                    )
+
+                loc.consens = loc.consens[mask]
+                loc.seqs = loc.seqs[:, mask]
+                loc.refpos = (
+                    loc.refpos[0],
+                    loc.refpos[1] + bindex_on_r1.min(),
+                    loc.refpos[1] + (cindex.max() - bindex_on_r2.max())
+                )
+
+            else:
+                # otherwise trim edges
+                ltrim = bindex.min()
+                rtrim = bindex.max() + 1
+                loc.consens = loc.consens[ltrim: rtrim]
+                loc.seqs = loc.seqs[:, ltrim: rtrim]
+
+                # update position for trimming; doesn't matter if some bases
+                # around the insert were masked, only the terminal positions matter.
+                loc.refpos = (
+                    loc.refpos[0],
+                    loc.refpos[1] + ltrim,            # where read starts
+                    loc.refpos[1] + ltrim + rtrim,    # where read ends
+                )
 
             # return triallele filter, mindepth2 filter
             yield loc
 
-    def _iter_filter_heteros(self) -> Iterator:
+    def _iter_filter_heteros(self) -> Iterator[Stack]:
         """..."""
         for loc in self._iter_build_consens():
             hsites = np.any([
@@ -281,7 +345,7 @@ class Processor:
             else:
                 yield loc
 
-    def _iter_filter_alleles(self) -> Iterator:
+    def _iter_filter_alleles(self) -> Iterator[Stack]:
         """Infer the number of alleles from haplotypes.
 
         Easy case
@@ -360,8 +424,8 @@ class Processor:
         """Store the site count data for writing to HDF5, and stats.
 
         Iterates through all loci that passed filtering, and computed
-        filter stats on the way, and stores the stats to the Processor
-        and collects the Locus data into arrays for storing in HDF5.
+        filter stats on the way, and stores the stats to the ConsensusProcessor
+        and collects the Stack data into arrays for storing in HDF5.
         The temp arrays will be concatenated back on the main processor
         instead of on the remote engine.
         """
@@ -385,7 +449,15 @@ class Processor:
             # store a reduced array with only CATG
             catg = [np.sum(loc.seqs == i, axis=0) for i in (67, 65, 84, 71)]
             catg = np.array(catg, dtype=np.uint16).T
+
+            # not currently implemented.
+            # PE data: set depth of nnnn spacer to (99,99,99,99)
+            # nnnn_idxs = np.where(np.all(loc.seqs == 110, axis=0))[0]
+            # catg[nnnn_idxs] = 999
+            # print(catg[nnnn_idxs])
+
             self.catgs.append(catg)
+            # print(self.filters)
             # [cidx, :catg.shape[0], :] = catg
 
     def write_chunk(self):
@@ -657,7 +729,7 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
             start = end
             icat.unlink()
 
-
+# DEPRECATED...
 def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
     """Concatenate consens bits into fasta file for denovo assemblies.
 
