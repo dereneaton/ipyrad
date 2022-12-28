@@ -4,7 +4,7 @@
 
 Example
 -------
->>> # load data as `consens_utils.Processor` object 
+>>> # load data as `consens_utils.ConsensusProcessor` object 
 >>> data = ip.load_json(JSON_FILE)
 >>> with ip.Cluster(cores=2) as ipyclient:
 >>>     step = Step5(data, 1, 0, ipyclient)
@@ -30,7 +30,7 @@ from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.clustmap_within_both import iter_clusters
 from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
 from ipyrad.assemble.consens_utils import (
-    Processor,
+    ConsensusProcessor,
     concat_catgs,
     concat_denovo_consens,
     concat_reference_consens,
@@ -68,18 +68,18 @@ class Step5(BaseStep):
         self.store_stats()
         self.data.save_json()
 
-    def debug(self, sname: str) -> Processor:
+    def debug(self, sname: str) -> ConsensusProcessor:
         """Function for developers only.
 
         Used to debug and check consensus calling algorithms. This
-        returns a Processor object for an unchunked file for a sample.
+        returns a ConsensusProcessor object for an unchunked file for a sample.
         """
         self.calculate_depths_and_max_frag()
         self.set_s4_params()
         self.make_chunks(chunksize=int(1e9))
         tmpfile = list(self.data.tmpdir.glob(f"{sname}_chunk_*"))[0]
         sample = self.data.samples[sname]
-        return Processor(self.data, sample, tmpfile)
+        return ConsensusProcessor(self.data, sample, tmpfile)
 
     def calculate_depths_and_max_frag(self):
         """Check whether mindepth has changed and calc nclusters and maxlen
@@ -134,7 +134,7 @@ class Step5(BaseStep):
         """
         def processor_wrap(data, sample, chunkfile):
             """Send job to Processor class on remote engine."""
-            proc = Processor(data, sample, chunkfile)
+            proc = ConsensusProcessor(data, sample, chunkfile)
             proc.run()
             return proc.counters, proc.filters
 
@@ -164,7 +164,6 @@ class Step5(BaseStep):
         # store stats to the samples, but don't advance the state yet.
         for sname, (counters, filters) in stats.items():
             sample = self.samples[sname]
-
             prefiltered_by_depth = np.invert(self.keep_masks[sname]).sum()
 
             # STORE STATS
