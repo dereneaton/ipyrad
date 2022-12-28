@@ -166,10 +166,13 @@ class BaseStep(ABC):
             f"{self.data.name}_tmp_{suffix[self.step]}")
 
         # clear stepdir or raise an error depending on exists and force
+        # for steps 2-7 we can go ahead and remove the entire directory
+        # that we created, since it should not contain any other files
+        # unless the user added them. *They did use the force flag*.
         if self.data.stepdir.exists():
             if self.force:
                 msg = f"removing previous {suffix[self.step]} dir: {self.data.stepdir}"
-                logger.debug(msg)
+                logger.info(msg)
                 shutil.rmtree(self.data.stepdir)
             else:
                 msg = f"Error: Directory {self.data.stepdir} exists.\nUse force (-f) to overwrite."
