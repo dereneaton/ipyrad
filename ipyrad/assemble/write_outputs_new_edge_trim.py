@@ -163,7 +163,7 @@ class Locus:
         This applies to the .trimseq array that has already been
         trimmed based on sample coverage.
 
-        TODO: this func could be jit'd for speed improvements.
+        TODO: this func could maybe be jit'd for speed improvements.
         """
         self._trim2 = [0, 0]
         for cutter in self.data.params.restriction_overhang:

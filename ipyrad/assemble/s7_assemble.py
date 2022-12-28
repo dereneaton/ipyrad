@@ -33,7 +33,6 @@ from pathlib import Path
 
 from loguru import logger
 import pandas as pd
-import h5py
 
 # internal imports
 from ipyrad.core.schema import AssemblyStats, Stats7
@@ -527,24 +526,6 @@ class Step7(BaseStep):
         prog.block()
         prog.check()
 
-    # def remote_fill_depths(self):
-    #     """
-    #     Call fill_vcf_depths() in parallel.
-    #     """
-    #     printstr = ("indexing vcf depths ", "s7")
-    #     prog = AssemblyProgressBar({}, None, printstr, self.data)
-    #     prog.update()
-
-    #     rasyncs = {}
-    #     for sample in self.data.samples.values():
-    #         if not sample.name == "reference":
-    #             rasyncs[sample.name] = self.lbview.apply(
-    #                 fill_vcf_depths, *(self.data, self.nsnps, sample))
-    #     # iterate until all chunks are processed
-    #     prog.jobs = rasyncs
-    #     prog.block()
-    #     prog.check()
-###############################################################
 
 def remote_fill_loci(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .loci file from chunks."""
@@ -568,17 +549,6 @@ def remote_write_vcf(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None
         pass
     else:
         BuildVcfDenovo(data, samples).run()
-
-def remove_fill_vcf_depths(data: Assembly, sample: 'SampleSchema'):
-    """Writes catg depths to a tmp HDF5 for this sample."""
-    filler = FillVCF(data, data.assembly_stats.nsnps, sample)
-    filler.run()
-
-    # write vcfd to file and cleanup
-    vcfout = data.tmpdir / f"{sample.name}.depths.hdf5"
-    with h5py.File(vcfout, 'w') as io5:
-        io5.create_dataset(name="depths", data=filler.vcfd)
-    del filler
 
 
 BADPOP_SAMPLES = """

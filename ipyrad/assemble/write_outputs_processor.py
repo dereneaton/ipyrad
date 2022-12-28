@@ -245,7 +245,7 @@ class ChunkProcess:
                 self.filters.loc[locus.lidx, "minsamp"] = True
                 continue
 
-            # get sample coverages that will be used for trimming.
+            # sets '.site_sample_covs' that will be used for trimming.
             locus.get_sample_covs()
 
             # apply edge trimming to locus to update:

@@ -12,16 +12,16 @@ import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
-# from ipyrad import __version__
+from pkg_resources import get_distribution
 # from ipyrad.assemble.utils import chroms2ints
 from ipyrad.assemble.write_outputs_vcf_depths import CombinedDepths
 
 
 logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 100
+# CHUNKSIZE = 100
 CHUNKSIZE = 2_000
-
+VERSION = str(get_distribution('ipyrad')).split()[1]
 
 VCFHEADER = """\
 ##fileformat=VCFv4.0
@@ -210,7 +210,7 @@ class BuildVcfDenovo(BuildVcfBase):
                 reference = "pseudo-reference (most common base at site)"
             header = VCFHEADER.format(
                 date=time.strftime("%Y/%m/%d"),
-                version="X",#ipyrad.__version__,
+                version=VERSION,
                 reference=reference
             )
             out.write(header)
