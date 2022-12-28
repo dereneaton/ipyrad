@@ -204,6 +204,9 @@ def recal_hidepth_cluster_stats(
         sizes = [int(i.split(";")[-2][5:]) for i in names]
         depths.append(sum(sizes))
         clens.append(len(clust[1].strip()))
+        # debugging
+        # if sum(sizes) < 2:
+            # print(clust)
     clens, depths = np.array(clens), np.array(depths)
 
     # get mask of clusters that are hidepth
