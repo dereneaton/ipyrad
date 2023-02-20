@@ -203,8 +203,8 @@ class ConsensusProcessor:
                 else:
                     self.filters['depth'] += 1
                     # DEBUGGING
-                    for row in range(loc.seqs.shape[0]):
-                        print(loc.seqs[row].tobytes().decode())
+                    # for row in range(loc.seqs.shape[0]):
+                        # print(loc.seqs[row].tobytes().decode())
 
     def _iter_filter_mindepth(self) -> Iterator[Stack]:
         """filter for mindepth: returns True if clust is filtered."""
@@ -217,8 +217,8 @@ class ConsensusProcessor:
             else:
                 self.filters['depth'] += 1
                 # DEBUGGING
-                for row in range(loc.seqs.shape[0]):
-                    print(loc.seqs[row].tobytes().decode())
+                # for row in range(loc.seqs.shape[0]):
+                    # print(loc.seqs[row].tobytes().decode())
 
     def _iter_build_consens(self) -> Iterator[Stack]:
         """Filter..."""
@@ -287,12 +287,12 @@ class ConsensusProcessor:
                 # r2trim[r2_front_idxs] = True
 
                 # DEBUGGING
-                if 0 in mask:
-                    print("DEBUGGING:\n"
-                        f"{loc.consens.tobytes().decode()}\n"
-                        f"{loc.consens[mask].tobytes().decode()}\n"
-                        f"{mask.astype(int)}"
-                    )
+                # if 0 in mask:
+                #     print("DEBUGGING:\n"
+                #         f"{loc.consens.tobytes().decode()}\n"
+                #         f"{loc.consens[mask].tobytes().decode()}\n"
+                #         f"{mask.astype(int)}"
+                #     )
 
                 loc.consens = loc.consens[mask]
                 loc.seqs = loc.seqs[:, mask]
