@@ -21,7 +21,7 @@ logger = logger.bind(name="ipyrad")
 
 class ClustMapReference(ClustMapBase):
     """Reference mapping assembly pipeline."""
-    def __init__(self, step: "Step3"):
+    def __init__(self, step):
         super().__init__(step)
 
     def index_references(self):
