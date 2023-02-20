@@ -55,15 +55,15 @@ class SnpsDatabase(h5py.File):
 
     def _check_file_type(self) -> None:
         """if user entered seqs file raise exception asking for snps file."""
-        if "hdf5" in self._path.suffix:
-            if "seqs" in self._path.suffix:
-                raise IOError("data should be .snps_hdf5 file not .seqs_hdf5.")
+        if "hdf5" in self._path.suffixes:
+            if "seqs" in self._path.suffixes:
+                raise IOError("data should be .snps.hdf5 file not .seqs.hdf5.")
     
     def summary(self, log_level: str="INFO") -> None:
         """Prints a summary of the database attrs and keys to LOGGER INFO."""
         version = self.attrs['version']
         attrs = list(self.attrs.keys())
-        keys = list(self.keys())        
+        keys = list(self.keys())
         logger.log(log_level, f"loading h5 snps database v{version}; attrs={attrs}; keys={keys}")
 
     def get_sample_names(self) -> List[str]:
@@ -75,9 +75,9 @@ class SeqsDatabase(SnpsDatabase):
 
     def _check_file_type(self) -> None:
         """if user entered seqs file raise exception asking for snps file."""
-        if "hdf5" in self._path.suffix:
-            if ".snps" in self._path.suffix:
-                raise IOError("data should be .snps_hdf5 file not .seqs_hdf5.")
+        if "hdf5" in self._path.suffixes:
+            if ".snps" in self._path.suffixes:
+                raise IOError("data should be .snps.hdf5 file not .seqs.hdf5.")
 
 
 
