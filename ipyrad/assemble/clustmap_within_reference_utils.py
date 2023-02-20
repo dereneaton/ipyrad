@@ -13,8 +13,7 @@ will be caught by the tracker and piped to the logger.
 
 # pylint: disable=no-member, 
 
-from typing import List, TypeVar
-import os
+from typing import List, TypeVar, Iterator
 import sys
 import gzip
 from pathlib import Path
@@ -184,185 +183,186 @@ def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
     readio2.close()
     print(f"joined read pairs of {sample.name}")
 
-def tag_for_decloning(data, sample):
-    """
-    Pull i5 tag from Illumina index and insert into the fastq name 
-    header so we can use it later to declone even after the fastq 
-    indices are gone. THIS IS DONE BEFORE DEREPLICATION, so that 
-    identical reads are not collapsed if they have different i5s.
+# def tag_for_decloning(data: Assembly, sample: Sample) -> None:
+#     """Move i5 from header to inline start.
 
-    >>> # e.g.,                                            i7       i5
-    >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
-    >>> AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-    >>> +
-    >>> BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-    >>>
-    >>> # to
-    >>> ********
-    >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
-    >>> CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-    >>> +
-    >>> FFFFFFFFBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+#     Pull i5 tag from Illumina index and insert into the fastq name 
+#     header so we can use it later to declone even after the fastq 
+#     indices are gone. THIS IS DONE BEFORE DEREPLICATION, so that 
+#     identical reads are not collapsed if they have different i5s.
 
-    3rad uses random adapters to identify pcr duplicates. For removing
-    pcr dups later we need to insert the tag into the sequence here
-    so they will not be dereplicated together.
-    """
-    # paired reads are merged or joined in the merged file
-    tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
-    tmpout = data.tmpdir / f"{sample.name}_declone.fastq"
+#     >>> # e.g.,                                            i7       i5
+#     >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA
+#     >>> AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+#     >>> +
+#     >>> BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+#     >>>
+#     >>> # to
+#     >>> ********
+#     >>> @NB551405:60:H7T2GAFXY:1:11101:24455:4008 1:N:0:TATCGGTC+CAAGACAA    
+#     >>> CAAGACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+#     >>> +
+#     >>> FFFFFFFFBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
 
-    # Remove adapters from head of sequence and write out
-    # tmp_outfile is now the input file for the next step
-    # first vsearch derep discards the qscore so we iterate pairs
-    outfile = open(tmpout, 'wt') 
-    with open(tmpin, 'rt') as infile:
+#     3rad uses random adapters to identify pcr duplicates. For removing
+#     pcr dups later we need to insert the tag into the sequence here
+#     so they will not be dereplicated together.
+#     """
+#     # paired reads are merged or joined in the merged file
+#     tmpin = data.tmpdir / f"{sample.name}_joined.fastq"
+#     tmpout = data.tmpdir / f"{sample.name}_declone.fastq"
 
-        # iterate over 2 lines a time
-        duo = zip(*[infile] * 4)
-        writing = []
-        counts2 = 0
+#     # Remove adapters from head of sequence and write out
+#     # tmp_outfile is now the input file for the next step
+#     # first vsearch derep discards the qscore so we iterate pairs
+#     outfile = open(tmpout, 'wt') 
+#     with open(tmpin, 'rt') as infile:
 
-        # a list to store until writing
-        while 1:
-            try:
-                read = next(duo)
-            except StopIteration:
-                break
+#         # iterate over 2 lines a time
+#         duo = zip(*[infile] * 4)
+#         writing = []
+#         counts2 = 0
 
-            # extract i5 if it exists else use empty string           
-            try:
-                indices = read[0].split(":")[-1]
-                index = indices.split("+")[1].strip()
-                assert len(index) == 8
-            except (IndexError, AssertionError):
-                index = ""
-            fake_quality = "B" * len(index)
+#         # a list to store until writing
+#         while 1:
+#             try:
+#                 read = next(duo)
+#             except StopIteration:
+#                 break
 
-            # add i5 to the 5' end of the sequence
-            newread = [
-                read[0],
-                index + read[1],
-                read[2],
-                fake_quality + read[3]
-            ]
-            writing.append("".join(newread))
+#             # extract i5 if it exists else use empty string           
+#             try:
+#                 indices = read[0].split(":")[-1]
+#                 index = indices.split("+")[1].strip()
+#                 assert len(index) == 8
+#             except (IndexError, AssertionError):
+#                 index = ""
+#             fake_quality = "B" * len(index)
 
-            # Write the data in chunks
-            counts2 += 1
-            if not counts2 % 5000:
-                outfile.write("".join(writing))
-                writing = []
+#             # add i5 to the 5' end of the sequence
+#             newread = [
+#                 read[0],
+#                 index + read[1],
+#                 read[2],
+#                 fake_quality + read[3]
+#             ]
+#             writing.append("".join(newread))
 
-        if writing:
-            outfile.write("".join(writing))
-    outfile.close()
-    print(f"tagged for decloning: {sample.name}")
+#             # Write the data in chunks
+#             counts2 += 1
+#             if not counts2 % 5000:
+#                 outfile.write("".join(writing))
+#                 writing = []
 
-
-def dereplicate_func(data, sample):
-    """
-    Dereplicates reads and sorts so reads that were highly replicated 
-    are at the top, and singletons at bottom, writes output to derep 
-    file. Paired data are already joined into a single concat file.
-    """
-    # file precedence 
-    infiles = [
-        sample.files.edits[0][0],
-        os.path.join(data.tmpdir, f"{sample.name}_concat_R1.fastq.gz"),
-        os.path.join(data.tmpdir, f"{sample.name}_joined.fastq"),
-        os.path.join(data.tmpdir, f"{sample.name}_declone.fastq"),
-    ]
-    infile = [i for i in infiles if os.path.exists(i)][-1]
-
-    # datatypes options
-    strand = "plus"
-    if data.params.datatype in ['gbs', '2brad']:
-        strand = "both"
-
-    # do dereplication with vsearch
-    cmd = [
-        BIN_VSEARCH,
-        "--derep_fulllength", infile,
-        "--strand", strand,
-        "--output", os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
-        "--fasta_width", str(0),
-        "--minseqlength",  str(data.params.filter_min_trim_len),
-        "--sizeout", 
-        "--relabel_md5",
-        "--quiet",
-        # "--threads", str(nthreads),
-        #"--fastq_qmax", "1000",        
-    ]
-
-    # decompress argument (IF ZLIB is missing this will not work!!) 
-    # zlib is part of the conda installation.
-    if infile.endswith(".gz"):
-        cmd.append("--gzip_decompress")
-
-    # build PIPEd job
-    print(" ".join(cmd))
-    proc = Popen(cmd, stderr=PIPE, close_fds=True)
-    errmsg = proc.communicate()[1]
-    if proc.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {errmsg}")
+#         if writing:
+#             outfile.write("".join(writing))
+#     outfile.close()
+#     print(f"tagged for decloning: {sample.name}")
 
 
-def tag_to_header_for_decloning(data, sample):
-    """
-    Pull i5 tag from dereplicated sequence and append to (PE joined) 
-    dereped seq header.
+# def dereplicate_func(data, sample):
+#     """
+#     Dereplicates reads and sorts so reads that were highly replicated 
+#     are at the top, and singletons at bottom, writes output to derep 
+#     file. Paired data are already joined into a single concat file.
+#     """
+#     # file precedence 
+#     infiles = [
+#         sample.files.edits[0][0],
+#         os.path.join(data.tmpdir, f"{sample.name}_concat_R1.fastq.gz"),
+#         os.path.join(data.tmpdir, f"{sample.name}_joined.fastq"),
+#         os.path.join(data.tmpdir, f"{sample.name}_declone.fastq"),
+#     ]
+#     infile = [i for i in infiles if os.path.exists(i)][-1]
 
-    # e.g.,      
-    0004a51ebbcd442afb6b6d02f5daf553;size=6;*
-    TATCGGTCATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
+#     # datatypes options
+#     strand = "plus"
+#     if data.params.datatype in ['gbs', '2brad']:
+#         strand = "both"
 
-    to 
+#     # do dereplication with vsearch
+#     cmd = [
+#         BIN_VSEARCH,
+#         "--derep_fulllength", infile,
+#         "--strand", strand,
+#         "--output", os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
+#         "--fasta_width", str(0),
+#         "--minseqlength",  str(data.params.filter_min_trim_len),
+#         "--sizeout", 
+#         "--relabel_md5",
+#         "--quiet",
+#         # "--threads", str(nthreads),
+#         #"--fastq_qmax", "1000",        
+#     ]
 
-    0004a51ebbcd442afb6b6d02f5daf553;tag=TATCGGTC;size=6;*
-    ATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
-    """
-    tmpin = os.path.join(data.tmpdir, f"{sample.name}_derep.fa")
-    tmpout = os.path.join(data.tmpdir, f"{sample.name}_tagged.fa")
+#     # decompress argument (IF ZLIB is missing this will not work!!) 
+#     # zlib is part of the conda installation.
+#     if infile.endswith(".gz"):
+#         cmd.append("--gzip_decompress")
 
-    # Remove adapters from head of sequence and write out
-    # tmp_outfile is now the input file for the next step
-    # first vsearch derep discards the qscore so we iterate pairs
-    outfile = open(tmpout, 'wt') 
-    with open(tmpin, 'rt') as infile:
+#     # build PIPEd job
+#     print(" ".join(cmd))
+#     proc = Popen(cmd, stderr=PIPE, close_fds=True)
+#     errmsg = proc.communicate()[1]
+#     if proc.returncode:
+#         raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {errmsg}")
 
-        # iterate over 2 lines a time
-        duo = zip(*[infile] * 2)
-        writing = []
-        counts2 = 0
 
-        # a list to store until writing
-        while 1:
-            try:
-                read = next(duo)
-            except StopIteration:
-                break
+# def tag_to_header_for_decloning(data, sample):
+#     """
+#     Pull i5 tag from dereplicated sequence and append to (PE joined) 
+#     dereped seq header.
 
-            # extract i5 if it exists else use empty string           
-            tag = read[1][:8]
-            name, size = read[0].split(";")
+#     # e.g.,      
+#     0004a51ebbcd442afb6b6d02f5daf553;size=6;*
+#     TATCGGTCATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
 
-            # add i5 to the 5' end of the sequence
-            newread = [
-                "{};tag={};{}".format(name, tag, size),
-                read[1][8:],
-            ]
-            writing.append("".join(newread))
+#     to 
 
-            # Write the data in chunks
-            counts2 += 1
-            if not counts2 % 1000:
-                outfile.write("".join(writing))
-                writing = []
+#     0004a51ebbcd442afb6b6d02f5daf553;tag=TATCGGTC;size=6;*
+#     ATCGGCTAAGAATAAGAGAAAAAAACAAGTGAATGATAATGAATATGGATATGACTAAAA
+#     """
+#     tmpin = os.path.join(data.tmpdir, f"{sample.name}_derep.fa")
+#     tmpout = os.path.join(data.tmpdir, f"{sample.name}_tagged.fa")
 
-        if writing:
-            outfile.write("".join(writing))
-            outfile.close()
+#     # Remove adapters from head of sequence and write out
+#     # tmp_outfile is now the input file for the next step
+#     # first vsearch derep discards the qscore so we iterate pairs
+#     outfile = open(tmpout, 'wt') 
+#     with open(tmpin, 'rt') as infile:
+
+#         # iterate over 2 lines a time
+#         duo = zip(*[infile] * 2)
+#         writing = []
+#         counts2 = 0
+
+#         # a list to store until writing
+#         while 1:
+#             try:
+#                 read = next(duo)
+#             except StopIteration:
+#                 break
+
+#             # extract i5 if it exists else use empty string           
+#             tag = read[1][:8]
+#             name, size = read[0].split(";")
+
+#             # add i5 to the 5' end of the sequence
+#             newread = [
+#                 "{};tag={};{}".format(name, tag, size),
+#                 read[1][8:],
+#             ]
+#             writing.append("".join(newread))
+
+#             # Write the data in chunks
+#             counts2 += 1
+#             if not counts2 % 1000:
+#                 outfile.write("".join(writing))
+#                 writing = []
+
+#         if writing:
+#             outfile.write("".join(writing))
+#             outfile.close()
 
 
 def split_derep_pairs_ref(data, sample):
@@ -372,21 +372,21 @@ def split_derep_pairs_ref(data, sample):
     """
     # select tagged if it exists else choose derep
     infiles = [
-        os.path.join(data.tmpdir, f"{sample.name}_tagged.fa"),
-        os.path.join(data.tmpdir, f"{sample.name}_derep.fa"),
+        data.tmpdir / f"{sample.name}_derep_tag.fa",
+        data.tmpdir / f"{sample.name}_derep.fa",
     ]
-    infile = [i for i in infiles if os.path.exists(i)][0]
+    infile = [i for i in infiles if i.exists()][0]
 
     # output fasta names
-    out1 = os.path.join(data.tmpdir, f"{sample.name}_derep_split_R1.fa")
-    out2 = os.path.join(data.tmpdir, f"{sample.name}_derep_split_R2.fa")
+    out1 = data.tmpdir / f"{sample.name}_derep_split_R1.fa"
+    out2 = data.tmpdir / f"{sample.name}_derep_split_R2.fa"
     print(f"resplitting paired reads to {sample.name}")
 
     # open files for writing
-    splitderep1 = open(out1, 'wt')
-    splitderep2 = open(out2, 'wt')
+    splitderep1 = open(out1, 'w', encoding="utf-8")
+    splitderep2 = open(out2, 'w', encoding="utf-8")
 
-    with open(infile, 'rt') as infile:
+    with open(infile, 'r', encoding="utf-8") as infile:
         # Read in the infile two lines at a time: (seqname, sequence)
         duo = zip(*[infile] * 2)
 
@@ -406,13 +406,13 @@ def split_derep_pairs_ref(data, sample):
             try:
                 part1, part2 = itera[1].split("nnnn")
             except ValueError:
-                print("SPLIT THIS {}".format(itera))
+                print(f"SPLIT THIS {itera}")
             idx += 1
 
             # R1 needs a newline, but R2 inherits it from the original file
             # store parts in lists until ready to write
-            split1s.append("{}{}\n".format(itera[0], part1))
-            split2s.append("{}{}".format(itera[0], part2))
+            split1s.append(f"{itera[0]}{part1}\n")
+            split2s.append(f"{itera[0]}{part2}")
 
             # if large enough then write to file
             if not idx % 10000:
@@ -432,94 +432,78 @@ def split_derep_pairs_ref(data, sample):
 
 
 def mapping_reads(data, sample, nthreads):
-    """
-    Map reads to the reference to get a sorted bam.
-    """
+    """Map reads to the reference to get a sorted bam."""
     reference = data.params.reference_sequence
-    if not os.path.exists(reference):
+    if not reference.exists():
         raise IPyradError(f"reference_sequence not found: {reference}")
 
     # input reads are concat if present else trims
-    read1 = os.path.join(data.tmpdir, f"{sample.name}_derep_split_R1.fa")
-    read2 = os.path.join(data.tmpdir, f"{sample.name}_derep_split_R2.fa")
-    if not os.path.exists(read1):
-        read1 = os.path.join(data.tmpdir, f"{sample.name}_derep.fa")
+    read1 = data.tmpdir / f"{sample.name}_derep_split_R1.fa"
+    read2 = data.tmpdir / f"{sample.name}_derep_split_R2.fa"
+    if not read1.exists():
+        read1 = data.tmpdir / f"{sample.name}_derep.fa"
         read2 = None
-    assert os.path.exists(read1), f"derep files missing: {read1}"
+    assert read1.exists(), f"derep files missing: {read1}"
 
     # setup cmd1 (mapping w/ bwa)
-    cmd1 = [BIN_BWA, "mem", "-t", str(max(1, nthreads)), "-M", reference]
-    cmd1.append(read1)
+    cmd1 = [BIN_BWA, "mem", "-t", str(max(1, nthreads)), "-M", str(reference)]
+    cmd1.append(str(read1))
     if read2:
-        cmd1.append(read2)
+        cmd1.append(str(read2))
     if data.hackers.bwa_args:
         for arg in data.hackers.bwa_args.split()[::-1]:
-            cmd1.insert(2, arg)
-    cmd1 += ['-o', os.path.join(data.tmpdir, f"{sample.name}.sam")]
+            cmd1.insert(2, str(arg))
+    cmd1 += ['-o', str(data.tmpdir/ f"{sample.name}.sam")]
     print(" ".join(cmd1))
 
     # run cmd1
-    proc1 = Popen(cmd1, stderr=PIPE, stdout=DEVNULL)
-    error1 = proc1.communicate()[1]
-    if proc1.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
+    with Popen(cmd1, stderr=PIPE, stdout=DEVNULL) as proc1:
+        error1 = proc1.communicate()[1]
+        if proc1.returncode:
+            raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
 
     # setup cmd2 (sam to bam)
-    cmd2 = [BIN_SAMTOOLS, 'view', '-b', '-F', '0x904']
-    cmd2 += [os.path.join(data.tmpdir, f"{sample.name}.sam")]
+    # Previously, flag removal was '0x904' (remove unmapped, secondary, and supplemental)
+    # in v1.0 we changed to '2052' (remove unmapped and supplemental). This
+    # is because a read may map ambiguously to multiple locations, e.g. due
+    # to repeats. Only one of the multiple read alignments is considered 
+    # primary, and this decision may be arbitrary. All other alignments have 
+    # the secondary alignment flag. So, we should keep secondary b/c they can
+    # be just as good as primary. Also require 2 (read mapped in proper pair)
+    # which requires pairs map on same scaffold.
+    cmd2 = [BIN_SAMTOOLS, 'view', '-b', '-F', '2052', '-f', '2'] # '0x904'
+    cmd2.append(str(data.tmpdir / f"{sample.name}.sam"))
     print(' '.join(cmd2))
-
-    # run cmd2
-    proc2 = Popen(cmd2, stderr=STDOUT, stdout=PIPE)
 
     # setup cmd3 (sort sam)
     cmd3 = [
         BIN_SAMTOOLS, "sort", 
-        "-T", os.path.join(data.tmpdir, f"{sample.name}.sam.tmp"),
+        "-T", str(data.tmpdir / f"{sample.name}.sam.tmp"),
         "-O", "bam", 
-        "-o", os.path.join(data.stepdir, f"{sample.name}.bam"),
+        "-o", str(data.stepdir / f"{sample.name}.bam"),
     ]
     print(' '.join(cmd3))
 
-    # run cmd3
-    proc3 = Popen(
-        cmd3, stderr=STDOUT, stdout=PIPE, stdin=proc2.stdout)
-    error3 = proc3.communicate()[1]
-    if proc3.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
-    proc2.stdout.close()
+    # run cmd2
+    with Popen(cmd2, stderr=STDOUT, stdout=PIPE) as proc2:
+        with Popen(cmd3, stderr=STDOUT, stdout=PIPE, stdin=proc2.stdout) as proc3:
+            error3 = proc3.communicate()[1]
+            if proc3.returncode:
+                raise IPyradError(f"cmd: {' '.join(cmd3)}\nerror: {error3}")
 
     # setup cmd4 (index bam file)
-    cmd4 = [BIN_SAMTOOLS, "index", "-c", os.path.join(data.stepdir, f"{sample.name}.bam")]
+    cmd4 = [BIN_SAMTOOLS, "index", "-c", str(data.stepdir / f"{sample.name}.bam")]
 
     # run cmd4
-    proc4 = Popen(cmd4, stderr=PIPE, stdout=DEVNULL)
-    error4 = proc4.communicate()[1]
-    if proc4.returncode:
-        raise IPyradError(f"cmd: {' '.join(cmd4)}\nerror: {error4}")
+    with Popen(cmd4, stderr=PIPE, stdout=DEVNULL) as proc4:
+        error4 = proc4.communicate()[1]
+        if proc4.returncode:
+            raise IPyradError(f"cmd: {' '.join(cmd4)}\nerror: {error4}")
 
 
-def build_clusters_from_cigars(data, sample):
-    """
-    Directly building clusters relative to reference. Uses the function 
-    cigared() to impute indels relative to reference. This means add - 
-    for insertion and skip* deletions. Skipping is not a good final 
-    solution.
+def iter_reads_by_bedtools_merge_region(data: Assembly, sample: Sample) -> Iterator:
+    """Yield Alignment objects from pysam for each delimited region."""
 
-    If a read pair is merged completely then we mask the restriction
-    overhangs from each end. This is because the read-through can
-    recover the uncut sequence in SOME seqs, leading to false SNPS.
-
-                ------ATCGGAGGTA ...  not merged
-                ATTCACCG--------      fully merged
-                ATTCACCG--------      fully merged
-                ATTCACCG--------      fully merged
-                ------ATCGGAGGTA ...  not merged
-                ------ATCGGAGGTA ...  not merged
-
-                ATTCACNNNNNAGGTA  ==  masked tips for merged pairs
- 
-    """
     # get all regions with reads as a List of 'scaff\tstart\tend' strs
     regions = bedtools_merge(data, sample)
 
@@ -533,34 +517,49 @@ def build_clusters_from_cigars(data, sample):
     regions = ((i, int(j) + 1, int(k) + 1) for (i, j, k) in regions_split)
 
     # access reads from bam file using pysam
-    bamfile = os.path.join(data.stepdir, f"{sample.name}.bam")
-    bamin = pysam.AlignmentFile(bamfile, 'rb')
-
-    # output path 
-    opath = os.path.join(data.stepdir, f"{sample.name}.clusters.gz")
-    out = gzip.open(opath, 'wt')
-    idx = 0
-
-    # iterate over all regions to build clusters
-    clusters = []
+    bamfile = data.stepdir / f"{sample.name}.bam"
+    bamin = pysam.AlignmentFile(str(bamfile), 'rb')
     for reg in regions:
         # uncomment and compare against ref sequence when testing
         # ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
-        reads = bamin.fetch(*reg)
+        reads_iter = bamin.fetch(*reg)
+        yield (reg, reads_iter)
 
+def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
+    """Yield cigar aligned clusters, optionally decloned.
+
+    Uses the function cigared() to impute indels relative to reference. 
+    This means add dashes for insertion and skip* deletions. Skipping
+    is not a good final solution.
+
+    If a read pair is merged completely then we mask the restriction
+    overhangs from each end. This is because the read-through can
+    recover the uncut sequence in SOME seqs, leading to false SNPS.
+
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ATTCACNNNNNAGGTA  ==  masked tips for merged pairs
+    """
+    # masking for tip overlap of re regions
+    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])    
+
+    # iterate over bedtools merge output
+    for reg, reads in iter_reads_by_bedtools_merge_region(data, sample):
         # store reads in a dict
         rdict = {}
 
-        # paired-end data cluster building
-        if data.is_pair:
-
-            # match paired reads together in a dictionary (same qname)
-            # for each mapped read in this region.
-            for read in reads:
-                if read.qname not in rdict:
-                    rdict[read.qname] = [read, None]
-                else:
-                    rdict[read.qname][1] = read
+        # match paired reads by same qname for each read in this region.
+        # reads were required to pair, so should always be in pairs.
+        for read in reads:
+            # fill r1 and r2 list
+            if read.qname not in rdict:
+                rdict[read.qname] = [read, None]
+            else:
+                rdict[read.qname][1] = read
 
             # sort keys by derep number
             keys = sorted(
@@ -569,7 +568,7 @@ def build_clusters_from_cigars(data, sample):
 
             # get max RE length for tip-masking
             try:
-                tipmask = max([len(i) for i in data.params.restriction_overhang])
+                tipmask = _tipmasklen
             except Exception:
                 tipmask = 6
 
@@ -620,11 +619,164 @@ def build_clusters_from_cigars(data, sample):
                     # insert decloning tag into name, or not.
                     if data.hackers.declone_PCR_duplicates:
                         tag = align1.qname.split(";")[-2]
-                        rname = "{}:{}-{};{};size={};{}".format(
+                        rname = (
+                            f">{reg[0]}:{reg[1]}-{reg[2]};"
+                            f"{tag};size={derep};{ori}"
+                        )
+                    else:
+                        rname = (
+                            f">{reg[0]}:{reg[1]}-{reg[2]};"
+                            f"size={derep};{ori}"
+                        )
+                    clust.append(f"{rname}\n{pairseq}")
+
+            # yield this cluster if data exists
+            if clust:
+                yield clust
+
+def write_cluster(data, sample):
+    """..."""
+    # output path 
+    opath = data.stepdir / f"{sample.name}.clusters.gz"
+    with gzip.open(opath, 'wt') as out:
+
+        # iterate over all regions to build clusters
+        idx = 0
+        clusters = []
+        for clust in iter_paired_cluster(data, sample):
+            # ...
+            pass
+
+
+def build_clusters_from_cigars(data, sample):
+    """Construct aligned clusters from mapped reads.
+
+    Uses the function cigared() to impute indels relative to reference. 
+    This means add dashes for insertion and skip* deletions. Skipping
+    is not a good final solution.
+
+    If a read pair is merged completely then we mask the restriction
+    overhangs from each end. This is because the read-through can
+    recover the uncut sequence in SOME seqs, leading to false SNPS.
+
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ATTCACCG--------      fully merged
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ------ATCGGAGGTA ...  not merged
+    >>>            ATTCACNNNNNAGGTA  ==  masked tips for merged pairs
+ 
+    """
+    # get all regions with reads as a List of 'scaff\tstart\tend' strs
+    regions = bedtools_merge(data, sample)
+
+    # if no matched regions (no clusters) then bail out.
+    if not regions:
+        return 
+
+    # Make into a generator of tuples
+    # bedtools is 0-based. sam is 1-based, so increment the positions here
+    regions_split = (i.split("\t") for i in regions)
+    regions = ((i, int(j) + 1, int(k) + 1) for (i, j, k) in regions_split)
+
+    # access reads from bam file using pysam
+    bamfile = data.stepdir / f"{sample.name}.bam"
+    bamin = pysam.AlignmentFile(str(bamfile), 'rb')
+
+    # output path 
+    opath = data.stepdir / f"{sample.name}.clusters.gz"
+    out = gzip.open(opath, 'wt')
+    idx = 0
+
+    # masking for tip overlap of re regions
+    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])    
+
+    # iterate over all regions to build clusters
+    clusters = []
+    for reg in regions:
+        # uncomment and compare against ref sequence when testing
+        # ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
+        reads = bamin.fetch(*reg)
+
+        # store reads in a dict
+        rdict = {}
+
+        # paired-end data cluster building
+        if data.is_pair:
+
+            # match paired reads together in a dictionary (same qname)
+            # for each mapped read in this region.
+            for read in reads:
+                # fill r1 and r2 list
+                if read.qname not in rdict:
+                    rdict[read.qname] = [read, None]
+                else:
+                    rdict[read.qname][1] = read
+
+            # sort keys by derep number
+            keys = sorted(
+                rdict.keys(),
+                key=lambda x: int(x.split("=")[-1]), reverse=True)
+
+            # get max RE length for tip-masking
+            try:
+                tipmask = _tipmasklen
+            except Exception:
+                tipmask = 6
+
+            # build the cluster based on map positions, orientation, cigar
+            clust = []
+            for key in keys:
+
+                # both pairs must match or we exclude the reads
+                align1, align2 = rdict[key]
+                if align1 and align2:
+
+                    # create two empty arrays length of the region
+                    lref = reg[2] - reg[1]
+                    arr1 = np.zeros(lref, dtype="U1")
+                    arr2 = np.zeros(lref, dtype="U1")
+                    arr1.fill("-")
+                    arr2.fill("-")
+
+                    # how far ahead of the start does this read begin
+                    seq = cigared(align1.seq, align1.cigar)
+                    start1 = align1.reference_start - (reg[1] - 1) 
+                    len1 = len(seq)
+                    arr1[start1:start1 + len1] = list(seq)
+                    
+                    seq = cigared(align2.seq, align2.cigar)
+                    start2 = align2.reference_start - (reg[1] - 1)
+                    len2 = len(seq)
+                    arr2[start2:start2 + len2] = list(seq)
+
+                    # tip-masking for merged pairs.
+                    if start2 <= (start1 + tipmask):
+                        arr2[start1:start1 + tipmask] = "-"
+                    if (start1 + len1) >= (start2 + len2 - tipmask):
+                        arr1[start2+len2-tipmask:start2+len2] = "-"
+                    if start1 != 0:
+                        arr1[start1:start1 + tipmask] = "-"
+                    if start2 + len2 != lref:
+                        arr2[start2+len2-tipmask:start2+len2] = "-"
+
+                    arr3 = join_arrays(arr1, arr2)
+                    pairseq = "".join(arr3)
+
+                    ori = "+"
+                    if align1.is_reverse:
+                        ori = "-"
+                    derep = align1.qname.split("=")[-1]
+
+                    # insert decloning tag into name, or not.
+                    if data.hackers.declone_PCR_duplicates:
+                        tag = align1.qname.split(";")[-2]
+                        rname = ">{}:{}-{};{};size={};{}".format(
                             reg[0], reg[1], reg[2], tag, derep, ori,
                         )
                     else:
-                        rname = "{}:{}-{};size={};{}".format(
+                        rname = ">{}:{}-{};size={};{}".format(
                             reg[0], reg[1], reg[2], derep, ori,
                         )
                     clust.append("{}\n{}".format(rname, pairseq))
@@ -669,9 +821,12 @@ def build_clusters_from_cigars(data, sample):
                 # since we we build sam in step 5, we need to account for the
                 # diffrent indexing strategies here by incrementing mstart
                 # and mend
-                rname = "{}:{}-{};size={};{}".format(
+                rname = ">{}:{}-{};size={};{}".format(
                     reg[0], mstart + 1, mend + 1, derep, ori)
                 clust.append("{}\n{}".format(rname, aseq))
+
+        # [optional] declone the cluster before writing.
+
 
         # store this cluster
         if clust:
@@ -690,8 +845,9 @@ def build_clusters_from_cigars(data, sample):
     out.close()
 
 
-def join_arrays(arr1, arr2):
-    """
+def join_arrays(arr1: np.ndarray, arr2: np.ndarray) -> np.ndarray:
+    """Merge refmapped read1 and read2 into a single read in alignment.
+
     Fastp already performed paired-read correction for overlapping 
     reads. But if diffs persist at overlap somehow then mask them here.
     Also mask bases at cutsites if no insert is present.
@@ -730,9 +886,7 @@ def join_arrays(arr1, arr2):
 
 
 def cigared(sequence, cigartups) -> str:
-    """
-    modify sequence based on its cigar string
-    """
+    """Pseudo-align sequence with ref based on its cigar string."""
     start = 0
     seq = ""
     for tup in cigartups:
@@ -759,12 +913,12 @@ def bedtools_merge(data, sample) -> List[str]:
         -i <input_bam>  :   specifies the input file to bed'ize
         -d <int>        :   For PE set max distance between reads
     """
-    mappedreads = os.path.join(data.stepdir, sample.name + ".bam")
+    mappedreads = data.stepdir / (sample.name + ".bam")
 
     # command to call `bedtools bamtobed`, and pipe output to stdout
     # Usage:   bedtools bamtobed [OPTIONS] -i <bam>
     # Usage:   bedtools merge [OPTIONS] -i <bam>
-    cmd1 = [BIN_BEDTOOLS, "bamtobed", "-i", mappedreads]
+    cmd1 = [BIN_BEDTOOLS, "bamtobed", "-i", str(mappedreads)]
     cmd2 = [BIN_BEDTOOLS, "merge", "-i", "-"]
 
     # use hackers value if user set one, else 500 as a reasonable default
