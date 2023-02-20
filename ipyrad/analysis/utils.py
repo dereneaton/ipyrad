@@ -3,12 +3,13 @@
 """utility functions for the analysis tools
 """
 
+from typing import Dict, List
 import os
 import numpy as np
 from numba import njit, prange
 
 
-def popfile_to_imap(path: str):
+def popfile_to_imap(path: str) -> Dict[str, List[str]]:
     """Parse popfile to an imap dictionary.
 
     The popfile should be formatted with whitespace separated
@@ -51,7 +52,7 @@ def popfile_to_imap(path: str):
 
 
 @njit
-def jsubsample_snps(snpsmap: np.ndarray, seed: int):
+def jsubsample_snps(snpsmap: np.ndarray, seed: int) -> np.ndarray:
     """Subsample snps, one per locus, using snpsmap."""
     np.random.seed(seed)
     lidxs = np.unique(snpsmap[:, 0])
@@ -91,39 +92,6 @@ def jsubsample_loci(snpsmap, seed):
     return len(lidxs), subs
 
 
-
-# @njit
-# def jsubsample_loci_full(snpsmap, seed):
-#     """
-#     Return SNPs from re-sampled loci (shape = (nsample, ...can change)
-#     including the possibility of sampling invariant loci, which
-#     has the effect of reducing the size of the final returned array.
-#     """
-#     np.random.seed(seed)
-
-#     # the number of unique loci TOTAL in the subset dataset
-#     lidxs = np.unique(snpsmap[:, 0])
-
-#     # resample w/ replacement N loci
-#     lsample = np.random.choice(lidxs, len(lidxs))
-
-#     # the size of array to fill
-#     size = 0
-#     for lidx in lsample:
-#         size += snpsmap[snpsmap[:, 0] == lidx].shape[0]
-
-#     # fill with data
-#     subs = np.zeros(size, dtype=np.int64)
-#     idx = 0
-#     for lidx in lsample:
-#         block = snpsmap[snpsmap[:, 0] == lidx, 1]
-#         subs[idx: idx + block.size] = block
-#         idx += block.size
-#     return len(lidxs), subs
-
-
-
-
 @njit(parallel=True)
 def get_spans(maparr, spans):
     """
@@ -145,8 +113,6 @@ def get_spans(maparr, spans):
     # drop rows with no span (invariant loci)
     spans = spans[spans[:, 0] != spans[:, 1]]
     return spans
-
-
 
 @njit
 def count_snps(seqarr):
@@ -194,46 +160,3 @@ def count_snps(seqarr):
         if catg[2] > 1:
             nsnps += 1
     return nsnps
-
-
-
-class Params:
-    """
-    A dict-like object for storing params values with a custom repr
-    and keys accessible as attributes for tab-completion.
-    """
-    def __init__(self):
-        self._i = 0
-
-    def __getitem__(self, key):
-        return self.__dict__[key]
-
-    def __setitem__(self, key, value):
-        self.__dict__[key] = value
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
-        if self._i > len(keys) - 1:
-            self._i = 0
-            raise StopIteration
-        self._i += 1
-        return keys[self._i - 1]
-
-    def update(self, dictionary):
-        "a dictionary-like update method"
-        self.__dict__.update(dictionary)
-
-
-    def __repr__(self):
-        "return simple representation of dict with ~ shortened for paths"
-        _repr = ""
-        keys = [i for i in sorted(self.__dict__.keys()) if i != "_i"]
-        if keys:
-            _printstr = "{:<" + str(2 + max([len(i) for i in keys])) + "} {:<20}\n"
-            for key in keys:
-                _val = str(self[key]).replace(os.path.expanduser("~"), "~")
-                _repr += _printstr.format(key, _val)
-        return _repr
