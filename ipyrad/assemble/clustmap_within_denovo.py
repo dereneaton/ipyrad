@@ -30,7 +30,8 @@ class ClustMapDenovo(ClustMapBase):
     """de novo within-sample assembly pipeline."""
     def __init__(self, step):
         super().__init__(step)
-        self.data.max_indels = 8
+        self.data.max_indels = 5
+        """: max number of gap-openings in a within-sample stack."""
 
         # sort samples to start largest files clustering first
         self.sorted_samples = sorted(
@@ -170,7 +171,10 @@ class ClustMapDenovo(ClustMapBase):
             jobs[sname] = []
             for idx in range(10):
                 handle = self.data.tmpdir / f"{sname}_chunk_{idx}.ali"
-                jobs[sname].append(self.lbview.apply(write_alignments, handle))
+                # submit to be aligned if any data in this file.
+                if handle.stat().st_size:
+                    jobs[sname].append(
+                        self.lbview.apply(write_alignments, handle))
 
         # a list with all aasyncs concatenated for use in progbar
         aasyncs = itertools.chain(*jobs.values())
