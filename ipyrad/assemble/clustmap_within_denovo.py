@@ -172,7 +172,7 @@ class ClustMapDenovo(ClustMapBase):
             for idx in range(10):
                 handle = self.data.tmpdir / f"{sname}_chunk_{idx}.ali"
                 # submit to be aligned if any data in this file.
-                if handle.stat().st_size:
+                if handle.exists() and handle.stat().st_size:
                     jobs[sname].append(
                         self.lbview.apply(write_alignments, handle))
 
