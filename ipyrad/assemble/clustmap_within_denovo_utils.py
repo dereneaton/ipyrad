@@ -420,7 +420,7 @@ def iter_muscle_alignments(handle: Path, maxdepth: int=100) -> Iterator[List[str
     # create two persistent bash shells
     with subprocess.Popen(
         'bash', **kwargs) as proc1, subprocess.Popen(
-        'bash', **kwargs) as proc2:
+            'bash', **kwargs) as proc2:
 
         # iterate over clusters
         for clust in iter_clusters(handle):
