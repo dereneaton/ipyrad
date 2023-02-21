@@ -119,10 +119,10 @@ class ChunkProcess:
 
         # filters dataframe is size of nloci (chunksize)
         self.filters = pd.DataFrame(
-            index=range(self.chunksize),
-            columns=["dups", "minsamp", "maxind", "maxvar", "maxshared"],
-            data=False,
-            dtype=bool,
+            index=range(self.start_lidx, self.start_lidx + self.chunksize),
+            columns=["dups", "minsamp", "maxind", "maxvar", "maxshared", "maxindels"],
+            data=np.zeros((self.chunksize, 6)),
+            dtype=np.bool_,
         )
 
         # sets stats defaults, using nsamples that will be written
@@ -350,7 +350,7 @@ class ChunkProcess:
 
             # save dataframe of filters for loci that were removed for stats
             mask = self.filters.sum(axis=1).astype(bool).values
-            self.filters.loc[mask, :].to_csv(self.chunkfile.with_suffix(".csv"))
+            self.filters.iloc[mask, :].astype(int).to_csv(self.chunkfile.with_suffix(".csv"))
 
             # calculate histograms for polymorphism stats, using evenly spaced
             # bins but with the inclusion of one extra bin >0 but very low,
