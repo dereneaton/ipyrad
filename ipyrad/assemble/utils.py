@@ -79,9 +79,14 @@ class IPyradError(Exception):
     and the traceback will include the source error and error type
     for debugging.
     """
-    # def __init__(self, *args, **kwargs):
-        # raise the exception with this string message and a traceback
-        # Exception.__init__(self, *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        Exception.__init__(self, *args, **kwargs)
+
+
+class NoHighDepthClustersError(IPyradError):
+    """Raise a custom exception that will report with traceback.
+    """
+
 
 class IPyradExit(SystemExit):
     """Return code 1 to exit with an error message but NO TRACEBACK.
