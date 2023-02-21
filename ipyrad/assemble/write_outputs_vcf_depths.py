@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 import h5py
 
+
 class SingleDepths:
     def __init__(self, data: 'Assembly', sname: str):
         self.data = data
@@ -59,7 +60,7 @@ class SingleDepths:
 
     def _iter_loci(self) -> Iterator[Tuple[int, np.ndarray]]:
         """Yield each locus one at a time from full loaded array.
-    
+
         The shift table arrays are chunked to be each pretty small
         so we can load each entire one in at a time without concern.
 
@@ -81,7 +82,7 @@ class SingleDepths:
 
     def _iter_snvs(self) -> Iterator[Tuple[int, int, np.ndarray]]:
         """Yield a single variable site for samples w/ data.
-        
+
         Note: this discard the raw locus ID (lidx) and replaces it
         with an enumeration of locus IDs ordered from 0-nloci in chunk.
 
@@ -141,8 +142,8 @@ class SingleDepths:
 
 
 class CombinedDepths:
-    """
-    
+    """...
+
     The main purpose of this class is to create a generator to read 
     from all of the individual sample TSV depth files and yield a 
     list of data with information for the INFO and FORMAT columns
