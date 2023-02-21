@@ -100,7 +100,7 @@ class AssemblyProgressBar:
             elif not isatty:
                 if not int(self.elapsed.seconds) % 30:
                     self.update()
-            
+
             # normal tty print every second
             else:
                 self.update()

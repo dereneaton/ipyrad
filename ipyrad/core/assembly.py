@@ -34,11 +34,11 @@ class Assembly:
 
     Notes
     -----
-    The Assembly object can be serialzed to JSON using .save_json(), 
-    and reloaded from JSON using .load_json(). The schema for 
-    converting back and forth between object and JSON checks the 
+    The Assembly object can be serialzed to JSON using .save_json(),
+    and reloaded from JSON using .load_json(). The schema for
+    converting back and forth between object and JSON checks the
     types of the Params.
-    
+
     Examples
     --------
     >>> import ipyrad as ip
@@ -176,7 +176,7 @@ class Assembly:
         stats = stats.dropna(axis=1, how="all")
         return stats
 
-    def branch(self, name:str, subsample:List[str]=None) -> 'Assembly':
+    def branch(self, name: str, subsample: List[str] = None) -> 'Assembly':
         """Return a new branched Assembly class instance.
 
         The new object will have the same parameter settings as the
@@ -220,7 +220,7 @@ class Assembly:
         branch.outfiles = {}
         return branch
 
-    def write_params(self, force:bool=False) -> None:
+    def write_params(self, force: bool = False) -> None:
         """Write a CLI params file to <workdir>/params-<name>.txt.
 
         Writes the current Params for this Assembly. When this is 
@@ -273,10 +273,10 @@ class Assembly:
     def run(
         self,
         steps: str,
-        cores: Optional[int]=None,
-        force: bool=False,
-        quiet: bool=False,
-        ipyclient: Optional["ipyparallel.Client"]=None,
+        cores: Optional[int] = None,
+        force: bool = False,
+        quiet: bool = False,
+        ipyclient: Optional["ipyparallel.Client"] = None,
         **ipyclient_kwargs,
         ) -> None:
         """Run one or more assembly steps (1-7) of an ipyrad assembly.
