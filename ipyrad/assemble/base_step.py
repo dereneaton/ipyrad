@@ -19,6 +19,7 @@ Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
 logger = logger.bind(name="ipyrad")
 
+
 class BaseStep(ABC):
     """Abstract Base Class for Step class objects.
 
@@ -39,7 +40,7 @@ class BaseStep(ABC):
         self.samples: Dict[str, Sample] = {}
         """: Subsample of Assembly Samples ready for this step."""
         self.data.stepdir: Path = None
-        """: Output dir used during this step."""        
+        """: Output dir used during this step."""
         self.data.tmpdir: Path = None
         """: Tmp dir used during this step."""
         self.data.populations: Dict[str, Tuple[List[str], int]] = {}
@@ -129,9 +130,8 @@ class BaseStep(ABC):
                 raise IPyradExit(f"Error: No samples ready for step {self.step}")
             logger.warning(
                 f"Skipping samples not ready for step {self.step}. Create "
-                "a new branch and drop these samples to suppress this "
-                "warning message:\n"
-                f"{', '.join(list(already_done))}"
+                "a new branch and drop these samples \nto suppress this "
+                f"warning message: {', '.join(list(not_ready))}"
             )
 
         # build list to run for samples being forced
@@ -160,9 +160,11 @@ class BaseStep(ABC):
             6: "across",
             7: "outfiles",
         }
-        self.data.stepdir = (self.data.params.project_dir / 
+        self.data.stepdir = (
+            self.data.params.project_dir /
             f"{self.data.name}_{suffix[self.step]}")
-        self.data.tmpdir = (self.data.params.project_dir / 
+        self.data.tmpdir = (
+            self.data.params.project_dir /
             f"{self.data.name}_tmp_{suffix[self.step]}")
 
         # clear stepdir or raise an error depending on exists and force
@@ -177,7 +179,7 @@ class BaseStep(ABC):
             else:
                 msg = f"Error: Directory {self.data.stepdir} exists.\nUse force (-f) to overwrite."
                 raise IPyradExit(msg)
-            
+
         # always clear tmpdir, and always make both new dirs.
         if self.data.tmpdir.exists():
             shutil.rmtree(self.data.tmpdir)
@@ -189,7 +191,7 @@ class BaseStep(ABC):
 
         In the API a user can set the populations using a dictionary 
         on the Assembly object as {popname: ([samps], minsamp), ...}.
-        
+
         In the CLI this information is parsed from a file.
         Default format is one sample per line, listing population name
         then sample name separated by whitespace. In addition, 'minsamp'
