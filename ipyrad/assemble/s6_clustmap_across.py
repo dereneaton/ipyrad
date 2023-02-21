@@ -32,16 +32,22 @@ class Step6(BaseStep):
             ClustMapAcrossReference(self).run()
         for _, sample in self.samples.items():
             sample.state = 6
+            sample._clear_old_results()
         self.data.save_json()
 
 
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG")# log_file="/tmp/test.log")
    
-    TEST = ip.load_json("/tmp/TEST5.json")
-    TEST.run("6", force=True, quiet=False)
+    TEST = ip.load_json("../../pedtest/NEW.json")
+    TEST.params.min_depth_majrule = 1
+    TEST.run("6", force=True, quiet=True)
+    print(TEST.stats)
+
+    # TEST = ip.load_json("/tmp/TEST5.json")
+    # TEST.run("6", force=True, quiet=False)
 
     # tdata = ip.load_json("/tmp/test-amaranth.json")
     # tdata.run("6", auto=True, force=True)
