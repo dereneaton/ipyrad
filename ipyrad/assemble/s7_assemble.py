@@ -348,7 +348,7 @@ class Step7(BaseStep):
             raise IPyradError("no loci passed filtering")
 
         # store locus stats to Sample objects including the new 'reference' sample.
-        for sname in self.data.samples:
+        for sname in self.samples:
             self.data.samples[sname].stats_s7 = Stats7(nloci=stats.sample_cov[sname])
             self.data.samples[sname].state = 7
 
@@ -567,15 +567,18 @@ after assembling your data.
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")# log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG")  # log_file="/tmp/test.log")
 
-    TEST = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
-    # TEST = ip.load_json("/tmp/TEST5.json")
+    TEST = ip.load_json("../../pedtest/NEW.json")
+    TEST.run("7", force=True, quiet=True)
+    print(TEST.stats)
 
-    TEST.hackers.exclude_reference = True
-    TEST.params.output_formats = ("v", "s")
-    TEST.run("7", cores=4, force=True, quiet=True)
+    # TEST = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
+    # # TEST = ip.load_json("/tmp/TEST5.json")
 
+    # TEST.hackers.exclude_reference = True
+    # TEST.params.output_formats = ("v", "s")
+    # TEST.run("7", cores=4, force=True, quiet=True)
 
     # tdata = ip.load_json("/tmp/test-simpairddrad.json")
     # tdata.params.output_formats = "lpsnkaguvtm"
