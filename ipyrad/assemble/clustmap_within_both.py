@@ -615,7 +615,6 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
     depths arrays for each sample.
     """
     clustfile = data.stepdir / f"{sample.name}.clusters.gz"
-    sample.state = 3
     sample.files.clusters = clustfile
 
     # get depths and lens distributions from clusters file.
@@ -630,32 +629,51 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
 
     # sample does not advance state to 3
     if not depths.size:
+        sample.state = 2
         sample.stats_s3.clusters_total = 0
         sample.stats_s3.clusters_hidepth = 0
+        # TODO: set all other s3 stats to nan here.
+        print("No clusters found for ({sample.name}). Sample remains in state=2.")
         return sample
 
     # create mindepth masks
+    sample.state = 3
+    sample._clear_old_results()
+
+    # store n clusters stats
+    sample.stats_s3.clusters_total = int(depths.size)
+
+    # get masks
     maj_mask = depths >= data.params.min_depth_majrule
     hid_mask = depths >= data.params.min_depth_statistical
 
     # store length stats
     hilens = clens[hid_mask]
-    sample.stats_s3.max_hidepth_cluster_length = int(hilens.max())
-    sample.stats_s3.mean_hidepth_cluster_length = float(hilens.mean())
-    sample.stats_s3.std_hidepth_cluster_length = float(hilens.std())
-
-    # store n clusters stats
-    sample.stats_s3.clusters_total = int(depths.size)
-    sample.stats_s3.clusters_hidepth = int(depths[hid_mask].size)
+    if hilens.size:
+        sample.stats_s3.max_hidepth_cluster_length = int(hilens.max())
+        sample.stats_s3.mean_hidepth_cluster_length = float(hilens.mean())
+        sample.stats_s3.std_hidepth_cluster_length = float(hilens.std())
 
     # store depths histogram as a dict. Limit to first 25 bins
     bars, _ = np.histogram(depths, bins=range(1, 26))
     sample.stats_s3.depths_histogram = [int(i) for i in bars]
     sample.stats_s3.mean_depth_total = float(depths.mean())
-    sample.stats_s3.mean_depth_mj = float(depths[maj_mask].mean())
-    sample.stats_s3.mean_depth_stat = float(depths[hid_mask].mean())
     sample.stats_s3.std_depth_total = float(depths.std())
-    sample.stats_s3.std_depth_mj = float(depths[maj_mask].std())
-    sample.stats_s3.std_depth_stat = float(depths[hid_mask].std())
+
+    if maj_mask.size:
+        sample.stats_s3.mean_depth_mj = float(depths[maj_mask].mean())
+        sample.stats_s3.std_depth_mj = float(depths[maj_mask].std())
+    else:
+        sample.stats_s3.mean_depth_mj = np.nan
+        sample.stats_s3.std_depth_mj = np.nan
+
+    if hid_mask.size:
+        sample.stats_s3.clusters_hidepth = int(depths[hid_mask].size)
+        sample.stats_s3.mean_depth_stat = float(depths[hid_mask].mean())
+        sample.stats_s3.std_depth_stat = float(depths[hid_mask].std())
+    else:
+        sample.stats_s3.clusters_hidepth = 0
+        sample.stats_s3.mean_depth_stat = np.nan
+        sample.stats_s3.std_depth_stat = np.nan
 
     return sample
