@@ -90,8 +90,10 @@ class Stats5(BaseModel):
     min_depth_maj_during_step5: int = None
     min_depth_stat_during_step5: int = None
 
+
 class Stats7(BaseModel):
     nloci: int = 0
+
 
 class SampleFiles(BaseModel):
     """A dict-like class for storing file paths to samples.
@@ -107,6 +109,7 @@ class SampleFiles(BaseModel):
     depths: str = None
     database: str = None
 
+
 class SampleSchema(BaseModel):
     """A dict-like class for representing individual Samples info."""
     name: str
@@ -119,6 +122,13 @@ class SampleSchema(BaseModel):
     stats_s5: Stats5 = None
     stats_s7: Stats7 = None
 
+    def _clear_old_results(self):
+        """Remove any existing results after the current state step."""
+        for step in range(self.state + 1, 8):
+            if step != 6:
+                setattr(self, f"stats_s{step}", None)
+
+
 class FilterStats(BaseModel):
     """A dict-like class with stats for filters applied during step 7."""
     nloci_before_filtering: int = 0
@@ -128,6 +138,7 @@ class FilterStats(BaseModel):
     filtered_by_max_snps: int = 0
     filtered_by_max_shared_h: int = 0
     nloci_after_filtering: int = 0
+
 
 class AssemblyStats(BaseModel):
     """A dict-like class with stats for completed assembly."""
@@ -142,6 +153,7 @@ class AssemblyStats(BaseModel):
     var_props: Dict[float, int] = Field(default_factory=dict)
     pis_sites: Dict[int, int] = Field(default_factory=dict)
     pis_props: Dict[float, int] = Field(default_factory=dict)
+
 
 class Project(BaseModel):
     """Top-level schema for serializing Assembly objects to JSON and back.
@@ -177,7 +189,7 @@ if __name__ == "__main__":
 
     # collect stats for this step
     files = [('A_r1', 'A_r2')]
-    stats = Stats1(reads_raw = 10000)
+    stats = Stats1(reads_raw=10000)
 
     # load back to schema
     samp1['files']['fastqs'] = files
@@ -195,3 +207,5 @@ if __name__ == "__main__":
     )
 
     print(data.json(indent=2, exclude_none=True))
+
+    samp1._clear_old_results()
