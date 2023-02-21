@@ -13,9 +13,9 @@ import numpy as np
 import numba
 
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.core.schema import Stats4
+from ipyrad.core.schema import Stats4, Stats5
 from ipyrad.core.progress_bar import AssemblyProgressBar
-from ipyrad.assemble.utils import IPyradError
+from ipyrad.assemble.utils import IPyradError, NoHighDepthClustersError
 from ipyrad.assemble.clustmap_within_both import iter_clusters
 
 Assembly = TypeVar("Assembly")
@@ -26,7 +26,7 @@ logger = logger.bind(name="ipyrad")
 class Step4(BaseStep):
     """Run the step4 estimation """
     def __init__(self, data, force, quiet, ipyclient):
-        super().__init__(data, 4, quiet, force)       
+        super().__init__(data, 4, quiet, force)
         self.haploid = data.params.max_alleles_consens == 1
         self.ipyclient = ipyclient
         self.lbview = self.ipyclient.load_balanced_view()
@@ -43,30 +43,49 @@ class Step4(BaseStep):
         prog.check()
 
         # collect updated samples and save to JSON
-        for sname, sample in prog.results.items():
-            self.data.samples[sname] = sample
+        for sname, result in prog.results.items():
+            sample = self.data.samples[sname]
+            sample.state = 4
+            sample._clear_old_results()
+            sample.stats_s5 = None # sample.stats_s5 = Stats5()
+            sample.stats_s4 = Stats4(
+                hetero_est=result[0],
+                error_est=result[1],
+                min_depth_stat_during_step4=self.data.params.min_depth_statistical,
+            )
         self.data.save_json()
 
         # write to stats file
         statsdf = pd.DataFrame(
-            index=sorted(self.data.samples),
+            index=sorted(self.samples),
             columns=["hetero_est", "error_est"],
         )
-        for sname in self.data.samples:
+
+        # update samples on the Assembly object
+        for sname in self.samples:
             stats = self.data.samples[sname].stats_s4.dict()
             for i in statsdf.columns:
                 statsdf.loc[sname, i] = stats[i]
+
+        # log and save stats
         logger.info("\n" + statsdf.to_string())
         outfile = self.data.stepdir / "s4_joint_estimate.txt"
         with open(outfile, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
 
 
-def optim2(data: Assembly, sample: Sample, haploid: bool):
+def optim2(data: Assembly, sample: Sample, haploid: bool) -> Tuple[float, float]:
     """Maximum likelihood optimization with scipy."""
 
     # get array of all clusters data: (maxclusts, maxlen, 4)
-    stacked = get_stack_array(data, sample)
+    try:
+        stacked = get_stack_array(data, sample)
+
+    # if no high depth cluster the sample can still proceed, but it
+    # will not contribute to estimating the avg H,E and will receive
+    # only low depth calls in step 5 unless params are changed.
+    except NoHighDepthClustersError:
+        return np.nan, np.nan
 
     # get base frequencies
     bfreqs = stacked.sum(axis=0) / float(stacked.sum())
@@ -90,18 +109,12 @@ def optim2(data: Assembly, sample: Sample, haploid: bool):
             nget_diploid_loglik, 
             x0=(0.01, 0.001),
             args=(bfreqs, ustacks, counts),
-            method="L-BFGS-B",            
+            method="L-BFGS-B",
             bounds=[(1e-6, 0.1), (1e-6, 0.1)],
         )
         hetero, error = fit.x
+    return hetero, error
 
-    sample.state = 4
-    sample.stats_s4 = Stats4(
-        hetero_est=hetero,
-        error_est=error,
-        min_depth_stat_during_step4=data.params.min_depth_statistical,
-    )
-    return sample
 
 def get_haploid_loglik(errors, bfreqs, ustacks, counts):
     """Log likelihood score given values [E]."""
@@ -112,12 +125,13 @@ def get_haploid_loglik(errors, bfreqs, ustacks, counts):
     score = -logliks.sum()
     return score
 
+
 def nget_diploid_loglik(
     pstart: Tuple[float, float], 
     bfreqs: np.ndarray, 
     ustacks: np.ndarray, 
     counts: np.ndarray,
-    ) -> float:
+) -> float:
     """Return Log likelihood score given values [H,E]"""
     hetero, errors = pstart
     lik1 = (1. - hetero) * likelihood1(errors, bfreqs, ustacks)
@@ -127,15 +141,17 @@ def nget_diploid_loglik(
     score = -logliks.sum()
     return score
 
+
 def likelihood1(errors, bfreqs, ustacks):
     """Probability homozygous."""
-    ## make sure base_frequencies are in the right order
+    # make sure base_frequencies are in the right order
     # print uniqstackl.sum()-uniqstack, uniqstackl.sum(), 0.001
     # totals = np.array([ustacks.sum(axis=1)]*4).T
     totals = np.array([ustacks.sum(axis=1)] * 4).T
     prob = scipy.stats.binom.pmf(totals - ustacks, totals, errors)
     lik1 = np.sum(bfreqs * prob, axis=1)
     return lik1
+
 
 def nlikelihood2(errors, bfreqs, ustacks):
     """Calls nblik2_build and lik2_calc for a given err."""
@@ -190,11 +206,14 @@ def lik2_calc(err, one, tots, twos, thrs, four):
 
 
 def recal_hidepth_cluster_stats(
-    data: Assembly, sample: Sample, majrule: bool=False) -> Tuple[np.ndarray, int]:
+    data: Assembly, sample: Sample, majrule: bool = False,
+) -> Tuple[np.ndarray, int]:
     """Return a mask for cluster depths, and the max frag length.
 
     This is useful to run first to get a sense of the depths and lens
     given the current mindepth param settings.
+
+    Note: this func is used in both steps 4 and 5.
     """
     # otherwise calculate depth again given the new mindepths settings.
     depths = []   # read depth: sum of 'sizes'
@@ -204,9 +223,6 @@ def recal_hidepth_cluster_stats(
         sizes = [int(i.split(";")[-2][5:]) for i in names]
         depths.append(sum(sizes))
         clens.append(len(clust[1].strip()))
-        # debugging
-        # if sum(sizes) < 2:
-            # print(clust)
     clens, depths = np.array(clens), np.array(depths)
 
     # get mask of clusters that are hidepth
@@ -217,19 +233,24 @@ def recal_hidepth_cluster_stats(
 
     # get frag lenths of clusters that are hidepth
     lens_above_st = clens[keep]
+    # print(f"{sample.name}, {keep.shape}, {depths} {depths >=data.params.min_depth_majrule} {data.params.min_depth_majrule} {lens_above_st}, {clens}")
 
     # calculate frag length from hidepth lens
-    try:       
+    try:
         maxfrag = int(4 + lens_above_st.mean() + (2. * lens_above_st.std()))
     except Exception as inst:
-        raise IPyradError(
-            "No clusts with depth sufficient for statistical basecalling. "
-            f"I recommend you branch to drop this sample: {sample.name}"
-            ) from inst
+        # this exception will raise in step 4 and be caught to print an
+        # warning message and then will set the samples H,E estimates to
+        # nan. In step 5 the nans will be caught above...
+        print(
+            f"sample {sample.name} has no clusters above the "
+            "`min_depth_statistical` parameter setting, and thus will "
+            "include only low depth base calls in step 5.")
+        raise NoHighDepthClustersError(f"{sample.name}") from inst
     return keep, maxfrag
 
 
-def get_stack_array(data: Assembly, sample: Sample, size: int=10_000) -> np.ndarray:
+def get_stack_array(data: Assembly, sample: Sample, size: int = 10_000) -> np.ndarray:
     """Stacks clusters into arrays using at most 10K clusters.
 
     Uses maxlen to limit the end of arrays, and also masks the first
@@ -246,7 +267,7 @@ def get_stack_array(data: Assembly, sample: Sample, size: int=10_000) -> np.ndar
     dims = (maxclusts, maxfrag, 4)
     stacked = np.zeros(dims, dtype=np.uint64)
 
-    # fill stacked    
+    # fill stacked
     clustgen = iter_clusters(sample.files.clusters, gzipped=True)
     sidx = 0  # stored row number
     for idx, clust in enumerate(clustgen):
@@ -293,11 +314,13 @@ def get_stack_array(data: Assembly, sample: Sample, size: int=10_000) -> np.ndar
     return newstack
 
 
-
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
-   
-    TEST = ip.load_json("/tmp/TEST3.json")
+    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
+
+    TEST = ip.load_json("../../pedtest/NEW.json")
     TEST.run("4", force=True, quiet=False)
+   
+    # TEST = ip.load_json("/tmp/TEST3.json")
+    # TEST.run("4", force=True, quiet=False)
