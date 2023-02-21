@@ -674,6 +674,7 @@ def make_cigar(arr):
     return cigar
 
 
+# called from s5_consensus.py
 def concat_catgs(data: Assembly, sample: Sample) -> None:
     """Concat catgs into a single sample catg and remove tmp files
 
@@ -728,6 +729,7 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
                     h5_refpos[start:end] = io5['refpos'][:]
             start = end
             icat.unlink()
+
 
 # DEPRECATED...
 def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
