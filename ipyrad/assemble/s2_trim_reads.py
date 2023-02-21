@@ -175,20 +175,21 @@ class Step2(BaseStep):
             stats.mean_len_R1_after_trimming = jdata['summary']['after_filtering']['read1_mean_length']
             stats.mean_len_R2_before_trimming = (
                 jdata['summary']['before_filtering'].get("read2_mean_length", None))
-            stats.mean_len_R2_after_trimming=(
+            stats.mean_len_R2_after_trimming = (
                 jdata['summary']['after_filtering'].get("read2_mean_length", None))
-            stats.reads_passed_filter=jdata['summary']['after_filtering']['total_reads']
+            stats.reads_passed_filter = jdata['summary']['after_filtering']['total_reads']
 
             # store reads numbers as unpaired count unlike in fastp
+            pair_keys = [
+                "reads_raw",
+                "reads_filtered_by_Ns",
+                "reads_filtered_by_low_quality",
+                "reads_filtered_by_low_complexity",
+                "reads_filtered_by_minlen",
+                "reads_passed_filter"
+            ]
             if self.data.is_pair:
-                for key in [
-                    "reads_raw",
-                    "reads_filtered_by_Ns",
-                    "reads_filtered_by_low_quality",
-                    "reads_filtered_by_low_complexity",
-                    "reads_filtered_by_minlen",
-                    "reads_passed_filter"
-                    ]:
+                for key in pair_keys:
                     setattr(stats, key, int(getattr(stats, key) / 2))
 
             # store to Sample object
@@ -204,6 +205,7 @@ class Step2(BaseStep):
                     "and will be excluded.")
             else:
                 sample.state = 2
+                sample._clear_old_results()
 
         # put samples into Assembly and save updated JSON
         self.data.save_json()
@@ -211,7 +213,7 @@ class Step2(BaseStep):
     def _write_stats_file(self):
         """Write a easily readable tabular stats output file."""
         statsdf = pd.DataFrame(
-            index=sorted(self.data.samples),
+            index=sorted(self.samples),
             columns=[
                 "reads_raw",
                 "reads_passed_filter",
@@ -225,8 +227,9 @@ class Step2(BaseStep):
                 "mean_len_R2_after_trimming",
             ],
         )
-        for sname in self.data.samples:
-            statsdict = self.data.samples[sname].stats_s2.dict()
+        for sname in self.samples:
+            sample = self.data.samples[sname]
+            statsdict = sample.stats_s2.dict()
             for i in statsdf.columns:
                 if statsdict[i]:
                     statsdf.loc[sname, i] = statsdict[i]
@@ -234,7 +237,8 @@ class Step2(BaseStep):
         handle = self.data.stepdir / 's2_read_trim_stats.txt'
         with open(handle, 'w', encoding="utf-8") as outfile:
             statsdf.fillna(value=0).to_string(outfile)
-        logger.info("\n" +
+        logger.info(
+            "\n" +
             statsdf.loc[:, ["reads_raw", "reads_passed_filter"]].to_string()
         )
 
