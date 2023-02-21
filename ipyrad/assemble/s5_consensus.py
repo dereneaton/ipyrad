@@ -26,6 +26,7 @@ from loguru import logger
 
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.core.schema import Stats5
+from ipyrad.assemble.utils import NoHighDepthClustersError
 from ipyrad.assemble.base_step import BaseStep
 from ipyrad.assemble.clustmap_within_both import iter_clusters
 from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
@@ -35,6 +36,7 @@ from ipyrad.assemble.consens_utils import (
     concat_denovo_consens,
     concat_reference_consens,
 )
+import ipyparallel as ipp
 
 Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
@@ -78,7 +80,7 @@ class Step5(BaseStep):
         self.set_s4_params()
         self.make_chunks(chunksize=int(1e9))
         tmpfile = list(self.data.tmpdir.glob(f"{sname}_chunk_*"))[0]
-        sample = self.data.samples[sname]
+        sample = self.samples[sname]
         return ConsensusProcessor(self.data, sample, tmpfile)
 
     def calculate_depths_and_max_frag(self):
@@ -93,18 +95,28 @@ class Step5(BaseStep):
         msg = "calculating depths"
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
-        prog.check()
 
-        # check for failures and collect results
-        for sname, res in prog.results.items():
-            keep_mask, max_frag = res
-            self.data.max_frag = int(max(self.data.max_frag, max_frag))
-            self.keep_masks[sname] = keep_mask
-            logger.debug(f"high depth clusters in {sname}: {keep_mask.sum()}")
+        # check results. If no high depth clusts then catch case
+        for sname in prog.jobs:
+            try:
+                kmask, max_frag = prog.jobs[sname].get()
+                self.keep_masks[sname] = kmask
+                self.data.max_frag = int(max(self.data.max_frag, max_frag))
+                logger.debug(f"hidepth clusts in {sname}: {kmask.sum()}")
+            except ipp.error.RemoteError:
+                exc = prog.jobs[sname].exception()
+                if exc.ename == "NoHighDepthClustersError":
+                    self.keep_masks[sname] = np.zeros(
+                        self.data.samples[sname].stats_s3.clusters_total,
+                        dtype=np.bool_,
+                    )
+                    logger.warning(f"No high depth clusters in {sname}.")
+                else:
+                    raise
         logger.debug(
             f"max_fragment_length will be constrained to {self.data.max_frag}")
 
-    def make_chunks(self, chunksize: int=5000):
+    def make_chunks(self, chunksize: int = 5000):
         """Split clusters into chunks for parallel processing
         """
         msg = "chunking clusters"
@@ -120,13 +132,11 @@ class Step5(BaseStep):
     def set_s4_params(self):
         """Set values from step4 results to the data object."""
         # get mean values across all samples
-        self.data.error_est = np.mean([
-            self.data.samples[i].stats_s4.error_est
-            for i in self.data.samples
+        self.data.error_est = np.nanmean([
+            self.samples[i].stats_s4.error_est for i in self.samples
         ])
-        self.data.hetero_est = np.mean([
-            self.data.samples[i].stats_s4.error_est
-            for i in self.data.samples
+        self.data.hetero_est = np.nanmean([
+            self.samples[i].stats_s4.error_est for i in self.samples
         ])
 
     def process_chunks(self):
@@ -155,7 +165,7 @@ class Step5(BaseStep):
 
         # return stats in a dict. This will be stored to the objects
         # later after we complete the concatenation steps.
-        stats = {i: [Counter(), Counter()] for i in self.data.samples}
+        stats = {i: [Counter(), Counter()] for i in self.samples}
         for key, result in prog.results.items():
             sname, _ = key
             stats[sname][0].update(result[0])
@@ -164,6 +174,8 @@ class Step5(BaseStep):
         # store stats to the samples, but don't advance the state yet.
         for sname, (counters, filters) in stats.items():
             sample = self.samples[sname]
+
+            # successful consens reads
             prefiltered_by_depth = np.invert(self.keep_masks[sname]).sum()
 
             # STORE STATS
@@ -172,8 +184,10 @@ class Step5(BaseStep):
                 consensus_total=counters["nconsens"],
                 nsites=counters["nsites"],
                 nhetero=counters["nheteros"],
-                heterozygosity = (0. if counters['nsites'] == 0
-                    else counters['nheteros'] / counters['nsites']),
+                heterozygosity=(
+                    0. if counters['nsites'] == 0
+                    else counters['nheteros'] / counters['nsites']
+                ),
                 filtered_by_depth=filters["depth"] + prefiltered_by_depth,
                 filtered_by_max_h=filters["maxh"],
                 filtered_by_max_n=filters["maxn"],
@@ -193,17 +207,25 @@ class Step5(BaseStep):
             index=snames,
             columns=list(self.samples[snames[0]].stats_s5.dict()),
         )
+
+        # iterate over samples
         for sname, sample in self.samples.items():
             istats = sample.stats_s5.dict()
             for column in statsdf.columns:
                 statsdf.loc[sname, column] = istats[column]
+
+        # print stats to logger
         with open(stats_file, 'w', encoding="utf-8") as out:
             out.write(statsdf.to_string())
             logger.info("\n" + statsdf.iloc[:, :7].to_string())
+
         # advance sample states
         for sample in self.samples.values():
             if sample.stats_s5.consensus_total:
                 sample.state = 5
+                sample._clear_old_results()
+            else:
+                sample.state = 4
 
     def concatenate_chunks(self):
         """Concatenate processed chunks into final stepdir.
@@ -216,9 +238,13 @@ class Step5(BaseStep):
         jobs1 = {}
         jobs2 = {}
         for sname, sample in self.samples.items():
-            args = (self.data, sample)
+
+            # skip this sample if no consensus data was found.
+            if not sample.stats_s5.consensus_total:
+                continue
 
             # submit h5 counts concat
+            args = (self.data, sample)
             jobs1[sname] = self.lbview.apply(concat_catgs, *args)
 
             # submit seq file concat
@@ -236,7 +262,8 @@ class Step5(BaseStep):
 
 
 def make_chunk_files(
-    data: Assembly, sample: Sample, keep_mask: np.ndarray, chunksize: int=5000) -> None:
+    data: Assembly, sample: Sample, keep_mask: np.ndarray, chunksize: int = 5000,
+) -> None:
     """Split job into 5_000 hidepth clusters each.
 
     Parameters
@@ -284,7 +311,12 @@ def make_chunk_files(
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
 
-    TEST = ip.load_json("/tmp/TEST5.json")
-    TEST.run("5", force=True, quiet=False)
+    TEST = ip.load_json("../../pedtest/NEW.json")
+    TEST.params.min_depth_majrule = 1
+    TEST.run("5", force=True, quiet=True)
+    print(TEST.stats)
+
+    # TEST = ip.load_json("/tmp/TEST5.json")
+    # TEST.run("5", force=True, quiet=False)
