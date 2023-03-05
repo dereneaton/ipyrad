@@ -31,7 +31,7 @@ class Step1(BaseStep):
         """: FileLinker or SimpleDemux object, depending on data."""
 
         # init parent class and check file paths
-        super().__init__(data, step=1, quiet=quiet, force=force)        
+        super().__init__(data, step=1, quiet=quiet, force=force)
         self.pre_check()
         self.select_processor()
 
@@ -55,11 +55,11 @@ class Step1(BaseStep):
         if self.data.params.sorted_fastq_path is not None:
             self.child = FileLinker(self)
         else:
-            self.child = SimpleDemux(self.data, self.ipyclient)
+            self.child = SimpleDemux(self.data, self.ipyclient, self.quiet)
 
     def run(self):
         """Runs a different Step1 class depending on input data method.
-        
+
         When testing, this requires that the ipyclient is connected.
         """
         self.child.run()
@@ -76,13 +76,24 @@ if __name__ == "__main__":
     # TEST.params.project_dir = "/tmp"
     # TEST.run('1', force=True, quiet=True)
 
-    # ONE FASTQ FILE AND UNIQUE BARCODES TEST (SE RAD)
-    TEST = ip.Assembly("TEST1")
-    TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
-    TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    TEST = ip.Assembly("RICHIE")
     TEST.params.project_dir = "/tmp"
-    TEST.params.max_barcode_mismatch = 1
+    TEST.params.raw_fastq_path = "/home/deren/Documents/ipyrad/racoons/1M*.fastq"
+    TEST.params.barcodes_path = "/home/deren/Documents/ipyrad/racoons/richie_plate3_barcodes_revised2.csv"
+    TEST.params.datatype = "pair3rad"
+    TEST.params.restriction_overhang = ("ATCGG", "CGATCC")
+    TEST.params.assembly_method = "reference"
+    TEST.params.reference_sequence = "/home/deren/Documents/ipyrad/racoons/raccoon_master_genome.fna"
+    TEST.params.max_barcode_mismatch = 2
     TEST.run('1', force=True, quiet=True)
+
+    # ONE FASTQ FILE AND UNIQUE BARCODES TEST (SE RAD)
+    # TEST = ip.Assembly("TEST1")
+    # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"
+    # TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
+    # TEST.params.project_dir = "/tmp"
+    # TEST.params.max_barcode_mismatch = 1
+    # TEST.run('1', force=True, quiet=True)
 
     # # MULTIPLE FASTQ FILES AND ONE UNIQUE BARCODES TEST
     # TESTX = TEST.branch("TEST2")
@@ -101,18 +112,20 @@ if __name__ == "__main__":
     # TESTX.run('1', force=True, quiet=True)
 
     # DEMUX PAIRED_END TEST
-    TESTX = TEST.branch("TEST5")
-    TESTX.params.raw_fastq_path = "../../tests/ipsimdata/pairddrad_example_*.gz"    
-    TESTX.params.barcodes_path = "../../tests/ipsimdata/pairddrad_example_barcodes.txt"
-    TESTX.params.datatype = "pairddrad"
-    TESTX.run('1', force=True, quiet=True)
+    # TESTX = TEST.branch("TEST5")
+    # TESTX.params.raw_fastq_path = "../../tests/ipsimdata/pairddrad_example_*.gz"
+    # TESTX.params.barcodes_path = "../../tests/ipsimdata/pairddrad_example_barcodes.txt"
+    # TESTX.params.datatype = "pairddrad"
+    # TESTX.params.project_dir = "/tmp"
+    # TESTX.run('1', force=True, quiet=True)
 
     # DEMUX PAIRED_3RAD TEST (must have combinatorial barcodes)
     # TESTX = TEST.branch("TEST5")
     # TESTX.params.raw_fastq_path = "../../tests/ipsimdata/pairddrad_example_*.gz"    
     # TESTX.params.barcodes_path = "../../tests/ipsimdata/pairddrad_example_barcodes.txt"
     # TESTX.params.datatype = "pair3rad"
-    # TESTX.run('1', force=True, quiet=True)    
+    # TESTX.params.project_dir = "/tmp"
+    # TESTX.run('1', force=True, quiet=True)
 
     # EMPIRICAL DEMUX ON i7 outer tags...
     # TODO
