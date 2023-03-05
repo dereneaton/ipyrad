@@ -33,6 +33,7 @@ logger = logger.bind(name="ipyrad")
 class SimpleDemux:
     data: Assembly
     ipyclient: Client
+    quiet: bool
 
     # attributes to be filled.
     fastq_paths: List[Path] = None
@@ -350,7 +351,7 @@ class SimpleDemux:
             args = (self.data, fastqs, self.barcodes_to_names, self.cuts1, self.cuts2, fidx)
             jobs[fname] = lbview.apply(barmatch, *args)
         msg = "demultiplexing reads"
-        prog1 = AssemblyProgressBar(jobs, msg, step=1)
+        prog1 = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
         prog1.update()
         prog1.block()
         prog1.check()
@@ -364,7 +365,7 @@ class SimpleDemux:
             if name not in jobs:
                 jobs[name] = lbview.apply(concatenate_tmpfiles, *(self.data, name))
         msg = "concatenating chunked files"
-        prog2 = AssemblyProgressBar(jobs, msg, step=1)
+        prog2 = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
         prog2.update()
         prog2.block()
         prog2.check()
