@@ -36,7 +36,7 @@ BIN_SAMTOOLS = str(BIN / "samtools")
 BIN_BEDTOOLS = str(BIN / "bedtools")
 
 
-def index_ref_with_bwa(data: Assembly, alt: bool=False) -> None:
+def index_ref_with_bwa(data: Assembly, alt: bool = False) -> None:
     """Index the reference sequence, unless it already exists
 
     """
@@ -85,7 +85,8 @@ def index_ref_with_bwa(data: Assembly, alt: bool=False) -> None:
                 "step 3 with the `-f` flag.")
         raise IPyradError(error)
 
-def index_ref_with_sam(data: Assembly, alt: bool=False) -> None:
+
+def index_ref_with_sam(data: Assembly, alt: bool = False) -> None:
     """Index ref for building scaffolds w/ index numbers in steps 5-6.
 
     """
@@ -365,7 +366,7 @@ def join_pairs_for_derep_ref(data: Assembly, sample: Sample) -> None:
 #             outfile.close()
 
 
-def split_derep_pairs_ref(data, sample):
+def split_derep_pairs_ref(data, sample) -> None:
     """
     Takes R1nnnnR2 derep reads from paired data and splits it back into
     separate R1 and R2 parts for read mapping.
@@ -453,14 +454,14 @@ def mapping_reads(data, sample, nthreads):
     if data.hackers.bwa_args:
         for arg in data.hackers.bwa_args.split()[::-1]:
             cmd1.insert(2, str(arg))
-    cmd1 += ['-o', str(data.tmpdir/ f"{sample.name}.sam")]
+    cmd1 += ['-o', str(data.tmpdir / f"{sample.name}.sam")]
     print(" ".join(cmd1))
 
     # run cmd1
     with Popen(cmd1, stderr=PIPE, stdout=DEVNULL) as proc1:
         error1 = proc1.communicate()[1]
         if proc1.returncode:
-            raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1}")
+            raise IPyradError(f"cmd: {' '.join(cmd1)}\nerror: {error1.decode()}")
 
     # setup cmd2 (sam to bam)
     # Previously, flag removal was '0x904' (remove unmapped, secondary, and supplemental)
@@ -477,9 +478,9 @@ def mapping_reads(data, sample, nthreads):
 
     # setup cmd3 (sort sam)
     cmd3 = [
-        BIN_SAMTOOLS, "sort", 
+        BIN_SAMTOOLS, "sort",
         "-T", str(data.tmpdir / f"{sample.name}.sam.tmp"),
-        "-O", "bam", 
+        "-O", "bam",
         "-o", str(data.stepdir / f"{sample.name}.bam"),
     ]
     print(' '.join(cmd3))
@@ -508,22 +509,22 @@ def iter_reads_by_bedtools_merge_region(data: Assembly, sample: Sample) -> Itera
     regions = bedtools_merge(data, sample)
 
     # if no matched regions (no clusters) then bail out.
-    if not regions:
-        return 
+    if regions:
 
-    # Make into a generator of tuples
-    # bedtools is 0-based. sam is 1-based, so increment the positions here
-    regions_split = (i.split("\t") for i in regions)
-    regions = ((i, int(j) + 1, int(k) + 1) for (i, j, k) in regions_split)
+        # Make into a generator of tuples
+        # bedtools is 0-based. sam is 1-based, so increment the positions here
+        regions_split = (i.split("\t") for i in regions)
+        regions = ((i, int(j) + 1, int(k) + 1) for (i, j, k) in regions_split)
 
-    # access reads from bam file using pysam
-    bamfile = data.stepdir / f"{sample.name}.bam"
-    bamin = pysam.AlignmentFile(str(bamfile), 'rb')
-    for reg in regions:
-        # uncomment and compare against ref sequence when testing
-        # ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
-        reads_iter = bamin.fetch(*reg)
-        yield (reg, reads_iter)
+        # access reads from bam file using pysam
+        bamfile = data.stepdir / f"{sample.name}.bam"
+        bamin = pysam.AlignmentFile(str(bamfile), 'rb')
+        for reg in regions:
+            # uncomment and compare against ref sequence when testing
+            # ref = get_ref_region(data.paramsdict["reference_sequence"], *reg)
+            reads_iter = bamin.fetch(*reg)
+            yield (reg, reads_iter)
+
 
 def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
     """Yield cigar aligned clusters, optionally decloned.
@@ -545,7 +546,7 @@ def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
     >>>            ATTCACNNNNNAGGTA  ==  masked tips for merged pairs
     """
     # masking for tip overlap of re regions
-    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])    
+    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])
 
     # iterate over bedtools merge output
     for reg, reads in iter_reads_by_bedtools_merge_region(data, sample):
@@ -592,7 +593,7 @@ def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
                     start1 = align1.reference_start - (reg[1] - 1) 
                     len1 = len(seq)
                     arr1[start1:start1 + len1] = list(seq)
-                    
+
                     seq = cigared(align2.seq, align2.cigar)
                     start2 = align2.reference_start - (reg[1] - 1)
                     len2 = len(seq)
@@ -602,11 +603,11 @@ def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
                     if start2 <= (start1 + tipmask):
                         arr2[start1:start1 + tipmask] = "-"
                     if (start1 + len1) >= (start2 + len2 - tipmask):
-                        arr1[start2+len2-tipmask:start2+len2] = "-"
+                        arr1[start2 + len2 - tipmask: start2 + len2] = "-"
                     if start1 != 0:
                         arr1[start1:start1 + tipmask] = "-"
                     if start2 + len2 != lref:
-                        arr2[start2+len2-tipmask:start2+len2] = "-"
+                        arr2[start2 + len2 - tipmask: start2 + len2] = "-"
 
                     arr3 = join_arrays(arr1, arr2)
                     pairseq = "".join(arr3)
@@ -630,13 +631,13 @@ def iter_paired_cluster(data: Assembly, sample: Sample) -> Iterator:
                         )
                     clust.append(f"{rname}\n{pairseq}")
 
-            # yield this cluster if data exists
-            if clust:
-                yield clust
+        # yield this cluster if data exists
+        if clust:
+            yield clust
 
-def write_cluster(data, sample):
-    """..."""
-    # output path 
+
+def write_clusters(data, sample) -> int:
+    """Write cluster.gz by fetching built clusters from iterator."""
     opath = data.stepdir / f"{sample.name}.clusters.gz"
     with gzip.open(opath, 'wt') as out:
 
@@ -644,16 +645,30 @@ def write_cluster(data, sample):
         idx = 0
         clusters = []
         for clust in iter_paired_cluster(data, sample):
-            # ...
-            pass
+            clusters.append("\n".join(clust))
+            idx += 1
+
+            # if 1000 clusters stored then write to disk
+            if not idx % 1000:
+                if clusters:
+                    out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+                clusters = []
+
+        # write final remaining clusters to disk
+        if clusters:
+            out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+    return idx
 
 
+# DEPRECATED: REPLACED BY ITERATOR FUNCS FOR MORE ATOMIC TESTING.
+# TODO: MAKE SINGLE_END REPLACEMENT SIMILAR
 def build_clusters_from_cigars(data, sample):
     """Construct aligned clusters from mapped reads.
 
-    Uses the function cigared() to impute indels relative to reference. 
+    Uses the function cigared() to impute indels relative to reference.
     This means add dashes for insertion and skip* deletions. Skipping
-    is not a good final solution.
+    is an OK solution at this stage since consens reads are re-mapped 
+    again later.
 
     If a read pair is merged completely then we mask the restriction
     overhangs from each end. This is because the read-through can
@@ -666,14 +681,13 @@ def build_clusters_from_cigars(data, sample):
     >>>            ------ATCGGAGGTA ...  not merged
     >>>            ------ATCGGAGGTA ...  not merged
     >>>            ATTCACNNNNNAGGTA  ==  masked tips for merged pairs
- 
     """
     # get all regions with reads as a List of 'scaff\tstart\tend' strs
     regions = bedtools_merge(data, sample)
 
     # if no matched regions (no clusters) then bail out.
     if not regions:
-        return 
+        return
 
     # Make into a generator of tuples
     # bedtools is 0-based. sam is 1-based, so increment the positions here
@@ -690,7 +704,7 @@ def build_clusters_from_cigars(data, sample):
     idx = 0
 
     # masking for tip overlap of re regions
-    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])    
+    _tipmasklen = max([len(i) for i in data.params.restriction_overhang])
 
     # iterate over all regions to build clusters
     clusters = []
@@ -745,7 +759,7 @@ def build_clusters_from_cigars(data, sample):
                     start1 = align1.reference_start - (reg[1] - 1) 
                     len1 = len(seq)
                     arr1[start1:start1 + len1] = list(seq)
-                    
+
                     seq = cigared(align2.seq, align2.cigar)
                     start2 = align2.reference_start - (reg[1] - 1)
                     len2 = len(seq)
@@ -755,11 +769,11 @@ def build_clusters_from_cigars(data, sample):
                     if start2 <= (start1 + tipmask):
                         arr2[start1:start1 + tipmask] = "-"
                     if (start1 + len1) >= (start2 + len2 - tipmask):
-                        arr1[start2+len2-tipmask:start2+len2] = "-"
+                        arr1[start2 + len2 - tipmask: start2 + len2] = "-"
                     if start1 != 0:
                         arr1[start1:start1 + tipmask] = "-"
                     if start2 + len2 != lref:
-                        arr2[start2+len2-tipmask:start2+len2] = "-"
+                        arr2[start2 + len2 - tipmask: start2 + len2] = "-"
 
                     arr3 = join_arrays(arr1, arr2)
                     pairseq = "".join(arr3)
@@ -781,9 +795,8 @@ def build_clusters_from_cigars(data, sample):
                         )
                     clust.append("{}\n{}".format(rname, pairseq))
 
-
         # single-end data cluster building
-        else:   
+        else:
             mstart = int(9e12)
             mend = 0
 
@@ -802,7 +815,7 @@ def build_clusters_from_cigars(data, sample):
             for key in keys:
                 align1 = rdict[key]
 
-                #aref = np.array(list(ref[1]))
+                # aref = np.array(list(ref[1]))
                 lref = mend - mstart
                 arr1 = np.zeros(lref, dtype="U1")
                 arr1.fill("-")
@@ -826,7 +839,7 @@ def build_clusters_from_cigars(data, sample):
                 clust.append("{}\n{}".format(rname, aseq))
 
         # [optional] declone the cluster before writing.
-
+        # ...
 
         # store this cluster
         if clust:
@@ -848,7 +861,7 @@ def build_clusters_from_cigars(data, sample):
 def join_arrays(arr1: np.ndarray, arr2: np.ndarray) -> np.ndarray:
     """Merge refmapped read1 and read2 into a single read in alignment.
 
-    Fastp already performed paired-read correction for overlapping 
+    Fastp already performed paired-read correction for overlapping
     reads. But if diffs persist at overlap somehow then mask them here.
     Also mask bases at cutsites if no insert is present.
     """
@@ -942,10 +955,28 @@ def bedtools_merge(data, sample) -> List[str]:
         raise IPyradError(f"error in {cmd2} {result}")
 
     # Report the number of regions we're returning
-    regions = result.strip().split("\n")
+    regions = result.strip().split("\n") if result else []
     print(f"{sample.name}: max_insert={max_insert}, nregions={len(regions)}")
     return regions
 
 
 if __name__ == "__main__":
-    pass
+
+    import ipyrad as ip
+    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    SAMP = list(TEST.samples.values())[0]
+
+    TEST.stepdir = Path("/tmp/RICHIE_clustmap")
+
+    for clust in iter_paired_cluster(TEST, SAMP):
+        for line in clust:
+            print(line)
+        print("******************************************************")
+
+    # for name, samp in TEST.samples.items():
+        # logger.warning(name)
+        # gen = iter_reads_by_bedtools_merge_region(TEST, samp)
+        # for i in gen:
+            # logger.warning(i)
+        # build_clusters_from_cigars(TEST, samp)

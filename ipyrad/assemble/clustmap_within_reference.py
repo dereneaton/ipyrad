@@ -13,7 +13,8 @@ from ipyrad.assemble.clustmap_within_reference_utils import (
     join_pairs_for_derep_ref,
     split_derep_pairs_ref,
     mapping_reads,
-    build_clusters_from_cigars,
+    write_clusters,
+    # build_clusters_from_cigars,
 )
 
 logger = logger.bind(name="ipyrad")
@@ -109,10 +110,8 @@ class ClustMapReference(ClustMapBase):
         """Builds clusters.gz files from .bams."""
         jobs = {}
         for sname in self.samples:
-            jobs[sname] = self.thview.apply(
-                build_clusters_from_cigars,
-                *(self.data, self.samples[sname]),
-            )
+            args = (self.data, self.samples[sname])
+            jobs[sname] = self.thview.apply(write_clusters, *args)
         if jobs:
             msg = "building clusters"
             prog = AssemblyProgressBar(jobs, msg, step=3, quiet=self.quiet)
@@ -125,17 +124,29 @@ class ClustMapReference(ClustMapBase):
         Series of functions to run single or paired reference assembly
         with or without PCR decloning.
         """
+        # creates several suffix files in same dir as reference(s)
         self.index_references()
+        # creates _concat_R* files if multiple present.
         self.concat_trimmed_files_from_assembly_merge()
-        self.mapping_to_reference_filter()   # get unmapped as data
-        self.join_pairs_for_derep()          # join pairs for derep
+        # creates _unmapped_R* files with kept reads
+        self.mapping_to_reference_filter()
+        # creates _joined files with all pairs merged by 'nnnn'
+        self.join_pairs_for_derep()
+        # creates _decloned files IF decloning is turned on.
         self.decloning_transfer_tags_inline()
+        # creates _derep from merged or decloned.
         self.dereplicate()
-        self.decloning_transfer_tags_to_header() # /tmp/_derep_tag.fa
-        self.split_derep_pairs_for_mapping() # /tmp/._derep_split_R[1,2].fa
-        self.mapping_to_reference()          # /tmp/.bam
-        self.build_clusters_from_cigars()    # /tmp/.clusters.gz
-        self.declone_clusters()              # /out/.clusters.gz
+        # creates _derep_tag.fa from _derep IF decloning is turned on.
+        self.decloning_transfer_tags_to_header()
+        # creates _derep_split_R[1,2].fa ...
+        self.split_derep_pairs_for_mapping()
+        # creates .bam by mapping derep paired files to reference
+        self.mapping_to_reference()
+        # creates .clusters.gz files in stepdir
+        self.build_clusters_from_cigars()
+        # ...
+        # self.declone_clusters()
+        # ...
         self.calculate_sample_stats()
 
 
@@ -144,18 +155,23 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
-    TEST = ip.load_json("/tmp/ama-denovo.json")
-    TEST = TEST.branch("ama-ref")
-    TEST.params.assembly_method = "reference"
-    TEST.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
-    
-    with ip.Cluster(cores=2) as ipyclient:
-        step = ip.assemble.s3_clustmap_within.Step3(TEST, 1, 0, ipyclient)
-        c = ClustMapReference(step)
-        c.index_references()
-        c.concat_trimmed_files_from_assembly_merge()
-        c.mapping_to_reference_filter()
-        c.join_pairs_for_derep()
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    TEST.ipcluster['threads'] = 6
+    TEST.run("34", force=True, quiet=False, cores=1)
+    print(TEST.stats)
+
+    # TEST = ip.load_json("/tmp/ama-denovo.json")
+    # TEST = TEST.branch("ama-ref")
+    # TEST.params.assembly_method = "reference"
+    # TEST.params.reference_sequence = "/home/deren/Documents/ipyrad/sandbox/Ahypochondriacus_459_v2.0.fa"
+
+    # with ip.Cluster(cores=2) as ipyclient:
+    #     step = ip.assemble.s3_clustmap_within.Step3(TEST, 1, 0, ipyclient)
+    #     c = ClustMapReference(step)
+    #     c.index_references()
+    #     c.concat_trimmed_files_from_assembly_merge()
+    #     c.mapping_to_reference_filter()
+    #     c.join_pairs_for_derep()
 
 
     # TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
