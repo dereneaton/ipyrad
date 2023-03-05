@@ -11,6 +11,7 @@ from ipyrad.assemble.clustmap_within_denovo import ClustMapDenovo
 from ipyrad.assemble.clustmap_within_reference import ClustMapReference
 from ipyrad.core.schema import Stats3
 
+
 class Step3(BaseStep):
     """Run Step3 clustering/mapping using vsearch or bwa
     """
@@ -39,12 +40,24 @@ class Step3(BaseStep):
         self.child.run()
 
 
-
 if __name__ == "__main__":
 
     import ipyrad as ip
     ip.set_log_level("INFO")
-   
+
+    # TEST = ip.load_json("../../pedtest/NEW.json").branch("NEW2")
+    # TEST.params.assembly_method = "reference"
+    # TEST.params.reference_sequence = ""
+
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    TEST.ipcluster['threads'] = 6
+    TEST.run("3", force=True, quiet=True, cores=1)
+    print(TEST.stats)
+
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+    #     TEST = ip.load_json(JSON)
+    #     TEST.run("3", force=True, quiet=True)
+
     # TEST = ip.Assembly("TEST1")
     # TEST.params.raw_fastq_path = "../../tests/ipsimdata/rad_example_R1*.gz"    
     # TEST.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
@@ -63,17 +76,15 @@ if __name__ == "__main__":
     # TEST.run("3", force=True, quiet=True)
 
     # simulated PE DATA REFERENCE
-    TEST = ip.load_json("/tmp/TEST5.json")
-    TEST.params.assembly_method = "reference"
-    TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
-    TEST.run("3", force=True, quiet=False)
-    print(TEST.stats)
+    # TEST = ip.load_json("/tmp/TEST5.json")
+    # TEST.params.assembly_method = "reference"
+    # TEST.params.reference_sequence = "../../tests/ipsimdata/pairddrad_example_genome.fa"
+    # TEST.run("3", force=True, quiet=False)
+    # print(TEST.stats)
 
     # Empirical SE
     # TEST = ip.load_json("/tmp/PEDIC.json")
     # TEST.run("123", force=True)
-
-
 
     # DATA = DATA.branch("TEST6")
     # DATA.params.datatype = "pairddrad"

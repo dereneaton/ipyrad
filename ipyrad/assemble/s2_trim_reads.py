@@ -374,8 +374,13 @@ if __name__ == "__main__":
     # TEST.run("2", force=False, quiet=True)
 
     # simulated PE DATA
-    TEST = ip.load_json("/tmp/TEST5.json")
-    TEST.run("2", force=True, quiet=False)
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+    #     TEST = ip.load_json(JSON)
+    #     TEST.run("2", force=True, quiet=False)
+    #     print(TEST.stats)
+
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    # TEST.run("2", force=True, quiet=True, cores=6)
     print(TEST.stats)
 
     # # EMPIRICAL

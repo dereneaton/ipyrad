@@ -275,8 +275,7 @@ def concat_multiple_edits(data: Assembly, sample: Sample) -> None:
     if len(read1s) > 1:
         cmd = ['cat'] + read1s
         with open(concat1, 'w', encoding="utf-8") as cout:
-            with Popen(
-                cmd, stderr=PIPE, stdout=cout, close_fds=True) as proc:
+            with Popen(cmd, stderr=PIPE, stdout=cout, close_fds=True) as proc:
                 res = proc.communicate()[1]
                 if proc.returncode:
                     raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
@@ -433,14 +432,14 @@ def dereplicate(data: Assembly, sample: Sample) -> None:
     # i3: edits/{}_edits.fastq                 # se data
     # i2: tmpdir/{}_concat_edits.fastq         # se assembly merge
     # i1: tmpdir/{}_merged.fa                  # pe data
-    # i1alt: tmpdir/{}_joined.fa                  # pe data
+    # i1alt: tmpdir/{}_joined.fastq             # pe data
     # i0: tmpdir/{}_decloned.fa                # pe w/ declone
     # o: tmpdir/{}_derep.fa
     infiles = [
         Path(sample.files.edits[0][0]),
         data.tmpdir / f"{sample.name}_concat_edits.fastq",
         data.tmpdir / f"{sample.name}_merged.fa",
-        data.tmpdir / f"{sample.name}_joined.fa",
+        data.tmpdir / f"{sample.name}_joined.fastq",
         data.tmpdir / f"{sample.name}_decloned.fa",
     ]
     infiles = [i for i in infiles if i.exists()]
@@ -529,7 +528,7 @@ def retag_header_after_derep_for_decloning(data: Assembly, sample: Sample) -> No
     print(f"moved i5 tags to headers after derep: {sample.name}")
 
 
-def iter_clusters(clustfile: Path, gzipped: bool=False) -> Iterator[str]:
+def iter_clusters(clustfile: Path, gzipped: bool = False) -> Iterator[str]:
     """Yields clusters between //\n// separators."""
     if gzipped:
         func = gzip.open
@@ -633,7 +632,7 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
         sample.stats_s3.clusters_total = 0
         sample.stats_s3.clusters_hidepth = 0
         # TODO: set all other s3 stats to nan here.
-        print("No clusters found for ({sample.name}). Sample remains in state=2.")
+        print(f"No clusters found for ({sample.name}). Sample remains in state=2.")
         return sample
 
     # create mindepth masks
@@ -675,5 +674,8 @@ def set_sample_stats(data: Assembly, sample: Sample) -> Sample:
         sample.stats_s3.clusters_hidepth = 0
         sample.stats_s3.mean_depth_stat = np.nan
         sample.stats_s3.std_depth_stat = np.nan
-
     return sample
+
+
+if __name__ == "__main__":
+    pass
