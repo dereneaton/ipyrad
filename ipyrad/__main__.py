@@ -92,41 +92,54 @@ PARSER = argparse.ArgumentParser(
 )
 
 # add arguments
-PARSER.add_argument('-v', '--version', action='version',
+PARSER.add_argument(
+    '-v', '--version', action='version',
     version=str(get_distribution('ipyrad')))
-PARSER.add_argument('-r', "--results", action='store_true',
+PARSER.add_argument(
+    '-r', "--results", action='store_true',
     help="show results summary for Assembly in params.txt and exit")
-PARSER.add_argument('-f', "--force", action='store_true',
+PARSER.add_argument(
+    '-f', "--force", action='store_true',
     help="force overwrite of existing data")
-PARSER.add_argument('-q', "--quiet", action='store_true',
+PARSER.add_argument(
+    '-q', "--quiet", action='store_true',
     help="do not print to stderror or stdout.")
-PARSER.add_argument('-n', dest="new", type=str, default=None,
+PARSER.add_argument(
+    '-n', dest="new", type=str, default=None,
     help="create new file 'params-{new}.txt' in current directory")
-PARSER.add_argument('-p', dest="params", type=str, default=None,
+PARSER.add_argument(
+    '-p', dest="params", type=str, default=None,
     help="path to params file for Assembly: params-{assembly_name}.txt")
-PARSER.add_argument('-s', dest="steps", type=str, default=None,
+PARSER.add_argument(
+    '-s', dest="steps", type=str, default=None,
     help="Set of assembly steps to run, e.g., -s 123")
-PARSER.add_argument('-b', dest="branch", type=str, default=None, nargs="*",
+PARSER.add_argument(
+    '-b', dest="branch", type=str, default=None, nargs="*",
     help="create new branch of Assembly as params-{branch}.txt, and " + \
     "can be used to drop samples from Assembly.")
-PARSER.add_argument('-m', dest="merge", default=None, nargs="*",
+PARSER.add_argument(
+    '-m', dest="merge", default=None, nargs="*",
     help="merge multiple Assemblies into one joint Assembly, and " + \
     "can be used to merge Samples into one Sample.")
-PARSER.add_argument("-c", metavar="cores", dest="cores",
+PARSER.add_argument(
+    "-c", metavar="cores", dest="cores",
     type=int, default=0,
     help="number of CPU cores to use (Default=0=All)")
-PARSER.add_argument("-t", metavar="threading", dest="threads",
+PARSER.add_argument(
+    "-t", metavar="threading", dest="threads",
     type=int, default=2,
     help="tune threading of multi-threaded binaries (Default=2)")
-PARSER.add_argument("--logger", action="store_true",
+PARSER.add_argument(
+    "--logger", action="store_true",
     help="print info to a logfile in ./ipyrad_log.txt.")
-PARSER.add_argument("--ipcluster", dest="ipcluster",
+PARSER.add_argument(
+    "--ipcluster", dest="ipcluster",
     type=str, nargs="?", const="default",
     help="connect to running ipcluster, enter profile name (default='default'")
-PARSER.add_argument("--download", dest="download", type=str,
+PARSER.add_argument(
+    "--download", dest="download", type=str,
     nargs="*", default=None,  # const="default",
     help="download fastq files by accession (e.g., SRP or SRR)")
-
 
 
 class CLI:
@@ -349,7 +362,8 @@ class CLI:
 
         if not data.stats.empty:
             print(data.stats)
-            print("\n\nFull stats files" +
+            print(
+                "\n\nFull stats files (TODO... refactoring.)" +
                 "\n------------------------------------------------")
 
             fullcurdir = os.path.realpath(os.path.curdir)
@@ -374,7 +388,7 @@ class CLI:
         # get arguments to branch command
         bargs = self.args.branch
 
-        # get new name and trim off any suffix
+        # get new name and trim off any suffices
         newname = Path(bargs[0]).stem
 
         # look for subsample arguments
@@ -403,7 +417,8 @@ class CLI:
             if any(fails):
                 raise IPyradError(
                     "\n  Failed: unrecognized names, check spelling:\n  {}"
-                        .format("\n  ".join([str(i) for i in fails])))
+                    .format("\n  ".join([str(i) for i in fails]))
+                )
 
             # if drop then get subtract list
             if remove:
@@ -423,6 +438,7 @@ class CLI:
         print("  writing new params file to {}"
               .format("params-" + new_data.name + ".txt\n"))
         new_data.write_params(force=self.args.force)
+        new_data.save_json()
 
     def parse_params_file(self) -> None:
         """Parse and store params."""
@@ -470,6 +486,7 @@ class CLI:
             print(HEADER)
 
             # set CLI ipcluster terms
+            self.data.ipcluster["cores"] = self.args("cores", get_num_cpus())
             self.data.ipcluster["threads"] = self.args.threads
 
             # if user entered information to connect to an already
