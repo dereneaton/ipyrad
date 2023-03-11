@@ -387,9 +387,10 @@ you are over-clustering and should reduce `clust_threshold`. If they are too low
 `clust_threshold`. This is kind of a heuristic method, more systematic methods are provided in the references below.
 
 Here are also a couple of nice related papers:
-* Mastretta-Yanes et al 2014 - `Restriction site-associated DNA sequencing, genotyping error estimation and de novo assembly optimization for population genetic inference <https://doi.org/10.1111/1755-0998.12291>`__
-* McCartney-Melstad et al 2019 - `An empirical pipeline for choosing the optimal clustering threshold in RADseq studies <https://doi.org/10.1111/1755-0998.13029>`__
-* Gargiulo et al 2021 - `Effective double-digest RAD sequencing and genotyping despite large genome size <Effective double-digest RAD sequencing and genotyping despite large genome size>`__
+
+* Mastretta-Yanes et al 2014 - `Restriction site-associated DNA sequencing, genotyping error estimation and de novo assembly optimization for population genetic inference <https://doi.org/10.1111/1755-0998.12291>`_
+* McCartney-Melstad et al 2019 - `An empirical pipeline for choosing the optimal clustering threshold in RADseq studies <https://doi.org/10.1111/1755-0998.13029>`_
+* Gargiulo et al 2021 - `Effective double-digest RAD sequencing and genotyping despite large genome size <Effective double-digest RAD sequencing and genotyping despite large genome size>`_
     "Contrary to such expectations, we found genetic diversity and differentiation in two populations of Cypripedium calceolus to be robust to changes in assembly parameters and filtering strategies."
 
 
