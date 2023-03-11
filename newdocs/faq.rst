@@ -373,6 +373,26 @@ ValueError in step 7
 --------------------
 During step 7 if you see something like this `error in filter_stacks on chunk 0: ValueError(zero-size array to reduction operation minimum which has no identity)` it means that one of your filtering parameters is filtering out all the loci. This is bad, obviously, and it's probably because one of your filtering parameters is too strict. Take a look at a couple of the samples in the `*_consens` directory to make sure they are reasonable, then try adjusting your filtering parameters based on how the consensus reads look.
 
+How do I choose the best value for `clust_threshold`?
+-----------------------------------------------------
+Well, like everything else with RADSeq assembly the answer is "It depends." Mostly it depends on the data in hand and what the taxonomic
+level of investigation is (phylogenetic vs population genetic). The default value (0.85) is more appropriate for phylogenetic scale,
+whereas for population genetic scale something like 0.9 or 0.91 are more appropriate. A heuristic way to evaluate the `clust_threshold`
+setting is to run steps 3 and 4 and then look at the values of `hetero_est` and `error_est` in the `s4_joint_estimate.txt` file in 
+the `_clust*` directory. Assuming that you have checked your sequences for base quality before running step 1 (using fastqc) and trimmed
+off excessively noisey regions using `trim_reads` in step 2, the `error_est` in the s4 file should approach the average error rate
+for Illumina reads (~0.1%) and the `hetero_est` should look "reasonable" for your study system (between 0.001 and 0.05 spans the range
+of observed values across all organisms, roughly). If either the error rate or heterozygosity estimates from step 4 are too high then
+you are over-clustering and should reduce `clust_threshold`. If they are too low then you are over-splitting and should increase
+`clust_threshold`. This is kind of a heuristic method, more systematic methods are provided in the references below.
+
+Here are also a couple of nice related papers:
+* Mastretta-Yanes et al 2014 - `Restriction site-associated DNA sequencing, genotyping error estimation and de novo assembly optimization for population genetic inference <https://doi.org/10.1111/1755-0998.12291>`__
+* McCartney-Melstad et al 2019 - `An empirical pipeline for choosing the optimal clustering threshold in RADseq studies <https://doi.org/10.1111/1755-0998.13029>`__
+* Gargiulo et al 2021 - `Effective double-digest RAD sequencing and genotyping despite large genome size <Effective double-digest RAD sequencing and genotyping despite large genome size>`__
+    "Contrary to such expectations, we found genetic diversity and differentiation in two populations of Cypripedium calceolus to be robust to changes in assembly parameters and filtering strategies."
+
+
 RADSeq related papers
 ---------------------
 
