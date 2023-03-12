@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.88
+------
+**March 12, 2023**
+
+- Update faq.rst
+- Update faq.rst
+- Solving retro-compatibility in windows (#496)
+
 0.9.87
 ------
 **November 28, 2022**
