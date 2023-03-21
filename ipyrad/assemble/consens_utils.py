@@ -46,7 +46,18 @@ class Stack:
         self.consens = None
         self.hidx = None
         self.nheteros = None
-        self.nalleles = 1
+        self.nalleles = -1
+
+    def get_stack(self, start=None, end=None) -> str:
+        """Print seqs array as strings. Used for debugging."""
+        seqstr = []
+        for row in range(self.seqs.shape[0]):
+            seqstr.append(bytes(self.seqs[row, start:end]).decode())
+        return "\n".join(seqstr)
+
+    def get_consens(self, start=None, end=None) -> str:
+        """Print seqs array as strings. Used for debugging."""
+        return bytes(self.consens).decode()
 
 
 class ConsensusProcessor:
@@ -78,7 +89,7 @@ class ConsensusProcessor:
         # these will be filled and then dumped to out files.
         self.nalleles: List[int] = []
         """: Number of alleles found in each kept consensus locus."""
-        self.refpos: List[Tuple[int,int,int]] = []
+        self.refpos: List[Tuple[int, int, int]] = []
         """: Tuple of scaffid, start, end positions (0-indexed)."""
         self.consens_seqs: List[str] = []
         """: List of consensus sequences (w/ ambiguity codes)."""
@@ -113,7 +124,7 @@ class ConsensusProcessor:
         """
         if self.data.is_ref:
             fai = pd.read_csv(
-                self.data.params.reference_sequence + ".fai",
+                str(self.data.params.reference_sequence) + ".fai",
                 names=['scaffold', 'size', 'sumsize', 'a', 'b'],
                 sep="\t",
                 dtype=object)
@@ -159,7 +170,7 @@ class ConsensusProcessor:
                 # drop `tag=ACGTACGT` if 3rad and declone_PCR_duplicates is set
                 pos1 = pos1.split(";")[0]
                 # pull idx from .fai reference dict
-                chromint = self.faidict[chrom] + 1
+                chromint = self.faidict[chrom.lstrip(">")] + 1
                 ref_position = (int(chromint), int(pos0), int(pos1))
 
             # yield result as a Stack
@@ -202,9 +213,6 @@ class ConsensusProcessor:
                     yield loc
                 else:
                     self.filters['depth'] += 1
-                    # DEBUGGING
-                    # for row in range(loc.seqs.shape[0]):
-                        # print(loc.seqs[row].tobytes().decode())
 
     def _iter_filter_mindepth(self) -> Iterator[Stack]:
         """filter for mindepth: returns True if clust is filtered."""
@@ -217,8 +225,7 @@ class ConsensusProcessor:
             else:
                 self.filters['depth'] += 1
                 # DEBUGGING
-                # for row in range(loc.seqs.shape[0]):
-                    # print(loc.seqs[row].tobytes().decode())
+                # self.print_str()
 
     def _iter_build_consens(self) -> Iterator[Stack]:
         """Filter..."""
@@ -249,7 +256,7 @@ class ConsensusProcessor:
                 self.filters['maxalleles'] += 1
                 continue
 
-            # PE separator present, trim Ns from both sides.
+            # PE separator present in denovo, trim Ns from both sides.
             if 110 in loc.consens:
                 # consens: NNNNNAAAAANNnnnnNNAAANTTTTNNNNN
                 # nsites   1111100000110000110001000011111
@@ -370,6 +377,12 @@ class ConsensusProcessor:
         """
         for loc in self._iter_filter_heteros():
 
+            # if not heteros then yield loc
+            if not loc.nheteros:
+                loc.nalleles = 1
+                yield loc
+                continue
+
             # if only one hetero site then there are only two bi-alleles
             if loc.nheteros == 1:
                 loc.nalleles = 2
@@ -383,6 +396,8 @@ class ConsensusProcessor:
             harray = harray[~np.any(harray == 78, axis=1)]
 
             # remove alleles containing a site not called in bi-allele genos
+            # i.e., a low depth third allele that we assume is an error at
+            # this point since the loc would have been filtered already if not.
             calls0 = np.array([DCONS[i][0] for i in loc.consens[loc.hidx]])
             calls1 = np.array([DCONS[i][1] for i in loc.consens[loc.hidx]])
             bicalls = (harray == calls0) | (harray == calls1)
@@ -394,7 +409,7 @@ class ConsensusProcessor:
             # PASSED PARALOG FILTERING
             # there are fewer alleles than the limit (default=2)
             if len(ccx) <= self.maxalleles:
-                loc.nalleles = len(ccx)
+                loc.nalleles = max(1, len(ccx))
                 yield loc
                 continue
 
@@ -442,7 +457,7 @@ class ConsensusProcessor:
             self.counters["nsites"] -= sum(loc.consens == 110)
 
             # store the sequence until writing
-            self.consens_seqs.append(bytes(loc.consens).decode())
+            self.consens_seqs.append(loc.get_consens())
             self.nalleles.append(loc.nalleles)
             self.refpos.append(loc.refpos)
 
@@ -475,16 +490,17 @@ class ConsensusProcessor:
             catgs[idx, :subset.shape[0]] = subset
 
         # write H5 database w/ catgs, nalleles, and reference positions
-        with h5py.File(self.chunkfile.with_suffix(".tmpcatgs.hdf5"), 'w') as io5:
+        handle = str(self.chunkfile) + ".tmpcatgs.hdf5"
+        with h5py.File(handle, 'w') as io5:
             io5.create_dataset(name="catgs", data=catgs, dtype=np.uint16)
-            io5.create_dataset(name="nalleles", data=np.array(self.nalleles), dtype=np.uint8)
             io5.create_dataset(name="refpos", data=np.array(self.refpos), dtype=np.int64)
+            # io5.create_dataset(name="nalleles", data=np.array(self.nalleles), dtype=np.uint8)  # not currently used, so why bother storing it...
         del self.catgs
         del self.nalleles
-        del self.refpos
+        # del self.refpos
 
         # write final consens string chunk
-        handle = self.chunkfile.with_suffix(".tmpconsens")
+        handle = str(self.chunkfile) + ".tmpconsens"
 
         # write consens data to the consens file
         if not self.data.is_ref:
@@ -492,34 +508,51 @@ class ConsensusProcessor:
                 out.write("\n".join(self.consens_seqs))
 
         # reference needs to store if the read is revcomp to reference
+        # and writes the results as a SAM format file.
         else:
-            raise NotImplementedError("TODO")
-            with open(handle, 'w', encoding="utf-8") as out:
-                data = [
-
-                ]
-                # TODO -----------------------------------------
-                constring = "\n".join(
-                    ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
-                    .format(
-                        self.sample.name,
-                        self.refarr[i][0],
-                        self.refarr[i][1],
-                        self.refarr[i][1] + len(self.storeseq[i]),
-                        #self.refarr[i][2],
-                        0,
-                        self.revdict[self.refarr[i][0] - 1],
-                        self.refarr[i][1],
-                        0,
-                        "{}M".format(len(self.storeseq[i])),
-                        "*",
-                        0,
-                        #self.refarr[i][2] - self.refarr[i][1],
-                        len(self.storeseq[i]),
-                        self.storeseq[i],
-                        "*",
-                    ) for i in self.storeseq]
+            sams = []
+            for refpos, seq in zip(self.refpos, self.consens_seqs):
+                name = self.sample.name
+                end = refpos[1] + len(seq)
+                samlist = (
+                    f"{name}:{refpos[0]}:{refpos[1]}-{end}",  # QNAME A:21:1000-1300
+                    0,                                        # FLAG 0
+                    self.revdict[refpos[0] - 1],              # RNAME chrom22
+                    refpos[1],                                # POS 1000
+                    0,                                        # MAPQ 0
+                    f"{len(seq)}M",                           # CIGAR 300M
+                    "*",                                      # RNEXT *
+                    end,                                      # PNEXT 1300
+                    len(seq),                                 # TLEN 300
+                    seq,                                      # SEQ TGCAGATT...
+                    "*",                                      # QUAL *
                 )
+                sams.append("\t".join([str(i) for i in samlist]))
+
+            with open(handle, 'w', encoding="utf-8") as out:
+                out.write("\n".join(sams))
+                # # TODO -----------------------------------------
+                # constring = "\n".join(
+                #     ["{}:{}:{}-{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                #     .format(
+                #         self.sample.name,
+                #         self.refarr[i][0],
+                #         self.refarr[i][1],
+                #         self.refarr[i][1] + len(self.storeseq[i]),
+                #         #self.refarr[i][2],
+                #         0,
+                #         self.revdict[self.refarr[i][0] - 1],
+                #         self.refarr[i][1],
+                #         0,
+                #         "{}M".format(len(self.storeseq[i])),
+                #         "*",
+                #         0,
+                #         #self.refarr[i][2] - self.refarr[i][1],
+                #         len(self.storeseq[i]),
+                #         self.storeseq[i],
+                #         "*",
+                #     ) for i in self.storeseq]
+                # )
 
 
 def new_base_caller(sarr, mindepth_mj, mindepth_st, est_het, est_err):
@@ -530,7 +563,7 @@ def new_base_caller(sarr, mindepth_mj, mindepth_st, est_het, est_err):
     cons.fill(78)
 
     # record if evidence of a tri-allele
-    triallele = 0
+    triallele = False
 
     # iterate over columns
     for cidx in range(sarr.shape[1]):
@@ -572,10 +605,10 @@ def new_base_caller(sarr, mindepth_mj, mindepth_st, est_het, est_err):
         counts[rbase] = 0
 
         # if third allele occurs >X% then fill N and mark as paralog
-        # 1/6 as the cutoff. This allows for discarding as a paralog
+        # 1/5 as the cutoff. This allows for discarding as a paralog
         # earlier without requiring examining alleles later.
-        if (numr / (nump + numq + numr)) >= 0.15:
-            triallele = 1
+        if (numr / (nump + numq + numr)) >= 0.2:
+            triallele = True
 
         # based on biallelic depth
         bidepth = nump + numq
@@ -702,12 +735,12 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
             dtype=np.uint16,
             chunks=(optim, maxlen, 4),
             compression="gzip")
-        h5_nalleles = ioh5.create_dataset(
-            name="nalleles",
-            shape=(nrows, ),
-            dtype=np.uint8,
-            chunks=(optim, ),
-            compression="gzip")
+        # h5_nalleles = ioh5.create_dataset(
+        #     name="nalleles",
+        #     shape=(nrows, ),
+        #     dtype=np.uint8,
+        #     chunks=(optim, ),
+        #     compression="gzip")
 
         # only create chrom for reference-aligned data
         if data.is_ref:
@@ -724,14 +757,13 @@ def concat_catgs(data: Assembly, sample: Sample) -> None:
             with h5py.File(icat, 'r') as io5:
                 end = start + io5['catgs'].shape[0]
                 h5_catgs[start:end] = io5['catgs'][:]
-                h5_nalleles[start:end] = io5['nalleles'][:]
+                # h5_nalleles[start:end] = io5['nalleles'][:]
                 if data.is_ref:
                     h5_refpos[start:end] = io5['refpos'][:]
             start = end
             icat.unlink()
 
 
-# DEPRECATED...
 def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
     """Concatenate consens bits into fasta file for denovo assemblies.
 
@@ -783,16 +815,15 @@ def concat_denovo_consens(data: Assembly, sample: Sample) -> None:
                     cstack.append(f">{sample.name}_{idx}\n{line}")
                     idx += 1
                 out.write("".join(cstack) + "\n")
-            #fname.unlink()
+            # fname.unlink()
 
 
 def concat_reference_consens(data, sample):
-    """
-    Concatenates consens bits into SAM for reference assemblies
+    """Concatenates consens bits into SAM/BAM for reference assemblies
     """
     # write sequences to SAM file
-    chunks = list(data.tmpdir.glob(f"{sample.name}_[0-9]*.tmpconsens"))
-    chunks.sort(key=lambda x: int(x.split(".")[-1]))
+    chunks = list(data.tmpdir.glob(f"{sample.name}_chunk_[0-9]_*.tmpconsens"))
+    chunks.sort(key=lambda x: int(x.stem.split("_")[2]))
 
     # open sam handle for writing to bam
     bamfile = data.stepdir / f"{sample.name}.bam"
@@ -820,18 +851,17 @@ def concat_reference_consens(data, sample):
                     name, chrom, rest = line.rsplit(":", 2)
                     fdata.append(
                         "{}_{}:{}:{}".format(name, counter, chrom, rest)
-                        )
+                    )
                     counter += 1
                 outf.write("".join(fdata) + "\n")
 
     # convert to bam
-    cmd = [BIN_SAMTOOLS, "view", "-Sb", samfile]
+    cmd = [str(BIN_SAMTOOLS), "view", "-Sb", str(samfile)]
     with open(bamfile, 'w') as outbam:
         proc = sps.Popen(cmd, stderr=sps.PIPE, stdout=outbam)
-        comm = proc.communicate()[1]
+        comm = proc.communicate()[1].decode()
     if proc.returncode:
         raise IPyradError("error in samtools: {}".format(comm))
-
 
 
 # def encode_alleles(consens, hidx, alleles):
@@ -858,3 +888,22 @@ def concat_reference_consens(data, sample):
 #     ## return consens
 #     return consens
 
+
+if __name__ == "__main__":
+
+    import ipyrad as ip
+    from ipyrad.assemble.s5_consensus import Step5
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
+
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    TEST = TEST.branch("RICH2", subsample=list(TEST.samples)[:10])
+    TEST.ipcluster['threads'] = 2
+    with ip.Cluster(cores=2) as ipyclient:
+        step = Step5(TEST, force=True, quiet=False, ipyclient=ipyclient)
+        step.run()
+        # step.debug("RA-225")
+        # step.calculate_depths_and_max_frag()
+        # step.set_s4_params()
+        # make_chunk_files(step.data, step.samples['RA-225'], step.keep_masks["RA-225"], 1000)
+        # step.make_chunks()  # chunksize=int(1e9))
+        # cons = step.debug("RA-225")

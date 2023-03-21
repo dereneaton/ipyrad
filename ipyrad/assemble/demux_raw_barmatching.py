@@ -15,6 +15,7 @@ from loguru import logger
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 1_000_000
 
+
 @dataclass
 class BarMatching:
     """Base class for barcode matching.
@@ -133,6 +134,7 @@ class BarMatching:
                     with gzip.open(path2, 'a') as out:
                         out.write("".join(data).encode())
                         logger.debug(f"wrote demuliplex chunks to {path2}")
+
 
 @dataclass
 class BarMatchingI7(BarMatching):

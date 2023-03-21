@@ -142,7 +142,7 @@ class SimpleDemux:
                         "matching name prefix followed by _1 _2, _R1 _R2, "
                         "or _R1_ _R2_ followed by any subsequent suffix. "
                         f"Your data files look like this: {self.fastq_paths}"
-                        ) from inst
+                    ) from inst
 
         # store as outputs
         for name, paths in groups.items():
@@ -162,12 +162,12 @@ class SimpleDemux:
         try:
             bardata = pd.read_csv(
                 self.barcodes_path, header=None, delim_whitespace=True,
-                ).dropna()
+            ).dropna()
         except ParserError as err:
             raise IPyradError(
                 "Failed to parse barcodes file. Check that your sample\n"
                 "names do not include spaces (invalid)."
-                ) from err
+            ) from err
 
         # the dataframe COULD have >3 columns, in which case we will
         # discard any extra columns to keep at most 3.
