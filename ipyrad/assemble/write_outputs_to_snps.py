@@ -77,7 +77,7 @@ AMBIGS = np.array([
     [89, 84, 67],
     [87, 84, 65],
     [77, 67, 65],
-    ], dtype=np.uint8)
+], dtype=np.uint8)
 
 # used when making genos calls for each sample from ALTs.
 AMBIGS_FULL = np.array([
@@ -93,14 +93,15 @@ AMBIGS_FULL = np.array([
     [65, 65, 65],
     [84, 84, 84],
     [71, 71, 71],
-    ], dtype=np.uint8)
+], dtype=np.uint8)
 
 # size of concatenated data processed at one time in memory.
 CHUNKSIZE = 10_000
 
+
 class SnpsDatabaseWriter(DatabaseWriter):
 
-    def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
+    def __init__(self, data: Assembly, samples: Dict[str, "SampleSchema"]):
         # self.name = Path(data.stepdir) / f"{data.name}.snps.hdf5"
         self.name = data.outfiles['snps_database']
         """: Output HDF5 file name."""

@@ -57,9 +57,10 @@ from ipyrad.assemble.write_outputs_base import DatabaseWriter
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 50_000
 
+
 class SeqsDatabaseWriter(DatabaseWriter):
 
-    def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
+    def __init__(self, data: Assembly, samples: Dict[str, "SampleSchema"]):
         self.name = data.outfiles['seqs_database'] 
         # Path(data.stepdir) / f"{data.name}.seqs.hdf5"
         """: Output HDF5 file name."""
@@ -126,7 +127,7 @@ class SeqsDatabaseWriter(DatabaseWriter):
 
             # get locus dict and ref positions
             # denovo = (0, 'RAD', 0, 0)         # the last three are fixed.
-            # refere = (0, 'scaff13', 500, 800) # all are real data.        
+            # refere = (0, 'scaff13', 500, 800) # all are real data.
             chrom_int, _, pos0, pos1 = positions
 
             # remove SNP string
@@ -219,9 +220,10 @@ class SeqsDatabaseWriter(DatabaseWriter):
         """
         with h5py.File(self.name, 'r') as io5:
             shape = io5["phy"].shape               # pylint: disable=no-member
-            size = io5["phy"].size                 # pylint: disable=no-member            
+            size = io5["phy"].size                 # pylint: disable=no-member
             perc_missing = self.nmissing / size
-        print(f"wrote seqs.hdf5, shape={shape}, "
+        print(
+            f"wrote seqs.hdf5, shape={shape}, "
             f"missing={perc_missing:.2f}, path={self.name}.")
 
         # write stats to the output file

@@ -102,7 +102,7 @@ class ChunkProcess:
     """: Dict of Dicts storing polymorphism statistics."""
     loci_passed_filters: List[str] = field(default_factory=list)
     """: List of loci that will be written to disk."""
-    pnames: Dict[str,str] = None
+    pnames: Dict[str, str] = None
     """: Dict of padded names for loci file."""
     snames: List[str] = None
     """: Alphanumerically sorted names but with 'reference' on top if present."""
@@ -110,6 +110,7 @@ class ChunkProcess:
     """: ...."""
     start_lidx: int = 0
     """: Locus index at the start of this chunk."""
+    faidict: Dict[int, str] = None
 
     def __post_init__(self):
         # fill some attrs
@@ -117,11 +118,15 @@ class ChunkProcess:
         self._get_snames()
         self._get_pnames()
 
+        # fill chroms to ints for ref data
+        if self.data.is_ref:
+            self.faidict = chroms2ints(self.data, keys_as_ints=True)
+
         # filters dataframe is size of nloci (chunksize)
         self.filters = pd.DataFrame(
             index=range(self.start_lidx, self.start_lidx + self.chunksize),
-            columns=["dups", "minsamp", "maxind", "maxvar", "maxshared", "maxindels"],
-            data=np.zeros((self.chunksize, 6)),
+            columns=["dups", "minsamp", "maxvar", "maxshared", "maxindels"],
+            data=np.zeros((self.chunksize, 5)),
             dtype=np.bool_,
         )
 
@@ -183,7 +188,7 @@ class ChunkProcess:
         lidx = self.start_lidx
         with open(self.chunkfile, 'r', encoding="utf-8") as io_chunk:
             names = []
-            nidxs = [] # reference mapping info
+            nidxs = []  # reference mapping info
             seqs = []
             store_sequence = False
 
@@ -259,18 +264,22 @@ class ChunkProcess:
                 self.filters.loc[locus.lidx, "minsamp"] = True
                 continue
 
-            # [reference-only] mask the insert region made up on 'N's.
-            # this is used for counting nsites to not include the insert
-            # region when computing % variable sites, etc.
-            # if self.data.is_pair and self.data.params.min_samples_locus > 1:
-                # if self.data.drop_ref:
+            # mask insert region
+            if self.data.is_pair:
+                # [reference-only] mask the insert region made up on 'N's.
+                # this is used for counting nsites to not include the insert
+                # region when computing % variable sites, etc.
+                if self.data.is_ref:
+                    pass
+                    # if self.data.is_pair and self.data.params.min_samples_locus > 1:
+                    # if self.data.drop_ref:
                     # insert_mask = np.all(seqs[1: :] == 78, axis=0)
-                # else:
+                    # else:
                     # insert_mask = np.all(seqs[:] == 78, axis=0)
-                # insert_mask = seqs[:, np.invert(insert)]
-
-            # mask PE insert region to be Ns in .tseqs
-            locus.mask_inserts()
+                    # insert_mask = seqs[:, np.invert(insert)]
+                # [denovo paired only] mask PE insert region to be Ns in .tseqs
+                else:
+                    locus.mask_inserts()
 
             # find all variable sites in .tseqs. At this point this can
             # call SNPs within the PE insert region (on edges usually)
@@ -280,7 +289,10 @@ class ChunkProcess:
             # [denovo-only] Store shifted positions of each SNP
             # (see docstring). This uses indels (dashes) in the orig
             # .seqs array (before masking the insert).
-            shift_table = self._get_shift_table(locus, snpsarr)
+            if self.data.is_ref:
+                shift_table = []
+            else:
+                shift_table = self._get_shift_table(locus, snpsarr)
 
             # filter is number of indels is too high.
             if self._filter_maxindels(locus.tseqs):
@@ -303,7 +315,7 @@ class ChunkProcess:
 
             # filter for max polymorphic sites per locus.
             if prop_var > self.data.params.max_snps_locus:
-                self.filters.loc[locus.lidx, "maxsnps"] = True
+                self.filters.loc[locus.lidx, "maxvar"] = True
                 continue
 
             # filter for max shared polymorphisms per site.
@@ -350,6 +362,7 @@ class ChunkProcess:
 
             # save dataframe of filters for loci that were removed for stats
             mask = self.filters.sum(axis=1).astype(bool).values
+            print(f"FILTERS\n{self.filters}")
             self.filters.iloc[mask, :].astype(int).to_csv(self.chunkfile.with_suffix(".csv"))
 
             # calculate histograms for polymorphism stats, using evenly spaced
@@ -362,8 +375,9 @@ class ChunkProcess:
             self.stats['pis_props'] = dict(zip(bins, mags))
 
             # store this chunk shift table to tmp dir
-            with open(self.chunkfile.with_suffix('.npy'), 'wb') as out:
-                np.save(out, np.array(self.shift_tables, dtype=np.int64))
+            if not self.data.is_ref:
+                with open(self.chunkfile.with_suffix('.npy'), 'wb') as out:
+                    np.save(out, np.array(self.shift_tables, dtype=np.int64))
 
     def _filter_maxindels(self, seqs: np.ndarray) -> bool:
         """Max size of internal indels. Denovo vs. Ref, single versus paired."""
@@ -553,16 +567,17 @@ class ChunkProcess:
         snpsarr[snpsarr == 2] = 42
         snpstring = bytes(snpsarr).decode()
 
+        # print(f"Locus {locus.lidx}\n{locus}")
+
         # [denovo]: ...
         if not self.data.is_ref:
             refpos = str(locus.lidx)
             nidxstring = ";".join(locus.nidxs)
 
-        # [reference]: all samples have the same nidx = 'scaff:start-end'
-        # TODO: is the above True? check with empirical data...
+        # [reference]: nidx strings are samp-consens-id:chrom:start-end
         else:
             # get dict mapping {int: str} for chroms names.
-            faidict = chroms2ints(self.data, keys_as_ints=True)
+            # faidict = chroms2ints(self.data, keys_as_ints=True)
 
             # get original position of locus on reference.
             refpos = ":".join(nidxs[0].rsplit(":", 2)[-2:])
@@ -626,6 +641,7 @@ class ChunkProcess:
         loclist.append(f"{name_space}{snpstring}|{refpos}|{nidxstring}|")
         return "\n".join(loclist)
 
+
 @njit
 def maxind_numba(seqs: np.ndarray) -> int:
     """Return the size of the largest indel.
@@ -642,8 +658,9 @@ def maxind_numba(seqs: np.ndarray) -> int:
             inds = obs
     return inds
 
+
 @njit
-def snpcount_numba(seqs: np.ndarray, rowstart: int=0) -> np.ndarray:
+def snpcount_numba(seqs: np.ndarray, rowstart: int = 0) -> np.ndarray:
     """Return the SNP array (see get_snps_array docstring).
 
     Parameters
@@ -717,6 +734,7 @@ def snpcount_numba(seqs: np.ndarray, rowstart: int=0) -> np.ndarray:
             snpsarr[site] = 2
     return snpsarr
 
+
 @njit
 def count_maxheteros_numba(seqs: np.ndarray) -> int:
     """Return max number of samples with a shared polymorphism.
@@ -730,35 +748,45 @@ def count_maxheteros_numba(seqs: np.ndarray) -> int:
     return counts.max()
 
 
-
-
-
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
     from ipyrad.assemble.s7_assemble import *
     # from dataclasses import asdict
 
-    DATA = ip.load_json("../../sra-fastqs/cyatho.json")
-    P = []
-
+    TEST = ip.load_json("/tmp/RICH2.json")
     with ip.Cluster(cores=4) as ipyclient:
-        step = Step7(DATA, force=True, quiet=False, ipyclient=ipyclient)
+        step = Step7(TEST, force=True, quiet=False, ipyclient=ipyclient)
         step._get_chunksize()
-
         step._write_cluster_chunks()
+
         chunks = step.data.tmpdir.glob("chunk-*.pre")
         chunks = sorted(chunks, key=lambda x: int(x.name.split("-")[1]))
         jobs = {}
+        proc = ChunkProcess(step.data, step.samples, step.chunksize, chunks[0])
+        print(next(proc._iter_loci()))
 
-        samples = DATA.samples
+    #         P.append(proc)
 
-        for chunk in chunks:
-            proc = ChunkProcess(step.data, step.samples, step.chunksize, chunk)
-            P.append(proc)
+    # DATA = ip.load_json("../../sra-fastqs/cyatho.json")
+    # print(DATA.stats)
+    # # P = []
 
-    P[13].run()
+    # with ip.Cluster(cores=4) as ipyclient:
+    #     step = Step7(DATA, force=True, quiet=False, ipyclient=ipyclient)
+    #     step._get_chunksize()
+
+    #     step._write_cluster_chunks()
+    #     chunks = step.data.tmpdir.glob("chunk-*.pre")
+    #     chunks = sorted(chunks, key=lambda x: int(x.name.split("-")[1]))
+    #     jobs = {}
+
+    #     samples = DATA.samples
+
+    #     for chunk in chunks:
+    #         proc = ChunkProcess(step.data, step.samples, step.chunksize, chunk)
+    #         P.append(proc)
 
 
     raise SystemExit()

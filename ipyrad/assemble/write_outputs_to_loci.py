@@ -21,6 +21,7 @@ Clean the snpstring to be: |{chromint}:{chrom}:{start}-{end}|
 from typing import Iterator, List
 from ipyrad.assemble.write_outputs_base import DatabaseWriter
 
+
 class LociWriter(DatabaseWriter):
     """Join locus bits into a single file."""
 
@@ -87,7 +88,7 @@ if __name__ == "__main__":
     from ipyrad.assemble.s7_assemble import Step7
 
     # data = ip.load_json("/tmp/TEST5.json")
-    data = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")    
+    data = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
     data.hackers.exclude_reference = True
 
     with ip.Cluster(cores=4) as ipyclient:
