@@ -123,10 +123,11 @@ class ClustMapAcrossDenovo:
         """
         # get files
         globpath = self.data.tmpdir.glob("across_*.alignment")
-        alignbits = sorted(globpath, 
+        alignbits = sorted(
+            globpath,
             key=lambda x: int(x.name.split("_", 1)[1].split(".")[0]))
 
-        # store path to clust database 
+        # store path to clust database
         with gzip.open(self.clust_database, 'w') as out:
             snames = sorted(self.samples)
             namestr = "#" + ",".join(["@" + i for i in snames]) + "\n"

@@ -482,11 +482,14 @@ class CLI:
         self.parse_params_file()
         self.get_assembly()
 
+        # run assembly steps
         if self.args.steps:
-            print(HEADER)
+            if not self.args.quiet:
+                print(HEADER)
 
             # set CLI ipcluster terms
-            self.data.ipcluster["cores"] = self.args("cores", get_num_cpus())
+            self.data.ipcluster["cores"] = (
+                self.args.cores if self.args.cores else get_num_cpus())
             self.data.ipcluster["threads"] = self.args.threads
 
             # if user entered information to connect to an already
@@ -504,22 +507,22 @@ class CLI:
 
             # else, start one here. This is the most common usage.
             else:
-                ncores = self.data.ipcluster.get("cores", get_num_cpus())
+                # ncores = self.data.ipcluster.get("cores", get_num_cpus())
                 self.data.run(
                     self.args.steps,
                     force=self.args.force,
                     quiet=self.args.quiet,
-                    ncores=ncores,
+                    ncores=self.data.ipcluster["cores"],
                 )
 
         # show results summary
         if self.args.results:
             self.show_stats()
 
+
 def cli():
     """Command line utility function."""
     CLI().run()
-
 
 
 _WRONG_NUM_CLI_MERGE = """

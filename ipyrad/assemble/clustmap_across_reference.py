@@ -6,20 +6,22 @@ Reference based clustering across samples based on mapped positions
 to a reference genome.
 """
 
-import os
 import sys
-import glob
+import gzip
 import subprocess as sps
+from pathlib import Path
 import numpy as np
 from loguru import logger
-from pysam import AlignmentFile, FastaFile # pylint: disable=no-name-in-module
+from pysam import AlignmentFile, FastaFile  # pylint: disable=no-name-in-module
 from ipyrad.assemble.utils import IPyradError, chroms2ints
 from ipyrad.core.progress_bar import AssemblyProgressBar
 
-BIN_SAMTOOLS = os.path.join(sys.prefix, "bin", "samtools")
-BIN_BEDTOOLS = os.path.join(sys.prefix, "bin", "bedtools")
+BIN = Path(sys.prefix) / "bin"
+BIN_SAMTOOLS = BIN / "samtools"
+BIN_BEDTOOLS = BIN / "bedtools"
 
 logger = logger.bind(name="ipyrad")
+
 
 class ClustMapAcrossReference:
     def __init__(self, step):
@@ -27,12 +29,7 @@ class ClustMapAcrossReference:
         self.samples = step.samples
         self.quiet = step.quiet
         self.data = step.data
-
-        # store path to clust database 
-        for sname in step.samples:
-            self.data.samples[sname].files.database = os.path.join(
-                self.step.stepdir, 
-                f"{self.data.name}_clust_database.fa")
+        self.clust_database = self.data.stepdir / "alignment_database.fa.gz"
 
     def run(self):
         """Runs the core step functions"""
@@ -46,14 +43,17 @@ class ClustMapAcrossReference:
         self.remote_build_ref_clusters()
 
         # concat aligned files (This is not necessary, chunk again in s7)
-        self.remote_concat_alignments()
+        self.concat_alignments()
+
+        # store path to clust database
+        for sample in self.samples.values():
+            sample.files.database = self.clust_database
+        self.data.save_json()
 
     def remote_concat_bams(self):
         """Merge bam files into a single large sorted indexed bam"""
         args = (self.step.data, self.step.samples)
         rasyncs = {0: self.step.lbview.apply(concat_bams, *args)}
-
-        # progress bar
         message = "concatenating bams"
         prog = AssemblyProgressBar(rasyncs, message, step=6, quiet=self.quiet)
         prog.block()
@@ -67,10 +67,10 @@ class ClustMapAcrossReference:
         prog.block()
         prog.check()
         self.step.regions = jobs[0].get()
-        logger.debug('regions: {}...'.format(self.step.regions[:10]))
+        # logger.debug('regions: {}...'.format(self.step.regions[:10]))
 
     def remote_build_ref_clusters(self):
-        """Build clusters and find variants/indels to store."""       
+        """Build clusters and find variants/indels to store."""
         # send N jobs each taking chunk of regions
         ncpus = self.data.ncpus
         nloci = len(self.step.regions)
@@ -91,59 +91,78 @@ class ClustMapAcrossReference:
         prog.block()
         prog.check()
 
-    def remote_concat_alignments(self):
-        """concatenate fa chunks."""
-        msg = "concat alignments"
-        args = (self.data, self.samples)
-        jobs = {0: self.step.lbview.apply(concat_alignments, *args)}
-        prog = AssemblyProgressBar(jobs, msg, 6, self.step.quiet)
-        prog.block()
-        prog.check()
+    def concat_alignments(self):
+        """Concat denovo alignments.
+
+        This step is not necessary... we just chunk it up again in step 7...
+        it's nice having a file as a product, but why bother...
+        It creates a header with names of all samples that were present when
+        step 6 was completed.
+        """
+        # get files
+        globlist = self.data.tmpdir.glob("aligned_*.fa")
+        clustbits = sorted(
+            globlist,
+            key=lambda x: int(x.stem.rsplit("_", 1)[1]),
+        )
+
+        # write clusters to file with a header that has all samples in db
+        # store path to clust database
+        snames = sorted(self.samples)
+        with gzip.open(self.clust_database, 'w') as out:
+            namestr = "#" + ",".join(["@" + i for i in snames]) + "\n"
+            out.write(namestr.encode())
+            for alignbit in clustbits:
+                with open(alignbit, 'r', encoding="utf-8") as indat:
+                    dat = indat.read().strip()
+                    if dat:
+                        out.write(dat.encode() + b"\n")
 
 
 def concat_bams(data, samples):
+    """Merge bam files into a single large sorted indexed bam
     """
-    Merge bam files into a single large sorted indexed bam
-    """
-    # concatenate consens bamfiles for all samples in this assembly
-    catbam = os.path.join(data.tmpdir, f"{data.name}.cat.bam")
+    catbam = data.tmpdir / f"{data.name}.cat.bam"
     cmd1 = [
-        BIN_SAMTOOLS, 
-        "merge", 
-        "-f", 
-        catbam,
+        str(BIN_SAMTOOLS),
+        "merge",
+        "-f",
+        str(catbam),
     ]
 
     # Use the sample.files.consens to track branching
     for sname in samples:
-        cmd1.append(data.samples[sname].files.consens)
+        cmd1.append(str(samples[sname].files.consens))
     proc = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     err = proc.communicate()[0].decode()
     if proc.returncode:
-        raise IPyradError(f"error in: {' '.join(cmd1)}: {err}")
+        raise IPyradError(
+            f"An error occurred in samtools merge. Check for memory limits.\n"
+            f": {' '.join(cmd1)}: {err}"
+        )
 
     # sort the bam file
     cmd2 = [
-        BIN_SAMTOOLS,
+        str(BIN_SAMTOOLS),
         "sort",
         "-T",
-        catbam + '.tmp',
-        "-o", 
-        os.path.join(data.tmpdir, f"{data.name}.cat.sorted.bam"),
-        catbam,
+        str(catbam) + '.tmp',
+        "-o",
+        str(data.tmpdir / f"{data.name}.cat.sorted.bam"),
+        str(catbam),
     ]
     proc = sps.Popen(cmd2, stderr=sps.STDOUT, stdout=sps.PIPE)
     err = proc.communicate()[0].decode()
     if proc.returncode:
-        raise IPyradError(f"error in: {' '.join(cmd2)}: {err}")        
-    os.remove(catbam)
+        raise IPyradError(
+            f"An error occurred in samtools sort:\n{' '.join(cmd2)}: {err}")
+    catbam.unlink()
 
     # index the bam file
     cmd3 = [
-        BIN_SAMTOOLS,
+        str(BIN_SAMTOOLS),
         "index", "-c",
-        os.path.join(data.tmpdir, f"{data.name}.cat.sorted.bam",
-        ),           
+        str(data.tmpdir / f"{data.name}.cat.sorted.bam")
     ]
     proc = sps.Popen(cmd3, stderr=sps.STDOUT, stdout=sps.PIPE)
     err = proc.communicate()[0].decode()
@@ -154,16 +173,16 @@ def concat_bams(data, samples):
 def resolve_duplicates(keys, arr):
     """
     Tries to join together duplicate consens reads that were not previously
-    collapsed, likely because there was no overlap of the sequences for one 
+    collapsed, likely because there was no overlap of the sequences for one
     or more samples, but there was for others. Joins two consens reads if the
     """
     newkeys = []
     snames = np.array([i.rsplit(":", 2)[0].rsplit("_", 1)[0] for i in keys])
     newarr = np.zeros((len(set(snames)) + 1, arr.shape[1]), dtype="S1")
-    
+
     # put reference into arr
     newarr[0] = arr[0]
-    
+
     # fill rest while merging dups
     nidx = 1
     seen = set()
@@ -187,73 +206,74 @@ def resolve_duplicates(keys, arr):
                 ikeys = [keys[i - 1] for i in didx]
                 fidxs = ";".join([i.rsplit("_", 1)[-1] for i in ikeys])
                 newkeys.append("{}_{}".format(sname, fidxs))
-                
+
             else:
                 # store array data and orig key
                 newarr[nidx] = arr[didx]
                 newkeys.append(keys[sidx])
-                
+
             nidx += 1
-    
+
     # fill terminal edges with N again since array can increase
     newarr[newarr == b""] = b"N"
     return newkeys, newarr
 
 
 def build_ref_regions(data):
-    """
-    Use bedtools to pull in consens reads overlapping some region of ref
+    """Use bedtools to pull in consens reads overlapping some region of ref
     """
     cmd1 = [
-        BIN_BEDTOOLS,
+        str(BIN_BEDTOOLS),
         "bamtobed",
-        "-i", 
-        os.path.join(data.tmpdir, f"{data.name}.cat.sorted.bam")
+        "-i",
+        str(data.tmpdir / f"{data.name}.cat.sorted.bam")
     ]
 
     cmd2 = [
-        BIN_BEDTOOLS,    
-        "merge", 
+        str(BIN_BEDTOOLS),
+        "merge",
         "-d", "0",
         "-i", "-",
     ]
-
+    # print(cmd1)
     proc1 = sps.Popen(cmd1, stderr=sps.STDOUT, stdout=sps.PIPE)
     proc2 = sps.Popen(
-        cmd2, 
+        cmd2,
         stdin=proc1.stdout,
         stderr=sps.STDOUT,
         stdout=sps.PIPE,
     )
+    # print(cmd2)
     result = proc2.communicate()[0].decode()
     if proc2.returncode:
         raise IPyradError(f"error in {' '.join(cmd2)}: {result}")
+    print(result)
     regs = [i.split("\t") for i in result.strip().split("\n")]
     return [(i, int(j), int(k)) for i, j, k in regs]
 
 
 def build_ref_clusters(data, idx, iregion):
     """
-    Given a chunk of regions this will pull in the reference for each 
-    region and then pull in all consens reads matching to that region. 
-    It uses cigar info to align the consens reads with the ref. This 
-    also merges consens from the same sample that were not merged 
-    earlier, which is why we expect no duplicate samples in the output 
+    Given a chunk of regions this will pull in the reference for each
+    region and then pull in all consens reads matching to that region.
+    It uses cigar info to align the consens reads with the ref. This
+    also merges consens from the same sample that were not merged
+    earlier, which is why we expect no duplicate samples in the output
     of reference assemblies.
     """
     # prepare i/o for bamfile with mapped reads
-    bamfile = os.path.join(data.tmpdir, f"{data.name}.cat.sorted.bam")
-    alignments = AlignmentFile(bamfile, 'rb')
+    bamfile = data.tmpdir / f"{data.name}.cat.sorted.bam"
+    alignments = AlignmentFile(str(bamfile), 'rb')
 
     # dict to map chromosome names to integers
     faidict = chroms2ints(data, False)
-    logger.warning("CHROMS2INTS CHANGED, CHECK INTS INDEXING")
+    print("CHROMS2INTS CHANGED, CHECK INTS INDEXING")
 
     # prepare i/o for pysam reference indexed
-    reffai = FastaFile(data.params.reference_sequence)
+    reffai = FastaFile(str(data.params.reference_sequence))
 
     # store path to cluster bit
-    outbit = os.path.join(data.tmpdir, f"aligned_{idx}.fa")
+    outbit = data.tmpdir / f"aligned_{idx}.fa"
 
     # get clusters
     iregions = iter(iregion)
@@ -277,6 +297,7 @@ def build_ref_clusters(data, idx, iregion):
             mstart = min(mstart, rstart)
             mend = max(mend, rend)
             rdict[read.qname] = (read.seq, read.cigar, rstart, rend)
+        print(rdict)
         keys = sorted(rdict.keys(), key=lambda x: x.rsplit(":", 2)[0])
 
         # pull in the reference for this region (1-indexed)
@@ -299,7 +320,7 @@ def build_ref_clusters(data, idx, iregion):
             arr[kidx + 1, fidx:eidx] = list(seq)[:eidx - fidx]
 
             # mod sequence according to cigar for indels and ambigs
-            # csums is the location of impute on the seq, so it must be 
+            # csums is the location of impute on the seq, so it must be
             # incremented by fidx and not extend past eidx
             for cidx, cig in enumerate(cigar):
                 if cig[0] == 4:
@@ -324,52 +345,36 @@ def build_ref_clusters(data, idx, iregion):
         except IPyradError:
             pass
 
-        # get consens seq and variant site index 
+        # get consens seq and variant site index
         clust = [">reference_{}:{}:{}-{}\n{}".format(
-            0, 
+            0,
             faidict[region[0]] + 1, mstart + 1, mend + 1,   # 1-indexed
             b"".join(arr[0]).decode()
         )]
-        for kidx, key in enumerate(keys):    
+        for kidx, key in enumerate(keys):
             clust.append(
                 ">{}\n{}".format(key, b"".join(arr[kidx + 1]).decode())
             )
         clusts.append("\n".join(clust))
 
     # dump to temp file until concat in next step.
-    with open(outbit, 'wt') as outfile:
+    with open(outbit, 'w', encoding="utf-8") as outfile:
         if clusts:
             outfile.write("\n//\n//\n".join(clusts) + "\n//\n//\n")
     alignments.close()
 
 
-def concat_alignments(data, samples):
-    """
-    This step is not necessary... we just chunk it up again in step 7...
-    it's nice having a file as a product, but why bother...
-    It creates a header with names of all samples that were present when
-    step 6 was completed. 
-    """
-    # get files
-    globlist = glob.glob(os.path.join(data.tmpdir, "aligned_*.fa"))
-    clustbits = sorted(
-        globlist,
-        key=lambda x: int(x.rsplit("_", 1)[1].split(".")[0]),
-    )
-
-    # write clusters to file with a header that has all samples in db        
-    snames = sorted(samples)
-    clustdb = data.samples[snames[0]].files.database
-    print(f"writing raw aligned loci to {clustdb}")
-    with open(clustdb, 'w', encoding="utf-8") as out:
-        out.write("#{}\n".format(",@".join(snames)))
-        for clustfile in clustbits:
-            with open(clustfile, 'r', encoding="utf-8") as indata:
-                dat = indata.read()
-                if dat:
-                    out.write(dat)  # + "//\n//\n")
-
-
 if __name__ == "__main__":
 
-    pass
+    import ipyrad as ip
+    from ipyrad.assemble.s6_clustmap_across import Step6
+
+    ip.set_log_level("DEBUG", "/tmp/test.log")
+
+    data = ip.load_json("/tmp/RICHIE.json")
+    data = data.branch("RICH2", subsample=list(data.samples)[:10])
+    # print(data.stats)
+    with ip.Cluster(cores=2) as ipyclient:
+        step = Step6(data, True, False, ipyclient)
+        step.run()
+        # concat_bams(step.data, step.samples)
