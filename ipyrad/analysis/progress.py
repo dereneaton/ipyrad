@@ -51,7 +51,7 @@ class ProgressBar:
                 self.engine_log(job)
 
             # flush progress and end
-            if self.finished == len(self.jobs):               
+            if self.finished == len(self.jobs):
                 self.update(True)
                 break
             self.update()

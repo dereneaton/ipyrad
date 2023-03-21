@@ -520,9 +520,13 @@ class LocusExtracter(object):
         # load locidx, seqstart, seqend, genomestart, genomeend
         with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
+            try:
+                colnames = [i.decode() for i in colnames]
+            except Exception:
+                pass
             self.phymap = pd.DataFrame(
                 data=io5["phymap"][:],
-                columns=[i.decode() for i in colnames],
+                columns=colnames,
             )
         self.phymap.loc[:, "filtered"] = False
 
@@ -737,9 +741,14 @@ class LocusExtracter(object):
         with h5py.File(self.data, 'r') as io5:
 
             # get sample names
-            self.pnames = np.array([
-                i.decode() for i in io5["phymap"].attrs["phynames"]
-            ])
+            try:
+                self.pnames = np.array([
+                    i.decode() for i in io5["phymap"].attrs["phynames"]
+                ])
+            except Exception:
+                self.pnames = np.array([
+                    i for i in io5["phymap"].attrs["phynames"]
+                ])
             self.allnames = [i.strip() for i in self.pnames]
 
             # auto-generate exclude from imap difference

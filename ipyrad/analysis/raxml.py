@@ -1,7 +1,7 @@
 #!/usr/bin/python 
 
-""" 
-Wrapper to make simple calls to raxml 
+"""Wrapper to make simple calls to raxml v8.
+
 """
 
 from typing import Dict
@@ -11,7 +11,7 @@ import sys
 import glob
 import subprocess
 from loguru import logger
-from ipyrad.analysis.utils import Params
+# from ipyrad.analysis.utils import Params
 from ipyrad.assemble.utils import IPyradError
 
 
