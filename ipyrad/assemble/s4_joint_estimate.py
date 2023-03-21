@@ -13,7 +13,7 @@ import numpy as np
 import numba
 
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.core.schema import Stats4, Stats5
+from ipyrad.core.schema import Stats4
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.assemble.utils import IPyradError, NoHighDepthClustersError
 from ipyrad.assemble.clustmap_within_both import iter_clusters
@@ -47,7 +47,7 @@ class Step4(BaseStep):
             sample = self.data.samples[sname]
             sample.state = 4
             sample._clear_old_results()
-            sample.stats_s5 = None # sample.stats_s5 = Stats5()
+            sample.stats_s5 = None  # sample.stats_s5 = Stats5()
             sample.stats_s4 = Stats4(
                 hetero_est=result[0],
                 error_est=result[1],
@@ -314,13 +314,68 @@ def get_stack_array(data: Assembly, sample: Sample, size: int = 10_000) -> np.nd
     return newstack
 
 
+def make_chunk_files(data, sample, keep_mask, chunksize=5000) -> None:
+    """Split cluster file into <chunksize> hidepth clusters each.
+
+    THIS IS CALLED IN STEP 5.
+
+    Parameters
+    ----------
+    data: Assembly
+        params and samples
+    sample: Sample
+        filepaths and stats
+    keep_mask: np.ndarray
+        Used to filter which consens reads will be included in chunk
+        files used for parallel processing.
+    chunksize: int
+        Chunksize used for breaking the problem into parallel chunks.
+        The chunks are unzipped. Default is 5K, but is set to very
+        large when using debug() function to not split files.
+    """
+    # open to cluster generator
+    clusters = iter_clusters(sample.files.clusters, gzipped=True)
+
+    # load in high depth clusters and then write to chunk
+    chunk = []
+    sidx = 0
+    for idx, clust in enumerate(clusters):
+        if not keep_mask[idx]:
+            continue
+        chunk.append("".join(clust))
+
+        # write to chunk file and reset
+        if len(chunk) == int(chunksize):
+            end = sidx + len(chunk)
+            handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
+            with open(handle, 'w', encoding="utf-8") as out:
+                out.write("//\n//\n".join(chunk) + "//\n//\n")
+            chunk = []
+            sidx += int(chunksize)
+
+    # write any remaining
+    if chunk:
+        end = sidx + len(chunk)
+        handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
+        with open(handle, 'w', encoding="utf-8") as out:
+            out.write("//\n//\n".join(chunk) + "//\n//\n")
+
+
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
-    TEST = ip.load_json("../../pedtest/NEW.json")
-    TEST.run("4", force=True, quiet=False)
-   
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+        # TEST = ip.load_json(JSON)
+        # TEST.run("4", force=True, quiet=True)
+
+    TEST = ip.load_json("../../pedtest/NEW.json").branch("NEW2")
+    TEST.run("3", force=True, quiet=False)
+    print(TEST.stats)
+
+    # TEST = ip.load_json("../../pedtest/NEW.json")
+    # TEST.run("4", force=True, quiet=False)
+
     # TEST = ip.load_json("/tmp/TEST3.json")
     # TEST.run("4", force=True, quiet=False)

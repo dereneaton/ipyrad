@@ -20,11 +20,14 @@ Assembly.params.trim_reads = ()
 """
 
 from typing import TypeVar
+import re
 import sys
+import gzip
 import json
 from pathlib import Path
 import subprocess as sps
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError
@@ -292,7 +295,7 @@ class ReadTrimming:
             # if we merged in step2 this would prevent branching at
             # step 3 to try both denovo and reference, so not doing it.
             # if self.data.params.assembly_method:
-                # cmd += ['-m', '--merged_out', self.out1 + ".merged"]
+            # cmd += ['-m', '--merged_out', self.out1 + ".merged"]
         else:
             cmd = [
                 str(self.fastp_binary),
@@ -301,18 +304,29 @@ class ReadTrimming:
             ]
 
         # by default we trim the adapter lengths from the start of R1
-        # and R2 reads based on length of `restriction_overhang` params.
-        trim_front1 = len(self.data.params.restriction_overhang[0])
-        trim_front2 = len(self.data.params.restriction_overhang[1])
+        # and R2 reads based on auto-detection of the end position of
+        # the restriction overhang. This is most reliable since users
+        # may have demux'd their own data which may or may not include
+        # the barcode still.
+        trim_front1 = estimate_trim_position(
+            self.read1, self.data.params.restriction_overhang[0], 200_000,
+        )
+        if self.data.is_pair:
+            trim_front2 = estimate_trim_position(
+                self.read2, self.data.params.restriction_overhang[1], 200_000,
+            )
+        else:
+            trim_front2 = 0
 
-        # HOwever, this can be overriden by setting `trim_reads` param.
-        # to either a set of fixed positive integer lengths, or, if set
-        # to a negative value, then NO TRIMMING will be done.
+        # HOwever, the auto trim can be overriden by setting values for
+        # the `trim_reads` param to either a positive integer length, 
+        # or, if set to a negative value then NO TRIMMING will be done.
         if self.data.params.trim_reads[0]:
             if self.data.params.trim_reads[0] < 0:
                 trim_front1 = 0
             else:
                 trim_front1 = abs(self.data.params.trim_reads[0])
+
         if self.data.params.trim_reads[1]:
             if self.data.params.trim_reads[1] < 0:
                 trim_front2 = 0
@@ -322,7 +336,6 @@ class ReadTrimming:
         cmd.extend([
             "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
             "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
-            # "-a", str(self.data.hackersonly.p5_adapter), # disable to allow auto-detection
             "-q", str(20 + self.data.hackers.phred_qscore_offset - 33),  # minqual
             "-l", str(self.data.params.filter_min_trim_len),  # minlen
             "-y", "-Y", "50",  # turns on and sets complexity filter to 50
@@ -339,9 +352,16 @@ class ReadTrimming:
 
         # turn off filters if settings are lower than 2
         # hard coded fasta adapters file with Truseq and AAAAAAA
-        extra_adapters = Path(__file__).parent / "adapters.fa"
+        # in theory, not using -a turns on auto-detection of adapters, but
+        # its not working well currently, so we supply a file for PE data,
+        # but THAT's not working for SE data, so we supply a string.
         if self.data.params.filter_adapters == 2:
-            cmd.extend(["--adapter_fasta", str(extra_adapters)])
+            if self.data.is_pair:
+                extra_adapters = Path(__file__).parent / "adapters.fa"
+                cmd.extend(["--adapter_fasta", str(extra_adapters)])
+            else:
+                cmd.extend(["-a", str(self.data.hackers.p5_adapter)])
+
         if self.data.params.filter_adapters == 1:
             cmd.extend("-A")
         if self.data.params.filter_adapters == 0:
@@ -362,6 +382,46 @@ class ReadTrimming:
         with open(self.json, 'r', encoding="utf-8") as indata:
             jdata = json.loads(indata.read())
         return (jdata, [(str(self.out1), str(self.out2))])
+
+
+def estimate_trim_position(fastq: str, restriction_overhang: str, nreads: int = 200_000) -> int:
+    """Return estimation position of end of cut1 on R1 files.
+
+    At this point read1 files should have one of two formats:
+    >>> ACACACTGCAGXXXX....
+    >>> bbbbbb^^^^^dddd
+    or
+    >>> TGCAGXXXX....
+    >>> ^^^^^dddd
+    where
+    b = barcode
+    ^ = cut overhang
+    d = data
+
+    This function will read the first 100K reads to find the average
+    position of the last cutter overhang position. If the cutter
+    overhang is not found >20% of reads then 0 is returned.
+    """
+    if str(fastq).endswith(".gz"):
+        fp = gzip.open(fastq, 'rt', encoding="utf-8")
+    else:
+        fp = open(fastq, 'rt', encoding="utf-8")
+    quart = zip(fp, fp, fp, fp)
+    count = range(nreads)
+    comp = re.compile(restriction_overhang)
+
+    observed = []
+    for idx, line in zip(count, quart):
+        match = comp.search(line[1])
+        if match:
+            if match.end() < 30:
+                observed.append(match.end())
+
+    # must occur in >20%
+    if len(observed) < nreads * 0.20:
+        return 0
+    # trim up to Nth position, fastp takes trim N bases...
+    return int(np.round(np.mean(observed)))
 
 
 if __name__ == "__main__":

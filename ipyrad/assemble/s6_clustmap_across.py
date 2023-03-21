@@ -39,12 +39,25 @@ class Step6(BaseStep):
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")# log_file="/tmp/test.log")
-   
-    TEST = ip.load_json("../../pedtest/NEW.json")
-    TEST.params.min_depth_majrule = 1
-    TEST.run("6", force=True, quiet=True)
-    print(TEST.stats)
+    ip.set_log_level("DEBUG")  # log_file="/tmp/test.log")
+
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    TEST = TEST.branch("RICH2", subsample=list(TEST.samples)[:10])
+    # TEST.ipcluster['threads'] = 2
+    # TEST.run("5", force=True, quiet=True, cores=4)
+    with ip.Cluster(cores=2) as ipyclient:
+        step = Step6(TEST, force=True, quiet=False, ipyclient=ipyclient)
+        step.run()
+
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+        # TEST = ip.load_json(JSON)
+        # print(TEST.params)
+        # TEST.run("6", force=True, quiet=True)
+
+    # TEST = ip.load_json("../../pedtest/NEW.json")
+    # TEST.params.min_depth_majrule = 1
+    # TEST.run("6", force=True, quiet=True)
+    # print(TEST.stats)
 
     # TEST = ip.load_json("/tmp/TEST5.json")
     # TEST.run("6", force=True, quiet=False)

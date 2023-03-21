@@ -4,7 +4,7 @@
 
 Example
 -------
->>> # load data as `consens_utils.ConsensusProcessor` object 
+>>> # load data as `consens_utils.ConsensusProcessor` object
 >>> data = ip.load_json(JSON_FILE)
 >>> with ip.Cluster(cores=2) as ipyclient:
 >>>     step = Step5(data, 1, 0, ipyclient)
@@ -14,7 +14,7 @@ Example
 >>> for loc in proc._iter_filter_heteros():
 >>>     print(loc.cidx, loc.filters)
 >>>
->>> # or, run call filter generators 
+>>> # or, run call filter generators
 >>> proc.collect_data()
 """
 
@@ -24,19 +24,18 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
+import ipyparallel as ipp
 from ipyrad.core.progress_bar import AssemblyProgressBar
 from ipyrad.core.schema import Stats5
 from ipyrad.assemble.utils import NoHighDepthClustersError
 from ipyrad.assemble.base_step import BaseStep
-from ipyrad.assemble.clustmap_within_both import iter_clusters
-from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats
+from ipyrad.assemble.s4_joint_estimate import recal_hidepth_cluster_stats, make_chunk_files
 from ipyrad.assemble.consens_utils import (
     ConsensusProcessor,
     concat_catgs,
     concat_denovo_consens,
     concat_reference_consens,
 )
-import ipyparallel as ipp
 
 Assembly = TypeVar("Assembly")
 Sample = TypeVar("Sample")
@@ -77,8 +76,8 @@ class Step5(BaseStep):
         returns a ConsensusProcessor object for an unchunked file for a sample.
         """
         self.calculate_depths_and_max_frag()
-        self.set_s4_params()
         self.make_chunks(chunksize=int(1e9))
+        self.set_s4_params()
         tmpfile = list(self.data.tmpdir.glob(f"{sname}_chunk_*"))[0]
         sample = self.samples[sname]
         return ConsensusProcessor(self.data, sample, tmpfile)
@@ -122,8 +121,8 @@ class Step5(BaseStep):
         msg = "chunking clusters"
         jobs = {}
         for sname, sample in self.samples.items():
-            args = (self.data, sample, self.keep_masks[sname], chunksize)
-            rasync = self.lbview.apply(make_chunk_files, *args)
+            args = dict(data=self.data, sample=sample, keep_mask=self.keep_masks[sname], chunksize=chunksize)
+            rasync = self.lbview.apply(make_chunk_files, **args)
             jobs[sname] = rasync
         prog = AssemblyProgressBar(jobs, msg, 5, self.quiet)
         prog.block()
@@ -261,62 +260,36 @@ class Step5(BaseStep):
         prog.check()
 
 
-def make_chunk_files(
-    data: Assembly, sample: Sample, keep_mask: np.ndarray, chunksize: int = 5000,
-) -> None:
-    """Split job into 5_000 hidepth clusters each.
-
-    Parameters
-    ----------
-    data: Assembly
-        params and samples
-    sample: Sample
-        filepaths and stats
-    keep_mask: np.ndarray
-        Used to filter which consens reads will be included in chunk
-        files used for parallel processing.
-    chunksize: int
-        Chunksize used for breaking the problem into parallel chunks.
-        The chunks are unzipped. Default is 5K, but is set to very
-        large when using debug() function to not split files.
-    """
-    # open to cluster generator
-    clusters = iter_clusters(sample.files.clusters, gzipped=True)
-
-    # load in high depth clusters and then write to chunk
-    chunk = []
-    sidx = 0
-    for idx, clust in enumerate(clusters):
-        if not keep_mask[idx]:
-            continue
-        chunk.append("".join(clust))
-
-        # write to chunk file and reset
-        if len(chunk) == int(chunksize):
-            end = sidx + len(chunk)
-            handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
-            with open(handle, 'w', encoding="utf-8") as out:
-                out.write("//\n//\n".join(chunk) + "//\n//\n")
-            chunk = []
-            sidx += int(chunksize)
-
-    # write any remaining
-    if chunk:
-        end = sidx + len(chunk)
-        handle = data.tmpdir / f"{sample.name}_chunk_{sidx}_{end}"
-        with open(handle, 'w', encoding="utf-8") as out:
-            out.write("//\n//\n".join(chunk) + "//\n//\n")
-
-
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
+    #ip.set_log_level("DEBUG")#, log_file="/tmp/test.log")
 
-    TEST = ip.load_json("../../pedtest/NEW.json")
-    TEST.params.min_depth_majrule = 1
-    TEST.run("5", force=True, quiet=True)
-    print(TEST.stats)
+    # testing in this region fails b/c some function are in this module
+    # instead of another. Fix ithis..
+
+    TEST = ip.load_json("/tmp/RICHIE.json")
+    # TEST.ipcluster['threads'] = 2
+    # TEST.run("5", force=True, quiet=True, cores=4)
+    with ip.Cluster(cores=4) as ipyclient:
+        step = Step5(TEST, force=True, quiet=False, ipyclient=ipyclient)
+        step.run()
+        # step.calculate_depths_and_max_frag()
+        # step.set_s4_params()
+        # make_chunk_files(step.data, step.samples['RA-225'], step.keep_masks["RA-225"], 1000)
+        # step.make_chunks()  # chunksize=int(1e9))
+        # cons = step.debug("RA-225")
+        # print(cons)
+    # print(TEST.stats)
+
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+        # TEST = ip.load_json(JSON)
+        # TEST.run("5", force=True, quiet=True)
+
+    # TEST = ip.load_json("../../pedtest/NEW.json")
+    # TEST.params.min_depth_majrule = 1
+    # TEST.run("5", force=True, quiet=True)
+    # print(TEST.stats)
 
     # TEST = ip.load_json("/tmp/TEST5.json")
     # TEST.run("5", force=True, quiet=False)
