@@ -59,8 +59,8 @@ class BuildVcfBase:
 
 
 class BuildVcfReference(BuildVcfBase):
-    """Reference only object for building VCF. 
-    
+    """Reference only object for building VCF.
+
     This differs from the BuildVcfDenovo object in ...
     """
     def _iter_vcf_data_chunk(self) -> Iterator[pd.DataFrame]:
@@ -70,20 +70,20 @@ class BuildVcfReference(BuildVcfBase):
             # get scaffold names, positions, and ID string.
             chrom_names = [self.revdict[i] for i in snpsmap[:, 3]]
             rad_ids = [
-                f"loc{i}_pos{j}_scaff{x}_pos{y}" 
+                f"loc{i}_pos{j}_scaff{x}_pos{y}"
                 for (i, j) in zip(snpsmap[:, 0], snpsmap[:, 2])
             ]
 
 
 class BuildVcfDenovo(BuildVcfBase):
-    """Denovo only object for building VCF. 
-    
+    """Denovo only object for building VCF.
+
     This differs from the BuildVcfReference object in ...
     """
     def __init__(self, data: Assembly, snames: List[str]):
         self.snames = snames
         super().__init__(data)
-        self.idepths = self._iter_vcf_depths()        
+        self.idepths = self._iter_vcf_depths()
 
     def _iter_vcf_depths(self):
         """Yield depths for each SNP in order."""
@@ -106,11 +106,11 @@ class BuildVcfDenovo(BuildVcfBase):
             loc_pos_gen = zip(snpsmap[:, 0], snpsmap[:, 1])
             rad_ids = [f"loc{i}_snp{j}" for (i, j) in loc_pos_gen]
 
-            # get ref alleles as a list of strings: 
+            # get ref alleles as a list of strings:
             # >>> ["A", "T", "C", ...]
             ref = list(alts[:, 0].tobytes().decode())
 
-            # get alt alleles as a list of single or comma-joined strings: 
+            # get alt alleles as a list of single or comma-joined strings:
             # >>> ["T", "A,C", "G,T", ...]
             alleles = []
             for idx in range(alts.shape[0]):
@@ -186,7 +186,7 @@ class BuildVcfDenovo(BuildVcfBase):
 
             # join colgenos, coldepths and colcatgs
             for sname in colgenos.columns:
-                colgenos[sname] = [f"{i}:{j}:{z}" for (i, j, z) in 
+                colgenos[sname] = [f"{i}:{j}:{z}" for (i, j, z) in
                     zip(colgenos[sname], coldepths[sname], colcatgs[sname])
                 ]
 
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     DATA.outfiles['vcf'] = "/tmp/test.vcf"
     DATA.drop_ref = False
 
-    v = BuildVcfDenovo(DATA, DATA.samples)    
+    v = BuildVcfDenovo(DATA, DATA.samples)
     v.run()
 
     # for i in v._iter_snps_data_chunk():

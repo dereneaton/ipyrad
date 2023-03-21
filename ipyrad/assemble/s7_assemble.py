@@ -70,6 +70,7 @@ OUT_SUFFIX = {
     # 'a' ('alleles',),
 }
 
+
 class Step7(BaseStep):
     """Organization for step7 funcs.
 
@@ -114,6 +115,8 @@ class Step7(BaseStep):
 
         # set outfiles keys and rm if filepath exists.
         # btw: Assembly.outfiles is cleared in BaseStep.
+        if self.data.params.output_formats == "*":
+            self.data.params.output_formats = list(OUT_SUFFIX)
         for abb, suffix in OUT_SUFFIX.items():
             fname = self.data.stepdir / f"{self.data.name}.{suffix}"
             fname.unlink(missing_ok=True)
@@ -126,7 +129,8 @@ class Step7(BaseStep):
         self.data.assembly_stats = AssemblyStats()
         """: Store Assembly stats from chunk processes."""
 
-    ###### INIT FUNCS #############################################
+    ##################################################################
+    # INIT FUNCS #####################################################
     def _check_database_files(self):
         """Check that samples match those in the clustdb.
 
@@ -168,7 +172,8 @@ class Step7(BaseStep):
         ])
         logger.debug(f"using chunksize {self.chunksize} for {self._n_raw_loci} loci")
 
-    ###### MAIN FUNC ##############################################
+    ##################################################################
+    # MAIN FUNC ######################################################
     def run(self):
         """All steps to complete step7 assembly."""
         # split clusters into bits given n engines.
@@ -201,7 +206,8 @@ class Step7(BaseStep):
         self._build_vcf()
         self.data.save_json()
 
-    ###### PARSE FUNCS #############################################
+    #################################################################
+    # PARSE FUNCS ###################################################
     def _iter_clusters(self) -> Iterator[str]:
         """Yields clusters between separators after skipping line 1."""
         with gzip.open(self.clust_database, 'rt', ) as clustio:
@@ -239,7 +245,8 @@ class Step7(BaseStep):
                 outfile.write("//\n//\n".join(chunk) + "//\n//\n")
                 logger.debug(f"wrote chunk {idx} for processing.")
 
-    ###### MAIN SUBFUNCS #########################################
+    ##################################################################
+    # MAIN SUBFUNCS ##################################################
     def debug(self):
         """Return a ChunkProcessor object for a sample as one chunk."""
         old_chunksize = self.chunksize
@@ -339,7 +346,7 @@ class Step7(BaseStep):
         stats.filters.nloci_after_filtering = sum(stats.locus_cov.values())
         stats.filters.filtered_by_rm_duplicates = int(filters.dups)
         stats.filters.filtered_by_min_sample_cov = int(filters.minsamp)
-        stats.filters.filtered_by_max_indels = int(filters.maxind)
+        stats.filters.filtered_by_max_indels = int(filters.maxindels)
         stats.filters.filtered_by_max_snps = int(filters.maxvar)
         stats.filters.filtered_by_max_shared_h = int(filters.maxshared)
 
@@ -355,8 +362,8 @@ class Step7(BaseStep):
         # write step7 json and report to logger
         self.data.save_json()
         # logger.debug(
-            # "collecting statistics on assembly:\n"
-            # f"{self.data.assembly_stats.json(indent=2)}")
+        # "collecting statistics on assembly:\n"
+        # f"{self.data.assembly_stats.json(indent=2)}")
 
     def _write_stats_files(self):
         """Write the s7_stats file using results stored in JSON file.
@@ -500,7 +507,9 @@ class Step7(BaseStep):
         prog.block()
         prog.check()
 
-    ###### CONVERSIONS ###########################################
+    ##############################################################
+    # CONVERSIONS
+    ##############################################################
     def _write_conversions(self):
         """Writes data to optional output formats from HDF5 arrays."""
         msg = "writing conversions"
@@ -531,17 +540,21 @@ def remote_fill_loci(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None
     """Write .loci file from chunks."""
     LociWriter(data, samples).run()
 
+
 def remote_fill_seqs(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .seqs.hdf5 file from chunks."""
     SeqsDatabaseWriter(data, samples).run()
+
 
 def remote_fill_snps(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """Write .snps.hdf5 file from chunks."""
     SnpsDatabaseWriter(data, samples).run()
 
+
 def remote_file_conversion(data: Assembly, outf: Path):
     """Remote function for converiting."""
     Converter(data).run(outf)
+
 
 def remote_write_vcf(data: Assembly, samples: Dict[str, 'SampleSchema']) -> None:
     """..."""
@@ -567,11 +580,19 @@ after assembling your data.
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")  # log_file="/tmp/test.log")
+    ip.set_log_level("DEBUG", log_file="/tmp/test.log")
 
-    TEST = ip.load_json("../../pedtest/NEW.json")
-    TEST.run("7", force=True, quiet=True)
-    print(TEST.stats)
+    TEST = ip.load_json("/tmp/RICH2.json")
+    TEST.run("7", force=True, quiet=False, cores=4)
+
+    # for JSON in ["/tmp/TEST1.json", "/tmp/TEST5.json"]:
+        # TEST = ip.load_json(JSON)
+        # TEST.run("7", force=True, quiet=True)
+
+    # TEST = ip.load_json("../../pedtest/NEW.json")
+    # print(TEST.stats)
+    # TEST.run("7", force=True, quiet=True)
+
 
     # TEST = ip.load_json("/home/deren/Documents/ipyrad/sra-fastqs/cyatho.json")
     # # TEST = ip.load_json("/tmp/TEST5.json")

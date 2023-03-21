@@ -32,7 +32,7 @@ class Locus:
 
     """
     #########################################
-    ## INIT Attributes
+    # INIT Attributes
     #########################################
     lidx: int
     """: Index of this locus in the raw unfiltered loci file."""
@@ -46,13 +46,13 @@ class Locus:
     """: 2-D array of the samples x sites as an np.uint8 array."""
 
     #########################################
-    ## Trimming attributes
+    # Trimming attributes
     #########################################
     tseqs: np.ndarray = None
     """: 2-D array of the samples x sites as an np.uint8 array after trimming."""
-    trimmed: Tuple[int,int] = (0, 0)
+    trimmed: Tuple[int, int] = (0, 0)
     """: Number of sites in trimmed from each end of .seqs. Index as X[t[0],-t[1]]"""
-    pe_insert: Tuple[int,int] = (0, 0)
+    pe_insert: Tuple[int, int] = (0, 0)
     """: Number of sites on either side of PE insert in .tseqs. Index as Y[t[0],-t[1]]"""
     site_sample_covs: np.ndarray = None
     """: Counts of sample coverage (non N-n) at each site (pre-trimming)"""
@@ -65,7 +65,7 @@ class Locus:
     trimming, not just sample cov trimming.)"""
 
     #########################################
-    ## Filtering attributes
+    # Filtering attributes
     #########################################
     is_dup: bool = False
     """: filter this locus b/c a sample name is present >1 time."""
@@ -84,6 +84,15 @@ class Locus:
     def get_sample_covs(self):
         """Fills site_sample_covs with data."""
         self.site_sample_covs = np.sum((self.seqs != 78) & (self.seqs != 45), axis=0)
+
+    def get_seqstr(self, start: int = None, end: int = None, trim: bool = False) -> str:
+        """Return a printable string to view locus."""
+        arr = self.tseqs if trim else self.seqs
+        seqs = []
+        for row in range(arr.shape[0]):
+            seq = bytes(arr[row, start:end]).decode()
+            seqs.append(seq)
+        return "\n".join(seqs)
 
     def run(self) -> Tuple[List, List, List, bool]:
         """Runs the steps involved in trimming and masking seqs."""
@@ -116,7 +125,8 @@ class Locus:
 
         # get subsampled names, seqs, nidxs by removing any samples
         # that no longer have data after trimming, which can arise
-        # when data are highly tiled.
+        # when data are highly tiled. Also, if the number of samples 
+        # is below minsamp before or after trimming then set filter True
         bad_trim = self._remove_empty_samples()
         if bad_trim:
             print(f"edge trim filtered by subsampling. Nsamples={len(self.names)}")
@@ -228,7 +238,7 @@ class Locus:
             return True
         return False
 
-    def _remove_empty_samples(self) -> Tuple[List[str], np.ndarray, List[str]]:
+    def _remove_empty_samples(self) -> bool:  # Tuple[List[str], np.ndarray, List[str]]:
         """Subsample names, seqs, sidxs to remove samples w/ no data after trimming."""
 
         # create mask with True if sample has data, False otherwise
@@ -349,6 +359,7 @@ def locus_left_trim(site_sample_covs: np.ndarray, min_cov_left: int) -> int:
         return leftmost.min()
     return 0
 
+
 @njit
 def locus_right_trim(site_sample_covs: np.ndarray, min_cov_right: int) -> int:
     """Return the rightmost position where sample coverage >= the min
@@ -359,13 +370,11 @@ def locus_right_trim(site_sample_covs: np.ndarray, min_cov_right: int) -> int:
     return 0
 
 
-
 if __name__ == "__main__":
 
     import ipyrad as ip
     ip.set_log_level("DEBUG")
-    from ipyrad.assemble.s7_assemble import *
-
+    from ipyrad.assemble.s7_assemble import Step7, ChunkProcess
 
     DATA = ip.load_json("../../sra-fastqs/cyatho.json")
 
@@ -385,15 +394,21 @@ if __name__ == "__main__":
 
     raise SystemExit()
 
+
+
+
+
+
+
     # --
     DATA = ip.Assembly(name="test")
     DATA.params.assembly_method = "reference"
     DATA.params.datatype = "pair3rad"
     DATA.params.min_samples_locus = 4
     DATA.params.filter_min_trim_len = 10
-    DATA.params.restriction_overhang = ('','')  #('ATCGG', 'TAGCTT')
+    DATA.params.restriction_overhang = ('', '')  #('ATCGG', 'TAGCTT')
     # DATA.params.trim_loci = (2, 2, 2, 2)
-    #DATA.hackers.trim_loci_min_sites = 4
+    # DATA.hackers.trim_loci_min_sites = 4
     DATA.hackers.exclude_reference = False
 
     # SEQS array loaded from chunked .loci already passed a few filters
@@ -434,7 +449,7 @@ if __name__ == "__main__":
         list(b"---ATCGGTCCTTNNNNTTCCAACCGNnnnnNTACAAGCTA-----"),
         list(b"--NATCGGNCCTTNNNNTTCCAACCGNnnnnNTACAAGC-------"),
         list(b"AAAANNNNNNNNNNNNNNNNNNNNNNNnnnnNNNNNNNTTT-----"),
-    ]).astype(np.uint8)    
+    ]).astype(np.uint8)
 
     SEQS = SEQS4
 
@@ -443,7 +458,7 @@ if __name__ == "__main__":
 
     # load Edges class
     DATA.drop_ref = False
-    test = Locus(0, DATA, NAMES, NIDXS, SEQS) #debug=True)
+    test = Locus(0, DATA, NAMES, NIDXS, SEQS)  # debug=True)
     test.get_sample_covs()
     test.run()
     test.mask_inserts()

@@ -227,7 +227,7 @@ TRANSFULL = {
     ('C', 'G'): "S",
     ('T', 'G'): "K",
     ('A', 'G'): "R",
-    }
+}
 
 # TRANSINT = {
 #     (71, 65): 82,
@@ -255,7 +255,7 @@ TRANSFULL = {
 
 def chroms2ints(data, keys_as_ints: bool = False):
     """Parse .fai to get a dict with {chroms/scaffolds: ints}, or reversed.
-    
+
     The chrom indices are 1-indexed.
 
     Parameters
@@ -265,7 +265,7 @@ def chroms2ints(data, keys_as_ints: bool = False):
     """
     # load reference genome info as a dataframe.
     fai = pd.read_csv(
-        data.params.reference_sequence + ".fai",
+        str(data.params.reference_sequence) + ".fai",
         names=['scaffold', 'length', 'start', 'a', 'b'],
         sep="\t",
     )

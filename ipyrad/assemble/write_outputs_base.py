@@ -9,12 +9,14 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 Assembly = TypeVar("Assembly")
+Sample = TypeVar("Sample")
+
 
 class DatabaseWriter(ABC):
-    def __init__(self, data: Assembly, samples: Dict[str,"SampleSchema"]):
+    def __init__(self, data: Assembly, samples: Dict[str, Sample]):
         self.data: Assembly = data
         """: Assembly object."""
-        self.samples: Dict[str,"SampleSchema"] = samples
+        self.samples: Dict[str, Sample] = samples
         """: Dict of SampleSchema objects in Step7."""
 
         # attributes to be filled.
@@ -54,7 +56,7 @@ class DatabaseWriter(ABC):
     def _init_datasets(self) -> None:
         """Create a database output file."""
 
-    def _iter_loci(self) -> Iterator[Tuple[Dict[str,str], Tuple[int,str,int,int]]]:
+    def _iter_loci(self) -> Iterator[Tuple[Dict[str, str], Tuple[int, str, int, int]]]:
         """Yields loci from each ordered .loci file until empty.
 
         The 'reference' sample is always included here when is_ref.
@@ -88,7 +90,7 @@ class DatabaseWriter(ABC):
                         # end of locus, yield the dict.
                         yield names_to_seqs, (chrom_int, chrom_name, pos0, pos1)
                         lidx += 1
-                        names_to_seqs = {}                        
+                        names_to_seqs = {}
 
     @abstractmethod
     def run(self):

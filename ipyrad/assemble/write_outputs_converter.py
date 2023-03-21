@@ -59,26 +59,27 @@ class Converter:
 
     def write_phy(self):
         """Write entire sequence matrix, names padded, with header.
-    
-        If PE data the PE inserts have already been removed. This 
+
+        If PE data the PE inserts have already been removed. This
         trims the empty space from the end of the phy h5.
 
         10 100
         taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
         taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
-        taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+        taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
         taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
         """
         # write from hdf5 array
         outpath = Path(self.data.stepdir) / f"{self.data.name}.phy"
         with h5py.File(self.seqs_database, 'r') as io5:
 
-            # load seqarray 
+            # load seqarray
             seqarr = io5['phy']
 
             # get final data position (extra columns of 0s are trimmed)
             # does this load too much data at once?
-            end = self.data.assembly_stats.nsites            
+            # end = self.data.assembly_stats.nsites
+            end = np.argmax(seqarr[0] == 0)
             # end = np.all(seqarr[:] == 0, axis=0).argmax()
 
             with open(outpath, 'w', encoding="utf-8") as out:
@@ -127,14 +128,14 @@ class Converter:
 
     def _iter_nex_formatted(self, nblocks: int = 1000) -> Iterator[List[str]]:
         """Yields lists of locus strings for writing nex interleaved.
-        
+
         Many chunks of blocks are yielded together for higher efficiency
         of writing to disk in next step.
         """
         blocks = []
         bidx = 0
         for ichunk in self._iter_nex_arr_interleaved():
-            
+
             # convert a block from uint arr to string 
             block = []
             for sidx, name in enumerate(self.snames):
@@ -154,7 +155,7 @@ class Converter:
 
     def write_nex(self) -> Path:
         """Write interleaved sequence matrix, names padded, with header.
-        
+
         #NEXUS
         begin data;
           dimensions ntax=10 nchar=100;
@@ -162,12 +163,12 @@ class Converter:
           matrix
             taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
             taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
-            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
             taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
 
             taxon_aa       AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
             taxon_bbb      NNNNNNNNNNNNNNNNNCCCCCCGGGGGGG
-            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG                
+            taxon_cccc     AAAAAAAAAATTTTTTTCCCCCCGGGGGGG
             taxon_dd       AAAAAAAAAATTTTTTTNNNNNNNNNNNNN
         end;
         begin sets;
@@ -187,15 +188,15 @@ class Converter:
             # print intermediate result and clear
             for block in self._iter_nex_formatted():
                 out.write("\n" + "\n".join(block))
-                
+
             # closer
             out.write(NEXCLOSER)
-                
+
             # add partition information from maparr
             charsetblock = []
             charsetblock.append("begin sets;")
             for chunk in self._iter_phy_map(size=10_000):
-            
+
                 if not self.data.is_ref:
                     for loc in range(chunk.shape[0]):
                         lidx, start, end = chunk[loc, :3]
@@ -271,14 +272,14 @@ class Converter:
                         )
                     )
 
-                ## Write the other unlinked formats
+                # Write the other unlinked formats
                 self.write_ustr(snparr[:, subs])
                 genos = io5['genos'][:]
                 self.write_ugeno(genos[subs, :])
 
     def write_ustr(self, snparr):
         """
-        TODO: replace with ipa.structure() 
+        TODO: replace with ipa.structure()
         """
         with open(self.data.outfiles.ustr, 'w') as out:
             # option to skip ref
