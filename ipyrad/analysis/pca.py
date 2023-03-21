@@ -12,6 +12,7 @@ randomly sampling alleles at each site based on their frequency in
 the entire sample. If imputation method is set to "sampled" then
 alleles are randomly sampled from each population in the IMAP based
 on frequencies.
+
 """
 
 import os
@@ -22,6 +23,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
+# sklearn is only required when user tries to run ipa.pca.
 try:
     from sklearn import decomposition
     from sklearn.cluster import KMeans
@@ -131,16 +133,16 @@ class PCA:
     def __init__(
         self,
         data,
-        imap: Optional[Dict[str,List[str]]]=None,
-        minmap: Union[int, Dict[str,float]]=None,
-        mincov: Union[int,float]=0.1,
-        minmaf: float=0.0,
-        random_seed: Optional[int]=None,
-        kmeans_clusters: Optional[int]=None,
-        kmeans_mincov_max: Optional[float]=0.8,
-        kmeans_niters: Optional[int]=5,
-        ld_block_size: int=0,
-        cores: int=1,
+        imap: Optional[Dict[str,List[str]]] = None,
+        minmap: Union[int, Dict[str,float]] = None,
+        mincov: Union[int,float] = 0.1,
+        minmaf: float = 0.0,
+        random_seed: Optional[int] = None,
+        kmeans_clusters: Optional[int] = None,
+        kmeans_mincov_max: Optional[float] = 0.8,
+        kmeans_niters: Optional[int] = 5,
+        ld_block_size: int = 0,
+        cores: int = 1,
         ):
 
         # only check import at init
@@ -154,9 +156,9 @@ class PCA:
         """The minimum required sample coverage across all samples."""
         self.minmaf = minmaf
         """The minimum frequency of the minor allele else SNP is filtered."""
-        self.imap = imap
+        self.imap = imap if imap is not None else {}
         """Dict mapping population names to a list of samples names."""
-        self.minmap = minmap
+        self.minmap = minmap if minmap is not None else {}
         """The minimum required sample coverage in each imap population."""
         self._kmeans_mincov_max = kmeans_mincov_max
         """The highest mincov level to use in iterative kmeans imputation method."""
@@ -651,8 +653,7 @@ class PCA:
         n_neighbors: int=15,
         **kwargs,
         ):
-        """
-        Run UMAP dimensionality reduction method.
+        """Run UMAP dimensionality reduction method.
 
         Parameters
         ----------
@@ -697,12 +698,12 @@ class PCA:
 
     def run_tsne(
         self,
-        subsample: bool=True,
-        perplexity: float=5.0,
+        subsample: bool = True,
+        perplexity: float = 5.0,
         n_iters=1e6,
         random_seed=None,
         **kwargs,
-        ):
+    ):
         """Runs t-SNE model from scikit-learn on SNP data.
 
         Perplexity is the primary parameter affecting the TSNE, but
@@ -729,3 +730,29 @@ class PCA:
         self._loadings = {0: tsne_data}
         self._variances = {0: np.array([-1.0, -2.0])}
         self._model = "TSNE"
+
+
+if __name__ == "__main__":
+
+    # UNCOMMENT TO SETUP SIMULATION DATASET
+    # import ipcoal
+    # import toytree
+    # TREE = toytree.rtree.unittree(6, treeheight=1e5)
+    # MOD = ipcoal.Model(TREE, Ne=20_000, nsamples=8)
+    # MOD.sim_snps(1000)
+    # # MOD.missing_data()
+    # MOD.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
+
+    tool = PCA(
+        data="/tmp/test.snps.hdf5",
+        imap=None,  #: Optional[Dict[str,List[str]]] = None,
+        # minmap: Union[int, Dict[str,float]] = None,
+        # mincov: Union[int,float] = 0.1,
+        # minmaf: float = 0.0,
+        # random_seed: Optional[int] = None,
+        # kmeans_clusters: Optional[int] = None,
+        # kmeans_mincov_max: Optional[float] = 0.8,
+        # kmeans_niters: Optional[int] = 5,
+        # ld_block_size: int = 0,
+        # cores: int = 1,
+    )
