@@ -13,7 +13,7 @@ from loguru import logger
 # from ipyrad.assemble.utils import IPyradError
 
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 1_000_000
+CHUNKSIZE = 5_000_000
 
 
 @dataclass
@@ -111,8 +111,11 @@ class BarMatching:
         Write chunks to tmp files for each sample w/ data.
         Opens a file handle that is unique to this process/sample.
         """
+        nprocessed = 0
         for read1s, read2s in self._iter_matched_chunks():
             for name in read1s:
+                nprocessed += CHUNKSIZE
+                print(f"processed {nprocessed} reads")
 
                 # if merging tech reps then remove suffix
                 if self.data.hackers.merge_technical_replicates:
