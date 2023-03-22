@@ -40,9 +40,9 @@ class SimpleDemux:
     """: List of Paths to fastq files, unpaired."""
     barcodes_path: Path = None
     """: Path to the barcodes file."""
-    names_to_barcodes: Dict[str, Tuple[str,str]] = None
+    names_to_barcodes: Dict[str, Tuple[str, str]] = None
     """: A map of barcode strings to sample names, pre-expanded by off-by-N."""
-    filenames_to_fastqs: Dict[str, List[Tuple[str,str]]] = None
+    filenames_to_fastqs: Dict[str, List[Tuple[str, str]]] = None
     """: Dict mapping file short names to tuples of paired fastqs."""
     cuts1: List[str] = None
     """: List of enzyme overhang sites to match on read1s."""
