@@ -512,7 +512,7 @@ class CLI:
                     self.args.steps,
                     force=self.args.force,
                     quiet=self.args.quiet,
-                    ncores=self.data.ipcluster["cores"],
+                    cores=self.data.ipcluster["cores"],
                 )
 
         # show results summary
