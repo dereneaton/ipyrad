@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 40_000_000
+# CHUNKSIZE = 10_000_000
 
 
 @dataclass
@@ -51,12 +52,14 @@ class BarMatching:
         """Yields fastq quartets of lines from fastqs (gzip OK)."""
         # create first read iterator for paired data
         opener = gzip.open if self.fastqs[0].suffix == ".gz" else io.open
-        ofile1 = opener(self.fastqs[0], 'rt', encoding="utf-8")
+        # ofile1 = opener(self.fastqs[0], 'rt', encoding="utf-8")
+        ofile1 = opener(self.fastqs[0], 'rb')
         quart1 = zip(ofile1, ofile1, ofile1, ofile1)
 
         # create second read iterator for paired data
         if self.fastqs[1]:
-            ofile2 = opener(self.fastqs[1], 'rt', encoding="utf-8")
+            # ofile2 = opener(self.fastqs[1], 'rt', encoding="utf-8")
+            ofile2 = opener(self.fastqs[1], 'rb')
             quart2 = zip(ofile2, ofile2, ofile2, ofile2)
         else:
             quart2 = iter(int, 1)
@@ -79,7 +82,7 @@ class BarMatching:
         for read1, read2, match in self._iter_matched_barcode():
 
             # store r1 as 4-line string
-            fastq1 = "".join(read1)
+            fastq1 = b"".join(read1)
             if match in read1s:
                 read1s[match].append(fastq1)
             else:
@@ -87,7 +90,7 @@ class BarMatching:
 
             # store r2 as 4-line string
             if read2:
-                fastq2 = "".join(read2)
+                fastq2 = b"".join(read2)
                 if match in read2s:
                     read2s[match].append(fastq2)
                 else:
@@ -127,7 +130,8 @@ class BarMatching:
                 path1 = self.data.tmpdir / f"{fname}_R1.tmp{self.fidx}.fastq.gz"
                 data = read1s[name]
                 with gzip.open(path1, 'a') as out:
-                    out.write("".join(data).encode())
+                    # out.write("".join(data).encode())
+                    out.write(b"".join(data))
                     # logger.debug(f"wrote demuliplex chunks to {path1}")
 
                 # write to R2 chunk file.
@@ -135,7 +139,8 @@ class BarMatching:
                     path2 = self.data.tmpdir / f"{fname}_R2.tmp{self.fidx}.fastq.gz"
                     data = read2s[name]
                     with gzip.open(path2, 'a') as out:
-                        out.write("".join(data).encode())
+                        # out.write("".join(data).encode())
+                        out.write(b"".join(data))
                         # logger.debug(f"wrote demuliplex chunks to {path2}")
 
 
@@ -158,7 +163,7 @@ class BarMatchingI7(BarMatching):
         """
         for read1, read2 in self._iter_fastq_reads():
             # pull barcode from header
-            barcode = read1[0].strip().rsplit(":", 1)[-1].split("+")[0]
+            barcode = read1[0].strip().rsplit(b":", 1)[-1].split(b"+")[0]
             # look for match
             match = self.barcodes_to_names.get(barcode)
 
@@ -248,9 +253,9 @@ class BarMatchingCombinatorialInline(BarMatching):
     """: Max len of the read2 inline barcodes + re."""
 
     def __post_init__(self):
-        self.maxlen1 = max([len(i.split("_")[0]) for i in self.barcodes_to_names])
+        self.maxlen1 = max([len(i.split(b"_")[0]) for i in self.barcodes_to_names])
         self.maxlen1 += len(self.data.params.restriction_overhang[0])
-        self.maxlen2 = max([len(i.split("_")[1]) for i in self.barcodes_to_names])
+        self.maxlen2 = max([len(i.split(b"_")[1]) for i in self.barcodes_to_names])
         self.maxlen2 += len(self.data.params.restriction_overhang[1])
 
     def _iter_matched_barcode(self):
@@ -268,7 +273,8 @@ class BarMatchingCombinatorialInline(BarMatching):
             match_r2 = cut_matcher(read2[1][:self.maxlen2], self.cuts2)
 
             # look for matches
-            barcode = f"{match_r1}_{match_r2}"
+            # barcode = f"{match_r1}_{match_r2}"
+            barcode = match_r1 + b"_" + match_r2
             match = self.barcodes_to_names.get(barcode)
 
             # record stats and yield the reads if matched.
@@ -296,7 +302,7 @@ def cut_matcher(read: str, cutters: List[str]) -> str:
         pos = read.find(cut)
         if pos > 0:
             return read[:pos]
-    return "XXX"
+    return b"XXX"
 
 
 @dataclass

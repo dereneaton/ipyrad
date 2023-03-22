@@ -282,6 +282,10 @@ class SimpleDemux:
         # logger.info(self.cuts1)
         # logger.info(self.cuts2)
 
+        # convert all str to bytes
+        self.cuts1 = [i.encode() for i in self.cuts1]
+        self.cuts2 = [i.encode() for i in self.cuts2]
+
     def _get_barcodes_to_names_map(self) -> None:
         """Fills .barcodes_to_names with all acceptable barcodes: name.
 
@@ -299,7 +303,7 @@ class SimpleDemux:
                     f"{barcode[0]}" if not barcode[1] else
                     f"{barcode[0]}_{barcode[1]}"
                 )
-                self.barcodes_to_names[barc] = name
+                self.barcodes_to_names[barc.encode()] = name
             return
 
         # iterate over barcodes: names
@@ -319,10 +323,11 @@ class SimpleDemux:
             if not bars2:
                 barcgen = iter(bars1)
             else:
-                barcgen = (f"{i}_{j}" for (i,j) in itertools.product(bars1, bars2))
+                barcgen = (f"{i}_{j}" for (i, j) in itertools.product(bars1, bars2))
 
             warning = False
             for barc in barcgen:
+                barc = barc.encode()
                 if barc not in self.barcodes_to_names:
                     self.barcodes_to_names[barc] = name
                 else:
