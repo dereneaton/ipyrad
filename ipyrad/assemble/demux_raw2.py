@@ -493,7 +493,7 @@ def barmatch(data, fastqs, barcodes_to_names, cuts1, cuts2, fidx):
     if data.hackers.demultiplex_on_i7_tags:
         barmatcher = BarMatchingI7(
             data, fastqs, barcodes_to_names, cuts1, cuts2, fidx)
-    elif "_" in list(barcodes_to_names)[0]:
+    elif "b_" in list(barcodes_to_names)[0]:
         barmatcher = BarMatchingCombinatorialInline(
             data, fastqs, barcodes_to_names, cuts1, cuts2, fidx)
     else:
