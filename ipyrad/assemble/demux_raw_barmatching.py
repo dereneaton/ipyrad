@@ -13,7 +13,7 @@ from loguru import logger
 # from ipyrad.assemble.utils import IPyradError
 
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 5_000_000
+CHUNKSIZE = 10_000_000
 
 
 @dataclass
@@ -113,9 +113,9 @@ class BarMatching:
         """
         nprocessed = 0
         for read1s, read2s in self._iter_matched_chunks():
+            nprocessed += CHUNKSIZE
+            print(f"processed {nprocessed} reads")
             for name in read1s:
-                nprocessed += CHUNKSIZE
-                print(f"processed {nprocessed} reads")
 
                 # if merging tech reps then remove suffix
                 if self.data.hackers.merge_technical_replicates:
