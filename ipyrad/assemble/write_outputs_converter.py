@@ -77,10 +77,7 @@ class Converter:
             seqarr = io5['phy']
 
             # get final data position (extra columns of 0s are trimmed)
-            # does this load too much data at once?
-            # end = self.data.assembly_stats.nsites
             end = np.argmax(seqarr[0] == 0)
-            # end = np.all(seqarr[:] == 0, axis=0).argmax()
 
             with open(outpath, 'w', encoding="utf-8") as out:
                 out.write(f"{len(self.snames)} {end}\n")
@@ -105,8 +102,9 @@ class Converter:
                 data = seqarr[:, bidx:bidx + chunksize]
 
                 # filter to remove columns with 0s
-                mask = np.all(data == 0, axis=0)
-                data = data[:, np.invert(mask)]
+                end = np.argmax(data[0] == 0)
+                if end:
+                    data = data[:, :end]
 
                 # if any data left then yield it.
                 if data.size:   # pylint: disable=no-member
@@ -181,7 +179,9 @@ class Converter:
         """
         # open output file to write to
         outpath = Path(self.data.stepdir) / f"{self.data.name}.nex"
-        header = dict(ntax=len(self.snames), nchar=self.data.assembly_stats.nsites)
+        with h5py.File(self.seqs_database, 'r') as io5:
+            nsites = np.argmax(io5['phy'][0] == 0)
+        header = dict(ntax=len(self.snames), nchar=nsites)
         with open(outpath, 'w', encoding="utf-8") as out:
             out.write(NEXHEADER.format(**header))
 
