@@ -9,11 +9,11 @@ import io
 import gzip
 from dataclasses import dataclass, field
 
-from loguru import logger
+# from loguru import logger
 # from ipyrad.assemble.utils import IPyradError
 
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 10_000_000
+CHUNKSIZE = 40_000_000
 
 
 @dataclass
@@ -128,7 +128,7 @@ class BarMatching:
                 data = read1s[name]
                 with gzip.open(path1, 'a') as out:
                     out.write("".join(data).encode())
-                    logger.debug(f"wrote demuliplex chunks to {path1}")
+                    # logger.debug(f"wrote demuliplex chunks to {path1}")
 
                 # write to R2 chunk file.
                 if read2s:
@@ -136,7 +136,7 @@ class BarMatching:
                     data = read2s[name]
                     with gzip.open(path2, 'a') as out:
                         out.write("".join(data).encode())
-                        logger.debug(f"wrote demuliplex chunks to {path2}")
+                        # logger.debug(f"wrote demuliplex chunks to {path2}")
 
 
 @dataclass
