@@ -15,7 +15,7 @@ from loguru import logger
 
 logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
-CHUNKSIZE = 40_000_000
+CHUNKSIZE = 10_000_000
 # CHUNKSIZE = 10_000_000
 
 
@@ -110,7 +110,12 @@ class BarMatching:
         yield read1s, read2s
 
     def run(self) -> None:
-        """Multiprocessed writing is much faster, especially on HPC."""
+        """Multiprocessed writing is much faster, especially on HPC.
+
+        Some overhead from i/o limitations, but most time here is spent
+        on the string concatenation and gzip compression, which can
+        happen in parallel on different engines.
+        """
         with ProcessPoolExecutor(max_workers=10) as pool:
             nprocessed = 0
             for read1s, read2s in self._iter_matched_chunks():

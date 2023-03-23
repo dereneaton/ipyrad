@@ -353,6 +353,7 @@ class SimpleDemux:
         jobs = {}
         for fidx, fname in enumerate(self.filenames_to_fastqs):
             fastqs = self.filenames_to_fastqs[fname]
+            logger.debug(f"processing {[Path(i).name for i in fastqs if i]}")
             args = (self.data, fastqs, self.barcodes_to_names, self.cuts1, self.cuts2, fidx)
             jobs[fname] = barmatch(*args)
         prog1 = jobs
