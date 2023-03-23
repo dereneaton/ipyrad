@@ -130,8 +130,8 @@ PARSER.add_argument(
     type=int, default=2,
     help="tune threading of multi-threaded binaries (Default=2)")
 PARSER.add_argument(
-    "--logger", action="store_true",
-    help="print info to a logfile in ./ipyrad_log.txt.")
+    "--logger", type=str, nargs="*",
+    help="log_level and log_file args (Default=INFO)") # to print info to a logfile in ./ipyrad_log.txt.")
 PARSER.add_argument(
     "--ipcluster", dest="ipcluster",
     type=str, nargs="?", const="default",
@@ -447,7 +447,13 @@ class CLI:
 
         # if args.debug turn on the debugger
         if self.args.logger:
-            ip.set_log_level("DEBUG", log_file="./ipyrad_log.txt")
+            log_level = self.args.logger[0]
+            if len(self.args.logger) > 1:
+                log_file = self.args.logger
+            else:
+                log_file = None  # "./ipyrad_log.txt"
+            ip.set_log_level(log_level, log_file=log_file)
+            # ip.set_log_level("DEBUG", log_file="./ipyrad_log.txt")
 
         # run flags that are not step/run commands: -n, -m, --download
         # if run, these all end with a sys.exit

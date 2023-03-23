@@ -25,7 +25,7 @@ from ipyrad.core.load_json import load_json
 from ipyrad.core.merge import merge
 from ipyrad.core.cluster import Cluster
 
-__version__ = "1.0.0-alpha"
+__version__ = "1.0.0-alpha-2"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # configure the logger

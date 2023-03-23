@@ -355,13 +355,13 @@ class SimpleDemux:
             fastqs = self.filenames_to_fastqs[fname]
             args = (self.data, fastqs, self.barcodes_to_names, self.cuts1, self.cuts2, fidx)
             jobs[fname] = barmatch(*args)
+        prog1 = jobs
         #     jobs[fname] = lbview.apply(barmatch, *args)
         # msg = "demultiplexing reads"
         # prog1 = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
         # prog1.update()
         # prog1.block()
         # prog1.check()
-        prog1 = {i: jobs[i].result() for i in jobs}
 
         # concatenating tmpfiles
         jobs = {}
@@ -384,7 +384,8 @@ class SimpleDemux:
             self.data.samples[name] = sample
 
         # store stats for writing the verbose output file
-        self.file_stats = prog1.results
+        self.file_stats = prog1
+        # self.file_stats = prog1.results
 
         # write stats to the sample
         for _, stats in self.file_stats.items():
@@ -457,10 +458,10 @@ class SimpleDemux:
                 if name == self.barcodes_to_names[foundbar]:
                     count = bar_obs[foundbar]
                     if count:
-                        if "_" in foundbar:
-                            foundbar = tuple(foundbar.split("_"))
+                        if b"_" in foundbar:
+                            foundbar = tuple(i.decode() for i in foundbar.split(b"_"))
                         else:
-                            truebar = truebar[0]
+                            foundbar = foundbar.decode()
                         data.append([name, truebar, foundbar, count])
 
         # record misses
@@ -470,8 +471,10 @@ class SimpleDemux:
         bad_bar_obs = sorted(bad_bars, key=lambda x: bad_bars[x], reverse=True)
         for badbar in bad_bar_obs:
             count = bad_bars[badbar]
-            if "_" in badbar:
-                badbar = tuple(badbar.split("_"))
+            if b"_" in badbar:
+                badbar = tuple(i.decode() for i in badbar.split(b"_"))
+            else:
+                badbar = badbar.decode()
             data.append(["no_match", "", badbar, count])
         barcodes_df = pd.DataFrame(
             index=[i[0] for i in data],

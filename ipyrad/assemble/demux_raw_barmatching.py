@@ -110,7 +110,7 @@ class BarMatching:
         yield read1s, read2s
 
     def run(self) -> None:
-        """..."""
+        """Multiprocessed writing is much faster, especially on HPC."""
         with ProcessPoolExecutor(max_workers=10) as pool:
             nprocessed = 0
             for read1s, read2s in self._iter_matched_chunks():
