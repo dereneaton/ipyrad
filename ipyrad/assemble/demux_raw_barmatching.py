@@ -243,7 +243,7 @@ class BarMatchingSingleInline(BarMatching):
         for read1, read2 in self._iter_fastq_reads():
 
             # find barcode from start of R1 (barcode1 + RE1 overhang)
-            barcode = cut_matcher(read1[1], self.cuts1)
+            barcode = cut_matcher(read1[1][:self.maxlen1], self.cuts1)
 
             # look for matches
             match = self.barcodes_to_names.get(barcode)

@@ -509,7 +509,7 @@ def barmatch(data, fastqs, barcodes_to_names, cuts1, cuts2, fidx):
     return barmatcher.barcode_misses, barmatcher.barcode_hits, barmatcher.sample_hits
 
 
-def concatenate_tmpfiles(data: "Assembly", name: str) -> Tuple[str,str]:
+def concatenate_tmpfiles(data: "Assembly", name: str) -> Tuple[str, str]:
     """write tmpfiles to stepdir."""
     r1s = list(data.tmpdir.glob(f"{name}_R1.tmp*.fastq.gz"))
     r2s = list(data.tmpdir.glob(f"{name}_R2.tmp*.fastq.gz"))
