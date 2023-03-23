@@ -354,12 +354,14 @@ class SimpleDemux:
         for fidx, fname in enumerate(self.filenames_to_fastqs):
             fastqs = self.filenames_to_fastqs[fname]
             args = (self.data, fastqs, self.barcodes_to_names, self.cuts1, self.cuts2, fidx)
-            jobs[fname] = lbview.apply(barmatch, *args)
-        msg = "demultiplexing reads"
-        prog1 = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
-        prog1.update()
-        prog1.block()
-        prog1.check()
+            jobs[fname] = barmatch(*args)
+        #     jobs[fname] = lbview.apply(barmatch, *args)
+        # msg = "demultiplexing reads"
+        # prog1 = AssemblyProgressBar(jobs, msg, step=1, quiet=self.quiet)
+        # prog1.update()
+        # prog1.block()
+        # prog1.check()
+        prog1 = {i: jobs[i].result() for i in jobs}
 
         # concatenating tmpfiles
         jobs = {}

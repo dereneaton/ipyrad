@@ -6,12 +6,14 @@
 
 from typing import Dict, Tuple, List, TypeVar, Iterator
 import io
+from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor
 import gzip
 from dataclasses import dataclass, field
-
-# from loguru import logger
+from loguru import logger
 # from ipyrad.assemble.utils import IPyradError
 
+logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
 CHUNKSIZE = 40_000_000
 # CHUNKSIZE = 10_000_000
@@ -108,6 +110,32 @@ class BarMatching:
         yield read1s, read2s
 
     def run(self) -> None:
+        """..."""
+        with ProcessPoolExecutor(max_workers=10) as pool:
+            nprocessed = 0
+            for read1s, read2s in self._iter_matched_chunks():
+                nprocessed += min(CHUNKSIZE, sum(len(i) for i in read1s.values()))
+                logger.debug(f"processed {nprocessed} reads")
+
+                for name in read1s:
+                    # if merging tech reps then remove suffix
+                    if self.data.hackers.merge_technical_replicates:
+                        fname = name.split("-technical-replicate-")[0]
+                    else:
+                        fname = name
+
+                    # write to R1 chunk file.
+                    path1 = self.data.tmpdir / f"{fname}_R1.tmp{self.fidx}.fastq.gz"
+                    data = read1s[name]
+                    pool.submit(write, *(path1, data))
+
+                    # write to R2 chunk file.
+                    if read2s:
+                        path2 = self.data.tmpdir / f"{fname}_R2.tmp{self.fidx}.fastq.gz"
+                        data = read2s[name]
+                        pool.submit(write, *(path2, data))
+
+    def old_run(self) -> None:
         """Iterate over all lines matching barcodes and recording stats,
         and write the matched reads to unique files in chunks.
 
@@ -116,8 +144,8 @@ class BarMatching:
         """
         nprocessed = 0
         for read1s, read2s in self._iter_matched_chunks():
-            nprocessed += CHUNKSIZE
-            print(f"processed {nprocessed} reads")
+            nprocessed += min(CHUNKSIZE, sum(len(i) for i in read1s.values()))
+            logger.debug(f"processed {nprocessed} reads")
             for name in read1s:
 
                 # if merging tech reps then remove suffix
@@ -142,6 +170,11 @@ class BarMatching:
                         # out.write("".join(data).encode())
                         out.write(b"".join(data))
                         # logger.debug(f"wrote demuliplex chunks to {path2}")
+
+
+def write(path: Path, data: List[str]) -> None:
+    with gzip.open(path, 'a') as out:
+        out.write(b"".join(data))
 
 
 @dataclass
