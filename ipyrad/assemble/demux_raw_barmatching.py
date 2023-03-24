@@ -337,7 +337,7 @@ def cut_matcher(read: str, cutters: List[str]) -> str:
     generator stops when the first valid hit occurs, for speed.
     """
     for cut in cutters:
-        pos = read.find(cut)
+        pos = read.rfind(cut)
         if pos > 0:
             return read[:pos]
     return b"XXX"
