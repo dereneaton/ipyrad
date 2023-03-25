@@ -38,6 +38,16 @@ or without it.
     conda config --add channels conda-forge
     conda config --set channel_priority strict
 
+Fixing conda install stuck on 'Solving Environment'
+---------------------------------------------------
+Recently (2023-ish) conda has had some problems resolving dependencies and can get stuck solving
+them 'forever'. A workaround, for the moment, is to install and use the `libmamba-solver`.
+
+.. code:: bash
+
+    conda update -n base conda
+    conda install -n base conda-libmamba-solver
+    conda config --set solver libmamba
 
 Alternative: install from GitHub
 --------------------------------
