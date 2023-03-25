@@ -323,17 +323,19 @@ def main():
         else:
             ip.set_log_level(args.logger[0])
 
-    from ipyrad.demux.demux import Demux
-    Demux(
-        fastq_paths=args.d,
-        barcodes_path=args.b,
-        outpath=args.o,
-        re1=args.re1,
-        re2=args.re2,
-        cores=args.c,
-        merge_technical_replicates=args.m,
-        chunksize=args.chunksize,
-    ).run()
+    # demultiplexing job.
+    if args.demux:
+        from ipyrad.demux.demux import Demux
+        Demux(
+            fastq_paths=args.d,
+            barcodes_path=args.b,
+            outpath=args.o,
+            re1=args.re1,
+            re2=args.re2,
+            cores=args.c,
+            merge_technical_replicates=args.m,
+            chunksize=args.chunksize,
+        ).run()
 
 
 if __name__ == "__main__":

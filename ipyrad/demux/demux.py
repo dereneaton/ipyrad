@@ -184,12 +184,12 @@ class Demux:
             # paired, or the file names format is strange. We will raise
             # a warning later if the data seem to be PE but it was not
             # detected.
-            except AssertionError:
+            except (AssertionError, ValueError):
                 idx += 1
                 if idx > 4:
                     logger.debug(
                         "No PE fastq pairs detected based on filenames, "
-                        "assuming SE data for now."
+                        "assuming SE data."
                     )
                     break
 
