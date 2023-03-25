@@ -314,8 +314,10 @@ def test():
 
 def main():
     parser = setup_parsers()
+    # example = ["demux", "-b", ".", "-d", "."]
     # example = ["demux", "-d", "../../pedtest/small_tmp_R*.gz", "-b", "../../pedtest/barcodes-true-plate1.csv", "--logger", "DEBUG", "-m", "1", "-o", "/tmp/TEST"])
     args = parser.parse_args()
+    # print(args)
 
     if args.logger:
         if len(args.logger) > 1:
@@ -324,7 +326,7 @@ def main():
             ip.set_log_level(args.logger[0])
 
     # demultiplexing job.
-    if args.demux:
+    if args.subcommand == "demux":
         from ipyrad.demux.demux import Demux
         Demux(
             fastq_paths=args.d,
