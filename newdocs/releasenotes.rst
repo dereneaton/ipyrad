@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.89
+------
+**March 30, 2023**
+
+- Fix for #502
+- Update install instructions  to point to libmamba-solver
+
 0.9.88
 ------
 **March 12, 2023**
