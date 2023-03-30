@@ -738,7 +738,15 @@ def dereplicate(data, sample, nthreads):
             "{}_declone.fastq".format(sample.name)),
     ]
     infiles = [i for i in infiles if os.path.exists(i)]
-    infile = infiles[-1]
+    try:
+        infile = infiles[-1]
+    except IndexError as inst:
+        # Fix for #502 when merging _after_ step 2 `data.dirs` is blanked
+        # by the merge, so the trimmed files are not found. To save this
+        # edge case just pull from sample.edits
+        # This _only_ happens with SE data, because PE data will be merged
+        # and the _merged.fastq file will exist in tmpdir.
+        infile = sample.files.edits[0][0]
 
     # datatypes options
     strand = "plus"
