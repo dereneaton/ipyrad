@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.90
+------
+**April 03, 2023**
+
+- Fixing a bunch of AttributeErrors on h5py attribute decode attempts
+- Pin muscle < v5.0 in meta.yaml
+
 0.9.89
 ------
 **March 30, 2023**
