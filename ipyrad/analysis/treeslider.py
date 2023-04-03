@@ -266,13 +266,23 @@ class TreeSlider(object):
         with h5py.File(self.data, 'r') as io5:
 
             # parse formatting from db
-            self._pnames = np.array([
-                i.decode() for i in io5["phymap"].attrs["phynames"]
-            ])
+            try:
+                self._pnames = np.array([
+                    i.decode() for i in io5["phymap"].attrs["phynames"]
+                ])
+            except AttributeError:
+                self._pnames = np.array([
+                    i for i in io5["phymap"].attrs["phynames"]
+                ])
+
             self._longname = 1 + max([len(i) for i in self._pnames])
 
             # parse names and lengths from db
-            scafnames = [i.decode() for i in io5["scaffold_names"][:]]
+            try:
+                scafnames = [i.decode() for i in io5["scaffold_names"][:]]
+            except AttributeError:
+                scafnames = [i for i in io5["scaffold_names"][:]]
+
             scaflens = io5["scaffold_lengths"][:]
 
             # organize as a DF
@@ -352,6 +362,10 @@ class TreeSlider(object):
         """
         with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
+            try:
+                colnames = [i.decode() for i in colnames]
+            except AttributeError:
+                colnames = [i for i in colnames]
 
             # mask to select this scaff
             mask = io5["phymap"][:, 0] == self.scaffold_idx + 1

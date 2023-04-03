@@ -169,7 +169,10 @@ class Popgen(object):
         #with h5py.File(self.snpfile, 'r') as io5:
         #    self.samples = [x.decode() for x in io5["snps"].attrs["names"]]
         with h5py.File(self.datafile, 'r') as io5:
-            self.samples = [x.decode() for x in io5["phymap"].attrs["phynames"]]
+            try:
+                self.samples = [i.decode() for i in io5["phymap"].attrs["phynames"]]
+            except AttributeError:
+                self.samples = [i for i in io5["phymap"].attrs["phynames"]]
         if self.imap:
             # Check agreement between samples in imap and hdf5 file
             imap_samps = list(chain(*self.imap.values()))
