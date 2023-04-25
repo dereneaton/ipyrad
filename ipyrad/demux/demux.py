@@ -5,7 +5,10 @@
 TODO
 ----
 - keep paired option or only auto-detect?
-
+- Try to speed up using 1 core for reading, 1 for processing, and N for 
+writing/compressing, all while restricting the size of queued reads waiting
+to be written, based on this approach: 
+https://stackoverflow.com/questions/9770027/how-to-parse-a-large-file-taking-advantage-of-threading-in-python
 """
 
 from typing import Dict, Tuple, List, Iterator, Optional
@@ -234,7 +237,7 @@ class Demux:
         except ParserError as err:
             raise IPyradError(
                 "Failed to parse barcodes file. Check that your sample\n"
-                "names do not include spaces (invalid)."
+                "names do not include spaces (invalid)"
             ) from err
 
         # the dataframe COULD have >3 columns, in which case we will
@@ -263,14 +266,14 @@ class Demux:
             if self.merge_technical_replicates:
                 logger.warning(
                     "Technical replicates are present (samples with same name "
-                    "in barcodes file) and will be merged.")
+                    "in barcodes file) and will be merged")
 
             # warn that dups are present and WILL NOT be merged.
             else:
                 logger.warning(
                     "Technical replicates are present (samples with same name "
                     "in barcodes file) and will be written with "
-                    "'-technical-replicate-x' appended to name.")
+                    "'-technical-replicate-x' appended to name")
 
             # either way, relabel the samples for now, and may or may not merge later.
             for dup in duplicated:
@@ -576,13 +579,15 @@ def barmatch(fastq_tuple, demux_obj):
     )
 
     if demux_obj.i7:
-        logger.info("demultiplexing on i7 indices")
+        logger.info("demultiplexing on i7 index")
         barmatcher = BarMatchingI7(**kwargs)
     else:
         # TODO: maybe support other options like 2BRAD here...
         if b"_" in list(demux_obj._barcodes_to_names)[0]:
+            logger.info("demultiplexing on R1+R2 inline barcodes")
             barmatcher = BarMatchingCombinatorialInline(**kwargs)
         else:
+            logger.info("demultiplexing on R1 inline barcodes")
             barmatcher = BarMatchingSingleInline(**kwargs)
     try:
         barmatcher.run()
