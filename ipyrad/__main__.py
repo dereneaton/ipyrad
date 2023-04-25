@@ -141,24 +141,24 @@ def setup_parsers() -> argparse.ArgumentParser:
             "If no value is entered then it will be estimated from the sequences.")
     )
     demux.add_argument(
-        "-m", metavar="max_mismatch", type=int, default=0,
+        "-m", "--max-mismatch", metavar="max_mismatch", type=int, default=0,
         help=(
             "The maximum number of allowed mismatches between true and "
             "oberved barcodes (Default=0).")
     )
     demux.add_argument(
-        "-c", metavar="cores", type=int, default=4,
+        "-c", "--cores", metavar="cores", type=int, default=4,
         help="Number of cores for parallelization",
     )
     demux.add_argument(
-        "--chunksize", type=int, default=int(1e7),
+        "--chunksize", type=float, default=int(1e7),
         help=(
             "Number of reads to process in between writing to disk. "
             "Larger values process faster, but use more RAM.")
     )
     demux.add_argument(
         "--i7", action="store_true",
-        help="demultiplex on i7 index instead of inline barcodes."
+        help="Demultiplex on i7 index instead of inline barcodes."
     )
     demux.add_argument(
         "--merge-technical-replicates", action="store_true",
@@ -289,7 +289,8 @@ def setup_parsers() -> argparse.ArgumentParser:
 def test():
     parser = setup_parsers()
 
-    cmd = "demux -d ./a.txt -b ./b.txt -o ./fastqs --i7"
+    cmd = "demux -h"
+    # cmd = "demux -d ./a.txt -b ./b.txt -o ./fastqs --i7"
     cmd_list = cmd.split()
     print(parser.parse_args(cmd_list))
 
