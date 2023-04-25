@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 
-""" Core ipyrad codebase for assembly functions. For developers only """ 
-
-## allow these individual funcs to be imported
-# from . import parallel, load
+from ipyrad.core2.base_step import BaseStep
+from ipyrad.core2.progress import progress, track_remote_jobs
+from ipyrad.core2.assembly import Assembly
+from ipyrad.core2.exceptions import IPyradError

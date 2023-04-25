@@ -13,25 +13,25 @@ from ipyrad.assemble.utils import BADCHARS
 
 
 def merge(
-    name: str, 
-    assemblies: List[Assembly], 
-    rename_dict: Optional[Dict[str,str]] = None,
-    ):
+    name: str,
+    assemblies: List[Assembly],
+    rename_dict: Optional[Dict[str, str]] = None,
+):
     """Merge two Assemblies into a single Assembly.
 
     Creates and return a new Assembly containing the merged samples
-    of all input Assemblies, and parameter settings set to the 
-    first Assembly. Merging can be used to combine samples up to 
-    step 5 (i.e., before running 6). Sample states will be set to 
-    a maximum of 5 or their current state. Merging does not affect 
-    the actual files that currently exist, but rather creates new 
+    of all input Assemblies, and parameter settings set to the
+    first Assembly. Merging can be used to combine samples up to
+    step 5 (i.e., before running 6). Sample states will be set to
+    a maximum of 5 or their current state. Merging does not affect
+    the actual files that currently exist, but rather creates new
     samples that reference multiple existing files.
 
     Examples
     ---------
     >>> # merge two assemblies
     >>> new = ip.merge('newname', [assembly1, assembly2])
-    >>> 
+    >>>
     >>> # merge two assemblies and rename samples
     >>> rename = {"1A_0", "A", "1B_0", "A"}
     >>> new = ip.merge('newname', [assembly1, assembly2], rename_dict=rename)
@@ -57,7 +57,7 @@ def merge(
         ])
         if any(i in newname for i in BADCHARS):
             logger.warning(
-                "modifying {newname} to {newername} to avoid bad characters.")
+                f"modifying {newname} to {newername} to avoid bad characters.")
         rename_dict[oldname] = newername
 
     # send technical replicate info to logger
@@ -68,14 +68,14 @@ def merge(
             if key not in techs:
                 techs[key] = [i]
             else:
-                techs[key].append(i)   
+                techs[key].append(i)
         techs = {i: j for (i, j) in techs.items() if len(j) > 1}
         for tname in techs:
             logger.info(
                 f"merging technical replicates into {tname}: {techs[tname]}")
 
     # if only one assembly was entered, make it iterable. Users can
-    # enter a single assembly since the merge command can still be 
+    # enter a single assembly since the merge command can still be
     # used to merge technical replicates.
     if isinstance(assemblies, Assembly):
         assemblies = [assemblies]
@@ -149,12 +149,12 @@ def merge(
 
 
 MERGED_TECHNICAL_REPLICATES = """\
-    NB: One or more samples are present in one or more of the merged 
-    assemblies, and are beyond step 3. Technical replicates need to be 
-    clustered within samples so YOU MUST re-run these samples from at 
-    least step 3. Sample states in the new Assembly are set to 2 to 
-    enforce this.
-    """
+NB: One or more samples are present in one or more of the merged
+assemblies, and are beyond step 3. Technical replicates need to be
+clustered within samples so YOU MUST re-run these samples from at
+least step 3. Sample states in the new Assembly are set to 2 to
+enforce this.
+"""
 
 
 if __name__ == "__main__":

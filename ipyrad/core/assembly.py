@@ -7,25 +7,35 @@
 
 from typing import List, Optional, Dict, Tuple
 import shutil
-# import asyncio
-# from pathlib import Path
-
 from loguru import logger
 import pandas as pd
-from ipyrad.core.params_schema import ParamsSchema, HackersSchema
-from ipyrad.core.schema import Project, SampleSchema
-from ipyrad.core.cluster import Cluster
-from ipyrad.assemble.utils import IPyradExit
-from ipyrad.assemble.s1_demux import Step1
-from ipyrad.assemble.s2_trim_reads import Step2
-from ipyrad.assemble.s3_clustmap_within import Step3
-from ipyrad.assemble.s4_joint_estimate import Step4
-from ipyrad.assemble.s5_consensus import Step5
-from ipyrad.assemble.s6_clustmap_across import Step6
-from ipyrad.assemble.s7_assemble import Step7
+
+import ipyparallel
+from ipyrad import Cluster
+from ipyrad.schema import Project, Sample, Params
+# from ipyrad.core2 import 
+# from ipyrad.assemble.utils import IPyradExit
+# from ipyrad.assemble.s1_demux import Step1
+# from ipyrad.assemble.s2_trim_reads import Step2
+# from ipyrad.assemble.s3_clustmap_within import Step3
+# from ipyrad.assemble.s4_joint_estimate import Step4
+# from ipyrad.assemble.s5_consensus import Step5
+# from ipyrad.assemble.s6_clustmap_across import Step6
+# from ipyrad.assemble.s7_assemble import Step7
 
 # pylint: disable=too-many-branches
 logger = logger.bind(name="ipyrad")
+
+# the Class functions to run for each entered step.
+STEP_MAP = {
+    # "1": Step1,
+#     "2": Step2,
+#     "3": Step3,
+#     "4": Step4,
+#     "5": Step5,
+#     "6": Step6,
+#     "7": Step7,
+}
 
 
 class Assembly:
@@ -48,11 +58,9 @@ class Assembly:
     """
     def __init__(self, name: str):
         # core JSON file components
-        self.params = ParamsSchema(assembly_name=name)
+        self.params = Params(assembly_name=name)
         """: A class storing assembly parameters."""
-        self.hackers = HackersSchema()
-        """: A class storing 'Hackers' parameters that are for power-users."""
-        self.samples: Dict[str, SampleSchema] = {}
+        self.samples: Dict[str, Sample] = {}
         """: A dictionary mapping sample names to Sample objects."""
         self.populations: Dict[str, Tuple] = {}
         """: A optional dict of {popnames: ([samples], min)}"""
@@ -84,7 +92,9 @@ class Assembly:
     @property
     def is_pair(self) -> bool:
         """Returns whether Assembly is paired datatype, based on params."""
-        return "pair" in self.params.datatype
+        first_sample = list(self.samples.values())[0]
+        return bool(first_sample.files.fastqs[1])
+        # return "pair" in self.params.datatype
 
     @property
     def stats(self) -> pd.DataFrame:
@@ -237,7 +247,7 @@ class Assembly:
         # If not forcing, test for file and bail out if it exists
         if not force:
             if outpath.exists():
-                raise IPyradExit(
+                raise IOError(
                     f"Error: file {outpath} exists, you must use force to overwrite")
 
         params = self.params.dict()
@@ -259,8 +269,7 @@ class Assembly:
         """Writes the current Assembly object to the project JSON file."""
         self.params.project_dir.mkdir(exist_ok=True)
         project = Project(
-            params=ParamsSchema(**self.params.dict()),
-            hackers=HackersSchema(**self.hackers.dict()),
+            params=Params(**self.params.dict()),
             samples=self.samples,
             populations=self.populations,
             assembly_stats=self.assembly_stats,
@@ -276,9 +285,9 @@ class Assembly:
         cores: Optional[int] = None,
         force: bool = False,
         quiet: bool = False,
-        ipyclient: Optional["ipyparallel.Client"] = None,
+        ipyclient: Optional[ipyparallel.Client] = None,
         **ipyclient_kwargs,
-        ) -> None:
+    ) -> None:
         """Run one or more assembly steps (1-7) of an ipyrad assembly.
 
         Parameters
@@ -318,76 +327,8 @@ class Assembly:
             for step in steps:
                 tool = STEP_MAP[step](self, force, quiet, client)
                 tool.run()
-                # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
+                shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
 
-    # async def _run_async(
-    #     self,
-    #     steps: str,
-    #     cores: Optional[int]=None,
-    #     force: bool=False,
-    #     quiet: bool=False,
-    #     ipyclient: Optional["ipyparallel.Client"]=None,
-    #     **ipyclient_kwargs,
-    #     ) -> None:
-    #     """Run one or more assembly steps (1-7) of an ipyrad assembly.
-
-    #     This starts and shutsdown the ipyparallel cluster asynchronously
-    #     (faster). It is currently only designed for use with in the CLI,
-    #     not in the Python API, and will cause problems in jupyter, thus
-    #     it is a private func.
-
-    #     FIXME: interrupt not working yet for this func...?
-
-    #     Parameters
-    #     ----------
-    #     steps: str
-    #         A string of steps to run, e.g., "1", or "123".
-    #     force: bool
-    #         Force overwrite of existing results for this step.
-    #     quiet: bool
-    #         Suppress printed headers to stdout.
-    #     ipyclient: None or ipyparallel.Client
-    #         Optional ipyparallel client to connect to for distributing
-    #         jobs in parallel. This option is generally only useful if
-    #         you start a Client using MPI to connect to multiple nodes
-    #         of an HPC cluster. See ipyrad HPC docs for details.
-
-    #     Examples
-    #     --------
-    #     >>> data = ip.load_json("test.json")
-    #     >>> data.run("123", cores=4)
-    #     """
-    #     # save the current JSON file (and a backup?)
-    #     self.save_json()
-
-    #     # init the ipyparallel cluster class wrapper
-    #     if ipyclient is not None:
-    #         raise NotImplementedError(
-    #             "Usage of an external ipyclient is currently deprecated.")
-
-    #     # init first step before starting cluster to check for
-    #     # simple errors like missing file paths.
-    #     STEP_MAP[steps[0]](self, force=force, quiet=True, ipyclient=None)
-
-    #     # start cluster asynchronously, run jobs, and shutdown.
-    #     async with Cluster(cores=cores, **ipyclient_kwargs) as client:
-    #         # use client for any/all steps of assembly
-    #         for step in steps:
-    #             tool = STEP_MAP[step](self, force, quiet, client)
-    #             tool.run()
-    #             # shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
-
-
-# the Class functions to run for each entered step.
-STEP_MAP = {
-    "1": Step1,
-    "2": Step2,
-    "3": Step3,
-    "4": Step4,
-    "5": Step5,
-    "6": Step6,
-    "7": Step7,
-}
 
 # PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
 PARAMSINFO = {
@@ -424,18 +365,17 @@ PARAMSINFO = {
 }
 
 
-
 if __name__ == "__main__":
 
     import ipyrad as ip
     ip.set_log_level("DEBUG")#, logfile="/tmp/test.log")
 
-    TEST = ip.Assembly("PEDIC2")
+    TEST = Assembly("NEWTEST")
     TEST.params.project_dir = "/tmp"
-    TEST.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
-    TEST.populations['all'] = (['a', 'b', 'c'], 3)
-    TEST.write_params(True)
-    print((TEST.params.project_dir))
+    TEST.params.fastq_path = "../../sra-fastqs/*.fastq"
+    TEST.run("1")
+    # TEST.write_params(True)
+    # print((TEST.params.project_dir))
 
     # TEST.run('1', force=True, quiet=True)
     # print(TEST.stats)
@@ -456,4 +396,3 @@ if __name__ == "__main__":
     # data.params.barcodes_path = "../../tests/ipsimdata/rad_example_barcodes.txt"
     # data.run("1", force=True, quiet=True)
     # print(data.stats)
-
