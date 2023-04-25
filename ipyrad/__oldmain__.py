@@ -30,8 +30,8 @@ import ipyparallel as ipp
 from loguru import logger
 
 import ipyrad as ip
-from ipyrad.core.params_schema import ParamsSchema
-from ipyrad.assemble.utils import IPyradError, IPyradExit
+from ipyrad.schema import Params
+from ipyrad.core import IPyradError
 from ipyrad.core.cluster import get_num_cpus
 
 ##############################################################
@@ -321,7 +321,7 @@ class CLI:
                     data = ip.Assembly(assembly_name)
                 else:
                     if json_file.exists():
-                        raise IPyradExit(
+                        raise IPyradError(
                             "Assembly already exists, use force to overwrite")
                     data = ip.Assembly(assembly_name)
             else:
@@ -339,7 +339,7 @@ class CLI:
 
         # this can convert str inputs to the proper type, unless the
         # type is a container, which the above part converts to List
-        data.params = ParamsSchema(**paramsdict)
+        data.params = Params(**paramsdict)
         self.data = data
 
     def show_stats(self) -> None:
@@ -352,7 +352,7 @@ class CLI:
             json_file = json_file.with_suffix(".json")
 
         if not json_file.exists():
-            raise IPyradExit(f"Cannot find assembly {json_file}")
+            raise IPyradError(f"Cannot find assembly {json_file}")
 
         # load the assembly
         data = ip.load_json(json_file)
