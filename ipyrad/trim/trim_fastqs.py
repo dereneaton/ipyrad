@@ -18,7 +18,9 @@ FASTP_BINARY = Path(sys.prefix) / "bin" / "fastp"
 
 
 class TrimFastqs:
-    """Simple read trimming with fastp.
+    """Simple tool for read trimming with fastp.
+
+    This class is used by `load_fastqs.Step1`.
 
     https://github.com/OpenGene/fastp
     """

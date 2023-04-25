@@ -13,10 +13,10 @@ import shutil
 from abc import ABC
 from loguru import logger
 from ipyrad.assemble.utils import IPyradExit
-from ipyrad.core.schema import SampleSchema
+from ipyrad.schema import Sample
 
 Assembly = TypeVar("Assembly")
-Sample = TypeVar("Sample")
+# Sample = TypeVar("Sample")
 logger = logger.bind(name="ipyrad")
 
 
@@ -146,7 +146,7 @@ class BaseStep(ABC):
 
         # STEP7 only: add a 'reference' sample (even if we will exclude it later.)
         if (self.step == 7) and self.data.is_ref:
-            self.samples['reference'] = SampleSchema(name="reference", state=7)
+            self.samples['reference'] = Sample(name="reference", state=7)
 
     def _setup_dirs(self) -> None:
         """Create the output dir and tmpdir for this step."""

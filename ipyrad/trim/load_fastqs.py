@@ -13,8 +13,7 @@ import numpy as np
 import pandas as pd
 from ipyrad.demux.infer_overhang import infer_overhang
 from ipyrad.core import BaseStep, track_remote_jobs
-from ipyrad.schema import Sample
-from ipyrad.schema.sample_schema import Stats1
+from ipyrad.schema import Sample, Stats1
 from ipyrad.demux.pair_fastqs import (
     get_paths_list_from_fastq_str,
     get_fastq_tuples_dict_from_paths_list,
