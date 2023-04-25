@@ -12,11 +12,11 @@ from pathlib import Path
 import shutil
 from abc import ABC
 from loguru import logger
-from ipyrad.assemble.utils import IPyradError
 from ipyrad.schema import Sample
 from ipyrad.schema.sample_schema import (
     Stats2, Stats3, Stats4, Stats5, Stats6, Stats7
 )
+from ipyrad.core.exceptions import IPyradError
 
 Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
@@ -60,32 +60,16 @@ class BaseStep(ABC):
     def _log_headers(self) -> None:
         """print the CLI header for this step"""
         messages = {
-            '1': "Step 1: Demultiplexing fastq data to samples",
-            '1a': "Step 1: Loading demultiplexed fastq data files",
-            '2': "Step 2: Adapter trimming and filtering reads",
-            '3': "Step 3: Denovo clustering reads within samples",
-            '3a': "Step 3: Mapping reads to reference within samples",
-            '4': "Step 4: Jointly estimating error rate and heterozygosity",
-            '5': "Step 5: Calling consensus alleles within samples",
-            '6': "Step 6: Denovo clustering homologs across samples",
-            '6a': "Step 6: Reference aligning homologs across samples",
+            '1': "Step 1: Loading/trimming demultiplexed fastq data files",
+            '2': "Step 2: Clustering/Mapping reads within samples",
+            '3': "Step 3: Building clusters within samples",
+            '4': "Step 4: Filtering/ consensus alleles within samples",
+            '5': "Step 5: Clustering/Mapping homologs across samples",
+            '6': "Step 6: Building clusters/loci across samples",
             '7': "Step 7: Filtering, trimming, and writing output files",
         }
         key = str(self.step)
-        if key == '1':
-            logger.info(messages['1'])
-        elif key == '3':
-            if self.data.params.reference_sequence:
-                logger.info(messages['3a'])
-            else:
-                logger.info(messages['3'])
-        elif key == "6":
-            if self.data.params.reference_sequence:
-                logger.info(messages['6a'])
-            else:
-                logger.info(messages['6'])
-        else:
-            logger.info(messages[key])
+        logger.info(messages[key])
 
     def _get_subsamples(self) -> None:
         """Sets step.samples dictionary mapping {sname: Sample}

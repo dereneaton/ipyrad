@@ -43,7 +43,7 @@ def formatter(record):
     fmessage = (
         "{time:hh:mm:ss} | "
         "<level>{level:<8}</level> <white>|</white> "
-        "<magenta>{file:<18}</magenta> <white>|</white> "
+        "<magenta>{file:<20}</magenta> <white>|</white> "
         "{message}"
     ) + end
     return fmessage

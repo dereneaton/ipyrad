@@ -6,10 +6,10 @@
 
 from typing import List, Dict, Optional
 from loguru import logger
-from ipyrad.core.params_schema import ParamsSchema
-from ipyrad.core.schema import SampleSchema
-from ipyrad.core.assembly import Assembly
-from ipyrad.assemble.utils import BADCHARS
+from ipyrad.schema import Params
+from ipyrad.schema import Sample
+from ipyrad.core import Assembly
+# from ipyrad.assemble.utils import BADCHARS
 
 
 def merge(
@@ -84,7 +84,7 @@ def merge(
     merged = Assembly(name)
     params = assemblies[0].params.dict()
     params['assembly_name'] = merged.name
-    merged.params = ParamsSchema(**params)
+    merged.params = Params(**params)
 
     # copy samples into new. For samples that are present in multiple
     # assemblies this requires merging their stats from previous steps.
@@ -98,7 +98,7 @@ def merge(
 
         # make a deepcopy of the sample
         for sname in data.samples:
-            sample = SampleSchema(**data.samples[sname].dict())
+            sample = Sample(**data.samples[sname].dict())
 
             # rename sample if in rename dict and update sname variable
             if sname in rename_dict:

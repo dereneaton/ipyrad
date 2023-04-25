@@ -6,7 +6,7 @@ Load an Assembly object from a project JSON file.
 
 from loguru import logger
 from ipyrad.schema import Project
-from ipyrad.core2 import Assembly
+from ipyrad.core import Assembly
 
 
 def load_json(json_file: str) -> Assembly:

@@ -684,8 +684,8 @@ if __name__ == "__main__":
     # tool.run()
 
 
-    import shutil
-    shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2023-3-28")
+    # import shutil
+    # shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2023-3-28")
     tool = Demux(
         barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
         fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",

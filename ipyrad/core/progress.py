@@ -14,7 +14,7 @@ def progress(remote_messages: str) -> None:
 # not yet used.
 def track_remote_jobs(rasyncs, ipyclient):
 
-    # add a callback to log progress from stdout on engines
+    # add a callback to log stdout from engine when a job finishes
     for rasync in rasyncs.values():
         rasync.add_done_callback(lambda x: progress(x.stdout))
 
@@ -26,6 +26,7 @@ def track_remote_jobs(rasyncs, ipyclient):
             results[job] = rasync.result()
 
     except KeyboardInterrupt:
+        logger.error("KeyboardInterrupt by user.")
         ipyclient.cluster.signal_engines_sync(signum=2)
         raise KeyboardInterrupt("KeyboardInterrupt by user.")
     return results

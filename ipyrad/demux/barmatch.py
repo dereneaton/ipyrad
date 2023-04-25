@@ -117,15 +117,24 @@ class BarMatching:
         Some overhead from i/o limitations, but most time here is spent
         on the string concatenation and gzip compression, which can
         happen in parallel on different engines.
+
+        TODO
+        ----
+        Allow writers to use read1s or read2s dict as shared memory
+        to prevent duplication of the Memory usage here on every CPU.
+        Example here: https://stackoverflow.com/questions/65980183/processpoolexecutor-on-shared-dataset-and-multiple-arguments
         """
         with ProcessPoolExecutor(max_workers=self.cores) as pool:
             total = 0
             for read1s, read2s in self._iter_matched_chunks():
                 nprocessed = min(self.chunksize, sum(len(i) for i in read1s.values()))
                 total += nprocessed
-                logger.info(f"Writing/compressing {nprocessed} matched reads (total={total}).")
+                logger.info(
+                    f"writing/compressing {nprocessed:.0f} matched reads "
+                    f"(total={total:.0f}).")
 
                 rasyncs = {}
+                # both dicts share the same names
                 for name in read1s:
                     # if merging tech reps then remove suffix
                     if self.merge_technical_replicates:
@@ -135,7 +144,6 @@ class BarMatching:
 
                     # write to R1 chunk file.
                     path1 = self.outpath / f"{fname}_R1.fastq.gz"
-                    # logger.debug(f"writing to {path1}")
                     data = read1s[name]
                     rasyncs[f"{name}_R1"] = pool.submit(write, *(path1, data))
 
@@ -143,8 +151,7 @@ class BarMatching:
                     if read2s:
                         path2 = self.outpath / f"{fname}_R2.fastq.gz"
                         data = read2s[name]
-                        pool.submit(write, *(path2, data))
-                        rasyncs[f"{name}_R2"] = pool.submit(write, *(path1, data))
+                        rasyncs[f"{name}_R2"] = pool.submit(write, *(path2, data))
 
                 # raise exception for any writing errors
                 for res in rasyncs:

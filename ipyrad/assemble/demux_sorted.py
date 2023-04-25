@@ -10,8 +10,8 @@ import subprocess
 import pandas as pd
 from loguru import logger
 from ipyrad.assemble.utils import IPyradError, BADCHARS
-from ipyrad.core.schema import SampleSchema, Stats1
-from ipyrad.core.progress_bar import AssemblyProgressBar
+from ipyrad.schema import Sample, Stats1
+from ipyrad.core.progress import AssemblyProgressBar
 
 logger = logger.bind(name="ipyrad")
 Step1 = TypeVar("Step1")

@@ -11,7 +11,7 @@ from loguru import logger
 import pandas as pd
 
 import ipyparallel
-from ipyrad import Cluster
+from ipyrad.core.cluster import Cluster
 from ipyrad.schema import Project, Sample, Params
 # from ipyrad.core2 import 
 # from ipyrad.assemble.utils import IPyradExit
@@ -208,22 +208,25 @@ class Assembly:
         branch = Assembly(name)
         params = self.params.dict()
         params['assembly_name'] = name
-        branch.params = ParamsSchema(**params)
-        branch.hackers = HackersSchema(**self.hackers.dict())
+        branch.params = Params(**params)
 
         # copy over all or just a subsamples of the samples.
         if subsample is None:
             branch.samples = {
-                i: SampleSchema(**self.samples[i].dict()) for i in self.samples
+                i: Sample(**self.samples[i].dict()) for i in self.samples
             }
+            logger.info(f"created new branch '{name}'")
         else:
             branch.samples = {
-                i: SampleSchema(**self.samples[i].dict())
+                i: Sample(**self.samples[i].dict())
                 for i in self.samples if i in subsample
             }
             for i in subsample:
                 if i not in self.samples:
                     logger.warning(f"sample name {i} does not exist.")
+            logger.info(
+                f"created new branch '{name}' and subsampled "
+                f"{len(subsample)}/{len(self.samples)} samples")
 
         # clear assembly_stats and outfiles
         branch.assembly_stats = {}

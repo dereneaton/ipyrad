@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from ipyrad.core2.base_step import BaseStep
-from ipyrad.core2.progress import progress, track_remote_jobs
-from ipyrad.core2.assembly import Assembly
-from ipyrad.core2.exceptions import IPyradError
+from ipyrad.core.base_step import BaseStep
+from ipyrad.core.progress import progress, track_remote_jobs
+from ipyrad.core.assembly import Assembly
+from ipyrad.core.exceptions import IPyradError
