@@ -131,7 +131,7 @@ class BarMatching:
                 total += nprocessed
                 logger.info(
                     f"writing/compressing {nprocessed:.0f} matched reads "
-                    f"(total={total:.0f}).")
+                    f"(total={total:.0f})")
 
                 rasyncs = {}
                 # both dicts share the same names
