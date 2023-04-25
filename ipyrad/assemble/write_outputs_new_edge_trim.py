@@ -189,12 +189,16 @@ class Locus:
             matching = self.tseqs[:, slx] == forward
             mask = np.where(
                 (self.tseqs[:, slx] != 78) & (self.tseqs[:, slx] != 45))
-            matchset = matching[mask] # non-masked sites that match the RE
-            prop = float(matchset.sum()) / matchset.size
-            if prop >= 0.75:
+            matchset = matching[mask]  # non-masked sites that match the RE
+
+            # if cut overlaps with locus by 75% then trim it.
+            if not matchset.size:
                 self._trim2[0] = len(forward)
-                # print(f"forward={forward}\nmatching={matching}\nmask={mask}\nmatchset={matchset}\nprop={prop:.2f}")
-                continue
+            else:
+                prop = float(matchset.sum()) / matchset.size
+                if prop >= 0.75:
+                    self._trim2[0] = len(forward)
+                    # print(f"forward={forward}\nmatching={matching}\nmask={mask}\nmatchset={matchset}\nprop={prop:.2f}")
 
             # compare match over cut size skipping Ns and allow 0.25 diffs
             slx = slice(self.tseqs.shape[1] - revcomp.shape[0], self.tseqs.shape[1])
@@ -202,10 +206,16 @@ class Locus:
             mask = np.where(
                 (self.tseqs[:, slx] != 78) & (self.tseqs[:, slx] != 45))
             matchset = matching[mask]
-            prop = float(matchset.sum()) / matchset.size
-            if prop >= 0.75:
+
+            # if cut overlaps with locus by 75% then trim it.
+            if not matchset.size:
                 self._trim2[1] = len(revcomp)
-            # print(f"revcomp={revcomp}, matching={matching}, mask={mask}, matchset={matchset}, prop={prop:.2f}")
+            else:
+                prop = float(matchset.sum()) / matchset.size
+                if prop >= 0.75:
+                    self._trim2[1] = len(revcomp)
+                    # print(f"revcomp={revcomp}, matching={matching}, mask={mask}, matchset={matchset}, prop={prop:.2f}")
+
 
     def _set_trim_from_params(self):
         """Sets .trim2 values based on self.params.trimloci.
