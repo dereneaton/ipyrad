@@ -24,7 +24,8 @@ from ipyrad.demux.barmatch import (
     BarMatchingCombinatorialInline,
     BarMatchingI7,
 )
-from ipyrad.assemble.utils import IPyradError, AMBIGS, BADCHARS
+from ipyrad.core.utils import AMBIGS, BADCHARS
+from ipyrad.core.exceptions import IPyradError
 
 
 BASES = set("ACGTN")
@@ -100,7 +101,7 @@ class Demux:
     def _get_outpath(self) -> None:
         """Require an empty outdir to write to."""
         # get full path to the outdir
-        self.outpath = Path(self.outpath).expanduser().absolute()
+        self.outpath = Path(self.outpath).expanduser().resolve()
 
         # if the path exists, but is empty, that is OK.
         if self.outpath.exists():
@@ -132,7 +133,7 @@ class Demux:
                 msg = f"No fastq data match input: {path}"
                 logger.error(msg)
                 raise IPyradError(msg)
-            self._fastqs.extend([Path(i) for i in fastqs])
+            self._fastqs.extend([Path(i).expanduser().resolve() for i in fastqs])
 
     def _get_barcodes_path(self) -> None:
         """Get barcodes path as Path object allow for regex name."""
@@ -142,7 +143,7 @@ class Demux:
             msg = f"No barcodes file found at {self.barcodes_path}"
             logger.error(msg)
             raise IPyradError(msg)
-        self.barcodes_path = Path(bpath[0])
+        self.barcodes_path = Path(bpath[0]).expanduser().resolve()
 
     def _get_filenames_to_paired_fastqs(self) -> None:
         """Fill `names_to_fastqs` with paired fastq files.
@@ -575,6 +576,7 @@ def barmatch(fastq_tuple, demux_obj):
     )
 
     if demux_obj.i7:
+        logger.info("demultiplexing on i7 indices")
         barmatcher = BarMatchingI7(**kwargs)
     else:
         # TODO: maybe support other options like 2BRAD here...
@@ -582,11 +584,20 @@ def barmatch(fastq_tuple, demux_obj):
             barmatcher = BarMatchingCombinatorialInline(**kwargs)
         else:
             barmatcher = BarMatchingSingleInline(**kwargs)
-
     try:
         barmatcher.run()
+
+    # this is not catching...
+    # except MemoryError:
+    #     logger.error(
+    #         "Insufficient memory.\n This can be prevented by decreasing "
+    #         "the 'chunksize' parameter, which will ensure data is written "
+    #         "to disk more frequently.")
+    #     raise
     except KeyboardInterrupt:
         logger.warning("interrupted by user. Shutting down.")
+        raise
+    except Exception:
         raise
     return barmatcher.barcode_misses, barmatcher.barcode_hits, barmatcher.sample_hits
 
@@ -642,15 +653,25 @@ if __name__ == "__main__":
     # )
     # tool.run()
 
-    tool = Demux(
-        barcodes_path="../../tests/ipsimdata/rad_example_barcodes_techreps_badchars.txt",
-        fastq_paths="../../tests/ipsimdata/rad_example_R1*.gz",
-        outpath="/tmp/demux_rad_example_techreps_badchars",
-        max_barcode_mismatch=0,
-        re1="TGCAG",
-        re2="",
-    )
-    tool.run()
+    # tool = Demux(
+    #     barcodes_path="../../tests/ipsimdata/rad_example_barcodes_techreps_badchars.txt",
+    #     fastq_paths="../../tests/ipsimdata/rad_example_R1*.gz",
+    #     outpath="/tmp/demux_rad_example_techreps_badchars",
+    #     max_barcode_mismatch=0,
+    #     re1="TGCAG",
+    #     re2="",
+    # )
+    # tool.run()
+
+    # tool = Demux(
+    #     barcodes_path="../../tests/ipsimdata/pairgbs_wmerge_example_barcodes.txt",
+    #     fastq_paths="../../tests/ipsimdata/pairgbs_wmerge_example_R*.fastq.gz",
+    #     outpath="/tmp/demux_pairgbs",
+    #     max_barcode_mismatch=1,
+    #     re1="TGCAG",
+    #     re2="TGCAG",
+    # )
+    # tool.run()
 
     # tool = Demux(
     #     barcodes_path="../../tests/ipsimdata/pairddrad_example_barcodes.txt",
@@ -662,24 +683,32 @@ if __name__ == "__main__":
     # )
     # tool.run()
 
-    # tool = Demux(
-    #     barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
-    #     fastq_paths="../../pedtest/small_tmp_R*.fastq.gz",
-    #     outpath="/tmp/pedtest_small3",
-    #     max_barcode_mismatch=1,
-    #     re1="ATCGG",
-    #     re2="CGATCC",
-    # )
-    # tool.run()
 
-    # tool = Demux(
-    #     barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
-    #     fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
-    #     outpath="/tmp/radcamp_i7",
-    #     max_barcode_mismatch=1,
-    #     i7=True,
-    # )
-    # tool.run()
+    import shutil
+    shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2023-3-28")
+    tool = Demux(
+        barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
+        fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",
+        outpath="../../pedtest/demux_2023-3-28",
+        max_barcode_mismatch=1,
+        cores=7,
+        chunksize=1e6,
+        # re1="ATCGG",
+        # re2="CGATCC",
+    )
+    tool.run()
+
+    # COMMAND LINE TOOL EXAMPLE
+    # cmd = ['ipyrad', 'demux', ']
+
+    tool = Demux(
+        barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
+        fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
+        outpath="/tmp/radcamp_i7",
+        max_barcode_mismatch=1,
+        i7=True,
+    )
+    tool.run()
 
     # # TEST i7 demux.
     # DATA = ip.Assembly("TEST_i7")
@@ -688,7 +717,6 @@ if __name__ == "__main__":
     # DATA.params.project_dir = "/tmp"
     # DATA.params.max_barcode_mismatch = 1
     # DATA.hackers.demultiplex_on_i7_tags = True
-
 
     # DATA = ip.Assembly("TEST1")
     # DATA.params.raw_fastq_path = 
