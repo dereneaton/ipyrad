@@ -111,8 +111,8 @@ class Demux:
             if any(self.outpath.iterdir()):
                 raise ValueError(
                     f"Outpath '{self.outpath}' exists and contains files. "
-                    "Change the outpath arg or manually remove this dir "
-                    "to overwrite.")
+                    "To prevent overwriting or removing data you must "
+                    "manually rm this dir or change the outpath arg")
         self.outpath.mkdir(exist_ok=True)
 
     def _get_fastqs_paths(self) -> None:
@@ -720,8 +720,9 @@ if __name__ == "__main__":
         barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
         fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
         outpath="/tmp/radcamp_i7",
+        chunksize=1000,
         max_barcode_mismatch=1,
-        merge_technical_replicates=False, # testing w/ alt brcodes file.
+        merge_technical_replicates=True, # testing w/ alt brcodes file.
         i7=True,
     )
     tool.run()

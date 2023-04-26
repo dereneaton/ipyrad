@@ -293,7 +293,7 @@ def test():
     cmd = "demux -d ./a.txt -b ./b.txt -o ./fastqs --i7 -m 1"
     cmd_list = cmd.split()
     args = parser.parse_args()
-    print(args)    
+    print(args)
     print(parser.parse_args(cmd_list))
 
     cmd = "assemble -p params.txt -s 12 -c 4 -t 2"

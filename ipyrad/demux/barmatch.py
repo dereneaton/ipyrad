@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 import gzip
 from dataclasses import dataclass, field
 from loguru import logger
-# from ipyrad.assemble.utils import IPyradError
+from ipyrad.core.exceptions import IPyradError
 
 logger = logger.bind(name="ipyrad")
 Assembly = TypeVar("Assembly")
@@ -51,6 +51,13 @@ class BarMatching:
     """: Dict to record observed barcodes that match."""
     sample_hits: Dict[str, int] = field(default_factory=dict)
     """: Dict to record number of hits per sample."""
+
+    def __post_init__(self):
+        self._format_check()
+
+    def _format_check(self):
+        """Check that data is appropriate for selected format."""
+        pass
 
     def _iter_fastq_reads(self) -> Iterator[Tuple[List[str], List[str]]]:
         """Yields fastq quartets of lines from fastqs (gzip OK)."""
@@ -170,6 +177,14 @@ class BarMatchingI7(BarMatching):
     >>> +
     >>> EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE...
     """
+    # check that i7's exist for this data
+    def _format_check(self):
+        read1, _ = next(self._iter_fastq_reads())
+        barcode = read1[0].strip().rsplit(b":", 1)[-1].split(b"+")[0]
+        if not barcode:
+            raise IPyradError(
+                "No i7 index exists in this data. Example read1:\n{read1}")
+
     def _iter_matched_barcode(self) -> Iterator[Tuple[str, str, str]]:
         """Find barcode in read and check for match.
 
