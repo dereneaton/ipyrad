@@ -256,7 +256,7 @@ class Demux:
         # check for replicate sample names in the barcodes file. These
         # are allowed, since a single sample can be sequenced multiple
         # times on the same plate with different barcodes attached,
-        # representing technical replicates. THere is a hackers option
+        # representing technical replicates. THere is a demux option
         # for whether to combine tech reps, or keep as diff samples.
         if bardata['sample'].value_counts().max() > 1:
             # get duplicated names
@@ -272,8 +272,8 @@ class Demux:
             else:
                 logger.warning(
                     "Technical replicates are present (samples with same name "
-                    "in barcodes file) and will be written with "
-                    "'-technical-replicate-x' appended to name")
+                    "in barcodes file) and will have '-technical-replicate-x' "
+                    "appended to their sample names")
 
             # either way, relabel the samples for now, and may or may not merge later.
             for dup in duplicated:
@@ -474,14 +474,21 @@ class Demux:
         self._sample_stats = Counter()
         for _, stats in self._file_stats.items():
             for sname, hits in stats[2].items():
-                if self.merge_technical_replicates:
-                    sname = sname.split("-technical-replicate-")[0]
                 self._sample_stats[sname] += hits
+
+                # also record stats for combined technical-replicates
+                if "-technical-replicate-" in sname:
+                    sname = sname.split("-technical-replicate-")[0]
+                    self._sample_stats[sname] += hits
+                # if self.merge_technical_replicates:
+                #     sname = sname.split("-technical-replicate-")[0]
+                # self._sample_stats[sname] += hits
 
         # report failed samples
         for sname in self._names_to_barcodes:
             if not self._sample_stats[sname]:
                 logger.warning(f"Sample {sname} has 0 reads.")
+                self._sample_stats[sname] = 0
 
     def _write_stats(self):
         """Write to {project_dir}/`s1_demultiplex_stats.txt`.
@@ -511,10 +518,11 @@ class Demux:
         # write sample nreads stats ----------------------------------
         outfile.write("# Sample demux statistics\n######################\n")
         sample_df = pd.DataFrame(
-            index=sorted(self._names_to_barcodes),
+            index=sorted(self._sample_stats),
             columns=["reads_raw"],
             data=[
-                self._sample_stats[i] for i in sorted(self._names_to_barcodes)
+                # self._sample_stats[i] for i in sorted(self._names_to_barcodes)
+                self._sample_stats[i] for i in sorted(self._sample_stats)
             ],
         )
         outfile.write(sample_df.to_string() + "\n\n")
@@ -530,7 +538,9 @@ class Demux:
         for key in self._file_stats:
             bar_obs.update(self._file_stats[key][1])
         sorted_bar_obs = sorted(bar_obs, key=lambda x: bar_obs[x], reverse=True)
-        for name, truebar in self._names_to_barcodes.items():
+
+        for name in sorted(self._names_to_barcodes):
+            truebar = self._names_to_barcodes[name]
             for foundbar in sorted_bar_obs:
                 if name == self._barcodes_to_names[foundbar]:
                     count = bar_obs[foundbar]
@@ -691,26 +701,27 @@ if __name__ == "__main__":
 
     # import shutil
     # shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2023-3-28")
-    tool = Demux(
-        barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
-        fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",
-        outpath="../../pedtest/demux_2023-3-28",
-        max_barcode_mismatch=1,
-        cores=7,
-        chunksize=1e6,
-        # re1="ATCGG",
-        # re2="CGATCC",
-    )
-    tool.run()
+    # tool = Demux(
+    #     barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
+    #     fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",
+    #     outpath="../../pedtest/demux_2023-3-28",
+    #     max_barcode_mismatch=1,
+    #     cores=7,
+    #     chunksize=1e6,
+    #     # re1="ATCGG",
+    #     # re2="CGATCC",
+    # )
+    # tool.run()
 
     # COMMAND LINE TOOL EXAMPLE
     # cmd = ['ipyrad', 'demux', ']
 
     tool = Demux(
-        barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
+        barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
         fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
         outpath="/tmp/radcamp_i7",
         max_barcode_mismatch=1,
+        merge_technical_replicates=False, # testing w/ alt brcodes file.
         i7=True,
     )
     tool.run()
