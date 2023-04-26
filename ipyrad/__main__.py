@@ -289,9 +289,11 @@ def setup_parsers() -> argparse.ArgumentParser:
 def test():
     parser = setup_parsers()
 
-    cmd = "demux -h"
-    # cmd = "demux -d ./a.txt -b ./b.txt -o ./fastqs --i7"
+    # cmd = "demux -h"
+    cmd = "demux -d ./a.txt -b ./b.txt -o ./fastqs --i7 -m 1"
     cmd_list = cmd.split()
+    args = parser.parse_args()
+    print(args)    
     print(parser.parse_args(cmd_list))
 
     cmd = "assemble -p params.txt -s 12 -c 4 -t 2"
@@ -334,8 +336,8 @@ def main():
             outpath=args.o,
             re1=args.re1,
             re2=args.re2,
-            cores=args.c,
-            max_barcode_mismatch=args.m,
+            cores=args.cores,
+            max_barcode_mismatch=args.max_mismatch,
             merge_technical_replicates=args.merge_technical_replicates,
             chunksize=args.chunksize,
             i7=args.i7,
