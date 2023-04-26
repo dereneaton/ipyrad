@@ -6,6 +6,7 @@
 
 from typing import Dict, Tuple, List, TypeVar, Iterator
 import io
+import itertools
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 import gzip
@@ -91,7 +92,6 @@ class BarMatching:
 
         # iterate over matched reads
         for read1, read2, match in self._iter_matched_barcode():
-
             # store r1 as 4-line string
             fastq1 = b"".join(read1)
             if match in read1s:
@@ -141,22 +141,35 @@ class BarMatching:
                     f"(total={total:.0f})")
 
                 rasyncs = {}
+
+                # parallel workers cannot write to the same file so lists
+                # assigned to technical replicates need to be grouped
+                if self.merge_technical_replicates:
+                    groups = itertools.groupby(
+                        list(read1s), key=lambda x: x.rsplit("-technical-replicate-")
+                    )
+                    for key, names in groups:
+                        names = list(names)
+                        if len(names) > 1:
+                            read1s[key] = list(itertools.chain(*[read1s.pop(i) for i in sorted(names)]))
+                            read2s[key] = list(itertools.chain(*[read2s.pop(i) for i in sorted(names)]))
+
                 # both dicts share the same names
                 for name in read1s:
-                    # if merging tech reps then remove suffix
-                    if self.merge_technical_replicates:
-                        fname = name.split("-technical-replicate-")[0]
-                    else:
-                        fname = name
+                    # # if merging tech reps then remove suffix
+                    # if self.merge_technical_replicates:
+                    #     fname = name.split("-technical-replicate-")[0]
+                    # else:
+                    #     fname = name
 
                     # write to R1 chunk file.
-                    path1 = self.outpath / f"{fname}_R1.fastq.gz"
+                    path1 = self.outpath / f"{name}_R1.fastq.gz"
                     data = read1s[name]
                     rasyncs[f"{name}_R1"] = pool.submit(write, *(path1, data))
 
                     # write to R2 chunk file.
                     if read2s:
-                        path2 = self.outpath / f"{fname}_R2.fastq.gz"
+                        path2 = self.outpath / f"{name}_R2.fastq.gz"
                         data = read2s[name]
                         rasyncs[f"{name}_R2"] = pool.submit(write, *(path2, data))
 
