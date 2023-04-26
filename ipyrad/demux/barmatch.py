@@ -146,13 +146,14 @@ class BarMatching:
                 # assigned to technical replicates need to be grouped
                 if self.merge_technical_replicates:
                     groups = itertools.groupby(
-                        list(read1s), key=lambda x: x.rsplit("-technical-replicate-")
+                        list(read1s), key=lambda x: x.rsplit("-technical-replicate-")[0]
                     )
                     for key, names in groups:
                         names = list(names)
-                        if len(names) > 1:
+                        if "-technical-replicate-" in names[0]:
                             read1s[key] = list(itertools.chain(*[read1s.pop(i) for i in sorted(names)]))
                             read2s[key] = list(itertools.chain(*[read2s.pop(i) for i in sorted(names)]))
+                    logger.warning(list(read1s))
 
                 # both dicts share the same names
                 for name in read1s:

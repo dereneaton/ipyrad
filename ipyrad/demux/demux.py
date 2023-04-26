@@ -716,6 +716,8 @@ if __name__ == "__main__":
     # COMMAND LINE TOOL EXAMPLE
     # cmd = ['ipyrad', 'demux', ']
 
+    import shutil
+    shutil.rmtree("/tmp/radcamp_i7")
     tool = Demux(
         barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
         fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
