@@ -24,7 +24,9 @@ If you do not have `conda` installed then you will enjoy our
 
 Run ipyrad in Binder
 --------------------
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/dereneaton/ipyrad/main)
+.. image:: https://mybinder.org/badge_logo.svg
+    :alt: Launch ipyrad in a binder instance
+    :target: https://mybinder.org/v2/gh/dereneaton/ipyrad/main
 
 Getting Help
 ------------
