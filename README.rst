@@ -26,7 +26,7 @@ Run ipyrad in Binder
 --------------------
 .. image:: https://mybinder.org/badge_logo.svg
     :alt: Launch ipyrad in a binder instance
-    :target: https://mybinder.org/v2/gh/dereneaton/ipyrad/main
+    :target: https://mybinder.org/v2/gh/dereneaton/ipyrad/master
 
 Getting Help
 ------------
