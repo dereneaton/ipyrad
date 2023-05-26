@@ -12,7 +12,7 @@ dependencies:
   - mrbayes
   - structure
   - clumpp
-  - tetrad 
+#  - tetrad # Remove until we get a conda package for tetrad > python3.7
   - scikit-learn 
   - bcftools
   - htslib
