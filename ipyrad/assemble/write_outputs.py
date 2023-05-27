@@ -318,25 +318,25 @@ class Step7:
         ftable.iloc[2, 0] = afilts[:, 1].sum()
         ftable.iloc[2, 1] = afilts[~mask, 1].sum()
         ftable.iloc[2, 2] = ftable.iloc[1, 2] - ftable.iloc[2, 1]
-        mask = afilts[:, 0:2].sum(axis=1).astype(np.bool)
+        mask = afilts[:, 0:2].sum(axis=1).astype(np.bool_)
 
         # filter max snps
         ftable.iloc[3, 0] = afilts[:, 2].sum()
         ftable.iloc[3, 1] = afilts[~mask, 2].sum()
         ftable.iloc[3, 2] = ftable.iloc[2, 2] - ftable.iloc[3, 1]
-        mask = afilts[:, 0:3].sum(axis=1).astype(np.bool)
+        mask = afilts[:, 0:3].sum(axis=1).astype(np.bool_)
 
         # filter max shared H
         ftable.iloc[4, 0] = afilts[:, 3].sum()
         ftable.iloc[4, 1] = afilts[~mask, 3].sum()
         ftable.iloc[4, 2] = ftable.iloc[3, 2] - ftable.iloc[4, 1]
-        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
+        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool_)
 
         # filter minsamp
         ftable.iloc[5, 0] = afilts[:, 4].sum()
         ftable.iloc[5, 1] = afilts[~mask, 4].sum()
         ftable.iloc[5, 2] = ftable.iloc[4, 2] - ftable.iloc[5, 1]
-        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool)
+        mask = afilts[:, 0:4].sum(axis=1).astype(np.bool_)
 
         ftable.iloc[6, 0] = ftable.iloc[:, 0].sum()
         ftable.iloc[6, 1] = ftable.iloc[:, 1].sum()

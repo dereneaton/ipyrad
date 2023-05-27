@@ -215,7 +215,7 @@ class Step2(object):
         with open(self.data.stats_files.s2, 'w') as outfile:
             (
                 self.data.stats_dfs.s2.fillna(value=0)
-                .astype(np.int)
+                .astype(np.int64)
                 .to_string(outfile)
             )
 
@@ -230,7 +230,7 @@ def assembly_cleanup(data):
 
     # write stats for all samples
     with io.open(data.stats_files.s2, 'w', encoding='utf-8') as outfile:
-        data.stats_dfs.s2.fillna(value=0).astype(np.int).to_string(outfile)
+        data.stats_dfs.s2.fillna(value=0).astype(np.int64).to_string(outfile)
 
 
 

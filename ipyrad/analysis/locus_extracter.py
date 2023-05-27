@@ -671,7 +671,7 @@ def remote_filter_loci(self, block):
     # new fresh list
     self.loci = []
     self.filters = {"mincov": 0, "minmap": 0, "minsnps": 0, "maxmissing": 0}
-    self.farr = np.zeros(block.shape[0], dtype=np.bool)
+    self.farr = np.zeros(block.shape[0], dtype=np.bool_)
     self.smask = []
     # self.smask = np.zeros((block.shape[0], len(self.names)), dtype=np.bool)
 

@@ -277,7 +277,7 @@ class FileLinker:
         with open(self.data.stats_files.s1, 'w') as outfile:
             (self.data.stats_dfs.s1
                 .fillna(value=0)
-                .astype(np.int)
+                .astype(np.int64)
                 .to_string(outfile))
 
 
@@ -498,7 +498,7 @@ class Demultiplexer:
                 ridx += 1
 
             # get ready to receive stats: 'total', 'cutfound', 'matched'
-            self.stats.perfile[handle] = np.zeros(3, dtype=np.int)
+            self.stats.perfile[handle] = np.zeros(3, dtype=np.int64)
 
         # collect and store results as jobs finish
         njobs = len(rasyncs)
