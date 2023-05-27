@@ -4,6 +4,17 @@
 Release Notes
 =============
 
+0.9.91
+------
+**May 27, 2023**
+
+- Fix numpy deprecation of np.int and np.bool
+- Update environment.yml
+- Update README.rst
+- Update README.rst
+- README - Add binder badge
+- Allow mrbayes.py to pass in the binary path
+
 0.9.90
 ------
 **April 03, 2023**
