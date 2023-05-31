@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.92
+------
+**May 31, 2023**
+
+- analysis.popgen: Allow missing data without crashing
+- Fixed the popgen sumstats analysis tool and the cookbook
+
 0.9.91
 ------
 **May 27, 2023**
