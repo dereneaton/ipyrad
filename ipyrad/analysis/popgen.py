@@ -55,13 +55,15 @@ class Popgen(object):
         data,
         imap=None,
         minmap=None,
+        mincov=4,
         workdir="analysis-popgen",
         quiet=False,
         ):
         
         # set attributes
         self.imap = (imap if imap else {})
-        self.minmap = (minmap if minmap else {i: 4 for i in self.imap})
+        self.minmap = minmap #(minmap if minmap else {i: 4 for i in self.imap})
+        self.mincov = mincov
         self.npops = (len(self.imap) if imap else 1)
         self.quiet = quiet
         self.nboots = 100
@@ -232,7 +234,7 @@ class Popgen(object):
             data=self.datafile,
             imap=self.imap,
             minmap=self.minmap,
-            mincov=len(self.imap),  # ENFORCE at least 1 per spp.
+            mincov=self.mincov,
 #            minsnps=self.minsnps,
 #            maxmissing=self.maxmissing,
 #            minlen=self.minlen,
@@ -446,8 +448,11 @@ class Processor(object):
                 # within pops stats
                 for pop in self.imap:
                     # Carve off just the samples for this population
-                    cts, sidxs, length = self._process_locus(
-                                                locus.loc[self.imap[pop]])
+                    try:
+                        cts, sidxs, length = self._process_locus(
+                                                    locus.loc[self.imap[pop]])
+                    except KeyError:
+                        continue
                     # Number of segregating sites
                     S = len(sidxs)
                     # Number of samples
@@ -469,16 +474,24 @@ class Processor(object):
                     columns=self.imap.keys(),
                 )
                 for pops in combinations(self.imap, 2):
-                    pop_cts, sidxs = self._process_locus_pops(locus, pops)
-                    Dxy_res = self._dxy(*pop_cts.values(), len(locus))
-                    Dxy_arr[pops[1]][pops[0]] = Dxy_res
+                    try:
+                        pop_cts, sidxs = self._process_locus_pops(locus, pops)
+                        Dxy_res = self._dxy(*pop_cts.values(), len(locus))
+                        Dxy_arr[pops[1]][pops[0]] = Dxy_res
+                    except KeyError:
+                        continue
                 self.results.Dxy[lidx] = Dxy_arr
 
-                Fst_res = self._fst_full(locus)
-                self.results.Fst[lidx] = {}
-                self.results.Fst[lidx]["Fst"] = Fst_res[0]
-                self.results.Fst[lidx]["Fst_adj"] = Fst_res[1]
-                self.results.Fst[lidx]["Fst_Nm"] = Fst_res[2]
+                try:
+                    Fst_res = self._fst_full(locus)
+                    self.results.Fst[lidx] = {}
+                    self.results.Fst[lidx]["Fst"] = Fst_res[0]
+                    self.results.Fst[lidx]["Fst_adj"] = Fst_res[1]
+                    self.results.Fst[lidx]["Fst_Nm"] = Fst_res[2]
+                except Exception:
+                    # Does not work if any pops have no samples
+                    # Doesn't work well with missing data
+                    continue
 
                 lidx += 1
             except StopIteration:
