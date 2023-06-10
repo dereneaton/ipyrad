@@ -153,16 +153,9 @@ class BarMatching:
                         if "-technical-replicate-" in names[0]:
                             read1s[key] = list(itertools.chain(*[read1s.pop(i) for i in sorted(names)]))
                             read2s[key] = list(itertools.chain(*[read2s.pop(i) for i in sorted(names)]))
-                    logger.warning(list(read1s))
 
                 # both dicts share the same names
                 for name in read1s:
-                    # # if merging tech reps then remove suffix
-                    # if self.merge_technical_replicates:
-                    #     fname = name.split("-technical-replicate-")[0]
-                    # else:
-                    #     fname = name
-
                     # write to R1 chunk file.
                     path1 = self.outpath / f"{name}_R1.fastq.gz"
                     data = read1s[name]
