@@ -1,153 +1,195 @@
 #!/usr/bin/python 
 
-""" 
-Wrapper to make simple calls to mb 
+""" Wrapper to make automated and parallelized calls to mb.
+
+Example
+-------
+>>> import ipyrad.analysis as ipa
+>>> import toytree
+>>> tool = ipa.mrbayes(name='test', data='...seqs_hdf5')
+>>> # tool.params.[...]
+>>> tool.run()
+>>> tree = toytree.tree(tool.trees.contre)
+>>> tree.draw()
 """
 
+from typing import Union, TypeVar, Optional, List
+from dataclasses import dataclass, field
+from pathlib import Path
 import os
 import sys
 import subprocess
 import pandas as pd
 import toytree
+from ipyrad.analysis.mrbayes_utils import *
 from ipyrad.assemble.utils import IPyradError
 
+# first assumes mb will be in activated conda bin
+BINPATH = Path(sys.prefix) / "bin"
+MB_BINARY = BINPATH / "mb"
+Tool = TypeVar("MrBayes")
 
+@dataclass
+class Trees:
+    """Container class to hold trees output file paths."""
+    tool: Tool = field(repr=False)
+    constre: Path = None
+    posttre: Path = None
+    pstat: Path = None
+    def __post_init__(self):
+        self.constre = self.tool.workdir / (self.tool.name + ".nex.con.tre")
+        self.posttre = self.tool.workdir / (self.tool.name + f".nex.{self.tool.runs}t")
+        self.pstat = self.tool.workdir / (self.tool.name + ".nex.pstat")
 
-# template for standard tree inference
-NEX_TEMPLATE_1 = """\
-#NEXUS
+@dataclass
+class Params:
+    ngen: int = 100000
+    nruns: int = 1
+    nchains: int = 4
+    samplefreq: int = 1000
 
-log start filename={outname}.log replace;
-execute {nexus};
-
-begin mrbayes;
-set autoclose=yes nowarn=yes;
-
-lset nst=6 rates=gamma;
-
-{constraints}
-
-mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
-mcmcp relburnin=yes burninfrac=0.25; 
-mcmcp samplefreq={samplefreq} printfreq=10000;
-mcmcp filename={outname};
-mcmc;
-
-sump filename={outname};
-sumt filename={outname};
-end;
-"""
-
-
-# template for clock model tree inference
-# https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
-TEMPLATE_2_DICT = {
-    "brlenspr": "clock:birthdeath",
-    "clockratepr": "lognorm(-7,0.6)",
-    "clockvarpr": "tk02",
-    "tk02varpr": "exp(1.0)",
-    "samplestrat": "diversity",
-    "sampleprob": "0.1",
-    "speciationpr": "beta(2, 200)",
-    "treeagepr": "offsetexp(1,5)",
-}
-NEX_TEMPLATE_2 = """\
-#NEXUS
-
-log start filename={outname}.log replace;
-execute {nexus};
-
-begin mrbayes;
-set autoclose=yes nowarn=yes;
-
-lset nst=6 rates=gamma;
-
-prset brlenspr={brlenspr};
-prset clockratepr={clockratepr};
-prset clockvarpr={tk02varpr};
-prset tk02varpr={tk02varpr};
-
-prset samplestrat={samplestrat};
-prset sampleprob={sampleprob};
-prset speciationpr={speciationpr};
-prset extinctionpr={extinctionpr};
-prset treeagepr={treeagepr};
-
-{constraints}
-
-mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
-mcmcp relburnin=yes burninfrac=0.25;
-mcmcp samplefreq={samplefreq};
-mcmcp printfreq=10000 diagnfr=5000;
-mcmcp filename={outname};
-mcmc;
-
-sump filename={outname};
-sumt filename={outname};
-end;
-"""
-
-
-
-# template for clock model tree inference
-# https://www.groundai.com/project/molecular-clock-dating-using-mrbayes/
-TEMPLATE_3_DICT = {
-    "brlenspr": "clock:uniform",
-    "clockvarpr": "igr",
-    "igrvarpr": "exp(10.0)",
-    "clockratepr": "normal(0.01,0.005)",
-    "topologypr": "uniform"
-}
-NEX_TEMPLATE_3 = """\
-#NEXUS
-
-[log block]
-log start filename={outname}.log replace;
-
-[data block]
-execute {nexus};
-
-[tree block]
-{treeblock}
-
-[mb block]
-begin mrbayes;
-  set autoclose=yes nowarn=yes;
-
-  lset nst=6 rates=gamma;
-
-  prset brlenspr={brlenspr};
-  prset clockvarpr={clockvarpr};
-  prset igrvarpr={igrvarpr};
-  prset clockratepr={clockratepr};
-  prset topologypr={topologypr};
-
-  {constraints}
-
-  mcmcp ngen={ngen} nrun={nruns} nchains={nchains};
-  mcmcp relburnin=yes burninfrac=0.25;
-  mcmcp samplefreq={samplefreq};
-  mcmcp printfreq=10000 diagnfr=5000;
-  mcmcp filename={outname};
-  mcmc;
-
-  sump filename={outname};
-  sumt filename={outname} contype=allcompat;
-end;
-
-[log block]
-log stop filename={outname}.log append;
-"""
-
-
-
-
+@dataclass
 class MrBayes:
+    """Convenience tool for running mrbayes analyses.
+    
+    Example
+    -------
+    >>> tool = ipa.mrbayes(name='test', data=DATA, ...)
+    >>> tool.run()
+    >>> tool....
     """
-    MrBayes analysis utility function for running simple commands. 
+    name: str
+    """: Name prefix used for output files."""
+    data: Union[Path, str]
+    """: Path to a NEXUS input data file."""
+    workdir: Union[Path, str] = None
+    """: Path to directory for output files."""
+    clock_model: int = 0
+    """: Int to select a class of relaxed molecular clock models."""
+    binary: Union[Path, str] = None
+    """: Path to a 'mb' binary."""
+    runs: int = 2
+    """: Param..."""
+    force: bool = False
+    """: Force overwriting of existing files."""
 
-    Parameters:
-    -----------
+    params: Params = Params()
+    """: Params..."""
+    trees: Trees = None
+    """: Params..."""
+
+    def __post_init__(self):
+        self.data = Path(self.data)
+        if not self.data.exists():
+            raise IOError(f"file does not exist at: {self.data}")
+        self.workdir = Path(self.workdir if self.workdir else '.').expanduser().absolute()
+        self.workdir.mkdir(exist_ok=True)
+        self.trees = Trees(self)
+
+    def _write_nexus(self) -> None:
+        """Write a mrbayes block to a copy of the NEXUS file."""
+        # get parameters for this model type
+        cwargs = self.params.__dict__.copy()
+
+        # always add I/O args
+        cwargs["nexus"] = self.data
+        cwargs["outname"] = self.nexus
+
+        # is the tree topology fixed?
+        if isinstance(self.constraints, toytree.ToyTree):
+            self._fixed_tree()
+            cwargs["treeblock"] = self.treeblock
+            cwargs["topologypr"] = self.params.topologypr
+            cwargs["constraints"] = ""
+
+        elif isinstance(self.constraints, dict):          
+            # set constraints from dict
+            cwargs["constraints"] = self._get_constraint_str()
+            cwargs["treeblock"] = ""
+        else:
+            cwargs["constraints"] = ""
+            cwargs["treeblock"] = ""
+
+        # expand NEXUS usign string formatting
+        if self.clock_model == 1:
+            self._nexstring = NEX_TEMPLATE_2.format(**cwargs)
+        elif self.clock_model == 2:
+            self._nexstring = NEX_TEMPLATE_3.format(**cwargs)
+        else:
+            self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
+
+        # write the NEX string
+        with open(self.nexus, 'w', encoding="utf-8") as out:
+            out.write(self._nexstring)
+
+    def _check_binary(self) -> None:
+        """Raises an error if full path to binary is missing."""
+        bins = [MB_BINARY]
+        if self.binary:
+            bins = [Path(self.binary), MB_BINARY]
+        for path in bins:
+            if path.exists():
+                self.binary = path
+                return
+        raise IOError(
+            f"mb binary not found in {bins}. Enter a full path.")
+
+    def run(self):
+        """Distribute ...
+
+        """
+        # stop before trying in mrbayes
+        if self.force:
+            for key, oldfile in self.trees:
+                if oldfile.exists():
+                    oldfile.unlink()
+        else:
+            if self.trees.pstat.exists():
+                print(
+                    f"Results exist at {self.trees.pstat}. "
+                    "Use force=True to overwrite.")
+                return
+
+        # rewrite nexus file in case params have been updated
+        self._write_nexus_file()
+
+        # submit it
+        if not ipyclient:
+            self.stdout = _call_mb([self.binary, self.nexus])
+
+        else:
+            # find all hosts and submit job to host with most available engines
+            lbview = ipyclient.load_balanced_view()
+            self.rasync = lbview.apply(
+                _call_mb, [self.binary, self.nexus])
+
+        # initiate random seed
+        if not quiet:
+            if not ipyclient:
+                print("job {} finished successfully".format(self.name))
+
+            else:               
+                if block:
+                    print("job {} running".format(self.name))
+                    ipyclient.wait()
+                    if self.rasync.successful():
+                        print(
+                            "job {} finished successfully"
+                            .format(self.name))
+                    else:
+                        self.rasync.get()
+                else:
+                    print("job {} submitted to cluster".format(self.name))
+
+
+
+
+
+class OLDMrBayes:
+    """MrBayes analysis utility function for running simple commands. 
+
+    Parameters
+    ----------
     data: str
         The phylip formated sequence file (.phy from ipyrad).
     name: str
@@ -156,7 +198,6 @@ class MrBayes:
         The output directory for results. An alias for '-w'. 
     force: bool
         Overwrite/rm any existing mb results with this workdir/name prefix.
-
 
     Additional optional parameters
     -------------------------------
@@ -174,16 +215,15 @@ class MrBayes:
         constrain an entire tree you can enter a tree and a dict will 
         automatically be built to describe the tree structure.
 
-    Attributes:
-    -----------
+    Attributes
+    ----------
     params: dict
         parameters for this mb run
     cmd: 
         returns the command string to run mb
 
-
-    Functions:
-    ----------
+    Functions
+    ---------
     run()
         submits a mrbayes job locally or on an ipyparallel client cluster. 
     """    
@@ -196,27 +236,24 @@ class MrBayes:
         workdir="analysis-mb", 
         clock_model=False,
         constraints=None,
-        **kwargs):
+        **kwargs,
+        ):
 
         # path attributes
         self._kwargs = {}            
         self._kwargs.update(kwargs)
 
         # check workdir
-        if workdir:
-            workdir = os.path.abspath(os.path.expanduser(workdir))
-        else:
-            workdir = os.path.abspath(os.path.curdir)
-        if not os.path.exists(workdir):
-            os.makedirs(workdir)
+        self.workdir = Path(workdir if workdir else '.').expanduser().absolute()
+        self.workdir.mkdir(exist_ok=True)
 
         # entered args
         self.clock_model = clock_model
         self.constraints = constraints
         self.name = name
         self.workdir = workdir
-        self.data = os.path.abspath(os.path.expanduser(data))
-        self.nexus = os.path.join(self.workdir, self.name + ".nex")
+        self.data = Path(data).expanduser().absolute()
+        self.nexus = self.workdir / (self.name + ".nex")
         self.binary = ""
         self._get_binary(self._kwargs.get("binary"))
 
@@ -247,12 +284,7 @@ class MrBayes:
         # results files        
         self.trees = Params()
         runs = ("" if int(self.params.nruns) < 2 else "run1.")
-        self.trees.constre = os.path.join(
-            self.workdir, "{}.nex.con.tre".format(self.name))
-        self.trees.posttre = os.path.join(
-            self.workdir, "{}.nex.{}t".format(self.name, runs))
-        self.trees.pstat = os.path.join(
-            self.workdir, "{}.nex.pstat".format(self.name))
+
         self._write_nexus_file()
 
         # check attribute for existing results at this name.
@@ -263,10 +295,8 @@ class MrBayes:
             )
 
 
-    def _write_nexus_file(self, write=True):
-        """
-        Write a mrbayes block to a copy of the NEXUS file.
-        """
+    def _write_nexus_file(self):
+        """Write a mrbayes block to a copy of the NEXUS file."""
         # get parameters for this model type
         cwargs = self.params.__dict__.copy()
 
@@ -275,7 +305,7 @@ class MrBayes:
         cwargs["outname"] = self.nexus
 
         # is the tree topology fixed?
-        if isinstance(self.constraints, toytree.Toytree.ToyTree):
+        if isinstance(self.constraints, toytree.ToyTree):
             self._fixed_tree()
             cwargs["treeblock"] = self.treeblock
             cwargs["topologypr"] = self.params.topologypr
@@ -298,7 +328,7 @@ class MrBayes:
             self._nexstring = NEX_TEMPLATE_1.format(**cwargs)
 
         # write the NEX string
-        with open(self.nexus, 'w') as out:
+        with open(self.nexus, 'w', encoding="utf-8") as out:
             out.write(self._nexstring)
 
 
@@ -517,15 +547,17 @@ class MrBayes:
 
 
 
-
-def _call_mb(command_list):
-    """ call the command as sps """
-    proc = subprocess.Popen(
-        command_list,
-        stderr=subprocess.STDOUT, 
-        stdout=subprocess.PIPE
-        )
-    comm = proc.communicate()
+def _call_mb(cmd: List[str]) -> str:
+    """Run subprocess on mb command and return stdout."""
+    kwargs = dict(stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+    with subprocess.Popen(cmd, **kwargs) as proc:
+        comm = proc.communicate()
     if proc.returncode:
         raise IPyradError(comm[0].decode())
     return comm[0].decode()
+
+
+if __name__ == "__main__":
+
+    mb = MrBayes(name='hi', workdir='/tmp', data="/home/deren/Downloads/T88270.nex")
+    print(mb)
