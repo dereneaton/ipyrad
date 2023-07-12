@@ -21,10 +21,17 @@ class _Bins:
 
 
 _IMPORT_ERROR = """
-Missing requirement: {}
+  Missing requirement: {}
 
-Please run 'conda install {} -c bioconda' or to install
-all requirements run 'conda upgrade ipyrad -c bioconda'.
+  Please run 'conda install {} -c bioconda' or to install
+  all requirements run 'conda upgrade ipyrad -c bioconda'.
+"""
+
+_MUSCLE_VERSION_ERROR = """
+  ipyrad binary version error: Muscle version <5 required
+
+  Please run 'conda install -c bioconda muscle=3' to install
+  a compatible version of muscle.
 """
 
 # check binaries
@@ -49,6 +56,16 @@ for binary, path in bins.__dict__.items():
             print(errmsg.decode())
             raise ImportError(_IMPORT_ERROR.format(binary, binary))
 
+
+# Ensure muscle v3 is installed
+cmd = [bins.muscle, "-version"]
+proc = _sps.Popen(cmd, stderr=_sps.STDOUT, stdout=_sps.PIPE)
+msg = proc.communicate()[0]
+if "v3" in msg.decode():
+    pass
+else:
+    print(_MUSCLE_VERSION_ERROR)
+    _sys.exit()
 
 # if user installed with pip then the following may be missing:
 try:
