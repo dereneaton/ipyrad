@@ -719,12 +719,13 @@ if __name__ == "__main__":
     import shutil
     shutil.rmtree("/tmp/radcamp_i7")
     tool = Demux(
+        # barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
         barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
         fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
         outpath="/tmp/radcamp_i7",
-        chunksize=1000,
+        chunksize=10_000,
         max_barcode_mismatch=1,
-        merge_technical_replicates=True, # testing w/ alt brcodes file.
+        merge_technical_replicates=True,  # testing w/ alt brcodes file.
         i7=True,
     )
     tool.run()

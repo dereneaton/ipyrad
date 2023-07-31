@@ -126,7 +126,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             # logger.debug(f"groups: {groups}")
             assert len(groups) == len(fastqs) / 2
             assert all(len(j) == 2 for i, j in groups.items())
-            logger.info("detected fastq paired data files.")
+            logger.info("detected fastq paired data files")
             paired = True
             break
 

@@ -167,7 +167,8 @@ class BarMatching:
                         data = read2s[name]
                         rasyncs[f"{name}_R2"] = pool.submit(write, *(path2, data))
 
-                # raise exception for any writing errors
+                # raise exception for any writing errors and block until all
+                # files for this chunk have been written before starting next.
                 for res in rasyncs:
                     rasyncs[res].result()
 
@@ -176,8 +177,8 @@ class BarMatching:
 class BarMatchingI7(BarMatching):
     """Subclass of Barmatching that matches barcode in i7 header.
 
-    Example 3RAD R1 file with i7 tag in header
-    ------------------------------------------
+    Example 3RAD R1 file with i7+i5 tag in header
+    ---------------------------------------------
     >>> # asterisk part is the i7 --->                  ********
     >>> @NB551405:60:H7T2GAFXY:4:21612:8472:20380 1:N:0:TATCGGTC+ACCAGGGA
     >>> ATCGGTATGCTGGAGGTGGTGGTGGTGGAGGTGGACGTTACAAGGGTTCTGGTGGTAGCCGATCAG...
