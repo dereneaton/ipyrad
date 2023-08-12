@@ -449,10 +449,14 @@ class Processor(object):
                 for pop in self.imap:
                     # Carve off just the samples for this population
                     try:
+                        # The locus may not have data for all samples in the population
+                        # so `intersection` retains the sample names common to the locus
+                        # index and the samples in the imap pop
                         cts, sidxs, length = self._process_locus(
-                                                    locus.loc[self.imap[pop]])
+                                                    locus.loc[locus.index.intersection(self.imap[pop])])
                     except KeyError:
-                        continue
+                        raise Exception("Error in Processor.run() lidx: {}".format(lidx))
+
                     # Number of segregating sites
                     S = len(sidxs)
                     # Number of samples
@@ -479,7 +483,7 @@ class Processor(object):
                         Dxy_res = self._dxy(*pop_cts.values(), len(locus))
                         Dxy_arr[pops[1]][pops[0]] = Dxy_res
                     except KeyError:
-                        continue
+                        pass
                 self.results.Dxy[lidx] = Dxy_arr
 
                 try:
@@ -491,7 +495,7 @@ class Processor(object):
                 except Exception:
                     # Does not work if any pops have no samples
                     # Doesn't work well with missing data
-                    continue
+                    pass
 
                 lidx += 1
             except StopIteration:
