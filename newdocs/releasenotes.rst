@@ -4,6 +4,16 @@
 Release Notes
 =============
 
+0.9.93
+------
+**August 16, 2023**
+
+- add mac arm install instructions
+- Allow popgen.py to handle missing data a bit better"
+- Update faq.rst
+- test muscle binary version for #504
+- analysis.sratools allow sample names to be all integers
+
 0.9.92
 ------
 **May 31, 2023**
