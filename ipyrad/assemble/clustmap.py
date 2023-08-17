@@ -1740,12 +1740,12 @@ def index_ref_with_sam(data, alt=False):
                 "Assembly method {} requires that you enter a "
                 "reference_sequence_path. The path you entered was not "
                 "found: \n{}")
-                .format(data.params.assembly_method))
+                .format(data.params.reference_sequence))
         else:
             raise IPyradError((
                 "reference_as_filter requires that you enter a reference "
                 "fasta file. The path you entered was not found: \n{}")
-                .format(data.params.assembly_method))
+                .format(data.params.reference_as_filter))
 
     # If reference index exists then bail out unless force
     if os.path.exists(refseq_file + ".fai"):
