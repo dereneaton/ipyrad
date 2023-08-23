@@ -191,7 +191,7 @@ Mac install instructions for *conda*
     #  * Type 'yes' to agree to the license
     #  * Press Enter to use the default install directory
     #  * Type 'yes' to initialize the conda install
-    bash Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-MacOSX-x86_64.sh
 
     # Refresh your terminal session to see conda
     bash
