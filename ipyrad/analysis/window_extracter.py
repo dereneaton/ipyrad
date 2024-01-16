@@ -350,7 +350,10 @@ class WindowExtracter(object):
             ])               
 
             # parse scaf names and lengths from db
-            scafnames = [i.decode() for i in io5["scaffold_names"][:]]
+            try:
+                scafnames = [i.decode() for i in io5["scaffold_names"][:]]
+            except AttributeError:
+                scafnames = [i for i in io5["scaffold_names"][:]]
             scaflens = io5["scaffold_lengths"][:]
             self.scaffold_table = pd.DataFrame(
                 data={

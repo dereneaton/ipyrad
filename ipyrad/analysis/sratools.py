@@ -354,6 +354,9 @@ class SRA(object):
 
         df = pd.concat(blocks)
         df.reset_index(drop=True, inplace=True)
+        # Handle case where sample names are all integers and get cast
+        # to np.int64. Convert to str.
+        df.SampleName = df.SampleName.astype(str)
         return df.iloc[:, [i - 1 for i in fields]]
 
 

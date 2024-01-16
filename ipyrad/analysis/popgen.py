@@ -15,6 +15,7 @@ import os
 import pickle
 import time
 from collections import Counter
+from functools import reduce
 from ipyrad import Assembly
 from ipyrad.assemble.utils import IPyradError
 from itertools import combinations
@@ -55,13 +56,15 @@ class Popgen(object):
         data,
         imap=None,
         minmap=None,
+        mincov=4,
         workdir="analysis-popgen",
         quiet=False,
         ):
         
         # set attributes
         self.imap = (imap if imap else {})
-        self.minmap = (minmap if minmap else {i: 4 for i in self.imap})
+        self.minmap = minmap #(minmap if minmap else {i: 4 for i in self.imap})
+        self.mincov = mincov
         self.npops = (len(self.imap) if imap else 1)
         self.quiet = quiet
         self.nboots = 100
@@ -134,7 +137,6 @@ class Popgen(object):
                 # Since v0.9.63-ish the snps_database is stored as an
                 # assembly parameter. If it's not there try to construct
                 # it from data.outfiles
-                self.snpfile = data.snps_database
                 self.datafile = data.seqs_database
             except AttributeError:
                 self.datafile = os.path.join(data.dirs.outfiles + 
@@ -155,6 +157,8 @@ class Popgen(object):
         #    self.mapfile = os.path.realpath(self.mapfile)
 
         # load the snp data
+        # Not using the snp data internally at all. iao 5/2023
+
         #with h5py.File(self.snpfile, 'r') as io5:
         #    for idx, name in enumerate(io5["snps"].attrs["names"]):
         #        self.snps[name.decode("utf-8")] = io5["snps"][idx]
@@ -165,18 +169,16 @@ class Popgen(object):
     def _check_samples(self):
         "Read in list of sample names from the datafile"
 
-        # On the assumption we'll focus on the seqs file for the sumstats
-        # then this can be deleted.
-        #with h5py.File(self.snpfile, 'r') as io5:
-        #    self.samples = [x.decode() for x in io5["snps"].attrs["names"]]
         with h5py.File(self.datafile, 'r') as io5:
-            self.samples = [x.decode() for x in io5["phymap"].attrs["phynames"]]
+            try:
+                self.samples = [i.decode() for i in io5["phymap"].attrs["phynames"]]
+            except AttributeError:
+                self.samples = [i for i in io5["phymap"].attrs["phynames"]]
         if self.imap:
             # Check agreement between samples in imap and hdf5 file
             imap_samps = list(chain(*self.imap.values()))
             in_imap_not_hdf5 = set(imap_samps).difference(self.samples)
             in_hdf5_not_imap = set(self.samples).difference(imap_samps)
-
             if in_imap_not_hdf5:
                 # Error if you pass in a sample in imap not in hdf5
                 raise IPyradError(_BAD_IMAP_ERROR.format(in_imap_not_hdf5))
@@ -234,7 +236,7 @@ class Popgen(object):
             data=self.datafile,
             imap=self.imap,
             minmap=self.minmap,
-            mincov=len(self.imap),  # ENFORCE at least 1 per spp.
+            mincov=self.mincov,
 #            minsnps=self.minsnps,
 #            maxmissing=self.maxmissing,
 #            minlen=self.minlen,
@@ -375,6 +377,27 @@ class Popgen(object):
             prog.update()
         self.results["within"] = single_popstats
 
+        # Pull between population sumstats
+        # Each full_res key contains a dictionary of dataframes showing pairwise
+        # dxy among all populations. Extract all the dataframes and flatten them to a
+        # list of dataframes
+        dxys_per_locus = [y for x in full_res for y in full_res[x]["Dxy"].values()]
+        # Add all dataframes together and divide by the number of dataframes to
+        # get average dxy among pops
+        dxys = reduce(lambda x, y: x.add(y, fill_value=0), dxys_per_locus)/len(dxys_per_locus)
+        self.results["between"] = {}
+        self.results["between"]["Dxy"] = dxys
+ 
+        # Repeat the same procedure for Fst
+        # There are actually 3 versions of Fst: Fst, Fst_adj, and Fst_Nm
+        fsts_per_locus = [y["Fst"] for x in full_res for y in full_res[x]["Fst"].values()]
+        fsts = reduce(lambda x, y: x.add(y, fill_value=0), fsts_per_locus)/len(fsts_per_locus)
+        self.results["between"]["Fst"] = fsts
+        # Repeat for Fst_adj
+        fsts_per_locus = [y["Fst_adj"] for x in full_res for y in full_res[x]["Fst"].values()]
+        fsts = reduce(lambda x, y: x.add(y, fill_value=0), fsts_per_locus)/len(fsts_per_locus)
+        self.results["between"]["Fst_adj"] = fsts
+
         prog.finished = len(self.imap)
         prog.update()
         print("")
@@ -457,16 +480,24 @@ class Processor(object):
                     columns=self.imap.keys(),
                 )
                 for pops in combinations(self.imap, 2):
-                    pop_cts, sidxs = self._process_locus_pops(locus, pops)
-                    Dxy_res = self._dxy(*pop_cts.values(), len(locus))
-                    Dxy_arr[pops[1]][pops[0]] = Dxy_res
+                    try:
+                        pop_cts, sidxs = self._process_locus_pops(locus, pops)
+                        Dxy_res = self._dxy(*pop_cts.values(), len(locus))
+                        Dxy_arr[pops[1]][pops[0]] = Dxy_res
+                    except KeyError:
+                        pass
                 self.results.Dxy[lidx] = Dxy_arr
 
-                Fst_res = self._fst_full(locus)
-                self.results.Fst[lidx] = {}
-                self.results.Fst[lidx]["Fst"] = Fst_res[0]
-                self.results.Fst[lidx]["Fst_adj"] = Fst_res[1]
-                self.results.Fst[lidx]["Fst_Nm"] = Fst_res[2]
+                try:
+                    Fst_res = self._fst_full(locus)
+                    self.results.Fst[lidx] = {}
+                    self.results.Fst[lidx]["Fst"] = Fst_res[0]
+                    self.results.Fst[lidx]["Fst_adj"] = Fst_res[1]
+                    self.results.Fst[lidx]["Fst_Nm"] = Fst_res[2]
+                except Exception:
+                    # Does not work if any pops have no samples
+                    # Doesn't work well with missing data
+                    pass
 
                 lidx += 1
             except StopIteration:

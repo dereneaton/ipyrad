@@ -34,7 +34,7 @@ requirements:
     - pysam >=0.15
     - mpi4py >=3.0
     - bedtools
-    - muscle
+    - muscle <5.0
     - vsearch >=2.13,<=2.19
     - bwa
 

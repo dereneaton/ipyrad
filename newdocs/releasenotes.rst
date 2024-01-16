@@ -4,6 +4,56 @@
 Release Notes
 =============
 
+0.9.93
+------
+**August 16, 2023**
+
+- add mac arm install instructions
+- Allow popgen.py to handle missing data a bit better"
+- Update faq.rst
+- test muscle binary version for #504
+- analysis.sratools allow sample names to be all integers
+
+0.9.92
+------
+**May 31, 2023**
+
+- analysis.popgen: Allow missing data without crashing
+- Fixed the popgen sumstats analysis tool and the cookbook
+
+0.9.91
+------
+**May 27, 2023**
+
+- Fix numpy deprecation of np.int and np.bool
+- Update environment.yml
+- Update README.rst
+- Update README.rst
+- README - Add binder badge
+- Allow mrbayes.py to pass in the binary path
+
+0.9.90
+------
+**April 03, 2023**
+
+- Fixing a bunch of AttributeErrors on h5py attribute decode attempts
+- Pin muscle < v5.0 in meta.yaml
+
+0.9.89
+------
+**March 30, 2023**
+
+- Fix for #502
+- Update install instructions  to point to libmamba-solver
+
+0.9.88
+------
+**March 12, 2023**
+
+- Update faq.rst
+- Update faq.rst
+- Solving retro-compatibility in windows (#496)
+
 0.9.87
 ------
 **November 28, 2022**

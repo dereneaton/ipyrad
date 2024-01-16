@@ -443,7 +443,7 @@ class MrBayes(object):
                 self.binary = binary
 
         # if none then raise error
-        if not proc[0]:
+        if not self.binary:
             raise Exception(
                 "cannot find mb; "
                 "run 'conda install mrbayes -c conda-forge -c bioconda'")
