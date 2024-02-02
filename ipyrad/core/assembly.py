@@ -263,7 +263,7 @@ class Assembly(object):
                 .format(self.params.barcodes_path))
 
         # read in the file
-        bdf = pd.read_csv(barcodefile[0], header=None, delim_whitespace=1)
+        bdf = pd.read_csv(barcodefile[0], header=None, sep="\s+")
         bdf = bdf.dropna()
 
         # make sure bars are upper case
@@ -380,7 +380,7 @@ class Assembly(object):
                 ## parse populations file
                 popdat = pd.read_csv(
                     popfile, header=None,
-                    delim_whitespace=1,
+                    sep="\s+",
                     names=["inds", "pops"], 
                     comment="#",
                     dtype=str)
