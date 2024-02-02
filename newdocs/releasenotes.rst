@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.94
+------
+**February 02, 2024**
+
+- Fix pandas delim_whitespace deprecation
+- fix popgen merge
+- ipa.popgen minor edits
+- update assembly method docs to remove deprecated methods
+
 0.9.93
 ------
 **August 16, 2023**
