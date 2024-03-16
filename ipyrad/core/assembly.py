@@ -13,6 +13,7 @@ import pandas as pd
 import ipyparallel
 from ipyrad.core.cluster import Cluster
 from ipyrad.schema import Project, Sample, Params
+from ipyrad.trim.load_fastqs import Step1
 # from ipyrad.core2 import 
 # from ipyrad.assemble.utils import IPyradExit
 # from ipyrad.assemble.s1_demux import Step1
@@ -28,8 +29,8 @@ logger = logger.bind(name="ipyrad")
 
 # the Class functions to run for each entered step.
 STEP_MAP = {
-    # "1": Step1,
-#     "2": Step2,
+    "1": Step1,
+    # "2": Step2,
 #     "3": Step3,
 #     "4": Step4,
 #     "5": Step5,
@@ -93,7 +94,7 @@ class Assembly:
     def is_pair(self) -> bool:
         """Returns whether Assembly is paired datatype, based on params."""
         first_sample = list(self.samples.values())[0]
-        return bool(first_sample.files.fastqs[1])
+        return bool(first_sample.files.fastqs[0][1])
         # return "pair" in self.params.datatype
 
     @property
@@ -206,19 +207,19 @@ class Assembly:
         """
         # create new names Assembly and copy over all params except name
         branch = Assembly(name)
-        params = self.params.dict()
+        params = self.params.model_dump()
         params['assembly_name'] = name
         branch.params = Params(**params)
 
         # copy over all or just a subsamples of the samples.
         if subsample is None:
             branch.samples = {
-                i: Sample(**self.samples[i].dict()) for i in self.samples
+                i: Sample(**self.samples[i].model_dump()) for i in self.samples
             }
             logger.info(f"created new branch '{name}'")
         else:
             branch.samples = {
-                i: Sample(**self.samples[i].dict())
+                i: Sample(**self.samples[i].model_dump())
                 for i in self.samples if i in subsample
             }
             for i in subsample:
@@ -236,8 +237,8 @@ class Assembly:
     def write_params(self, force: bool = False) -> None:
         """Write a CLI params file to <workdir>/params-<name>.txt.
 
-        Writes the current Params for this Assembly. When this is 
-        called from the CLI as `ipyrad -n name` it writes to the 
+        Writes the current Params for this Assembly. When this is
+        called from the CLI as `ipyrad -n name` it writes to the
         current directory, since project_dir has not been created yet,
         which is fine, since user's should only need to call it once
         when using the CLI, probably.
@@ -253,7 +254,7 @@ class Assembly:
                 raise IOError(
                     f"Error: file {outpath} exists, you must use force to overwrite")
 
-        params = self.params.dict()
+        params = self.params.model_dump()
         with open(outpath, 'w', encoding="utf-8") as out:
             print("---------- ipyrad params file " + "-" * 80, file=out)
             for idx, param in enumerate(params):
@@ -272,15 +273,15 @@ class Assembly:
         """Writes the current Assembly object to the project JSON file."""
         self.params.project_dir.mkdir(exist_ok=True)
         project = Project(
-            params=Params(**self.params.dict()),
+            params=Params(**self.params.model_dump()),
             samples=self.samples,
             populations=self.populations,
             assembly_stats=self.assembly_stats,
             outfiles=self.outfiles,
         )
         with open(self.json_file, 'w', encoding="utf-8") as out:
-            out.write(project.json(indent=2, exclude_none=True))
-        logger.debug(f"wrote to {self.json_file}")
+            out.write(project.model_dump_json(indent=2, exclude_none=True))
+        logger.debug(f"Assembly JSON saved to {self.json_file}")
 
     def run(
         self,
@@ -328,9 +329,9 @@ class Assembly:
         with Cluster(cores=cores, **ipyclient_kwargs) as client:
             # use client for any/all steps of assembly
             for step in steps:
-                tool = STEP_MAP[step](self, force, quiet, client)
+                tool = STEP_MAP[step](self, force, client)
                 tool.run()
-                shutil.rmtree(tool.tmpdir)  # uncomment when not testing.
+                shutil.rmtree(tool.data.tmpdir)  # uncomment when not testing.
 
 
 # PARAMS FILE INFO WRITTEN TO CLI PARAMS FILE.
@@ -375,8 +376,8 @@ if __name__ == "__main__":
 
     TEST = Assembly("NEWTEST")
     TEST.params.project_dir = "/tmp"
-    TEST.params.fastq_path = "../../sra-fastqs/*.fastq"
-    TEST.run("1")
+    TEST.params.fastq_paths = "../../sra-fastqs/*.fastq"
+    TEST.run("1", force=True, cores=6)
     # TEST.write_params(True)
     # print((TEST.params.project_dir))
 
