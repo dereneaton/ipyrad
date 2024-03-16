@@ -105,7 +105,8 @@ def set_log_level(log_level: str = "DEBUG", log_file: Optional[Path] = None):
     logger.bind(name='ipyrad').debug(f"ipyrad logging enabled: {log_level}")
 
 
-def get_logger():
+def get_logger(log_level: str = "INFO"):
+    set_log_level(log_level)
     return logger.bind(name="ipyrad")
 
 
