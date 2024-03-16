@@ -58,6 +58,12 @@ class Step1(BaseStep):
         self._write_json_file()
         self._write_stats_file()
 
+    @property
+    def is_paired(self):
+        if any(i[1] is not None for i in self._filenames_to_fastq_tuples.values()):
+            return True
+        return False
+
     def _load_fastqs(self) -> None:
         """Expand fastq path (e.g., ./data/*.gz) to {sample: (R1, R2)}."""
 
@@ -85,9 +91,12 @@ class Step1(BaseStep):
         re1 = infer_overhang(read_r1s, max_reads=10_000)
         logger.debug(f"inferred R1 restriction overhang as: {re1}")
 
-        read_r2s = [i[1] for i in self._filenames_to_fastq_tuples.values()]
-        re2 = infer_overhang(read_r2s, max_reads=10_000)
-        logger.debug(f"inferred R2 restriction overhang as: {re2}")
+        if self.is_paired:
+            read_r2s = [i[1] for i in self._filenames_to_fastq_tuples.values()]
+            re2 = infer_overhang(read_r2s, max_reads=10_000)
+            logger.debug(f"inferred R2 restriction overhang as: {re2}")
+        else:
+            re2 = ""
 
         # set values if no values were previously set
         if not self.data.params.restriction_overhang[0]:
@@ -102,14 +111,15 @@ class Step1(BaseStep):
                     "value is being used for now, but we recommend comparing "
                     f"your results with a run using {re1}."
                 )
-            ure2 = self.data.params.restriction_overhang[1]
-            if ure2 != re2:
-                logger.warning(
-                    "kmer analysis identified the read2 restriction overhang "
-                    f"as '{re2}', however, you entered {ure2}. Your entered "
-                    "value is being used for now, but we recommend comparing "
-                    f"your results with a run using {re2}."
-                )
+            if self.is_paired:
+                ure2 = self.data.params.restriction_overhang[1]
+                if ure2 != re2:
+                    logger.warning(
+                        "kmer analysis identified the read2 restriction overhang "
+                        f"as '{re2}', however, you entered {ure2}. Your entered "
+                        "value is being used for now, but we recommend comparing "
+                        f"your results with a run using {re2}."
+                    )
 
     def _run_fastp(self) -> None:
         """The main function to call fastp in parallel."""
@@ -176,12 +186,12 @@ class Step1(BaseStep):
                 reads_filtered_by_low_quality=j['filtering_result']['low_quality_reads'],
                 reads_filtered_by_low_complexity=j['filtering_result']['low_complexity_reads'],
                 reads_filtered_by_minlen=j['filtering_result']['too_short_reads'],
-                adapter_trimmed_reads=j['adapter_cutting']['adapter_trimmed_reads'],
-                adapter_trimmed_bases=j['adapter_cutting']['adapter_trimmed_bases'],
+                adapter_trimmed_reads=j['adapter_cutting']['adapter_trimmed_reads'] if j.get("adapter_cutting") else 0,
+                adapter_trimmed_bases=j['adapter_cutting']['adapter_trimmed_bases'] if j.get("adapter_cutting") else 0,
                 mean_len_R1_before_trimming=j['summary']['before_filtering']['read1_mean_length'],
                 mean_len_R1_after_trimming=j['summary']['after_filtering']['read1_mean_length'],
-                mean_len_R2_before_trimming=j['summary']['before_filtering'].get("read2_mean_length", None),
-                mean_len_R2_after_trimming=j['summary']['after_filtering'].get("read2_mean_length", None),
+                mean_len_R2_before_trimming=j['summary']['before_filtering'].get("read2_mean_length", 0),
+                mean_len_R2_after_trimming=j['summary']['after_filtering'].get("read2_mean_length", 0),
                 reads_passed_filter=j['summary']['after_filtering']['total_reads'],
             )
 
