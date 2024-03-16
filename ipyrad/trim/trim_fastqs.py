@@ -2,6 +2,14 @@
 
 """Load fastqs per sample and trim with fastp.
 
+
+Update 7/28/23
+--------------
+Instead of searching from 5' and 3' (-5 and -3 args) we instead use
+just the cut-right arg (-r) which moves a sliding window from 5 to 3.
+This is because the former args clashed with trimming and the fastp
+developers are not responsive to fix it. This new method is a bit
+faster but probably slightly less strict.
 """
 
 from typing import Tuple
@@ -15,6 +23,7 @@ from loguru import logger
 
 logger = logger.bind(name="ipyrad")
 FASTP_BINARY = Path(sys.prefix) / "bin" / "fastp"
+ADAPTERS = Path(__file__).absolute().parent / "adapters.fa"
 
 
 class TrimFastqs:
@@ -145,16 +154,20 @@ class TrimFastqs:
                 "-i", str(self.read1),
                 "-o", str(self.out1),
                 "-w", "3",         # 3 workers + 1 i/o threads.
+                "--adapter_fasta", str(ADAPTERS),
             ]
 
-        # submit 4-threaded jobs 
+        # submit 4-threaded jobs
         # the preferred fastp threading is 3 + io1 + io2 if PE
 
         cmd.extend([
-            "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
-            "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
+            # "-5",  # sliding window from front (5') to tail, drop the bases in the window if its mean quality < threshold, stop otherwise.
+            # "-3",  # sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.
+            "-r",
+            "-M", str(15 + self.phred_qscore_offset - 33),  # mean quality in -r window
             "-q", str(15 + self.phred_qscore_offset - 33),  # minqual
             "-l", str(self.filter_min_trim_len),  # minlen
+            "-x",  # trims poly-x tails
             "-y", "-Y", "50",  # turns on and sets complexity filter to 50
             "-c",              # paired-end base correction
             "--n_base_limit", str(self.max_low_qual_bases),
@@ -224,7 +237,7 @@ class TrimFastqs:
         """Get stats from the fastp JSON file."""
         with open(self.json, 'r', encoding="utf-8") as indata:
             jdata = json.loads(indata.read())
-        return (jdata, [(str(self.out1), str(self.out2))])
+        return jdata, (str(self.out1), str(self.out2))
 
 
 def estimate_trim_position(
