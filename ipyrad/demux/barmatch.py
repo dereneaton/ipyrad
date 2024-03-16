@@ -341,6 +341,9 @@ class BarMatch2BRADInline(BarMatching):
         read1[1] = read1[1][lenbar1:]
         read1[3] = read1[3][lenbar1:]
     """
+    # temporary overwrite parent run class.
+    def run(self):
+        raise NotImplementedError
 
 
 def cut_matcher(read: str, cutters: List[str]) -> str:
