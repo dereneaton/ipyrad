@@ -93,6 +93,12 @@ Examples
 >>> ipyrad stats -p params-new1.txt
 """
 
+NEW_EPILOG = """\
+Examples
+--------
+>>> ipyrad new -n name
+"""
+
 
 def setup_parsers() -> argparse.ArgumentParser:
     """Setup and return an ArgumentParser w/ subcommands."""
@@ -181,6 +187,23 @@ def setup_parsers() -> argparse.ArgumentParser:
     #         "Force overwrite. Allows overwriting an existing directory of "
     #         "demultiplexed fastq files. (Be careful).")
     # )
+    ###################################################################
+    ###################################################################
+    # ASSEMBLE
+    new = subparsers.add_parser(
+        "new",
+        help="create a new named params file for assembly.",
+        epilog=NEW_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    new.add_argument(
+        "-n", metavar="name", type=str, required=True,
+        help="Name of Assembly used for output files and params-{name}.txt"
+    )
+    new.add_argument(
+        "--force", "-f", action="store_true",
+        help="Force overwrite of existing params file.",
+    )
 
     ###################################################################
     ###################################################################
@@ -321,7 +344,7 @@ def main():
     args = parser.parse_args()
 
     # set logging
-    if args.logger:
+    if hasattr(args, "logger") and args.logger:
         if len(args.logger) > 1:
             ip.set_log_level(args.logger[0], args.logger[1])
         else:
@@ -345,7 +368,11 @@ def main():
 
     # new params generate
     if args.subcommand == "new":
-        ...
+        tmp = ip.Assembly(args.n)
+        tmp.write_params(force=args.force)
+        curdir = Path.cwd()
+        print(f"New file 'params-{args.n}.txt' created in {curdir}\n")
+        raise SystemExit(0)
 
     # assembly job
     if args.subcommand == "assemble":
