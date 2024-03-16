@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""A logger called from ...
+
+"""
+
 from loguru import logger
 
 logger = logger.bind(name="ipyrad")
