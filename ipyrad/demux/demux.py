@@ -5,9 +5,9 @@
 TODO
 ----
 - keep paired option or only auto-detect?
-- Try to speed up using 1 core for reading, 1 for processing, and N for 
+- Try to speed up using 1 core for reading, 1 for processing, and N for
 writing/compressing, all while restricting the size of queued reads waiting
-to be written, based on this approach: 
+to be written, based on this approach:
 https://stackoverflow.com/questions/9770027/how-to-parse-a-large-file-taking-advantage-of-threading-in-python
 """
 
@@ -576,7 +576,7 @@ class Demux:
 
 
 def barmatch(fastq_tuple, demux_obj):
-    """Starts barmatch process using the appropriate subclass."""
+    """Call .run to barmatch using a class from barmatch.py."""
     kwargs = dict(
         fastqs=fastq_tuple,
         barcodes_to_names=demux_obj._barcodes_to_names,
@@ -656,6 +656,8 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
 if __name__ == "__main__":
 
     import ipyrad as ip
+    import shutil
+    import os
     ip.set_log_level("INFO")
 
     # tool = Demux(
@@ -698,37 +700,37 @@ if __name__ == "__main__":
     # )
     # tool.run()
 
-
-    # import shutil
-    # shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2023-3-28")
-    # tool = Demux(
-    #     barcodes_path="../../pedtest/barcodes-true-plate1.csv",  # barcodes-fewer-plate1.csv",
-    #     fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",
-    #     outpath="../../pedtest/demux_2023-3-28",
-    #     max_barcode_mismatch=1,
-    #     cores=7,
-    #     chunksize=1e6,
-    #     # re1="ATCGG",
-    #     # re2="CGATCC",
-    # )
-    # tool.run()
+    if os.path.exists("/home/deren/Documents/ipyrad/pedtest/demux_2024-3-16"):
+        shutil.rmtree("/home/deren/Documents/ipyrad/pedtest/demux_2024-3-16")
+    tool = Demux(
+        # barcodes_path="../../pedtest/barcodes-true-plate1.csv",
+        barcodes_path="../../pedtest/barcodes-fewer-plate1.csv",
+        fastq_paths="../../pedtest/Pedicularis_plate1_R*.fastq.gz",
+        outpath="../../pedtest/demux_2024-3-16",
+        max_barcode_mismatch=1,
+        cores=7,
+        chunksize=1e6,
+        # re1="ATCGG",
+        # re2="CGATCC",
+    )
+    tool.run()
 
     # COMMAND LINE TOOL EXAMPLE
     # cmd = ['ipyrad', 'demux', ']
 
-    import shutil
-    shutil.rmtree("/tmp/radcamp_i7")
-    tool = Demux(
-        # barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
-        barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
-        fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
-        outpath="/tmp/radcamp_i7",
-        chunksize=10_000,
-        max_barcode_mismatch=1,
-        merge_technical_replicates=True,  # testing w/ alt brcodes file.
-        i7=True,
-    )
-    tool.run()
+    # if os.path.exists("/tmp/radcamp_i7"):
+    #     shutil.rmtree("/tmp/radcamp_i7")
+    # tool = Demux(
+    #     barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes.txt",
+    #     # barcodes_path="../../sandbox/radcamp/SMALL_i7_barcodes_techrep_test.txt",
+    #     fastq_paths="../../sandbox/radcamp/SMALL_RAW_R*.fastq",
+    #     outpath="/tmp/radcamp_i7",
+    #     chunksize=10_000,
+    #     max_barcode_mismatch=1,
+    #     merge_technical_replicates=True,  # testing w/ alt brcodes file.
+    #     i7=True,
+    # )
+    # tool.run()
 
     # # TEST i7 demux.
     # DATA = ip.Assembly("TEST_i7")
@@ -739,8 +741,8 @@ if __name__ == "__main__":
     # DATA.hackers.demultiplex_on_i7_tags = True
 
     # DATA = ip.Assembly("TEST1")
-    # DATA.params.raw_fastq_path = 
-    # DATA.params.barcodes_path = 
+    # DATA.params.raw_fastq_path =
+    # DATA.params.barcodes_path =
     # DATA.params.project_dir = "/tmp"
     # DATA.params.max_barcode_mismatch = 0
     # DATA.run('1', force=True, quiet=True)
