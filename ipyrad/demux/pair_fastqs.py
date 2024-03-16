@@ -155,12 +155,14 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
     # if names are suspiciously paired looking.
     else:
         for path in fastqs:
-            name = path.with_suffix("").name
-            filenames_to_fastq_tuples[name] = (path.expanduser().resolve(), None)
-            logger.debug(f"SE fastqs: '{name}': {(path.name, )}")
+            subpath = path.with_suffix("")
+            while subpath.suffix:
+                subpath = subpath.with_suffix("")
+            filenames_to_fastq_tuples[subpath.name] = (path.expanduser().resolve(), None)
+            logger.debug(f"SE fastqs: '{subpath.name}': {(path, )}")
 
             # warning if the data appear to include R2s
-            if any(i in str(path) for i in ("_R2_", "_2.", "_R2.")):
+            if any(i in str(path.name) for i in ("_R2_", "_2.", "_R2.")):
                 logger.warning(
                     f"fastq file name ({path.name}) has a filename "
                     "that suggests it may be an R2 read, but its paired "
