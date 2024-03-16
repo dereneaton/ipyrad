@@ -62,11 +62,11 @@ class BaseStep(ABC):
         messages = {
             '1': "Step 1: Loading/trimming demultiplexed fastq data files",
             '2': "Step 2: Clustering/Mapping reads within samples",
-            '3': "Step 3: Building clusters within samples",
-            '4': "Step 4: Filtering/ consensus alleles within samples",
-            '5': "Step 5: Clustering/Mapping homologs across samples",
-            '6': "Step 6: Building clusters/loci across samples",
-            '7': "Step 7: Filtering, trimming, and writing output files",
+            '3': "Step 3: Building/Aligning clusters within samples",
+            '4': "Step 4: Calling/Filtering consensus alleles within samples",
+            '5': "Step 5: Clustering/Mapping orthologs across samples",
+            '6': "Step 6: Building/Aligning loci across samples",
+            '7': "Step 7: Trimming/Filtering and writing output files",
         }
         key = str(self.step)
         logger.info(messages[key])
