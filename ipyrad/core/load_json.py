@@ -4,15 +4,18 @@
 Load an Assembly object from a project JSON file.
 """
 
+from pathlib import Path
 from loguru import logger
 from ipyrad.schema import Project
 from ipyrad.core import Assembly
 
 
-def load_json(json_file: str) -> Assembly:
+def load_json(json_file: Path | str) -> Assembly:
     """Return an Assembly object loaded from a project JSON file.
     """
-    proj = Project.parse_file(json_file)
+    # proj = Project.parse_file(json_file)
+    content_json = Path(json_file).read_text()
+    proj = Project.model_validate_json(content_json)
     data = Assembly(proj.params.assembly_name)
     data.samples = {i: j for (i, j) in proj.samples.items() if i != "reference"}
     data.params = proj.params
@@ -25,4 +28,5 @@ def load_json(json_file: str) -> Assembly:
 
 if __name__ == "__main__":
 
-    DATA = load_json("/tmp/hi.json")
+    DATA = load_json("../../pedtest/half-demuxed.json")
+    print(DATA)
