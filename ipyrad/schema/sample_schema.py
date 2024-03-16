@@ -123,10 +123,10 @@ class Stats7(BaseModel):
 
 
 class SampleFiles(BaseModel):
-    fastqs: Tuple[Path, Path] = None
-    """: The original fastq data files for this sample."""
-    trimmed: List[Tuple[Path, Path]] = None
-    """: List of pairs of fastq files that have been filtered."""
+    fastqs: List[Tuple[Path, Path]] = None
+    """: The fastq data files for this Sample."""
+    trimmed: Tuple[Path, Path] = None
+    """: pairs of fastq files that have been filtered."""
     clustmap: Tuple[Path, Path] = None
     """: denovo clustering: (derep, clustmap) tuple where dereps are R1nnnnR2."""
     bamfile: Path = None
@@ -155,7 +155,7 @@ class Sample(BaseModel):
     stats_s7: Stats7 = None
 
     def __str__(self):
-        return self.json(indent=2)
+        return self.model_dump_json(indent=2)
 
 
 if __name__ == "__main__":

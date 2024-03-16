@@ -23,28 +23,28 @@ restriction_overhang = infer from reads and use, or validate against user input
 # pylint: disable=no-self-argument, no-name-in-module, no-self-use
 
 from pathlib import Path
-from typing import List, Tuple, Union
-from pydantic import BaseModel, Field, validator
+from typing import List, Tuple, Dict
+from pydantic import BaseModel, Field, field_validator
 
 
 class Params(BaseModel):
     """Assembly object parameters for ipyrad assembly."""
     assembly_name: str = Field(allow_mutation=False)
     project_dir: Path = Field(default_factory=Path.cwd)
-    fastq_paths: Union[Path, List[Path]] = None
-    reference_sequence: Path = None
+    fastq_paths: Path | List[Path] = Field(default_factory=list)
+    reference_sequence: Path | None = None
     # filtering/trimming options
     filter_adapters: int = 2
     filter_min_trim_len: int = 35
     max_low_qual_bases: int = 5
-    trim_reads: List[int] = (0, 0)
-    reference_as_filter: Path = None
+    trim_reads: List[int] = [0, 0]
     phred_qscore_offset: int = 33
     # cluster building options
+    reference_as_filter: Path | None = None
     clust_threshold: float = 0.85
     min_depth_statistical: int = 6
     min_depth_majrule: int = 6
-    max_depth: int = 10000
+    max_depth: int = 10_000
     # consens options
     max_alleles_consens: int = 2
     max_n_consens: float = 0.05
@@ -54,18 +54,19 @@ class Params(BaseModel):
     max_snps_locus: float = 0.2
     max_indels_locus: int = 8
     max_shared_h_locus: float = 0.5
-    trim_loci: List[int] = (0, 0, 0, 0)
+    trim_loci: List[int] = [0, 0, 0, 0]
     output_formats: List[str] = ["p", "s", "l"]
-    pop_assign_file: Path = None
-    # odd options
+    pop_assign_file: Path | None = None
+    # potpourri options
     exclude_reference: bool = True
     trim_locus_edges_min_sites: int = 4
     random_seed: int = 42
-    max_fragment_length: int = Field(50, help="limits maxlen of loci by tiling")
+    max_fragment_length: int = Field(400, help="limits maxlen of loci by tiling. Updated automatically.")
     max_inner_mate_distance: int = Field(500, help="used to delimit loci in ref assemblies")
     declone_PCR_duplicates: bool = False
+    technical_replicates: Dict[str, List[str]] = Field(default_factory=dict)# how should users enter this to params file?
     # NOT NECESSARY, WE CAN ESTIMATE FROM THE DATA
-    restriction_overhang: Tuple[str, str] = ("", "")
+    restriction_overhang: List[str] = ["", ""]
     # datatype: DataType = "rad"
     # assembly_method: AssemblyMethod = "denovo"
     # cluster_query_cov: float
@@ -77,10 +78,10 @@ class Params(BaseModel):
         validate_assignment = True
 
     def __str__(self):
-        return self.json(indent=2)
+        return self.model_dump_json(indent=2)
 
     def __repr__(self):
-        return self.json(indent=2)
+        return self.model_dump_json(indent=2)
 
     ##################################################################
     # Below here, custom validator funcs in addition to type checking.
@@ -93,18 +94,17 @@ class Params(BaseModel):
     # new values from the params file.
     ##################################################################
 
-    @validator('assembly_name')
-    def _name_validator(cls, value):
+    @field_validator('assembly_name')
+    def _name_validator(cls, value: str) -> str:
         """Names cannot have whitespace. Other strange characters are
-        simply replaced with a warning message printed. This is
-        immutable anyways.
+        replaced with a warning message printed. This becomes immutable.
         """
         if ' ' in value:
             raise ValueError('assembly_name cannot contain spaces')
         return value
 
-    @validator('project_dir')
-    def _dir_validator(cls, value):
+    @field_validator('project_dir')
+    def _dir_validator(cls, value: Path) -> Path:
         """Project_dir cannot have whitespace, is expanded, and created."""
         if ' ' in value.name:
             raise ValueError('project_dir cannot contain spaces')
@@ -112,8 +112,8 @@ class Params(BaseModel):
         value.mkdir(exist_ok=True)
         return value
 
-    @validator('fastq_paths')
-    def _path_validator(cls, value):
+    @field_validator('fastq_paths')
+    def _path_validator(cls, value: Path | List[str | Path]) -> List[Path]:
         """If a path was entered then it must match >=1 files.
 
         Users are allowed to enter None to leave this field blank, in
@@ -147,8 +147,8 @@ class Params(BaseModel):
             paths.append(path)
         return paths
 
-    @validator("reference_sequence", "reference_as_filter")
-    def _reference_validator(cls, value):
+    @field_validator("reference_sequence", "reference_as_filter")
+    def _reference_validator(cls, value: Path) -> Path:
         """Checks that reference file exists and expands path."""
         if value:
             value = value.expanduser().resolve()
@@ -158,7 +158,7 @@ class Params(BaseModel):
                 raise ValueError(f"reference {value} must be decompressed.")
         return value
 
-    @validator("restriction_overhang")
+    @field_validator("restriction_overhang")
     def _enzyme_validator(cls, value):
         """Check that the restriction enzymes do not contain bad chars?"""
         # parse paramsfile str
@@ -168,20 +168,20 @@ class Params(BaseModel):
                 print(value)
         return value
 
-    @validator("trim_reads")
-    def _trim_reads_validator(cls, value) -> Tuple[int, int]:
+    @field_validator("trim_reads")
+    def _trim_reads_validator(cls, value) -> List[int]:
         """Default is (0, 0). User can set to any integers. Negative
         values have special meaning of
         """
         # handle older format with 4 values by selecting the first,last
         if len(value) == 4:
-            value = value[0], value[-1]
+            value = [value[0], value[-1]]
         if len(value) == 1:
-            return (value, 0)
+            return [value, 0]
         assert len(value) == 2, "trim_reads must contain 2 values, e.g., (0, 0)"
-        return value
+        return list(value)
 
-    @validator("trim_loci")
+    @field_validator("trim_loci")
     def _trim_loci_validator(cls, value) -> Tuple[int, int, int, int]:
         """Return a tuple[int,int]."""
         if value is None:
@@ -196,9 +196,10 @@ if __name__ == "__main__":
 
     p = Params(assembly_name="TEST", project_dir="./")
     p.min_depth_majrule = '2'
-    p.restriction_overhang = tuple("TGC,".split(','))
+    p.restriction_overhang = "TGC,".split(',')
     p.reference_as_filter = "../../tests/ipsimdata/gbs_example_genome.fa"
-    p.trim_reads = tuple("0, 0".split(","))
     p.fastq_paths = "../../pedtest/small_tmp_R1.*.gz"
+    p.trim_reads = (0, 0)
+
     # p.max_indels_locus = "0 0".split(",")
     print(p)

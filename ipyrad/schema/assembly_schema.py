@@ -3,7 +3,6 @@
 """...
 
 
-
 """
 
 from typing import Dict, Tuple, List
@@ -87,10 +86,10 @@ class Project(BaseModel):
     stats_files: StatsFiles = StatsFiles()
 
     def __str__(self):
-        return self.json(indent=2)
+        return self.model_dump_json(indent=2)
 
     def __repr__(self):
-        return self.json(indent=2)
+        return self.model_dump_json(indent=2)
 
 
 if __name__ == "__main__":
