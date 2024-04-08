@@ -44,7 +44,7 @@ class Step1(BaseStep):
     def __init__(self, data, force, ipyclient):
         # creates output directory
         super().__init__(data, step=1, force=force)
-        self._filenames_to_fastq_tuples = {}
+        self._snames_to_fastq_tuples = {}
         self._samples: Dict[str, Sample] = {}
         self._results: Dict[str, Dict[str, float]] = {}
         self.ipyclient = ipyclient
@@ -60,7 +60,8 @@ class Step1(BaseStep):
 
     @property
     def is_paired(self):
-        if any(i[1] is not None for i in self._filenames_to_fastq_tuples.values()):
+        """Return True if paired data, i.e., not (R1, '')."""
+        if any(i[1] for i in self._snames_to_fastq_tuples.values()):
             return True
         return False
 
@@ -72,27 +73,30 @@ class Step1(BaseStep):
         # infer sample names from trimmed path names and map {name: [paths]}
         snames_to_fq_tuples = get_fastq_tuples_dict_from_paths_list(fqs)
         # store dict {name: [paths]} to self
-        self._filenames_to_fastq_tuples = snames_to_fq_tuples
+        self._snames_to_fastq_tuples = snames_to_fq_tuples
 
         # if merging technical replicates the sample names must be found.
         notfound = []
         for key, names in self.data.params.technical_replicates.items():
             for name in names:
-                if name not in self._filenames_to_fastq_tuples:
+                if name not in self._snames_to_fastq_tuples:
                     notfound.append(name)
         if notfound:
-            msg = f"technical_replicate name not found: {notfound}"
+            msg = (
+                f"Sample name entered as a technical_replicate was not found: {notfound}. "
+                f"Candidate Sample names extracted from filenames are: {list(snames_to_fq_tuples)}"
+            )
             logger.exception(msg)
             raise ValueError(msg)
 
     def _check_re_overhangs(self) -> None:
         """Infer re overhang from kmer analysis and compare w/ params setting."""
-        read_r1s = [i[0] for i in self._filenames_to_fastq_tuples.values()]
+        read_r1s = [i[0] for i in self._snames_to_fastq_tuples.values()]
         re1 = infer_overhang(read_r1s, max_reads=10_000)
         logger.debug(f"inferred R1 restriction overhang as: {re1}")
 
         if self.is_paired:
-            read_r2s = [i[1] for i in self._filenames_to_fastq_tuples.values()]
+            read_r2s = [i[1] for i in self._snames_to_fastq_tuples.values()]
             re2 = infer_overhang(read_r2s, max_reads=10_000)
             logger.debug(f"inferred R2 restriction overhang as: {re2}")
         else:
@@ -148,7 +152,7 @@ class Step1(BaseStep):
         # serial execution option that can be used for testing.
         if self.ipyclient is None:
             logger.warning("No ipyclient, executing serially.")
-            for sname, fastq_tuple in self._filenames_to_fastq_tuples.items():
+            for sname, fastq_tuple in self._snames_to_fastq_tuples.items():
                 kwargs['sname'] = sname
                 kwargs['reads'] = fastq_tuple
                 kwargs['is_pair'] = bool(fastq_tuple[1])
@@ -160,7 +164,7 @@ class Step1(BaseStep):
 
         # submit jobs to parallel client
         rasyncs = {}
-        for sname, fastq_tuple in self._filenames_to_fastq_tuples.items():
+        for sname, fastq_tuple in self._snames_to_fastq_tuples.items():
             kwargs['sname'] = sname
             kwargs['reads'] = fastq_tuple
             kwargs['is_pair'] = bool(fastq_tuple[1])
@@ -178,8 +182,12 @@ class Step1(BaseStep):
         for sname, result in self._results.items():
             j, filepaths = result
             sample = Sample(name=sname)
-            sample.files.fastqs = [self._filenames_to_fastq_tuples[sname]]
+            # the fastqs [(Path, Path)] or [(Path, '')].
+            sample.files.fastqs = [self._snames_to_fastq_tuples[sname]]
+            # the trimmed (Path, Path) or (Path, '')
             sample.files.trimmed = filepaths
+            # tuple([Path(i) if i else "" for i in filepaths])
+            # enter stats
             sample.stats_s1 = Stats1(
                 reads_raw=j['summary']['before_filtering']['total_reads'],
                 reads_filtered_by_Ns=j['filtering_result']['too_many_N_reads'],
@@ -203,9 +211,9 @@ class Step1(BaseStep):
                 "reads_filtered_by_low_quality",
                 "reads_filtered_by_low_complexity",
                 "reads_filtered_by_minlen",
-                "reads_passed_filter"
+                "reads_passed_filter",
             ]
-            # if paired
+            # if paired then divide counts in half to count read-pairs
             if sample.files.fastqs[0][1]:
                 for key in pair_keys:
                     setattr(sample.stats_s1, key, int(getattr(sample.stats_s1, key) / 2))
@@ -227,7 +235,7 @@ class Step1(BaseStep):
             )
 
             # create a concatenated trimmed R2 file
-            r2file = None
+            r2file = ""
             if is_pair:
                 r2file = concatenate_technical_replicates(
                     outdir=self.data.tmpdir,
@@ -238,8 +246,11 @@ class Step1(BaseStep):
 
             # create new merged sample
             msample = Sample(name=mname)
-            msample.stats_s1 = self._samples[snames[0]].stats_s1.copy()
+            msample.stats_s1 = self._samples[snames[0]].stats_s1.model_copy()
+            # store fastqs as a list of the input files or filepairs
             msample.files.fastqs = [self._samples[i].files.fastqs[0] for i in snames]
+            # store trimmed as (R1, R2) or (R1, None) for pe or se. If multiple
+            # fastq files were input for this sample they are now concatenated in trimmed.
             msample.files.trimmed = (r1file, r2file)
             logger.warning(f"Merged technical replicates {snames} into {mname}")
             for key, _ in msample.stats_s1:
@@ -289,7 +300,7 @@ class Step1(BaseStep):
         )
         for sname in self._samples:
             sample = self.data.samples[sname]
-            statsdict = sample.stats_s1.dict()
+            statsdict = sample.stats_s1.model_dump()
             for i in statsdf.columns:
                 if statsdict[i]:
                     statsdf.loc[sname, i] = statsdict[i]
@@ -372,14 +383,35 @@ if __name__ == "__main__":
 
     # raise SystemExit(0)
 
+    # test loading a PE dataset
     data = ip.Assembly(name="half-demuxed")
     data.params.fastq_paths = [
         "../../pedtest/demux_2023-3-28/linea*.gz",
         "../../pedtest/demux_2023-3-28/kansu*.gz",
-        "../../pedtest/demux_2023-3-28/lachno*.gz",
+        # "../../pedtest/demux_2023-3-28/lachno*.gz",
     ]
-    data.params.project_dir = "../../pedtest/"
+    data.params.project_dir = "/tmp/pedtest/"
+    data.run("1", cores=7, force=True)
+
     # data.params.technical_replicates = {"kansuensis-merge": ["kansuensis-DE662", "kansuensis-DE739"]}
+
+    # SE example dataset
+    # data = ip.Assembly(name="TEST")
+    # data.params.project_dir = "/tmp"
+    # data.params.fastq_paths = [
+    #     "../../sra-fastqs/2*.fastq",
+    #     "../../sra-fastqs/40*.fastq",
+    # ]
+    # # designate that these two samples are replicates to be merged
+    # # data.params.technical_replicates = {
+    # #     "TECH": ["29154_superba_SRR1754715", "40578_rex_SRR1754724"],
+    # # }
+    # with ip.Cluster(cores=4) as ipyclient:
+    #     step = Step1(data, True, ipyclient)
+    #     step.run()
+    # print(data.stats)
+    # print(data.params.fastq_paths)
+    # print(ip.load_json("/tmp/TEST.json").stats)
 
     # step = Step1(data, force=True, ipyclient=None)
     # step._load_fastqs()
@@ -394,11 +426,6 @@ if __name__ == "__main__":
     # for key, _ in sample.stats_s1:
     #     print(key)
     #     getattr(sample.stats_s1, key)
-
-    with ip.Cluster(cores=4) as ipyclient:
-        step = Step1(data, True, ipyclient)
-        step.run()
-    print(data.stats)
 
     # FASTQS = list(Path("../../pedtest/NEW_fastqs").glob("*fastq.gz"))
     # pairs = get_filenames_to_paired_fastqs(FASTQS)
