@@ -132,7 +132,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             idx += 1
             if idx > 4:
                 print(
-                    "No PE fastq pairs detected based on filenames, "
+                    "  No PE fastq pairs detected based on filenames, "
                     "assuming SE data."
                 )
                 break
@@ -156,7 +156,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             # warning if the data appear to include R2s
             if any(i in str(path.name) for i in ("_R2_", "_2.", "_R2.")):
                 print(
-                    f"fastq file name ({path.name}) has a filename "
+                    f"  fastq file name ({path.name}) has a filename "
                     "that suggests it may be an R2 read, but its paired "
                     "R1 file could not be found. "
                     "Paired files should have matching names except "

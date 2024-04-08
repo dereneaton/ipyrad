@@ -219,7 +219,7 @@ class FileLinker:
         for sname, ftup in self.ftuples.items():
             # remove file extension from name
             # sname = get_name_from_file(ftup[0], None, None)
-            print(sname, ftup)
+            # print(sname, ftup)
 
             # Create new Sample Class objects with names from files
             if sname not in self.data.samples:
