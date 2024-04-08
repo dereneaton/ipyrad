@@ -14,7 +14,7 @@ import ipyparallel
 from ipyrad.core.cluster import Cluster
 from ipyrad.schema import Project, Sample, Params
 from ipyrad.trim.load_fastqs import Step1
-# from ipyrad.core2 import 
+# from ipyrad.core2 import
 # from ipyrad.assemble.utils import IPyradExit
 # from ipyrad.assemble.s1_demux import Step1
 # from ipyrad.assemble.s2_trim_reads import Step2
@@ -135,8 +135,8 @@ class Assembly:
             stats.loc[sname, 'state'] = sample.state
             stats.loc[sname, 'reads_raw'] = sample.stats_s1.reads_raw
 
-            if sample.stats_s2:
-                value = sample.stats_s2.reads_passed_filter
+            if sample.stats_s1:
+                value = sample.stats_s1.reads_passed_filter
             else:
                 value = pd.NA
             stats.loc[sname, 'reads_passed_filter'] = value
@@ -374,10 +374,13 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG")#, logfile="/tmp/test.log")
 
-    TEST = Assembly("NEWTEST")
-    TEST.params.project_dir = "/tmp"
-    TEST.params.fastq_paths = "../../sra-fastqs/*.fastq"
-    TEST.run("1", force=True, cores=6)
+    # TEST = Assembly("NEWTEST")
+    # TEST.params.project_dir = "/tmp"
+    # TEST.params.fastq_paths = "../../sra-fastqs/*.fastq"
+    # TEST.run("1", force=True, cores=6)
+
+    TEST = ip.load_json("/tmp/NEWTEST.json")
+
     # TEST.write_params(True)
     # print((TEST.params.project_dir))
 

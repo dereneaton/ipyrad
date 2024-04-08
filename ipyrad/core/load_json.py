@@ -15,6 +15,7 @@ def load_json(json_file: Path | str) -> Assembly:
     """
     # proj = Project.parse_file(json_file)
     content_json = Path(json_file).read_text()
+    # print(content_json)
     proj = Project.model_validate_json(content_json)
     data = Assembly(proj.params.assembly_name)
     data.samples = {i: j for (i, j) in proj.samples.items() if i != "reference"}
@@ -28,5 +29,6 @@ def load_json(json_file: Path | str) -> Assembly:
 
 if __name__ == "__main__":
 
-    DATA = load_json("../../pedtest/half-demuxed.json")
+    # DATA = load_json("../../pedtest/half-demuxed.json")
+    DATA = load_json("/tmp/NEWTEST.json")
     print(DATA)
