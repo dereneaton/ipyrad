@@ -7,10 +7,12 @@
 
 from typing import Dict, Tuple, List
 from pathlib import Path
-from pkg_resources import get_distribution
+from importlib.metadata import distribution
 from pydantic import BaseModel, Field
 from ipyrad.schema.sample_schema import Sample
 from ipyrad.schema.params_schema import Params
+
+VERSION = distribution("ipyrad").version
 
 
 class Stats(BaseModel):
@@ -77,7 +79,7 @@ class Project(BaseModel):
     a Project is created from the Assembly and its Sample objects at
     that point to update it and re-serialize to JSON on disk.
     """
-    version: str = str(get_distribution('ipyrad')).split()[1]
+    version: str = VERSION
     params: Params
     samples: Dict[str, Sample]
     assembly_stats: AssemblyStats = None
@@ -95,13 +97,13 @@ class Project(BaseModel):
 if __name__ == "__main__":
 
     sample1 = Sample(name="A")
-    sample1.files.fastqs = ('a', 'b')
+    sample1.files.fastqs = [('a', 'b')]
 
     sample2 = Sample(name="B")
-    sample2.files.fastqs = ('a', 'b')
+    sample2.files.fastqs = [('a', 'b')]
 
     samples = [sample1, sample2]
-    params = Params(assembly_name="test").dict()
+    params = Params(assembly_name="test").model_dump()
 
     # step1 ends with Assembly creation.
     data = Project(
@@ -110,3 +112,5 @@ if __name__ == "__main__":
     )
 
     print(data)
+    print(data.model_dump())
+    data.save_json()

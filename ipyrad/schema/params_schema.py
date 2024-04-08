@@ -25,13 +25,16 @@ restriction_overhang = infer from reads and use, or validate against user input
 from pathlib import Path
 from typing import List, Tuple, Dict
 from pydantic import BaseModel, Field, field_validator
+from loguru import logger
+
+logger = logger.bind(name="ipyrad")
 
 
 class Params(BaseModel):
     """Assembly object parameters for ipyrad assembly."""
-    assembly_name: str = Field(allow_mutation=False)
+    assembly_name: str = Field(frozen=True)  # allow_mutation=False)
     project_dir: Path = Field(default_factory=Path.cwd)
-    fastq_paths: Path | List[Path] = Field(default_factory=list)
+    fastq_paths: List[Path] | Path = Field(default_factory=list)
     reference_sequence: Path | None = None
     # filtering/trimming options
     filter_adapters: int = 2
@@ -95,6 +98,7 @@ class Params(BaseModel):
     ##################################################################
 
     @field_validator('assembly_name')
+    @classmethod
     def _name_validator(cls, value: str) -> str:
         """Names cannot have whitespace. Other strange characters are
         replaced with a warning message printed. This becomes immutable.
@@ -104,6 +108,7 @@ class Params(BaseModel):
         return value
 
     @field_validator('project_dir')
+    @classmethod
     def _dir_validator(cls, value: Path) -> Path:
         """Project_dir cannot have whitespace, is expanded, and created."""
         if ' ' in value.name:
@@ -113,7 +118,8 @@ class Params(BaseModel):
         return value
 
     @field_validator('fastq_paths')
-    def _path_validator(cls, value: Path | List[str | Path]) -> List[Path]:
+    @classmethod
+    def _path_validator(cls, value: str | Path | List[str | Path]) -> List[Path]:
         """If a path was entered then it must match >=1 files.
 
         Users are allowed to enter None to leave this field blank, in
@@ -125,29 +131,35 @@ class Params(BaseModel):
         # allow it to be empty so user can set it later in the API.
         if not value:
             return value
-        # ensure input is a List[Path]
+        # ensure input is a List[Path] or List[str]
         if not isinstance(value, list):
             value = [value]
         # iterate over list checking that each can be expanded to match
         # one more files. If so, save path to list.
         paths = []
         for path in value:
+            # ensure it is Path object
+            path = Path(path)
+
             # merged sample indicator
             # ... TODO
 
-            # path objects
+            # get full path
             path = path.expanduser().resolve()
             if path.is_dir():
                 raise ValueError(
                     "You entered a dir path where you must enter a file path.\n"
                     "To select multiple files in a dir you can use regular \n"
                     "expressions, e.g., './data/*.fastq.gz'.")
+
+            # raise warning if user entered a path but nothing matches it.
             if not list(path.parent.glob(path.name)):
-                raise ValueError(f"no files match the input string: {path}")
+                logger.warning(f"no files match the fastq_paths parameter: {path}")
             paths.append(path)
         return paths
 
     @field_validator("reference_sequence", "reference_as_filter")
+    @classmethod
     def _reference_validator(cls, value: Path) -> Path:
         """Checks that reference file exists and expands path."""
         if value:
@@ -159,6 +171,7 @@ class Params(BaseModel):
         return value
 
     @field_validator("restriction_overhang")
+    @classmethod
     def _enzyme_validator(cls, value):
         """Check that the restriction enzymes do not contain bad chars?"""
         # parse paramsfile str
@@ -169,6 +182,7 @@ class Params(BaseModel):
         return value
 
     @field_validator("trim_reads")
+    @classmethod
     def _trim_reads_validator(cls, value) -> List[int]:
         """Default is (0, 0). User can set to any integers. Negative
         values have special meaning of
@@ -182,6 +196,7 @@ class Params(BaseModel):
         return list(value)
 
     @field_validator("trim_loci")
+    @classmethod
     def _trim_loci_validator(cls, value) -> Tuple[int, int, int, int]:
         """Return a tuple[int,int]."""
         if value is None:
@@ -194,12 +209,20 @@ class Params(BaseModel):
 
 if __name__ == "__main__":
 
+    import ipyrad as ip
+
     p = Params(assembly_name="TEST", project_dir="./")
     p.min_depth_majrule = '2'
     p.restriction_overhang = "TGC,".split(',')
+    p.project_dir = "/tmp"
     p.reference_as_filter = "../../tests/ipsimdata/gbs_example_genome.fa"
     p.fastq_paths = "../../pedtest/small_tmp_R1.*.gz"
+    # p.fastq_paths = ["../../pedtest/small_tmp_R1.*.gz"]
+    # p.fastq_paths = [Path('a'), Path('b')]  # "[PosixPath('/home/deren/Documents/ipyrad/pedtest/small_tmp_R1.*.gz')]"
     p.trim_reads = (0, 0)
 
     # p.max_indels_locus = "0 0".split(",")
-    print(p)
+    dump = p.model_dump_json()
+    print(dump)
+    # Params.model_validate_json(dump)
+

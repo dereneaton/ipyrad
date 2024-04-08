@@ -62,6 +62,8 @@ class Stats2(BaseModel):
     reads_mapped_to_ref_prop: float = None
     reads_mapped_to_ref_filter: int = None
     reads_mapped_to_ref_filter_prop: float = None
+    dereplicated_reads: int = None
+    cluster_seeds: int = None
 
 
 class Stats3(BaseModel):
@@ -160,6 +162,34 @@ class Sample(BaseModel):
 
 if __name__ == "__main__":
 
+    import ipyrad as ip
     sample = Sample(name="A")
+    sample.files.fastqs = [('a1', 'a2')]
     sample.stats_s1 = Stats1(reads_raw=1000)
-    sample.files.fastqs = ('a', 'b')
+    sample.model_dump_json()
+
+    # save assembly with this sample and re-load it.
+    # params = ip.schema.Params(assembly_name="test").model_dump()
+    # data = ip.schema.Project(
+    #     params=ip.schema.Params(**params),
+    #     samples={"A": sampleA.model_dump()},
+    # )
+    # data.save_json()
+    # ip.load_json(...)
+
+    # sample1 = Sample(name="A")
+    # sample1.files.fastqs = ['a', 'b']
+
+    # sample2 = Sample(name="B")
+    # sample2.files.fastqs = ['a', 'b']
+
+    # samples = [sample1, sample2]
+    # params = Params(assembly_name="test").model_dump()
+
+    # # step1 ends with Assembly creation.
+    # data = Project(
+    #     params=Params(**params),
+    #     samples={sample.name: sample for sample in samples},
+    # )
+
+    # print(data)
