@@ -1,16 +1,15 @@
 # !/usr/bin/env python
 
-"""...
+"""Class to organize within-sample clust/map operations.
 
 """
 
 from loguru import logger
 from ipyrad.core import BaseStep, track_remote_jobs
-from ipyrad.clustmap_within.clustmap_w_funcs import (
+from ipyrad.within_clust.clustmap_w_funcs import (
     dereplicate,
     tag_inline_for_decloning,
     map_to_reference_as_filter,
-    concat_multiple_fastqs_from_merged_sample,
 )
 logger = logger.bind(name="ipyrad")
 
@@ -28,7 +27,6 @@ class ClustMapBase(BaseStep):
         """Different methods apply to reference vs denovo."""
         # reference:
         # [unique] .index_references
-        # [shared] .concat_trimmed_files_from_assembly_merge
         # [shared] .mapping_to_reference_filter
         # [unique] .join_pairs_for_derep
         # [shared] .tag_for_decloning
@@ -38,7 +36,6 @@ class ClustMapBase(BaseStep):
 
         # denovo:
         # [unique] .index_reference_as_filter
-        # [shared] .remote_concat_multiple_fastqs_from_merged_sample()
         # [shared] .remote_map_to_reference_filter
         # [unique] .remote_pair_merge_overlaps_with_vsearch
         # [unique] .remote_pair_join_unmerged_end_to_end
@@ -47,28 +44,6 @@ class ClustMapBase(BaseStep):
         # [shared] .remote_dereplicate
         # [shared] .tag_back_to_header
         # [unique] .cluster
-
-    def remote_concat_multiple_fastqs_from_merged_sample(self):
-        """Concat files ONLY IF assemblies were merged before step2 and
-        some samples existed in both assemblies (sample merge).
-
-        # i: trimmed_fastqs/{sname}_trimmed_[R1,R2].fastq.gz
-        # o: tmpdir/{sname}_concat_[R1,R2].fastq.gz
-        """
-        # skip if no merge happened.
-        if not any(len(self.samples[i].files.trimmed) > 1 for i in self.samples):
-            return
-
-        # else run the job
-        lbview = self.ipyclient.load_balanced_view()
-        rasyncs = {}
-        for sname, sample in self.samples.items():
-            if len(sample.files.trimmed) > 1:
-                args = (self.data, sample)
-                func = concat_multiple_fastqs_from_merged_sample
-                rasyncs[sname] = lbview.apply(func, *args)
-        # collect results, raise exceptions, interrupt on KBD
-        track_remote_jobs(rasyncs, self.ipyclient)
 
     def remote_map_to_reference_as_filter(self):
         """Map reads to filter reference to get unmapped fastq.
@@ -139,7 +114,4 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG")
 
-    from ipyrad.core2.load_json import load_json
-    data = load_json("/tmp/pairgbs_merge.json")
-
-    tool = ClustMapBase(data, True, None)
+    # RUN EXAMPLES IN DENOVO OR REFERENCE MODULES

@@ -32,12 +32,12 @@ def merge_pairs_with_vsearch(data: Assembly, sample: Sample) -> int:
     in1 = [
         data.tmpdir / f"{sample.name}_unmapped_R1.fastq",
         data.tmpdir / f"{sample.name}_concat_R1.fq.gz",
-        sample.files.trimmed[0][0],
+        sample.files.trimmed[0],
     ]
     in2 = [
         data.tmpdir / f"{sample.name}_unmapped_R2.fastq",
         data.tmpdir / f"{sample.name}_concat_R2.fq.gz",
-        sample.files.trimmed[0][1],
+        sample.files.trimmed[1],
     ]
     index = min([i for i, j in enumerate(in1) if Path(j).exists()])
     infile1 = in1[index]

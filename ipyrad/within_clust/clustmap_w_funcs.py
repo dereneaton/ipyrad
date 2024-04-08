@@ -2,13 +2,20 @@
 
 """Functions called by ClustMapBase.py
 
+Methods
+-------
+- dereplicate
+- tag_inline_for_decloning
+- map_to_reference_as_filter
+- index_ref_with_bwa
+- index_ref_with_sam
+
 """
 
 from typing import Tuple
 import sys
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT, DEVNULL
-from loguru import logger
 import pysam
 from ipyrad.schema import Sample
 from ipyrad.core import Assembly, IPyradError
@@ -25,7 +32,7 @@ def dereplicate(data: Assembly, sample: Sample) -> None:
     Paired data are dereplicated as joined (dataNNNNdata) reads.
     """
     infiles = [
-        Path(sample.files.trimmed[0][0]),
+        Path(sample.files.trimmed[0]),
         data.tmpdir / f"{sample.name}_concat.fastq.gz",
         data.tmpdir / f"{sample.name}_merged.fa",
         data.tmpdir / f"{sample.name}_joined.fastq",
@@ -158,8 +165,8 @@ def map_to_reference_as_filter(data: Assembly, sample: Sample) -> Tuple[int, flo
     # priority: select concats first if they exist, else trim files.
     read1 = data.tmpdir / f"{sample.name}_concat_R1.fastq.gz"
     read2 = data.tmpdir / f"{sample.name}_concat_R2.fastq.gz"
-    read1 = read1 if read1.exists() else Path(sample.files.trimmed[0][0])
-    read2 = read2 if read2.exists() else Path(sample.files.trimmed[0][1])
+    read1 = read1 if read1.exists() else Path(sample.files.trimmed[0])
+    read2 = read2 if read2.exists() else Path(sample.files.trimmed[1])
 
     # get threading arg
     nthreads = max(1, data.ipcluster["threads"])
@@ -220,38 +227,6 @@ def map_to_reference_as_filter(data: Assembly, sample: Sample) -> Tuple[int, flo
         f"@@DEBUG: {sample.name} - proportion reads filtered by mapping "
         f"to reference filter: {n_filtered_prop:.3f}")
     return n_filtered, n_filtered_prop
-
-
-def concat_multiple_fastqs_from_merged_sample(data: Assembly, sample: Sample) -> None:
-    """Concat files if multiple Assemblies were merged between steps 1-2.
-
-    Create a temporary concatenated file for multiple trim input
-    files, which arises when Assemblies were merged between steps
-    1 and 2.
-    """
-    # define output files
-    concat1 = data.tmpdir / f"{sample.name}_concat_R1.fastq.gz"
-    concat2 = data.tmpdir / f"{sample.name}_concat_R2.fastq.gz"
-
-    read1s = [i[0] for i in sample.files.trimmed]
-    if len(read1s) > 1:
-        cmd = ['cat'] + read1s
-        with open(concat1, 'w', encoding="utf-8") as cout:
-            with Popen(cmd, stderr=PIPE, stdout=cout, close_fds=True) as proc:
-                res = proc.communicate()[1].decode()
-                if proc.returncode:
-                    logger.error(res)
-                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
-
-    read2s = [i[1] for i in sample.files.trimmed if i[1]]
-    if len(read2s) > 1:
-        cmd = ['cat'] + read2s
-        with open(concat2, 'w', encoding="utf-8") as cout:
-            with Popen(cmd, stderr=PIPE, stdout=cout, close_fds=True) as proc:
-                res = proc.communicate()[1].decode()
-                if proc.returncode:
-                    logger.error(res)
-                    raise IPyradError(f"cmd: {' '.join(cmd)}\nerror: {res}")
 
 
 def index_ref_with_bwa(data: Assembly, as_filter: bool = False) -> None:

@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 
-"""...
+"""ClustMapDenovo child class of ClustMapBase for within-sample denovo.
 
 """
 
 from typing import TypeVar
 from loguru import logger
 import pandas as pd
-from ipyrad.clustmap_within.clustmap_w import ClustMapBase
+from ipyrad.within_clust.clustmap_w import ClustMapBase
 from ipyrad.core import Assembly, track_remote_jobs
-from ipyrad.clustmap_within.clustmap_w_funcs import index_ref_with_bwa
-from ipyrad.clustmap_within.clustmap_w_denovo_funcs import (
+from ipyrad.schema.sample_schema import Stats2
+from ipyrad.within_clust.clustmap_w_funcs import index_ref_with_bwa
+from ipyrad.within_clust.clustmap_w_denovo_funcs import (
     merge_pairs_with_vsearch,
     join_end_to_end,
     cluster,
@@ -23,19 +24,21 @@ Client = TypeVar("Client")
 class ClustMapDenovo(ClustMapBase):
     def __init__(self, data: Assembly, force: bool, ipyclient: Client):
         super().__init__(data, force, ipyclient)
+        self._merged_pairs = {}
+        self._merged_pairs_prop = {}
 
     def run(self):
         """Run the core functions."""
         self.remote_index_reference_as_filter()
-        self.remote_concat_multiple_fastqs_from_merged_sample()
         self.remote_map_to_reference_as_filter()
         self.remote_pairs_merge_overlaps_with_vsearch()
-        self.remote_pairs_join_unmerged_end_to_end()     # -> ...
+        self.remote_pairs_join_unmerged_end_to_end()       # -> ...
         # self.remote_decloning_transfer_tags_inline()     # -> tmp/_decloned.fa
-        self.remote_dereplicate()                        # -> tmp/_derep.fa
+        self.remote_dereplicate()                          # -> tmp/_derep.fa
         # self.remote_decloning_transfer_tags_to_header()  # -> tmp/_derep_tag.fa
-        self.remote_cluster()                            # -> out/...
+        self.remote_cluster()                              # -> out/...
         self.write_json_file()
+        self.write_stats_file()
 
     def remote_index_reference_as_filter(self):
         """Index reference_filter for bwa mapping."""
@@ -60,6 +63,9 @@ class ClustMapDenovo(ClustMapBase):
         # o: tmpdir/{}_nonmerged_R[1,2].fa
         """
         if not self.data.is_pair:
+            for sname in self.samples:
+                self._merged_pairs[sname] = 0
+                self._merged_pairs_prop[sname] = 0
             return
 
         logger.info("merging overlapping paired reads")
@@ -73,8 +79,8 @@ class ClustMapDenovo(ClustMapBase):
 
         # store results to samples
         for sname, sample in self.samples.items():
-            sample.stats_s2.merged_pairs = results[sname]
-            sample.stats_s2.merged_pairs_prop = (
+            self._merged_pairs[sname] = results[sname]
+            self._merged_pairs_prop[sname] = (
                 results[sname] / sample.stats_s1.reads_raw)
 
     def remote_pairs_join_unmerged_end_to_end(self):
@@ -115,7 +121,7 @@ class ClustMapDenovo(ClustMapBase):
         try:
             track_remote_jobs(rasyncs, self.ipyclient)
         except KeyboardInterrupt:
-            logger.warning("HIIIIII")
+            logger.warning("job interrupted by user...")
 
         # store handles for the outfiles
         for sname, sample in self.samples.items():
@@ -125,6 +131,7 @@ class ClustMapDenovo(ClustMapBase):
             sample.files.clustmap = (derep, matches)
 
     def write_json_file(self):
+        """Write a stats summary file."""
         for sname, sample in self.samples.items():
             # if derep file size is 0 then no clusters exist
             if not sample.files.clustmap[0].stat().st_size:
@@ -133,9 +140,11 @@ class ClustMapDenovo(ClustMapBase):
 
             # advance sample state, stats, and store to Assembly
             sample.state = 2
+            sample.stats_s2 = Stats2()
+
             # -- if pair: updated in remote_pairs_merge_overlap_with_vsearch
-            # merged_pairs: int = 0
-            # merged_pairs_prop: float = 0
+            sample.stats_s2.merged_pairs = self._merged_pairs[sname]
+            sample.stats_s2.merged_pairs_prop = self._merged_pairs_prop[sname]
             # -- not relevant here
             # reads_mapped_to_ref: int = None
             # reads_mapped_to_ref_prop: float = None
@@ -148,7 +157,7 @@ class ClustMapDenovo(ClustMapBase):
     def write_stats_file(self):
         """Write a easily readable tabular stats output file."""
         statsdf = pd.DataFrame(
-            index=sorted(self._samples),
+            index=sorted(self.samples),
             columns=[
                 "merged_pairs",
                 "merged_pairs_prop",
@@ -159,7 +168,7 @@ class ClustMapDenovo(ClustMapBase):
             ],
         )
         for sname, sample in self.samples.items():
-            statsdict = sample.stats_s2.dict()
+            statsdict = sample.stats_s2.model_dump()
             for i in statsdf.columns:
                 if statsdict[i]:
                     statsdf.loc[sname, i] = statsdict[i]
@@ -177,26 +186,32 @@ if __name__ == "__main__":
 
     from ipyrad.core.load_json import load_json
     # data = load_json("/tmp/pairgbs_merge.json")
-    data = load_json("../../pedtest/half-demuxed.json")
-    data.ipcluster['threads'] = 2
+    data = load_json("/tmp/pedtest/half-demuxed.json")
+    # data.ipcluster['threads'] = 4
+    # with ip.Cluster(cores=8) as ipyclient:
+    #     tool = ClustMapDenovo(data, True, ipyclient)
+    #     tool.run()
+    print(data.stats)
 
-    # branch to subsample
-    subs = [
-        # "kansuensis-DE284",
-        # "kansuensis-DE704",
-        "kansuensis-DE739",
-        "kansuensis-DE366",
-        "kansuensis-DE662",
-        "lineata-DE757",
-    ]
 
-    for clust in [0.95, 0.90, 0.85]:
-        ndata = data.branch(f"test-c{int(clust * 100)}", subsample=subs)
-        ndata.params.clust_threshold = clust
+    # # branch to subsample
+    # subs = [
+    #     "kansuensis-DE284",
+    #     "kansuensis-DE704",
+    #     "kansuensis-DE739",
+    #     "kansuensis-DE366",
+    #     "kansuensis-DE662",
+    #     "lineata-DE757",
+    # ]
 
-        with ip.Cluster(cores=8) as ipyclient:
-            tool = ClustMapDenovo(ndata, True, ipyclient)
-            tool.run()
+    # # for clust in [0.95, 0.90, 0.85]:
+    # for clust in [0.90]:
+    #     ndata = data.branch(f"test-c{int(clust * 100)}", subsample=subs)
+    #     ndata.params.clust_threshold = clust
+
+    #     with ip.Cluster(cores=8) as ipyclient:
+    #         tool = ClustMapDenovo(ndata, True, ipyclient)
+    #         tool.run()
 
         # tool.remote_index_reference_as_filter()
     #     tool.remote_concat_multiple_fastqs_from_merged_sample()
