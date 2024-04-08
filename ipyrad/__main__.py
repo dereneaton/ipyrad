@@ -13,11 +13,11 @@ Examples
 
 import argparse
 from pathlib import Path
-from pkg_resources import get_distribution
 import ipyrad as ip
 
 
-VERSION = str(get_distribution('ipyrad')).split()[1]
+# VERSION = str(get_distribution('ipyrad')).split()[1]
+VERSION = str(ip.__version__)
 HEADER = f"""
 -------------------------------------------------------------
  ipyrad [v.{VERSION}]
