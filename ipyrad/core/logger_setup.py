@@ -24,12 +24,13 @@ Examples
 
 Note
 ----
-Exceptions written to the logfile have color support, which 
+Exceptions written to the logfile have color support, which
 can be viewed using `less -R logfile.txt`
 """
 
 from typing import Optional
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from loguru import logger
 import IPython
@@ -110,7 +111,27 @@ def get_logger(log_level: str = "INFO"):
     return logger.bind(name="ipyrad")
 
 
+@contextmanager
+def capture_logs(level="INFO", format="{level}:{name}:{message}"):
+    """Capture loguru-based logs (used in unittests mainly.)"""
+    output = []
+    handler_id = logger.add(output.append, level=level, format=format)
+    yield output
+    logger.remove(handler_id)
+
+
 if __name__ == "__main__":
-    set_log_level("DEBUG")
+
+    import ipyrad as ip
+    ip.set_log_level("DEBUG")
+    logger.bind(name="ipyrad").info("THIS IS A TEST.")
+
+    with capture_logs("INFO") as cap:
+        logger.bind(name="ipyrad").debug("Hello")
+        logger.bind(name="ipyrad").info("Hello2")
+    print(f"Captured: {cap}")
+
+    # ...
+    ip.set_log_level("DEBUG")
     log = get_logger()
     log.info("HI")
