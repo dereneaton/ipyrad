@@ -18,8 +18,8 @@ logger = logger.bind(name="ipyrad")
 def iter_reads(fastq: Path, max_len: int, max_reads: int) -> Iterator[bytes]:
     """Generator of sequences (line 2/4) from a fastq file gzipped or not."""
     fastq = Path(fastq)
-    xopen = gzip.open if fastq.suffix == ".gz" else open
-    with xopen(fastq, 'rb') as inline:
+    open_func = gzip.open if fastq.suffix == ".gz" else open
+    with open_func(fastq, 'rb') as inline:
         quart = zip(inline, inline, inline, inline)
         bound = range(max_reads)
         for _, q in zip(bound, quart):
