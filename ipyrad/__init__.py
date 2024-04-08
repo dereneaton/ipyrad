@@ -19,6 +19,7 @@ Examples
 """
 
 # bring nested functions to top for API access
+from ipyrad.demux.demux import Demux
 from ipyrad.core.cluster import Cluster
 from ipyrad.core.assembly import Assembly
 from ipyrad.core.logger_setup import set_log_level
