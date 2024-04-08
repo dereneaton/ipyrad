@@ -60,7 +60,7 @@ class TrimFastqs:
 
         # output file paths (do not bother gzipping since these are tmp files)
         self.out1 = outdir / f"{sname}.trimmed_R1.fastq.gz"
-        self.out2 = None
+        self.out2 = ""
         if self.is_pair:
             self.out2 = outdir / f"{sname}.trimmed_R2.fastq.gz"
 
@@ -237,7 +237,7 @@ class TrimFastqs:
         """Get stats from the fastp JSON file."""
         with open(self.json, 'r', encoding="utf-8") as indata:
             jdata = json.loads(indata.read())
-        return jdata, (str(self.out1), str(self.out2))
+        return jdata, (self.out1, self.out2)
 
 
 def estimate_trim_position(
