@@ -82,6 +82,7 @@ class Demux:
     """: Store stats per raw data file (pair)."""
     _sample_stats: Dict[str, int] = None
     """: Dict to store n reads per sample."""
+    _technical_replicates: Dict[str, List[str]] = field(default_factory=dict)
 
     def __post_init__(self):
         """Run subfunctions to setup object."""
@@ -100,6 +101,7 @@ class Demux:
         """Run each file (pair) on separatre engine."""
         self._demultiplex()
         self._write_stats()
+        self._merge_cleanup()
 
     def _get_outpath(self) -> None:
         """Require an empty outdir to write to."""
@@ -232,7 +234,7 @@ class Demux:
         # combinatorial barcodes.
         try:
             bardata = pd.read_csv(
-                self.barcodes_path, header=None, delim_whitespace=True,
+                self.barcodes_path, header=None, sep=r"\s+",
             ).dropna()
         except ParserError as err:
             raise IPyradError(
@@ -266,7 +268,8 @@ class Demux:
             if self.merge_technical_replicates:
                 logger.warning(
                     "Technical replicates are present (samples with same name "
-                    "in barcodes file) and will be merged")
+                    "in barcodes file) and will be merged into one sample. "
+                    "Stats will be reported for each replicate and for the merged sample.")
 
             # warn that dups are present and WILL NOT be merged.
             else:
@@ -474,15 +477,19 @@ class Demux:
         self._sample_stats = Counter()
         for _, stats in self._file_stats.items():
             for sname, hits in stats[2].items():
+                # store the full name stats
                 self._sample_stats[sname] += hits
 
                 # also record stats for combined technical-replicates
                 if "-technical-replicate-" in sname:
-                    sname = sname.split("-technical-replicate-")[0]
-                    self._sample_stats[sname] += hits
-                # if self.merge_technical_replicates:
-                #     sname = sname.split("-technical-replicate-")[0]
-                # self._sample_stats[sname] += hits
+                    short_name = sname.split("-technical-replicate-")[0]
+                    self._sample_stats[short_name] += hits
+                    if short_name not in self._technical_replicates:
+                        self._technical_replicates[short_name] = [sname]
+                    else:
+                        self._technical_replicates[short_name].append(sname)
+                # NOTE: either the technical-replicates or the merged
+                # sample will be dropped after writing the statsfile.
 
         # report failed samples
         for sname in self._names_to_barcodes:
@@ -490,7 +497,7 @@ class Demux:
                 logger.warning(f"Sample {sname} has 0 reads.")
                 self._sample_stats[sname] = 0
 
-    def _write_stats(self):
+    def _write_stats(self) -> None:
         """Write to {project_dir}/`s1_demultiplex_stats.txt`.
 
         The stats file includes the number of reads per sample as well
@@ -569,6 +576,17 @@ class Demux:
             data=[i[1:] for i in data],
         )
         outfile.write(barcodes_df.to_string() + "\n")
+        outfile.close()
+
+    def _merge_cleanup(self) -> None:
+        """Remove keys from _sample_stats for merging."""
+        if not self.merge_technical_replicates:
+            for key in self._technical_replicates.keys():
+                self._sample_stats.pop(key)
+        else:
+            for key, value in self._technical_replicates.items():
+                for rep in value:
+                    self._sample_stats.pop(rep)
 
 
 ######################################################################

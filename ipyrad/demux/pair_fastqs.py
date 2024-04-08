@@ -81,7 +81,7 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
 
 
 def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple[Path, Path]]:
-    """Fill `names_to_fastqs` with paired fastq files.
+    """Return {sample_name_str: tuple_of_paired_fastqs} dict.
 
     If technical replicates are being merged then a sample can
     be assigned multiple pairs of paired fastqs files. Paired
@@ -96,7 +96,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
     appears to match the paired naming conventions above.
     """
     # dict to return
-    filenames_to_fastq_tuples = {}
+    snames_to_fastq_tuples = {}
 
     # look for PE matching file names.
     idx = 0
@@ -146,7 +146,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
     # store paired tuples to each basename
     if paired:
         for name, paths in groups.items():
-            filenames_to_fastq_tuples[name] = tuple(
+            snames_to_fastq_tuples[name] = tuple(
                 [i.expanduser().resolve() for i in paths]
             )
             logger.debug(f"PE fastqs: {name}: {tuple((i.name for i in paths))}")
@@ -158,8 +158,8 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             subpath = path.with_suffix("")
             while subpath.suffix:
                 subpath = subpath.with_suffix("")
-            filenames_to_fastq_tuples[subpath.name] = (path.expanduser().resolve(), None)
-            logger.debug(f"SE fastqs: '{subpath.name}': {(path, )}")
+            snames_to_fastq_tuples[subpath.name] = (path.expanduser().resolve(), "")
+            logger.debug(f"SE fastqs: '{subpath.name}': {(path, '')}")
 
             # warning if the data appear to include R2s
             if any(i in str(path.name) for i in ("_R2_", "_2.", "_R2.")):
@@ -171,7 +171,7 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
                     "for _1 _2, _R1 _R2, or any of these followed by a "
                     "'_' or '.'."
                 )
-    return filenames_to_fastq_tuples
+    return snames_to_fastq_tuples
 
 
 if __name__ == "__main__":
