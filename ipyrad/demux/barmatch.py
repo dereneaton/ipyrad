@@ -44,6 +44,9 @@ class BarMatching:
     cores: int
     """: ..."""
     chunksize: int
+    """: Number of reads to store in memory before writing to disk."""
+    # subsample: int = int(1e15)
+    # """: Only sample this many reads from a file (mainly used in testing)."""
 
     # stats counters
     barcode_misses: Dict[str, int] = field(default_factory=dict)
@@ -152,7 +155,8 @@ class BarMatching:
                         names = list(names)
                         if "-technical-replicate-" in names[0]:
                             read1s[key] = list(itertools.chain(*[read1s.pop(i) for i in sorted(names)]))
-                            read2s[key] = list(itertools.chain(*[read2s.pop(i) for i in sorted(names)]))
+                            if read2s:
+                                read2s[key] = list(itertools.chain(*[read2s.pop(i) for i in sorted(names)]))
 
                 # both dicts share the same names
                 for name in read1s:
