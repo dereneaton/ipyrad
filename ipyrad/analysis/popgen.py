@@ -23,6 +23,7 @@ from scipy.stats import entropy, hmean
 from ..core.Parallel import Parallel
 from .locus_extracter import LocusExtracter
 from .utils import Params, ProgressBar
+from .vcf_to_hdf5 import VCFtoHDF5 as vcf_to_hdf5
 from ..assemble.utils import DCONS
 
 _BAD_IMAP_ERROR = """
@@ -127,6 +128,10 @@ class Popgen(object):
     def _check_files(self, data):
         "check input files and file paths"
 
+        # check workdir
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
+
         if isinstance(data, Assembly):
             try:
                 # Since v0.9.63-ish the snps_database is stored as an
@@ -151,12 +156,9 @@ class Popgen(object):
         #if self.mapfile:
         #    self.mapfile = os.path.realpath(self.mapfile)
 
-        # check workdir
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
-
         # load the snp data
         # Not using the snp data internally at all. iao 5/2023
+
         #with h5py.File(self.snpfile, 'r') as io5:
         #    for idx, name in enumerate(io5["snps"].attrs["names"]):
         #        self.snps[name.decode("utf-8")] = io5["snps"][idx]
@@ -448,11 +450,15 @@ class Processor(object):
                 # within pops stats
                 for pop in self.imap:
                     # Carve off just the samples for this population
+                    # The index.intersection handles the case where individuals in the
+                    # population are not present for a given locus. See:
+                    # https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#indexing-deprecate-loc-reindex-listlike
                     try:
                         cts, sidxs, length = self._process_locus(
-                                                    locus.loc[self.imap[pop]])
-                    except KeyError:
-                        continue
+                                                    locus.loc[locus.index.intersection(self.imap[pop])])
+                    except Exception as inst:
+                        raise IPyradError("Malformed locus idx: {}".format(lidx))
+
                     # Number of segregating sites
                     S = len(sidxs)
                     # Number of samples
@@ -479,7 +485,7 @@ class Processor(object):
                         Dxy_res = self._dxy(*pop_cts.values(), len(locus))
                         Dxy_arr[pops[1]][pops[0]] = Dxy_res
                     except KeyError:
-                        continue
+                        pass
                 self.results.Dxy[lidx] = Dxy_arr
 
                 try:
@@ -491,7 +497,7 @@ class Processor(object):
                 except Exception:
                     # Does not work if any pops have no samples
                     # Doesn't work well with missing data
-                    continue
+                    pass
 
                 lidx += 1
             except StopIteration:
@@ -505,10 +511,10 @@ class Processor(object):
         of the locus.
         """
         # Count numbers of unique bases per site
-        # Don't consider indels (45) and N (78). Similar to how pixy
+        # Don't consider indels (45), N (78) and n (110). Similar to how pixy
         # does it and should result in less biased pi estimates.
         cts = np.array(locus.apply(lambda bases:\
-                        Counter(x for x in bases if x not in [45, 78])))
+                        Counter(x for x in bases if x not in [45, 78, 110])))
         # Only consider variable sites
         snps = np.array([len(x) for x in cts]) > 1
         # Indexes of variable sites
@@ -550,7 +556,7 @@ class Processor(object):
 
         for pop in pops:
             # Get counts for this pop
-            cts = np.array(locus.loc[self.imap[pop]].apply(
+            cts = np.array(locus.loc[locus.index.intersection(self.imap[pop])].apply(
                             lambda bases: Counter(x for x in bases if x not in [45, 78])))
             # Only consider variable sites
             snps = np.array([len(x) for x in cts]) > 1
@@ -768,8 +774,9 @@ class Processor(object):
         # iterate over pairs of pops and fill Fst values
         pairs = itertools.combinations(self.imap.keys(), 2)
         for (pop1, pop2) in pairs:
-            pop1idx = self.imap[pop1]
-            pop2idx = self.imap[pop2]
+            # Intersection drops the samples in the imap that aren't present in the locus
+            pop1idx = list(locus.index.intersection(self.imap[pop1]))
+            pop2idx = list(locus.index.intersection(self.imap[pop2]))
             popaidx = pop1idx + pop2idx
 
             within1 = list(itertools.combinations(pop1idx, 2))

@@ -170,10 +170,9 @@ Example entries into params.txt:
 
 5. Assembly method
 --------------------
-There are four :ref:`Assembly_methods<Assembly_methods>` options in ipyrad:
-denovo, reference, denovo+reference, and denovo-reference.
-The latter three all require a reference sequence file (param #6) in fasta
-format. See the :ref:`tutorials` for an example.
+There are two :ref:`Assembly_methods<Assembly_methods>` options in ipyrad:
+denovo and reference. The latter option requires a reference sequence file
+(param #6) in fasta format. See the :ref:`tutorials` for an example.
 
 Affected steps = 3, 6
 Example entries into params.txt:
@@ -182,9 +181,12 @@ Example entries into params.txt:
 
     denovo                            ## [5] denovo assembly
     reference                         ## [5] reference assembly
-    denovo+reference                  ## [5] reference addition assembly
-    denovo-reference                  ## [5] reference subtraction assembly
 
+**Note:** Since v0.9 ipyrad no longer supports `denovo+reference` and `denovo-reference`
+as `assembly_method` settings. `denovo+reference` satisfied an edge case which
+did not see much use in practice, so it was dropped. The `denovo-reference` functionality,
+however, is much more useful and can be obtained by setting this parameter to `denovo`
+and adding the reference sequence to the `reference_as_filter` parameter (parameter 29).
 
 .. _reference_sequence:
 
@@ -725,3 +727,18 @@ See the example below.
     Sample5 pop2
 
     # pop1:2 pop2:2
+
+
+.. _reference_as_filter:
+
+29. reference_as_filter
+-----------------------
+A reference sequence in fasta format that will be used to **remove**
+reads that map to it during step 3. This functionality replaces the
+`denovo-reference` assembly method from ipyrad version <v0.9.
+
+Affected step: 3. Example entries to params.txt
+
+.. parsed-literal::
+
+    ./tests/ipsimdata/gbs_example_genome.fa    ## [29] [reference_as_filter]: Reads mapped to this reference.... 

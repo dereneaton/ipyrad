@@ -49,6 +49,73 @@ them 'forever'. A workaround, for the moment, is to install and use the `libmamb
     conda install -n base conda-libmamba-solver
     conda config --set solver libmamba
 
+Installing ipyrad on Mac M1/M2
+------------------------------
+As of mid-2023 the bioconda channel does not have support for ARM architecture (Mac M1/M2).
+A workaround is to install the Mac Intel version of conda (x86_64) using the Terminal App
+running with Rosetta.
+
+Check if you have Rosetta installed, and if not then install it. If you have Rosetta
+installed, or if the `pgrep oahd` command below returns an integer (whole number value)
+then you can skip this step:
+
+.. code:: bash
+
+    # Check if Rosetta is installed
+    pgrep oahd
+
+    # If this does not return any information then run the Rosetta installer
+    softwareupdate --install-rosetta --agree-to-license
+
+With Rosetta installed you can now run the Terminal App in x86_64 compatibility mode.
+Open Applications->Utilities->Terminal (Or spotlight search Terminal):
+
+.. code:: bash
+
+    # Activate the terminal in x86_64 mode    
+    env /usr/bin/arch -x86_64 /bin/zsh ---login
+
+    # Fetch the miniconda Mac x86 installer and run it
+    curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+
+    # Accept the license, the default install location, and say 'yes' to initialization
+    sh Miniconda3-latest-MacOSX-x86-64.sh
+
+    # Activate the new conda install by running `zsh`. The prompt will change to show
+    # the (base) conda environment is now activated
+    zsh
+
+    # Create and activate a new conda env for ipyrad
+    conda create -n ipyrad
+    conda activate ipyrad
+
+    # Set the default solver to libmamba
+    conda config --set solver libmamba
+
+    # Install ipyrad
+    conda install -c conda-forge -c bioconda ipyrad
+
+Add the following two lines to the end of .zshrc to make it easier to switch the Terminal
+App to using x86 vs arm:
+
+.. code:: bash
+
+    alias x86="$env /usr/bin/arch -x86_64 /bin/zsh ---login"
+    alias arm="$env /usr/bin/arch -arm64 /bin/zsh ---login"
+
+After editing the .zshrc run `source ~/.zshrc`. Now you can type `x86` to switch to Rosetta
+x86 mode in the Terminal. Check the architecture by typing `arch`, it will say `i386` if it
+is in x86_64 compatibility mode.
+
+One gotcha can be if you have previously installed conda on your system with osx-arm64 your
+config might want to install arm64 packages. You can disable this by removing this option from
+the conda config
+
+.. code:: bash
+
+    # Use conda config --show to inspect 'subdirs', if osx-arm64 shows up then remove it
+    conda config --remove subdirs osx-arm64
+
 Alternative: install from GitHub
 --------------------------------
 You can alternatively install ipyrad from its source code on GitHub. This is not recommended unless you're involved in development. 
@@ -124,7 +191,7 @@ Mac install instructions for *conda*
     #  * Type 'yes' to agree to the license
     #  * Press Enter to use the default install directory
     #  * Type 'yes' to initialize the conda install
-    bash Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-MacOSX-x86_64.sh
 
     # Refresh your terminal session to see conda
     bash
