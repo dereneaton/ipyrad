@@ -89,7 +89,7 @@ class Baba:
 
         # nb: ma arrays do not support numba jit
         """
-        barr = np.zeros((4, arr.shape[1]), dtype=np.float)
+        barr = np.zeros((4, arr.shape[1]), dtype=np.float64)
 
         # iterate over populations
         for pidx, pop in enumerate(("p1", "p2", "p3", "p4")):

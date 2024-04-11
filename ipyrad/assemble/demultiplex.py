@@ -26,7 +26,10 @@ from collections import Counter
 # ipyrad imports
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
-
+from ipyrad.assemble.pair_fastqs import (
+    get_fastq_tuples_dict_from_paths_list,
+    get_paths_list_from_fastq_str,
+)
 
 
 class Step1:
@@ -166,58 +169,64 @@ class FileLinker:
                 NO_FILES_FOUND_PAIRS
                 .format(self.data.params.sorted_fastq_path))
 
-        # link pairs into tuples
-        if 'pair' in self.data.params.datatype:
-            # check that names fit the paired naming convention
-            r1s = [i for i in self.fastqs if "_R1_" in i]
-            r2s = [i for i in self.fastqs if "_R2_" in i]
+        # get list of expanded paths
+        paths = get_paths_list_from_fastq_str(self.fastqs)
 
-            # file checks
-            if not r1s:
-                raise IPyradError(
-                    "No fastqs files found. File names must contain '_R1_' "
-                    "(and '_R2_' for paired data). See Docs.")
-            if len(r1s) != len(r2s):
-                raise IPyradError(
-                    R1_R2_name_error.format(len(r1s), len(r2s)))
+        # get dict of {basename: (Path-R1, Path-R2)} from filenames
+        self.ftuples = get_fastq_tuples_dict_from_paths_list(paths)
 
-            # store tuples                    
-            self.ftuples = []
-            for r1file in r1s:
-                r2file = r1file.replace("_R1_", "_R2_")
-                if not os.path.exists(r2file):
-                    raise IPyradError(
-                        "Expected R2 file {} to match R1 file {}"
-                        .format(r1file, r2file)
-                        )
-                self.ftuples.append((r1file, r2file))
+        # # link pairs into tuples
+        # if 'pair' in self.data.params.datatype:
+        #     # check that names fit the paired naming convention
+        #     r1s = [i for i in self.fastqs if "_R1_" in i]
+        #     r2s = [i for i in self.fastqs if "_R2_" in i]
 
-        # data are not paired, create empty tuple pair
-        else:
-            # print warning if _R2_ is in names when not paired
-            if any(["_R2_" in i for i in self.fastqs]):
-                print(NAMES_LOOK_PAIRED_WARNING)
-            self.ftuples = [(i, "") for i in self.fastqs]
+        #     # file checks
+        #     if not r1s:
+        #         raise IPyradError(
+        #             "No fastqs files found. File names must contain '_R1_' "
+        #             "(and '_R2_' for paired data). See Docs.")
+        #     if len(r1s) != len(r2s):
+        #         raise IPyradError(
+        #             R1_R2_name_error.format(len(r1s), len(r2s)))
+
+        #     # store tuples                    
+        #     self.ftuples = []
+        #     for r1file in r1s:
+        #         r2file = r1file.replace("_R1_", "_R2_")
+        #         if not os.path.exists(r2file):
+        #             raise IPyradError(
+        #                 "Expected R2 file {} to match R1 file {}"
+        #                 .format(r1file, r2file)
+        #                 )
+        #         self.ftuples.append((r1file, r2file))
+
+        # # data are not paired, create empty tuple pair
+        # else:
+        #     # print warning if _R2_ is in names when not paired
+        #     if any(["_R2_" in i for i in self.fastqs]):
+        #         print(NAMES_LOOK_PAIRED_WARNING)
+        #     self.ftuples = [(i, "") for i in self.fastqs]
 
 
     def remote_run_linker(self):
         "read in fastq files and count nreads for stats and chunking in s2."
 
-        # local counters 
+        # local counters
         createdinc = 0
 
         # iterate over input files
-        for ftup in self.ftuples:
-
+        for sname, ftup in self.ftuples.items():
             # remove file extension from name
-            sname = get_name_from_file(ftup[0], None, None)
+            # sname = get_name_from_file(ftup[0], None, None)
+            # print(sname, ftup)
 
             # Create new Sample Class objects with names from files
             if sname not in self.data.samples:
                 newsamp = Sample(sname)
                 newsamp.stats.state = 1
                 newsamp.barcode = None
-                newsamp.files.fastqs = [ftup]
+                newsamp.files.fastqs = [(str(ftup[0]), str(ftup[1]))]
                 self.data.samples[sname] = newsamp
                 createdinc += 1
 
@@ -1445,3 +1454,25 @@ NAMES_LOOK_PAIRED_WARNING = """\
     option (e.g., pairddrad or pairgbs) and re-run step 1, which will require
     using the force flag (-f) to overwrite existing data.
     """
+
+
+if __name__ == "__main__":
+
+    import ipyrad as ip
+
+    # test to load samples w/ names "*_R1_*", "*_R2_*"
+    # data = ip.Assembly("TEST")
+    # data.params.sorted_fastq_path = "../../sra-fastqs/*.fastq"
+    # data.params.project_dir = "/tmp/9test"
+    # data.run("1", force=True, auto=True)
+    # print(data.stats)
+
+    # test to load samples w/ names "*_R1.*", "*_R2.*"
+    data = ip.Assembly("TEST")
+    data.params.sorted_fastq_path = "../../pedtest/DEMUX_fastqs/integ*.gz"
+    data.params.project_dir = "/tmp/9test"
+    data.run("1", force=True, auto=True)
+    print(data.stats)
+
+    # test to load samples w/ names "*_1.*", "*_2.*"
+    # ...
