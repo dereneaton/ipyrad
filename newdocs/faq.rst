@@ -160,19 +160,6 @@ I know that people have also used stacks (because stacks treats r1 andr2 as inde
 loci). If people ask me how to denovo assemble with PE-RAD in ipyrad I tell them to 
 just assemble it as SE and ignore R2.
 
-Why doesn't ipyrad write out the .alleles format with phased alleles like pyrad used to?
-----------------------------------------------------------------------------------------
-We're hoping to provide something similar eventually, the problem with the pyrad alleles 
-file is that the alleles are only phased correctly when we enforce that reads must align 
-almost completely, i.e., they are not staggered in their overlap. So the alleles are 
-correct for RAD data, because the reads match up perfectly on their left side, however, 
-staggered overlaps are common in other data sets that use very common cutters, like 
-ezRAD and some GBS, and especially so when R1 and R2 reads merge. So we needed to change 
-to an alternative way of coding the alleles so that we can store both phased and unphased 
-alleles, and its just taking a while to do. So for now we are only providing unphased 
-alleles, although we do save the estimated number of alleles for each locus. This 
-information is kind of hidden under the hood at the moment though.
-
 Why is my assembly taking FOREVER to run?
 -----------------------------------------
 There have been a few questions recently about long running jobs (e.g., >150 hours), which 
