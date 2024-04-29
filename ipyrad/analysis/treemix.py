@@ -36,6 +36,13 @@ You can install it with the following command in a terminal.
 conda install toytree -c eaton-lab 
 """)
 
+_VERSION_TOYTREE = IPyradError("""
+Treemix analysis tool requires toytree < 3.0.0. You can roll
+back to a working version of toytree with this command in the terminal.
+
+conda install -c eaton-lab toytree=2.0.5
+""")
+
 _MISSING_TREEMIX = ImportError("""
 This ipyrad tool requires the progam TREEMIX. See recommended installation 
 instructions here:
@@ -122,6 +129,10 @@ class Treemix(object):
         self.binary = (binary if binary else self.binary)
         self.raise_root_error = raise_root_error
         self._find_binary()
+
+        # Check toytree version is < 2
+        if int(toytree.__version__.split(".")[0]) > 2:
+            raise(_VERSION_TOYTREE)
 
         # params dict
         self.params = Params()
@@ -265,7 +276,7 @@ class Treemix(object):
         Returns a treemix plot on a toyplot.axes object. 
         """
         # create a toytree object from the treemix tree result
-        tre = toytree.tree(newick=self.results.tree)
+        tre = toytree.tree(self.results.tree)
 
         # draw on axes or create new ones
         if axes:
@@ -419,22 +430,37 @@ class Treemix(object):
             admix = self.results.admixture[aidx]
 
             source = toytree.tree(admix[0] + ";")
-            if len(source) == 1:
+            if len(source.get_tip_labels()) == 1:
                 name = admix[0].split(":")[0]
-                sodx = tre.treenode.search_nodes(name=name)[0]
+                try:
+                    sodx = tre.treenode.search_nodes(name=name)[0]
+                except AttributeError:
+                    # The string of try/except here is handling differences between
+                    # ToyTree V2 and V3
+                    sodx = tre.get_nodes(name)[0]
                 sodx = sodx.idx
             else:
                 lvs = source.get_tip_labels()
-                sodx = tre.treenode.get_common_ancestor(lvs).idx
+                try:
+                    sodx = tre.treenode.get_common_ancestor(lvs).idx
+                except AttributeError:
+                    sodx = tre.get_mrca_node(*lvs).idx
 
             sink = toytree.tree(admix[1] + ";")
-            if len(sink) == 1:
+            if len(sink.get_tip_labels()) == 1:
                 name = admix[1].split(":")[0]
-                sidx = tre.treenode.search_nodes(name=name)[0]
+                try:
+                    sidx = tre.treenode.search_nodes(name=name)[0]
+                except AttributeError:
+                    # ToyTree V3
+                    sidx = tre.get_nodes(name)[0]
                 sidx = sidx.idx
             else:
                 lvs = sink.get_tip_labels()
-                sidx = tre.treenode.get_common_ancestor(lvs).idx
+                try:
+                    sidx = tre.treenode.get_common_ancestor(lvs).idx
+                except AttributeError:
+                    sidx = tre.get_mrca_node(*lvs).idx
 
             self.results.admixture[aidx] = (
                 int(sodx),
