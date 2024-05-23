@@ -14,8 +14,7 @@ import ipyparallel
 from ipyrad.core.cluster import Cluster
 from ipyrad.schema import Project, Sample, Params
 from ipyrad.trim.load_fastqs import Step1
-# from ipyrad.core2 import
-# from ipyrad.assemble.utils import IPyradExit
+# from ipyrad.within_clust.clustmap_w import Step2
 # from ipyrad.assemble.s1_demux import Step1
 # from ipyrad.assemble.s2_trim_reads import Step2
 # from ipyrad.assemble.s3_clustmap_within import Step3
@@ -234,40 +233,41 @@ class Assembly:
         branch.outfiles = {}
         return branch
 
-    def write_params(self, force: bool = False) -> None:
-        """Write a CLI params file to <workdir>/params-<name>.txt.
+    # def write_params(self, force: bool = False) -> None:
+    #     """Write a CLI params file to <workdir>/params-<name>.txt.
 
-        Writes the current Params for this Assembly. When this is
-        called from the CLI as `ipyrad -n name` it writes to the
-        current directory, since project_dir has not been created yet,
-        which is fine, since user's should only need to call it once
-        when using the CLI, probably.
-        """
-        outname = f"params-{self.name}.txt"
-        outpath = self.params.project_dir / outname
-        self.params.project_dir.mkdir(exist_ok=True)
+    #     Writes the current Params for this Assembly. When this is
+    #     called from the CLI as `ipyrad -n name` it writes to the
+    #     current directory, since project_dir has not been created yet,
+    #     which is fine, since user's should only need to call it once
+    #     when using the CLI, probably.
+    #     """
+    #     outname = f"params-{self.name}.txt"
+    #     outpath = self.params.project_dir / outname
+    #     self.params.project_dir.mkdir(exist_ok=True)
 
-        # Test if params file already exists?
-        # If not forcing, test for file and bail out if it exists
-        if not force:
-            if outpath.exists():
-                raise IOError(
-                    f"Error: file {outpath} exists, you must use force to overwrite")
+    #     # Test if params file already exists?
+    #     # If not forcing, test for file and bail out if it exists
+    #     if not force:
+    #         if outpath.exists():
+    #             raise IOError(
+    #                 f"Error: file {outpath} exists, you must use force to overwrite")
 
-        params = self.params.model_dump()
-        with open(outpath, 'w', encoding="utf-8") as out:
-            print("---------- ipyrad params file " + "-" * 80, file=out)
-            for idx, param in enumerate(params):
-                value = params.get(param)
-                if isinstance(value, (tuple, list)):
-                    value = ", ".join(map(str, value))
-                else:
-                    value = str(value) if value else ""
-                print(
-                    f"{value.ljust(40)} ## [{idx}] {param}: {PARAMSINFO[idx]}",
-                    file=out,
-                )
-            logger.debug(f"params file written to {outpath}")
+    #     # dump Params to a dict
+    #     params = self.params.model_dump()
+    #     with open(outpath, 'w', encoding="utf-8") as out:
+    #         print("---------- ipyrad params file " + "-" * 80, file=out)
+    #         for idx, param in enumerate(params):
+    #             value = params.get(param)
+    #             if isinstance(value, (tuple, list)):
+    #                 value = ", ".join(map(str, value))
+    #             else:
+    #                 value = str(value) if value else ""
+    #             print(
+    #                 f"{value.ljust(40)} ## [{idx}] {param}: {PARAMSINFO[idx]}",
+    #                 file=out,
+    #             )
+    #         logger.info(f"params file written to {outpath}")
 
     def save_json(self) -> None:
         """Writes the current Assembly object to the project JSON file."""
@@ -281,7 +281,7 @@ class Assembly:
         )
         with open(self.json_file, 'w', encoding="utf-8") as out:
             out.write(project.model_dump_json(indent=2, exclude_none=True))
-        logger.debug(f"Assembly JSON saved to {self.json_file}")
+        logger.info(f"Assembly JSON saved to {self.json_file}")
 
     def run(
         self,
@@ -366,6 +366,10 @@ PARAMSINFO = {
     26: "See documentation",
     27: "Path to population assignment file",
     28: "Reads mapped to this reference fasta are removed",
+    29: "...",
+    30: "...",
+    31: "...",
+    32: "...",
 }
 
 
