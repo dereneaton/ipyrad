@@ -500,7 +500,6 @@ class Processor:
         while not done:
             done, chunk = clustdealer(pairdealer, 1)
             if chunk:  
-
                 # fills .name and .seqs attributes
                 self.parse_cluster(chunk)
 
@@ -672,9 +671,12 @@ class Processor:
         denovo only.
         Infer the number of alleles from haplotypes.
         """
-        # if less than two Hs then there is only one allele
+        # if less than two Hs then there is either only 2 alleles
+        # or the cluster is monomorphic
         if len(self.hidx) < 2:
-            self.nalleles = 1
+            # Here nalleles will be either 1 (for monomorphic) or
+            # 2 for a 2 allele locus (1 Hs site)
+            self.nalleles = len(self.hidx) + 1
         else:
             # array of hetero sites
             harray = self.arrayed[:, self.hidx]
@@ -691,6 +693,11 @@ class Processor:
                 totdepth = harray.shape[0]
                 cutoff = max(1, totdepth // 10)
                 alleles = [i for i in ccx if ccx[i] > cutoff]
+                # If all alleles are very low depth then none will pass the
+                # cutoff. In this case retain all alleles so the filter for
+                # self.maxa will catch it and remove it.
+                if not alleles:
+                    alleles = ccx.keys()
             else:
                 alleles = ccx.keys()
             self.nalleles = len(alleles)
