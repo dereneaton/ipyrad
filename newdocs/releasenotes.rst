@@ -4,6 +4,14 @@
 Release Notes
 =============
 
+0.9.96
+------
+**June 18, 2024**
+
+- Fix consens_se filter_mindepth to better handle haploid data (removes spurious het calls in haploid)
+- ipa.treemix test for toytree < v3
+- Removed very old comment about alleles format in the faq
+
 0.9.94
 ------
 **February 02, 2024**
