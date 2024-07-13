@@ -341,7 +341,7 @@ class TreeSlider(object):
                 "sites": 0,
                 "samples": 0,
                 "missing": 0.0,  # np.nan,
-                "tree": 0,
+                "tree": "",
                 }, 
                 columns=[
                     "scaffold", "start", "end", 
@@ -459,7 +459,7 @@ class TreeSlider(object):
         for idx in self.tree_table.index:
 
             # if continuing an existing job, skip if row already filled
-            if self.tree_table.tree[idx] != 0:
+            if self.tree_table.tree[idx] != "":
                 prog.finished += 1
                 continue
 
@@ -593,8 +593,7 @@ def remote_mrbayes(nexfile, inference_args, keepdir=None):
 
 
 def remote_raxml(phyfile, inference_args, keepdir=None):
-    """
-    Call raxml on phy and returned parse tree result
+    """Call raxml on phy and returned parse tree result
     """
     # if keep_all_files then use workdir as the workdir instead of tmp
     if keepdir:
@@ -613,9 +612,9 @@ def remote_raxml(phyfile, inference_args, keepdir=None):
 
     # get newick string from result
     if os.path.exists(rax.trees.bipartitions):
-        tree = toytree.tree(rax.trees.bipartitions).newick
+        tree = toytree.tree(rax.trees.bipartitions).write()
     else:
-        tree = toytree.tree(rax.trees.bestTree).newick
+        tree = toytree.tree(rax.trees.bestTree).write()
 
     # remote tree files
     if keepdir is None:
