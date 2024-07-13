@@ -462,7 +462,7 @@ class WindowExtracter(object):
             "end": [self.end],
             "sites": [0],
             "snps": [0],
-            "missing": [0],
+            "missing": [0.],
             "samples": [0],
         }, index=["prefilter", "postfilter"],
         )
@@ -541,8 +541,8 @@ class WindowExtracter(object):
         # enter initial stats
         self.stats.loc["prefilter", "sites"] = self.seqarr.shape[1]
         self.stats.loc["prefilter", "snps"] = count_snps(self.seqarr)
-        self.stats.loc["prefilter", "missing"] = round(
-            np.sum(self.seqarr == 78) / self.seqarr.size, 2)
+        self.stats.loc["prefilter", "missing"] = float(round(
+            np.sum(self.seqarr == 78) / self.seqarr.size, 2))
         self.stats.loc["prefilter", "samples"] = self.seqarr.shape[0]
 
 
