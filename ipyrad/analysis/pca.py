@@ -26,18 +26,18 @@ except ImportError:
     pass
 
 _MISSING_TOYPLOT = """
-This ipyrad tool requires the plotting library toyplot. 
+This ipyrad tool requires the plotting library toyplot.
 You can install it with the following command in a terminal.
 
-conda install toyplot -c conda-forge 
+conda install toyplot -c conda-forge
 """
 
 try:
-    from sklearn import decomposition 
+    from sklearn import decomposition
     from sklearn.cluster import KMeans
     from sklearn.manifold import TSNE
     from sklearn.linear_model import LinearRegression
-    from sklearn.neighbors import NearestCentroid   
+    from sklearn.neighbors import NearestCentroid
 except ImportError:
     pass
 
@@ -45,7 +45,7 @@ _MISSING_SKLEARN = """
 This ipyrad tool requires the library scikit-learn.
 You can install it with the following command in a terminal.
 
-conda install scikit-learn -c conda-forge 
+conda install scikit-learn -c conda-forge
 """
 
 _IMPORT_VCF_INFO = """
@@ -80,18 +80,18 @@ class PCA(object):
         in the data then it is filtered from the data set.
     minmaf: float or int
         The minimum minor allele frequency for a SNP to be retained in the
-        dataset. 
+        dataset.
     impute_method: (str; default='sample')
         None, "sample", or an integer for the number of kmeans clusters.
     topcov: (float; default=0.9)
-        Affects kmeans method only.    
-        The most stringent mincov used as the first iteration in kmeans 
+        Affects kmeans method only.
+        The most stringent mincov used as the first iteration in kmeans
         clustering. Subsequent iterations (niters) are equally spaced between
-        topcov and mincov. 
+        topcov and mincov.
     niters: (int; default=5)
-        Affects kmeans method only.        
-        Number of iterations of kmeans clustering with decreasing mincov 
-        thresholds used to refine population clustering, and therefore to 
+        Affects kmeans method only.
+        Number of iterations of kmeans clustering with decreasing mincov
+        thresholds used to refine population clustering, and therefore to
         refine the imap groupings used to filter and impute sites.
     ld_block_size: (int; default=20000)
         Only used during conversion of data imported as vcf.
@@ -102,8 +102,8 @@ class PCA(object):
     ...
     """
     def __init__(
-        self, 
-        data, 
+        self,
+        data,
         impute_method=None,
         imap=None,
         minmap=None,
@@ -127,7 +127,7 @@ class PCA(object):
 
         # data attributes
         self.impute_method = impute_method
-        self.mincov = mincov        
+        self.mincov = mincov
         self.minmaf = minmaf
         self.imap = (imap if imap else {})
         self.minmap = (minmap if minmap else {i: 1 for i in self.imap})
@@ -148,7 +148,7 @@ class PCA(object):
         if self.data.endswith((".vcf", ".vcf.gz")):
             if not ld_block_size:
                 self.ld_block_size = 20000
-                if not self.quiet: 
+                if not self.quiet:
                     print(_IMPORT_VCF_INFO.format(self.ld_block_size))
 
             converter = vcf_to_hdf5(
@@ -169,7 +169,7 @@ class PCA(object):
         )
 
         # run snp extracter to parse data files
-        ext.parse_genos_from_hdf5()       
+        ext.parse_genos_from_hdf5()
         self.snps = ext.snps
         self.snpsmap = ext.snpsmap
         self.names = ext.names
@@ -181,22 +181,21 @@ class PCA(object):
             self.minmap = {'1': 0.5}
 
         # record missing data per sample
-        self.missing = pd.DataFrame({
-            "missing": [0.],
-            },
-            index=self.names,
-        )
-        miss = np.sum(self.snps == 9, axis=1) / self.snps.shape[1]
+        miss_arr = np.sum(self.snps == 9, axis=1) / self.snps.shape[1]
+        miss = {}
         for name in self.names:
-            self.missing.missing[name] = round(miss[self.names.index(name)], 2)
+            miss[name] = round(miss_arr[self.names.index(name)], 2)
+        self.missing = pd.DataFrame(
+            [miss[i] for i in self.names],
+            index=self.names, columns=["missing"])
 
         # impute missing data
         if (self.impute_method is not False) and self._mvals:
             self._impute_data()
 
 
-    def _seed(self):   
-        return np.random.randint(0, 1e9)        
+    def _seed(self):
+        return np.random.randint(0, 1e9)
 
 
     def _print(self, msg):
@@ -228,7 +227,7 @@ class PCA(object):
             self.snps[missing] += np.random.choice([0,1,2], self.snps.shape)[missing].astype(np.uint64)
             self._print(
                 "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
-                .format(100, 0, 0)            
+                .format(100, 0, 0)
             )
 
 
@@ -253,15 +252,15 @@ class PCA(object):
 
             # 1. Load orig data and filter with imap, minmap, mincov=step
             se = SNPsExtracter(
-                self.data, 
-                imap=kmeans_imap, 
-                minmap=kmeans_minmap, 
+                self.data,
+                imap=kmeans_imap,
+                minmap=kmeans_minmap,
                 mincov=kmeans_mincov,
                 quiet=self.quiet,
             )
             se.parse_genos_from_hdf5()
 
-            # update snpsmap to new filtered data to use for subsampling            
+            # update snpsmap to new filtered data to use for subsampling
             self.snpsmap = se.snpsmap
 
             # 2. Impute missing data using current kmeans clusters
@@ -280,9 +279,9 @@ class PCA(object):
 
             # 5. Kmeans clustering to find new imap grouping
             kmeans_model.fit(pcadata)
-            labels = np.unique(kmeans_model.labels_)           
+            labels = np.unique(kmeans_model.labels_)
             kmeans_imap = {
-                i: [se.names[j] for j in 
+                i: [se.names[j] for j in
                     np.where(kmeans_model.labels_ == i)[0]] for i in labels
             }
             self._print(kmeans_imap)
@@ -291,7 +290,7 @@ class PCA(object):
 
     def _run(self, seed, subsample, quiet):
         """
-        Called inside .run(). A single iteration. 
+        Called inside .run(). A single iteration.
         """
         # sample one SNP per locus
         if subsample:
@@ -317,7 +316,7 @@ class PCA(object):
 
     def run_and_plot_2D(self, ax0, ax1, seed=None, nreplicates=1, subsample=True, quiet=None):
         """
-        Call .run() and .draw() in one single call. This is for simplicity. 
+        Call .run() and .draw() in one single call. This is for simplicity.
         In generaly you will probably want to call .run() and then .draw()
         as two separate calls. This way you can generate the results with .run()
         and then plot the stored results in many different ways using .draw().
@@ -330,7 +329,7 @@ class PCA(object):
 
     def run(self, nreplicates=1, seed=None, subsample=True, quiet=None):
         """
-        Decompose genotype array (.snps) into n_components axes. 
+        Decompose genotype array (.snps) into n_components axes.
 
         Parameters:
         -----------
@@ -343,13 +342,13 @@ class PCA(object):
         subsample: (bool)
             Subsample one SNP per RAD locus to reduce effect of linkage.
         quiet: (bool)
-            Print statements           
+            Print statements
 
         Returns:
-        --------      
-        Two dctionaries are stored to the pca object in .pcaxes and .variances. 
-        The first is the new data decomposed into principal coordinate space; 
-        the second is an array with the variance explained by each PC axis. 
+        --------
+        Two dctionaries are stored to the pca object in .pcaxes and .variances.
+        The first is the new data decomposed into principal coordinate space;
+        the second is an array with the variance explained by each PC axis.
         """
         # default to 1 rep
         nreplicates = (nreplicates if nreplicates else 1)
@@ -365,14 +364,14 @@ class PCA(object):
         datas = {}
         vexps = {}
         datas[0], vexps[0] = self._run(
-            subsample=subsample, 
-            seed=rng.randint(0, 1e15), 
+            subsample=subsample,
+            seed=rng.randint(0, 1e15),
             quiet=quiet,
         )
 
         for idx in range(1, nreplicates):
             datas[idx], vexps[idx] = self._run(
-                subsample=subsample, 
+                subsample=subsample,
                 seed=rng.randint(0, 1e15),
                 quiet=True)
 
@@ -383,7 +382,7 @@ class PCA(object):
 
 
     def draw(
-        self, 
+        self,
         ax0=0,
         ax1=1,
         cycle=8,
@@ -395,12 +394,12 @@ class PCA(object):
         label='',
         outfile='',
         imap=None,
-        width=400, 
+        width=400,
         height=300,
         axes=None,
         **kwargs):
         """
-        Draw a scatterplot for data along two PC axes. 
+        Draw a scatterplot for data along two PC axes.
         """
         self.drawing = Drawing(
             self, ax0, ax1, cycle, colors, opacity, shapes, size, legend,
@@ -412,7 +411,7 @@ class PCA(object):
 
     def draw_legend(self, axes, **kwargs):
         """
-        Draw legend on a cartesian axes. This is intended to be added to a 
+        Draw legend on a cartesian axes. This is intended to be added to a
         custom setup canvas and axes configuration in toyplot. Example below:
 
         import toyplot
@@ -442,8 +441,8 @@ class PCA(object):
             return
 
         style = {
-            "fill": "#262626", 
-            "text-anchor": "start", 
+            "fill": "#262626",
+            "text-anchor": "start",
             "-toyplot-anchor-shift": "15px",
             "font-size": "14px",
         }
@@ -468,7 +467,7 @@ class PCA(object):
 
     def draw_panels(self, pc0=0, pc1=1, pc2=2, **kwargs):
         """
-        A convenience function for drawing a three-part panel plot with the 
+        A convenience function for drawing a three-part panel plot with the
         first three PC axes. To do this yourself and further modify the layout
         you can start with the code below.
 
@@ -486,7 +485,7 @@ class PCA(object):
         pca.draw(0, 1, axes=ax0, legend=False)
         pca.draw(0, 2, axes=ax1, legend=False)
         pca.draw(1, 3, axes=ax2, legend=False);
-        pca.draw_legend(ax3, **{"font-size": "14px"})        
+        pca.draw_legend(ax3, **{"font-size": "14px"})
         """
         if self._model != "PCA":
             print("You must first call .run() to infer PC axes.")
@@ -533,7 +532,7 @@ class PCA(object):
         # init TSNE model object with params (sensitive)
         umap_kwargs = {
             'n_neighbors': n_neighbors,
-            'init': 'spectral', 
+            'init': 'spectral',
             'random_state': seed,
         }
         umap_kwargs.update(kwargs)
@@ -546,11 +545,11 @@ class PCA(object):
         self._model = "UMAP"
 
 
-    def run_tsne(self, subsample=True, perplexity=5.0, n_iter=1e6, seed=None, **kwargs):
+    def run_tsne(self, subsample=True, perplexity=5.0, max_iter=1e6, seed=None, **kwargs):
         """
         Calls TSNE model from scikit-learn on the SNP or subsampled SNP data
         set. The 'seed' argument is used for subsampling SNPs. Perplexity
-        is the primary parameter affecting the TSNE, but any additional 
+        is the primary parameter affecting the TSNE, but any additional
         params supported by scikit-learn can be supplied as kwargs.
         """
         seed = (seed if seed else self._seed())
@@ -566,8 +565,8 @@ class PCA(object):
         # init TSNE model object with params (sensitive)
         tsne_kwargs = {
             'perplexity': perplexity,
-            'init': 'pca', 
-            'n_iter': int(n_iter), 
+            'init': 'pca',
+            'n_iter': int(max_iter),
             'random_state': seed,
         }
         tsne_kwargs.update(kwargs)
@@ -604,7 +603,7 @@ class Drawing:
         label='',
         outfile='',
         imap=None,
-        width=400, 
+        width=400,
         height=300,
         axes=None,
         **kwargs):
@@ -691,11 +690,11 @@ class Drawing:
 
         # style axes
         self.axes.x.spine.style["stroke-width"] = 2.
-        self.axes.y.spine.style["stroke-width"] = 2.    
+        self.axes.y.spine.style["stroke-width"] = 2.
         self.axes.x.ticks.labels.style["font-size"] = "12px"
         self.axes.y.ticks.labels.style["font-size"] = "12px"
         self.axes.x.label.style['font-size'] = "14px"
-        self.axes.y.label.style['font-size'] = "14px"         
+        self.axes.y.label.style['font-size'] = "14px"
 
         if self.label:
             self.axes.label.text = self.label
@@ -707,7 +706,7 @@ class Drawing:
         # raise error if run() was not yet called.
         if self.datas is None:
             raise IPyradError(
-                "You must first call run() before calling draw().")          
+                "You must first call run() before calling draw().")
 
         try:
             # check for replicates in the data
@@ -749,7 +748,7 @@ class Drawing:
 
     def _get_marker_styles(self):
         """
-        Build marker styles for individual or replicate marker plotting, 
+        Build marker styles for individual or replicate marker plotting,
         and able to cycle over few or many categories of IMAP.
         """
         # make reverse imap dictionary
@@ -787,12 +786,12 @@ class Drawing:
                 np.tile("d", self.cycle),
                 np.tile("v", self.cycle),
                 np.tile("<", self.cycle),
-                np.tile("x", self.cycle),            
+                np.tile("x", self.cycle),
             ]))
         else:
             self.shapes = itertools.cycle(self.shapes)
         # else:
-            # assert len(shapes) == len(imap), "len colors must match len imap"            
+            # assert len(shapes) == len(imap), "len colors must match len imap"
 
         # assign styles to populations and to legend markers (no replicates)
         for idx, pop in enumerate(self.imap):
@@ -806,7 +805,7 @@ class Drawing:
                 color = icolor
 
             self.pstyles[pop] = toyplot.marker.create(
-                size=self.size, 
+                size=self.size,
                 shape=ishape,
                 mstyle={
                     "fill": color,
@@ -818,13 +817,13 @@ class Drawing:
             )
 
             self.rstyles[pop] = toyplot.marker.create(
-                size=self.size, 
+                size=self.size,
                 shape=ishape,
                 mstyle={
                     "fill": color,
                     "stroke": "none",
                     "fill-opacity": (
-                        self.opacity / self.nreplicates if self.opacity 
+                        self.opacity / self.nreplicates if self.opacity
                         else 0.9 / self.nreplicates
                     ),
                 },
@@ -840,7 +839,7 @@ class Drawing:
             pmark = self.pstyles[pop]
             self.pmarks.append(pmark)
             rmark = self.rstyles[pop]
-            self.rmarks.append(rmark)        
+            self.rmarks.append(rmark)
 
 
     def _draw_markers(self):
@@ -858,7 +857,7 @@ class Drawing:
             )
 
         else:
-            # add the replicates cloud points       
+            # add the replicates cloud points
             for i in range(self.nreplicates):
                 # get transformed coordinates and variances
                 mark = self.axes.scatterplot(
@@ -870,7 +869,7 @@ class Drawing:
             # compute centroids
             Xarr = np.concatenate([
                 np.array(
-                    [self.datas[i][:, self.ax0], self.datas[i][:, self.ax1]]).T 
+                    [self.datas[i][:, self.ax0], self.datas[i][:, self.ax1]]).T
                 for i in range(self.nreplicates)
             ])
             yarr = np.tile(np.arange(len(self.names)), self.nreplicates)
@@ -898,6 +897,6 @@ class Drawing:
         if len(self.imap) > 1:
             marks = [(pop, marker) for pop, marker in self.pstyles.items()]
             self.canvas.legend(
-                marks, 
+                marks,
                 corner=corner,
             )
