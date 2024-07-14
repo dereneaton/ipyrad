@@ -55,6 +55,7 @@ STATS_HEADER = [
     "post_filter_percent_missing",
 ]
 
+
 class SNPsExtracter:
     """Extract SNP data from HDF5 after filtering.
 
@@ -635,7 +636,6 @@ class SNPsExtracter:
         return data.T
 
 
-
 if __name__ == "__main__":
 
     import toytree
@@ -656,9 +656,10 @@ if __name__ == "__main__":
     IMAP = ipa.popfile_to_imap("/tmp/test.popfile.tsv")
 
     # model.write_snps_to_hdf5(name="test", outdir="/tmp", diploid=True)
-    tool = ipa.snps_extracter("/tmp/test.snps.hdf5",
+    tool = ipa.snps_extracter(
+        data="/tmp/test.snps.hdf5",
         imap=IMAP,
-        minmap={i:1 for i in IMAP},
+        minmap={i: 1 for i in IMAP},
         minmaf=0.1,
     )
     tool.run(cores=2)
