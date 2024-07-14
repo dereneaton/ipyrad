@@ -10,7 +10,7 @@ from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
 
 from loguru import logger
-from ipyrad.core import IPyradError
+from ipyrad.core.exceptions import IPyradError
 from ipyrad.core.utils import comp
 
 # pylint: disable=too-many-branches, too-many-statements, consider-using-with, too-many-lines
