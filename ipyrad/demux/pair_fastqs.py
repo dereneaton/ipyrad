@@ -151,15 +151,15 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             )
             logger.debug(f"PE fastqs: {name}: {tuple((i.name for i in paths))}")
 
-    # store (R1, '') tuples for each basename, and report a warning
+    # store (R1, 'null') tuples for each basename, and report a warning
     # if names are suspiciously paired looking.
     else:
         for path in fastqs:
             subpath = path.with_suffix("")
             while subpath.suffix:
                 subpath = subpath.with_suffix("")
-            snames_to_fastq_tuples[subpath.name] = (path.expanduser().resolve(), "")
-            logger.debug(f"SE fastqs: '{subpath.name}': {(path, '')}")
+            snames_to_fastq_tuples[subpath.name] = (path.expanduser().resolve(), Path("null"))
+            logger.debug(f"SE fastqs: '{subpath.name}': {(path.name, 'null')}")
 
             # warning if the data appear to include R2s
             if any(i in str(path.name) for i in ("_R2_", "_2.", "_R2.")):
@@ -184,5 +184,9 @@ if __name__ == "__main__":
     pairs = get_fastq_tuples_dict_from_paths_list(FASTQS)
 
     FASTQ_PATH = Path("../../pedtest/NEW_fastqs/*fastq.gz")
+    FASTQS = get_paths_list_from_fastq_str(FASTQ_PATH)
+    pairs = get_fastq_tuples_dict_from_paths_list(FASTQS)
+
+    FASTQ_PATH = Path("../../sra-fastqs/*fastq")
     FASTQS = get_paths_list_from_fastq_str(FASTQ_PATH)
     pairs = get_fastq_tuples_dict_from_paths_list(FASTQS)
