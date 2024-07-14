@@ -8,7 +8,7 @@ from typing import TypeVar
 from loguru import logger
 import pandas as pd
 from ipyrad.within_clust.clustmap_w import ClustMapBase
-from ipyrad.core import Assembly, track_remote_jobs
+from ipyrad.core import track_remote_jobs
 from ipyrad.schema.sample_schema import Stats2
 from ipyrad.within_clust.clustmap_w_funcs import index_ref_with_bwa
 from ipyrad.within_clust.clustmap_w_denovo_funcs import (
@@ -19,6 +19,7 @@ from ipyrad.within_clust.clustmap_w_denovo_funcs import (
 
 logger = logger.bind(name="ipyrad")
 Client = TypeVar("Client")
+Assembly = TypeVar("Assembly")
 
 
 class ClustMapDenovo(ClustMapBase):
@@ -144,7 +145,7 @@ class ClustMapDenovo(ClustMapBase):
 
             # -- if pair: updated in remote_pairs_merge_overlap_with_vsearch
             sample.stats_s2.merged_pairs = self._merged_pairs[sname]
-            sample.stats_s2.merged_pairs_prop = self._merged_pairs_prop[sname]
+            sample.stats_s2.merged_pairs_prop = float(self._merged_pairs_prop[sname])
             # -- not relevant here
             # reads_mapped_to_ref: int = None
             # reads_mapped_to_ref_prop: float = None
@@ -184,15 +185,17 @@ if __name__ == "__main__":
     import ipyrad as ip
     ip.set_log_level("DEBUG")
 
-    from ipyrad.core.load_json import load_json
     # data = load_json("/tmp/pairgbs_merge.json")
-    data = load_json("/tmp/pedtest/half-demuxed.json")
+    # data = load_json("/tmp/pedtest/half-demuxed.json")
     # data.ipcluster['threads'] = 4
     # with ip.Cluster(cores=8) as ipyclient:
     #     tool = ClustMapDenovo(data, True, ipyclient)
     #     tool.run()
+    data = ip.load_json("/tmp/ipyrad-tests/assembly/TEST-denovo-se.json")
+    data.run("2", force=True, cores=6, threads=2)
     print(data.stats)
-
+    print(data.samples["40578_rex_SRR1754724"].files)
+    print(data.samples["40578_rex_SRR1754724"].stats_s2)
 
     # # branch to subsample
     # subs = [
