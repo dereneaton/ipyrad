@@ -11,10 +11,13 @@ from loguru import logger
 import pandas as pd
 
 import ipyparallel
+from ipyrad import schema
 from ipyrad.core.cluster import Cluster
-from ipyrad.schema import Project, Sample, Params
 from ipyrad.trim.load_fastqs import Step1
-# from ipyrad.within_clust.clustmap_w import Step2
+from ipyrad.within_clust.clustmap_w_denovo import ClustMapDenovo
+from ipyrad.within_clust_build.clustbuild_w import BuildAlign
+
+# DEPRECATED
 # from ipyrad.assemble.s1_demux import Step1
 # from ipyrad.assemble.s2_trim_reads import Step2
 # from ipyrad.assemble.s3_clustmap_within import Step3
@@ -29,8 +32,8 @@ logger = logger.bind(name="ipyrad")
 # the Class functions to run for each entered step.
 STEP_MAP = {
     "1": Step1,
-    # "2": Step2,
-#     "3": Step3,
+    "2": ClustMapDenovo,
+    "3": BuildAlign,
 #     "4": Step4,
 #     "5": Step5,
 #     "6": Step6,
@@ -58,9 +61,9 @@ class Assembly:
     """
     def __init__(self, name: str):
         # core JSON file components
-        self.params = Params(assembly_name=name)
+        self.params = schema.Params(assembly_name=name)
         """: A class storing assembly parameters."""
-        self.samples: Dict[str, Sample] = {}
+        self.samples: Dict[str, schema.Sample] = {}
         """: A dictionary mapping sample names to Sample objects."""
         self.populations: Dict[str, Tuple] = {}
         """: A optional dict of {popnames: ([samples], min)}"""
@@ -93,7 +96,8 @@ class Assembly:
     def is_pair(self) -> bool:
         """Returns whether Assembly is paired datatype, based on params."""
         first_sample = list(self.samples.values())[0]
-        return bool(first_sample.files.fastqs[0][1])
+        read1s, read2s = first_sample.files.fastqs[0]
+        return read2s.exists()
         # return "pair" in self.params.datatype
 
     @property
@@ -208,25 +212,64 @@ class Assembly:
         branch = Assembly(name)
         params = self.params.model_dump()
         params['assembly_name'] = name
-        branch.params = Params(**params)
+        branch.params = schema.Params(**params)
 
-        # copy over all or just a subsamples of the samples.
-        if subsample is None:
-            branch.samples = {
-                i: Sample(**self.samples[i].model_dump()) for i in self.samples
-            }
+        # if user did not enter subsamples then subsample is all samples
+        subsample = set(self.samples) if subsample is None else set(subsample)
+        # report bad entered subsample names
+        bad_subsample_names = subsample - set(self.samples)
+        for name in bad_subsample_names:
+            logger.warning(f"Sample name {name} does not exist. Skipping.")
+        # get final subsample list
+        subsample = sorted(set(self.samples).intersection(subsample))
+
+        # create new sample copies for subsamples
+        new_samples = {}
+        for sname in subsample:
+            # get old Sample as dict
+            sample = self.samples[sname]
+            dump = sample.model_dump()
+            # create new Sample
+            new = schema.Sample(name=dump['name'], state=dump['state'])
+            # update Stats1, Stats2, etc.
+            for finished_step in range(1, sample.state):
+                stat_name = f"stats_s{finished_step}"
+                stat_class_name = f"Stats{finished_step}"
+                stat_class = getattr(schema, stat_class_name)
+                stat = stat_class(**{i: j for i, j in dump[stat_name].items() if j is not None})
+                setattr(new, stat_name, stat)
+            # update SampleFiles
+            new.files = schema.SampleFiles(**{i: j for i, j in dump['files'].items() if j is not None})
+            new_samples[sname] = new
+
+        # store samples to new Assembly
+        branch.samples = {i: new_samples[i] for i in sorted(new_samples)}
+
+        # report to logger
+        if len(subsample) == len(self.samples):
             logger.info(f"created new branch '{name}'")
         else:
-            branch.samples = {
-                i: Sample(**self.samples[i].model_dump())
-                for i in self.samples if i in subsample
-            }
-            for i in subsample:
-                if i not in self.samples:
-                    logger.warning(f"sample name {i} does not exist.")
             logger.info(
                 f"created new branch '{name}' and subsampled "
                 f"{len(subsample)}/{len(self.samples)} samples")
+
+        # # copy over all or just a subsamples of the samples.
+        # if subsample is None:
+        #     branch.samples = {
+        #         i: Sample(**self.samples[i].model_dump()) for i in self.samples
+        #     }
+        #     logger.info(f"created new branch '{name}'")
+        # else:
+        #     branch.samples = {
+        #         i: Sample(**self.samples[i].model_dump())
+        #         for i in self.samples if i in subsample
+        #     }
+        #     for i in subsample:
+        #         if i not in self.samples:
+        #             logger.warning(f"sample name {i} does not exist.")
+        #     logger.info(
+        #         f"created new branch '{name}' and subsampled "
+        #         f"{len(subsample)}/{len(self.samples)} samples")
 
         # clear assembly_stats and outfiles
         branch.assembly_stats = {}
@@ -272,8 +315,8 @@ class Assembly:
     def save_json(self) -> None:
         """Writes the current Assembly object to the project JSON file."""
         self.params.project_dir.mkdir(exist_ok=True)
-        project = Project(
-            params=Params(**self.params.model_dump()),
+        project = schema.Project(
+            params=schema.Params(**self.params.model_dump()),
             samples=self.samples,
             populations=self.populations,
             assembly_stats=self.assembly_stats,
@@ -376,14 +419,23 @@ PARAMSINFO = {
 if __name__ == "__main__":
 
     import ipyrad as ip
-    ip.set_log_level("DEBUG")#, logfile="/tmp/test.log")
+    ip.set_log_level("DEBUG")  # , logfile="/tmp/test.log")
 
     # TEST = Assembly("NEWTEST")
     # TEST.params.project_dir = "/tmp"
-    # TEST.params.fastq_paths = "../../sra-fastqs/*.fastq"
+    # TEST.params.fastq_paths = "../../sra-fastqs/[2,4]*.fastq"
     # TEST.run("1", force=True, cores=6)
 
     TEST = ip.load_json("/tmp/NEWTEST.json")
+    # print(TEST.is_pair)
+    # TEST.run("1", cores=6, threads=1)
+    # TEST.run("2", cores=6, threads=2, force=True)
+
+    # samp = list(TEST.samples.values())[0]
+    # print(samp.files.fastqs[0])
+    # first_sample = list(self.samples.values())[0]
+    # return bool(first_sample.files.fastqs[0][1])
+
 
     # TEST.write_params(True)
     # print((TEST.params.project_dir))
