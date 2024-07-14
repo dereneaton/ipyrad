@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-from typing import Iterator, List, Tuple, Dict
+"""Functions associated with clustbuild_w.py
+
+"""
+
+from typing import Iterator, List, Tuple, Dict, TypeVar
 import sys
 import gzip
 import itertools
@@ -9,7 +13,6 @@ from pathlib import Path
 from collections import Counter
 from loguru import logger
 import numpy as np
-from ipyrad.core import Assembly
 from ipyrad.core.utils import comp
 from ipyrad.core.exceptions import IPyradError
 from ipyrad.schema import Sample
@@ -21,6 +24,7 @@ SPACER = "NNNNNNNNNN"
 CHUNKSIZE = 2_000
 BIN = Path(sys.prefix) / "bin"
 BIN_MUSCLE = str(BIN / "muscle")
+Assembly = TypeVar("Assembly")
 logger = logger.bind(name="ipyrad")
 
 
