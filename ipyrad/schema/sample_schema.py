@@ -36,6 +36,7 @@ __all__ = [
     "Stats6",
     "Stats7",
     "Sample",
+    "SampleFiles",
 ]
 
 
@@ -164,10 +165,15 @@ if __name__ == "__main__":
 
     import ipyrad as ip
     sample = Sample(name="A")
-    sample.files.fastqs = [('a1', 'a2')]
+    sample.files.fastqs = [(Path('a1'), Path('a2'))]
+    sample.files.fastqs = [(Path('/a1/x.fastq'), "null")]
     sample.stats_s1 = Stats1(reads_raw=1000)
-    sample.model_dump_json()
-
+    json = sample.model_dump_json(indent=2, exclude_none=True)
+    print(json)
+    with open("/tmp/_test.json", 'w', encoding="utf-8") as out:
+        out.write(sample.model_dump_json(indent=2, exclude_none=True))
+    s = Sample.model_validate_json(Path("/tmp/_test.json").read_text())
+    print(s)
     # save assembly with this sample and re-load it.
     # params = ip.schema.Params(assembly_name="test").model_dump()
     # data = ip.schema.Project(

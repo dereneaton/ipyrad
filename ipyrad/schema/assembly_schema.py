@@ -80,6 +80,8 @@ class Project(BaseModel):
     that point to update it and re-serialize to JSON on disk.
     """
     version: str = VERSION
+    # created: ...
+    # last_modified: ...
     params: Params
     samples: Dict[str, Sample]
     assembly_stats: AssemblyStats = None
