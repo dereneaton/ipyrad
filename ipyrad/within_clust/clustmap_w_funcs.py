@@ -12,14 +12,17 @@ Methods
 
 """
 
-from typing import Tuple
+from typing import Tuple, TypeVar
 import sys
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT, DEVNULL
 import pysam
 from ipyrad.schema import Sample
-from ipyrad.core import Assembly, IPyradError
+from ipyrad.core.exceptions import IPyradError
+# from ipyrad.core import Assembly, IPyradError
 
+
+Assembly = TypeVar("Assembly")
 BIN = Path(sys.prefix) / "bin"
 BIN_BWA = str(BIN / "bwa")
 BIN_SAMTOOLS = str(BIN / "samtools")  # indexing
