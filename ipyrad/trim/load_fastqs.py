@@ -61,18 +61,24 @@ class Step1(BaseStep):
     @property
     def is_paired(self):
         """Return True if paired data, i.e., not (R1, '')."""
-        if any(i[1] for i in self._snames_to_fastq_tuples.values()):
-            return True
-        return False
+        return list(self._snames_to_fastq_tuples.values())[0][1].name != "null"
+        # if any(i[1] for i in self._snames_to_fastq_tuples.values()):
+        # return True
+        # return False
 
     def _load_fastqs(self) -> None:
-        """Expand fastq path (e.g., ./data/*.gz) to {sample: (R1, R2)}."""
+        """Expand fastq path (e.g., ./data/*.gz) to {sample: (R1, R2)}.
 
+        Paired files that are identical except for _1 _2, or similar
+        matched patterns, will be auto-detected. All samples will get
+        unique names extracted from the filenames at this step, but can
+        be merged as technical replicates in a later step if provided
+        in the 'technical_replicates' param as {'name': [name1, name2, ...]}
+        """
         # get list of fastq file Paths, group as pairs if detected.
         fqs = get_paths_list_from_fastq_str(self.data.params.fastq_paths)
         # infer sample names from trimmed path names and map {name: [paths]}
         snames_to_fq_tuples = get_fastq_tuples_dict_from_paths_list(fqs)
-        # store dict {name: [paths]} to self
         self._snames_to_fastq_tuples = snames_to_fq_tuples
 
         # if merging technical replicates the sample names must be found.
@@ -155,7 +161,7 @@ class Step1(BaseStep):
             for sname, fastq_tuple in self._snames_to_fastq_tuples.items():
                 kwargs['sname'] = sname
                 kwargs['reads'] = fastq_tuple
-                kwargs['is_pair'] = bool(fastq_tuple[1])
+                kwargs['is_pair'] = self.is_paired
                 self._results[sname] = trim_reads(**kwargs)
             return
 
@@ -167,7 +173,7 @@ class Step1(BaseStep):
         for sname, fastq_tuple in self._snames_to_fastq_tuples.items():
             kwargs['sname'] = sname
             kwargs['reads'] = fastq_tuple
-            kwargs['is_pair'] = bool(fastq_tuple[1])
+            kwargs['is_pair'] = self.is_paired
             rasyncs[sname] = lbview.apply(trim_reads, **kwargs)
         self._results = track_remote_jobs(rasyncs, self.ipyclient)
 
@@ -180,6 +186,7 @@ class Step1(BaseStep):
         data.
         """
         for sname, result in self._results.items():
+            # (json-like dict, trimmed-fastq-files tuple)
             j, filepaths = result
             sample = Sample(name=sname)
             # the fastqs [(Path, Path)] or [(Path, '')].
@@ -214,7 +221,7 @@ class Step1(BaseStep):
                 "reads_passed_filter",
             ]
             # if paired then divide counts in half to count read-pairs
-            if sample.files.fastqs[0][1]:
+            if self.is_paired:
                 for key in pair_keys:
                     setattr(sample.stats_s1, key, int(getattr(sample.stats_s1, key) / 2))
             # save sample to sample dict
@@ -223,7 +230,6 @@ class Step1(BaseStep):
     def _merge_technical_replicates(self) -> None:
         """Create a merged sample with combined stats and remove originals.
         """
-        is_pair = bool(list(self._samples.values())[0].files.trimmed[1])
         for mname, snames in self.data.params.technical_replicates.items():
 
             # create a concatenated trimmed_R1 file
@@ -235,8 +241,8 @@ class Step1(BaseStep):
             )
 
             # create a concatenated trimmed R2 file
-            r2file = ""
-            if is_pair:
+            r2file = Path("null")
+            if self.is_paired:
                 r2file = concatenate_technical_replicates(
                     outdir=self.data.tmpdir,
                     name=mname,
