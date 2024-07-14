@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-"""
+"""Main class for step 3 of denovo assembly: build and align clusters.
+
 
 """
 
@@ -16,7 +17,7 @@ from ipyrad.within_clust_build.clustbuild_w_funcs import (
 logger = logger.bind(name="ipyrad")
 
 
-class Step3(BaseStep):
+class BuildAlign(BaseStep):
     def __init__(self, data, force, ipyclient):
         super().__init__(data, step=3, force=force)
         self.ipyclient = ipyclient
@@ -72,9 +73,9 @@ class Step3(BaseStep):
         for sname, sample in self.samples.items():
             nclusters, mean, median, std = self._stats[sname]
             sample.stats_s3.clusters = nclusters
-            sample.stats_s3.cluster_depth_mean = mean
-            sample.stats_s3.cluster_depth_median = median
-            sample.stats_s3.cluster_depth_std = std
+            sample.stats_s3.cluster_depth_mean = float(mean)
+            sample.stats_s3.cluster_depth_median = float(median)
+            sample.stats_s3.cluster_depth_std = float(std)
             sample.stats_s3.cluster_depth_histogram = []
             sample.stats_s3.filtered_bad_alignment = 0
             if nclusters:
@@ -117,7 +118,31 @@ if __name__ == "__main__":
 
     # data = load_json("/tmp/pairgbs_merge.json")
     # sample = data.samples["1A_0"]
-    data = ip.load_json("/tmp/pedtest/half-demuxed.json")
-    with ip.Cluster(cores=6) as ipyclient:
-        tool = Step3(data, True, ipyclient)
-        tool.run()
+    # data = ip.load_json("/tmp/pedtest/half-demuxed.json")
+    # with ip.Cluster(cores=6) as ipyclient:
+    #     tool = Step3(data, True, ipyclient)
+    #     tool.run()
+
+    data = ip.load_json("/tmp/ipyrad-tests/assembly/TEST-denovo-se.json")
+    # sample = data.samples["40578_rex_SRR1754724"]
+    # dump = sample.model_dump()
+
+    # # create new Sample
+    # new = ip.schema.Sample(name=dump['name'], state=dump['state'])
+    # # update Stats1, Stats2, etc.
+    # for finished_step in range(1, sample.state):
+    #     stat_name = f"stats_s{finished_step}"
+    #     stat_class_name = f"Stats{finished_step}"
+    #     stat_class = getattr(ip.schema, stat_class_name)
+    #     stat = stat_class(**{i: j for i, j in dump[stat_name].items() if j is not None})
+    #     setattr(new, stat_name, stat)
+    # # update SampleFiles
+    # new.files = ip.schema.SampleFiles(**{i: j for i, j in dump['files'].items() if j is not None})
+
+    # print(new)
+    data = data.branch("clust90")
+    data.params.clust_threshold = 0.90
+    data.run("23", force=True, cores=7, threads=2)
+    # print(data.stats)
+    # print(data.samples["40578_rex_SRR1754724"].files)
+    # print(data.samples["40578_rex_SRR1754724"].stats_s2)
