@@ -42,7 +42,7 @@ def formatter(record):
     """Custom formatter that allows for progress bar."""
     end = record["extra"].get("end", "\n")
     fmessage = (
-        "{time:YY-MM-DD hh:mm:ss} | "
+        "{time:YYYY-MM-DD HH:mm:ss} | "
         "<level>{level:<8}</level> <white>|</white> "
         "<magenta>{file:<20}</magenta> <white>|</white> "
         "{message}"
