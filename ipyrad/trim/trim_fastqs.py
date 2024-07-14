@@ -60,7 +60,7 @@ class TrimFastqs:
 
         # output file paths (do not bother gzipping since these are tmp files)
         self.out1 = outdir / f"{sname}.trimmed_R1.fastq.gz"
-        self.out2 = ""
+        self.out2 = Path("null")
         if self.is_pair:
             self.out2 = outdir / f"{sname}.trimmed_R2.fastq.gz"
 
@@ -301,7 +301,7 @@ def estimate_trim_position(
         best, second = commons[:2]
         if float(best[1] / second[1]) < 2.:
             print(
-                "WARNING: a single best cut position could not be estimated "
+                "@@WARNING: a single best cut position could not be estimated "
                 f"for {fastq}.", flush=True)
             return 0
 
