@@ -169,6 +169,11 @@ class FileLinker:
                 NO_FILES_FOUND_PAIRS
                 .format(self.data.params.sorted_fastq_path))
 
+        # simple reality check to verify PE data has an even number of files
+        if 'pair' in self.data.params.datatype:
+            if len(self.fastqs) % 2:
+                raise IPyradError(PE_ODD_NUMBER_OF_FILES)
+
         # get list of expanded paths
         paths = get_paths_list_from_fastq_str(self.fastqs)
 
@@ -1444,6 +1449,12 @@ NO_FILES_FOUND_PAIRS = """\
     i.e., paired file names should be identical save for _R1_ and _R2_
     (note the underscores before AND after R*).
     """
+PE_ODD_NUMBER_OF_FILES = """\
+    Paired-end datatype indicated by `datatype` parameter, but
+    `sorted_fastq_path` contains an odd number of files. Please check files
+    in this path to ensure it includes _only_ R1/R2 paired-end .gz files.
+    """
+
 R1_R2_name_error = """\
     Paired file names must be identical except for _R1_ and _R2_.
     We detect {} R1 files and {} R2 files.
