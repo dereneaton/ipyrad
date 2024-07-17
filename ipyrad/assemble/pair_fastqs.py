@@ -52,13 +52,16 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     subsections of filenames to find pairs that match when the sections
     are removed (e.g., usually _R1 _R2 or _1 _2).
 
+    Sample names are returned _without_ trailing suffixes, to prevent
+    having to reparse for the sample name in calling functions.
+
     Example
     -------
     >>> path = Path("name_prefix_001_R1_002.fastq.gz")
     >>> drop_from_right(path, "_", 0)
-    >>> # "name_prefix_001_R1.fastq.gz"
+    >>> # "name_prefix_001_R1
     >>> drop_from_right(path, "_", 1)
-    >>> # "name_prefix_001_002.fastq.gz"
+    >>> # "name_prefix_001_002
     """
     # save and remove suffixes (it seems this method is needed with .x.y
     # suffixes compared to using Path.stem or similar.)
@@ -83,10 +86,11 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     # get chunks minus the index from the right
     sublist = [j for i, j in enumerate(chunks) if i != idx][::-1]
     path = path.parent / "_".join([i for i in sublist if i]).rstrip(delim)
+    # Removed 7/17/24 iao
     # Related to #557, path.with_suffix will _overwrite_ anything it considers
     # a current suffix (anything with a '.'), so we need to protect against it.
-    suffixes = path.suffixes + suffixes
-    #path = path.with_suffix("".join(suffixes))
+    # suffixes = path.suffixes + suffixes
+    # path = path.with_suffix("".join(suffixes))
     return path
 
 
@@ -125,10 +129,8 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
             for (name, gtup) in groups:
                 gtup = sorted(gtup)
                 path = Path(name)
+                # Removed 7/7/24 iao #557
                 #suffixes = path.suffixes
-                # Allow '.' in sample names. See note in `drop_from_right()`
-                #while any(["_" in x for x in suffixes]):
-                #    suffixes.pop(0)
                 #while path.suffix in suffixes:
                 #    path = path.with_suffix('')
                 sorted_tuple_groups[path.name] = gtup
