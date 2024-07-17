@@ -63,6 +63,17 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     # save and remove suffixes (it seems this method is needed with .x.y
     # suffixes compared to using Path.stem or similar.)
     suffixes = path.suffixes
+
+    # Allow periods ('.') in sample names. `path.suffixes` splits on '.',
+    # so a sample name that includes a period will get mangled (#557).
+    # We make an assumption that the 'true' suffixes (e.g. .fastq.gz, or .fasta)
+    # will not contain underscores, and that the first false suffix that
+    # precedes these will include an '_' in the content of the mate pair
+    # indicator ('_R1_' or '_1_' or '_R2_' for example. Allows this to be
+    # a legal sample name: 1A_0.1_R2_.fastq.gz
+    while any(["_" in x for x in suffixes]):
+        suffixes.pop(0)
+
     while path.suffix in suffixes:
         path = path.with_suffix('')
 
@@ -72,6 +83,9 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     # get chunks minus the index from the right
     sublist = [j for i, j in enumerate(chunks) if i != idx][::-1]
     path = path.parent / "_".join([i for i in sublist if i]).rstrip(delim)
+    # Related to #557, path.with_suffix will _overwrite_ anything it considers
+    # a current suffix (anything with a '.'), so we need to protect against it.
+    suffixes = path.suffixes + suffixes
     path = path.with_suffix("".join(suffixes))
     return path
 
@@ -113,6 +127,9 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
                 gtup = sorted(gtup)
                 path = Path(name)
                 suffixes = path.suffixes
+                # Allow '.' in sample names. See note in `drop_from_right()`
+                while any(["_" in x for x in suffixes]):
+                    suffixes.pop(0)
                 while path.suffix in suffixes:
                     path = path.with_suffix('')
                 sorted_tuple_groups[path.name] = gtup
