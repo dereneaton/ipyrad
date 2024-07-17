@@ -86,7 +86,7 @@ def drop_from_right(path: Path, delim: str = "_", idx: int = 0) -> str:
     # Related to #557, path.with_suffix will _overwrite_ anything it considers
     # a current suffix (anything with a '.'), so we need to protect against it.
     suffixes = path.suffixes + suffixes
-    path = path.with_suffix("".join(suffixes))
+    #path = path.with_suffix("".join(suffixes))
     return path
 
 
@@ -120,18 +120,17 @@ def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple
                 key=lambda x: drop_from_right(x, "_", idx)
             )
             assert groups
-
             # sort the tuples to (R1, R2) and remove suffixes from names
             sorted_tuple_groups = {}
             for (name, gtup) in groups:
                 gtup = sorted(gtup)
                 path = Path(name)
-                suffixes = path.suffixes
+                #suffixes = path.suffixes
                 # Allow '.' in sample names. See note in `drop_from_right()`
-                while any(["_" in x for x in suffixes]):
-                    suffixes.pop(0)
-                while path.suffix in suffixes:
-                    path = path.with_suffix('')
+                #while any(["_" in x for x in suffixes]):
+                #    suffixes.pop(0)
+                #while path.suffix in suffixes:
+                #    path = path.with_suffix('')
                 sorted_tuple_groups[path.name] = gtup
             groups = sorted_tuple_groups
 
