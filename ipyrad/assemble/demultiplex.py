@@ -26,10 +26,11 @@ from collections import Counter
 # ipyrad imports
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
-from ipyrad.assemble.pair_fastqs import (
-    get_fastq_tuples_dict_from_paths_list,
-    get_paths_list_from_fastq_str,
-)
+# from ipyrad.assemble.pair_fastqs import (
+#     get_fastq_tuples_dict_from_paths_list,
+#     get_paths_list_from_fastq_str,
+# )
+from ipyrad.assemble.names_to_fastqs import get_fastq_tuples_dict_from_paths_list
 
 
 class Step1:
@@ -1480,10 +1481,13 @@ if __name__ == "__main__":
 
     # test to load samples w/ names "*_R1.*", "*_R2.*"
     data = ip.Assembly("TEST")
-    data.params.sorted_fastq_path = "../../pedtest/DEMUX_fastqs/integ*.gz"
+    path = "/home/deren/Documents/tools/ipyrad2/examples/Pedic-PE-ddRAD/*_R*"
+    data.params.sorted_fastq_path = path
     data.params.project_dir = "/tmp/9test"
+    data.ipcluster['cores'] = 4
     data.run("1", force=True, auto=True)
     print(data.stats)
+
 
     # test to load samples w/ names "*_1.*", "*_2.*"
     # ...
