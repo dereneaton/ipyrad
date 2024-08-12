@@ -26,12 +26,10 @@ from collections import Counter
 # ipyrad imports
 from ipyrad.core.sample import Sample
 from ipyrad.assemble.utils import IPyradError, ambigcutters, BADCHARS
-# from ipyrad.assemble.pair_fastqs import (
-#     get_fastq_tuples_dict_from_paths_list,
-#     get_paths_list_from_fastq_str,
-# )
-from ipyrad.assemble.names_to_fastqs import get_fastq_tuples_dict_from_paths_list
-
+from ipyrad.assemble.names_to_fastqs import (
+    get_fastq_tuples_dict_from_paths_list,
+    get_paths_list_from_fastq_str
+    )
 
 class Step1:
     def __init__(self, data, force, ipyclient):
@@ -181,6 +179,10 @@ class FileLinker:
         # get dict of {basename: (Path-R1, Path-R2)} from filenames
         self.ftuples = get_fastq_tuples_dict_from_paths_list(paths)
 
+        # This is the old way that worked well for a long time, but was
+        # constrained to require _R1_/_R2_ exactly in the file paths.
+        # Retaining for sentimental reasons, but delete if you feel like it.
+        # iao 8/12/24
         # # link pairs into tuples
         # if 'pair' in self.data.params.datatype:
         #     # check that names fit the paired naming convention
