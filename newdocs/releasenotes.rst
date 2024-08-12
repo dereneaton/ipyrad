@@ -4,6 +4,21 @@
 Release Notes
 =============
 
+0.9.97
+------
+**August 12, 2024**
+
+- fix for pd whitespace warning
+- new name parser
+- Documenting a bit better the tweaks in pair_fastqs to allow . in sample name
+- pair_fastqs.py - remove some of the shuffling with suffixes
+- allow . in sample names for step 1 loading from fastqs #557
+- verify even number of files for PE data when linking fastqs
+- fix for pd warnings
+- update for toy3 compat and pd warning
+- fix pandas warnings
+- Update faq.rst - Add link to Hemstrom et al 2024
+
 0.9.96
 ------
 **June 18, 2024**
