@@ -675,7 +675,10 @@ class Processor(object):
             'minsamp', 
         )
         # (R1>, <R1, R2>, <R2)
-        self.edges = np.zeros((self.chunksize, 4), dtype=np.uint16)
+        dtype = np.uint16
+        if self.isref:
+            dtype = np.uint32
+        self.edges = np.zeros((self.chunksize, 4), dtype=dtype)
 
         # check filter settings
         self.fmaxsnps = self.data.params.max_SNPs_locus
