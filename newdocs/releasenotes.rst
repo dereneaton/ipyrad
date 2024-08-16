@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.99
+------
+**August 16, 2024**
+
+- Step 7 uses uint32 for edges for ref assemblies #571
+
 0.9.98
 ------
 **August 15, 2024**
