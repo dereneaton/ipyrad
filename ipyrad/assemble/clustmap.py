@@ -2763,6 +2763,7 @@ def mask_restriction_sites(data, sample):
     clusters = []
     # mask sites
     for clust in clusts:
+        mclust = []
         lines = clust.split("\n")
         names = lines[::2]
         seqs = lines[1::2]
@@ -2779,7 +2780,8 @@ def mask_restriction_sites(data, sample):
 
         # store masked cluster
         for name, seq in zip(names, seqs):
-            clusters.append(f"{name}\n{seq.tobytes().decode()}")
+            mclust.append(f"{name}\n{seq.tobytes().decode()}")
+        clusters.append("\n".join(mclust))
 
     # write to output
     handle = os.path.join(data.dirs.clusts, f"{sample.name}.clustS.gz")
