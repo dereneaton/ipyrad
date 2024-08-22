@@ -238,6 +238,16 @@ class Step3:
                     args=(),
                 )
 
+                # optional
+                # i: clustdir/{}.clustS.gz
+                # o: clustdir/{}.clustS.gz
+                if self.data.hackersonly.mask_restriction_sites:
+                    self.remote_run(
+                        function=mask_restriction_sites,
+                        printstr=("masking cut sites   ", "s3"),
+                        args=(),
+                    )
+
             # DENOVO MINUS
             elif self.data.params.assembly_method == "denovo-reference":
                 raise NotImplementedError(
@@ -2727,6 +2737,90 @@ def tag_for_decloning(data, sample):
             outfile.close()
 
 
+def mask_restriction_sites(data, sample):
+    """Hackers option to mask all cut sites. 
+
+    In some cases when there is poor digestion, and the cut sites used
+    have non-homologous ligation, the cutsite regions will contain very
+    elevated substitutions and should be masked. When the mask option
+    is turned on they are masked both here and in step7.
+    """
+    # read in the cluster data
+    clustfile = os.path.join(data.dirs.clusts, f"{sample.name}.clustS.gz")
+    sep = "\n//\n//\n"
+    with gzip.open(clustfile, 'rt') as indata:
+        clusts = indata.read().strip(sep).split(sep)
+
+    # get forward & reverse of all restriction sites as ints
+    re_arrs = []
+    cutters = data.params.restriction_overhang
+    for cut in cutters:
+        if cut:
+            re = np.array([ord(i) for i in cut], dtype=np.uint8)
+            rev = np.array([ord(i) for i in comp(cut)[::-1]], dtype=np.uint8)
+            re_arrs.extend([re, rev])
+
+    clusters = []
+    # mask sites
+    for clust in clusts:
+        lines = clust.split("\n")
+        names = lines[::2]
+        seqs = lines[1::2]
+        seqs = np.array([list(map(ord, i)) for i in seqs], dtype=np.uint8)
+
+        # get all sites to mask
+        mask = set()
+        for row in range(seqs.shape[0]):
+            for re_arr in re_arrs:
+                matches = get_re_matching_indices(seqs[row], re_arr)
+                mask = mask.union(set(matches))
+        mask = sorted(mask)
+        seqs[:, mask] = 78
+
+        # store masked cluster
+        for name, seq in zip(names, seqs):
+            clusters.append(f"{name}\n{seq.tobytes().decode()}")
+
+    # write to output
+    handle = os.path.join(data.dirs.clusts, f"{sample.name}.clustS.gz")
+    with gzip.open(handle, 'wt') as out:
+        out.write("\n//\n//\n".join(clusters) + "\n//\n//\n")
+
+
+def get_re_matching_indices(arr, seq):
+    """Return indices of sites matching the restriction overhang site
+    exactly, for masking.
+
+    Parameters
+    ----------
+    arr    : input 1D array
+    seq    : input 1D array
+
+    Output
+    ------
+    Output : 1D Array of indices in the input array that satisfy the
+    matching of input sequence in the input array.
+    In case of no match, an empty list is returned.
+    """
+    # Store sizes of input array and sequence
+    Na, Nseq = arr.size, seq.size
+
+    # Range of sequence
+    r_seq = np.arange(Nseq)
+
+    # Create a 2D array of sliding indices across the entire length of input array.
+    # Match up with the input sequence & get the matching starting indices.
+    M = (arr[np.arange(Na-Nseq+1)[:,None] + r_seq] == seq).all(1)
+
+    # Get the range of those indices as final output
+    if M.any() >0:
+        return np.where(np.convolve(M,np.ones((Nseq),dtype=int))>0)[0]
+    else:
+        return []         # No match found
+
+
+
+
 # globals
 NO_ZIP_BINS = """
   Reference sequence must be de-compressed fasta or bgzip compressed,
@@ -2743,3 +2837,7 @@ NO_ZIP_BINS = """
 REQUIRE_REFERENCE_PATH = """\
   Assembly method {} requires that you enter a 'reference_sequence_path'.
 """
+
+
+if __name__ == "__main__":
+    pass
