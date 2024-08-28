@@ -4,6 +4,15 @@
 Release Notes
 =============
 
+0.9.100
+-------
+**August 28, 2024**
+
+- Use the PE/SE information in the `datatype` param to determine whether to search for paired files.
+- hackers mask cut sites in s3
+- hackers mask cut sites in s3
+- new hackers option 'mask_restriction_sites' for s7
+
 0.9.99
 ------
 **August 16, 2024**

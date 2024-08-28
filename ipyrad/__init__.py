@@ -9,7 +9,7 @@ import sys as _sys
 import subprocess as _sps
 
 # Dunders
-__version__ = "0.9.99"
+__version__ = "0.9.100"
 __author__ = "Deren Eaton & Isaac Overcast"
 
 # CLI __main__ changes to 0
@@ -65,7 +65,7 @@ if "v3" in msg.decode():
     pass
 else:
     print(_MUSCLE_VERSION_ERROR)
-    _sys.exit()
+#    _sys.exit()
 
 # if user installed with pip then the following may be missing:
 try:
