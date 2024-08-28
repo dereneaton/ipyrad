@@ -141,6 +141,7 @@ class FileLinker:
         self.data = step.data
         self.input = step.sfiles
         self.fastqs = glob.glob(self.input)
+        self.paired = 'pair' in self.data.params.datatype
         self.ftuples = []
 
         # parallel distributor
@@ -177,7 +178,7 @@ class FileLinker:
         paths = get_paths_list_from_fastq_str(self.fastqs)
 
         # get dict of {basename: (Path-R1, Path-R2)} from filenames
-        self.ftuples = get_fastq_tuples_dict_from_paths_list(paths)
+        self.ftuples = get_fastq_tuples_dict_from_paths_list(paths, self.paired)
 
         # This is the old way that worked well for a long time, but was
         # constrained to require _R1_/_R2_ exactly in the file paths.

@@ -137,7 +137,7 @@ def get_paired_clean_names_dict(fastqs: List[Path]) -> Dict[str, Tuple[Path, Pat
         idx += 1
 
         # give up finding pairs on large idx
-        if idx > 200:
+        if idx > 100:
             return snames_to_fastq_tuples
 
     # check if pairs were detected and if so, break
@@ -145,24 +145,22 @@ def get_paired_clean_names_dict(fastqs: List[Path]) -> Dict[str, Tuple[Path, Pat
     return snames_to_fastq_tuples
 
 
-def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path]) -> Dict[str, Tuple[Path, Path]]:
+def get_fastq_tuples_dict_from_paths_list(fastqs: List[Path], paired: bool) -> Dict[str, Tuple[Path, Path]]:
     """Return dict {clean_name: (Path, Path)} from input fastq paths.
 
     """
-    # get fastqs as List[Path]
-    paths = get_paths_list_from_fastq_str(fastqs)
 
-    # get as dict {str: (Path, Path)}
-    # pe data
-    ndict = get_paired_clean_names_dict(paths)
-    if ndict:
-        if len(ndict) != len(paths) / 2:
-            raise ValueError("some but not all sample names appear paired. Check the format of fastq path names")
+    if paired:
+        # get as dict {str: (Path, Path)}
+        # pe data
+        ndict = get_paired_clean_names_dict(fastqs)
+        if len(ndict) != len(fastqs) / 2:
+            raise ValueError("Can't recognize paired fastq files. Check the format of fastq path names")
         return {i: ndict[i] for i in sorted(ndict)}
-
-    # se data
-    ndict = get_single_clean_names_dict(paths)
-    return {i: ndict[i] for i in sorted(ndict)}
+    else:
+        # se data
+        ndict = get_single_clean_names_dict(fastqs)
+        return {i: ndict[i] for i in sorted(ndict)}
 
 
 if __name__ == "__main__":
