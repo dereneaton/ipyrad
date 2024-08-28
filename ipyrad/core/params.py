@@ -43,6 +43,7 @@ class Hackers(object):
             ("merge_technical_replicates", True),
             ("exclude_reference", True),
             ("trim_loci_min_sites", 4),
+            ("mask_restriction_sites", False),
         ])
 
     # pretty printing of object
@@ -168,6 +169,13 @@ class Hackers(object):
     @trim_loci_min_sites.setter
     def trim_loci_min_sites(self, value):
         self._data["trim_loci_min_sites"] = int(value)
+
+    @property
+    def mask_restriction_sites(self):
+        return self._data["mask_restriction_sites"]
+    @mask_restriction_sites.setter
+    def mask_restriction_sites(self, value):
+        self._data["mask_restriction_sites"] = bool(value)
    
 
 class Params(object):
