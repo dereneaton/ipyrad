@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.101
+-------
+**September 03, 2024**
+
+- Fix bug in SE sorted_fastqs
+
 0.9.100
 -------
 **August 28, 2024**
