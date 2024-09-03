@@ -73,10 +73,12 @@ def get_stripped_length(path: Path) -> str:
     """
     # strip ugly endings
     name = str(path.name)
-    suffs = [".", "_", "_R", ".gz", ".fq", ".fastq", "_1"]
+    suffs = [".", "_", "_R1", ".gz", ".fq", ".fastq", "_1"]
     while any(name.endswith(i) for i in suffs):
         for suff in suffs:
-            name = name.rstrip(suff)
+            # rstrip(suff) treats suff as a list of characters to remove
+            # and not as a suffix, so we need to use removesuffix(suff)
+            name = name.removesuffix(suff)
     return len(path.name) - len(name)
 
 
