@@ -4,6 +4,12 @@
 Release Notes
 =============
 
+0.9.102
+-------
+**September 06, 2024**
+
+- fix SE loading to allow mixed .fq and .fastq file names
+
 0.9.101
 -------
 **September 03, 2024**
