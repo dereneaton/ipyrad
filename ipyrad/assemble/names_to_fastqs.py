@@ -92,12 +92,9 @@ def get_single_clean_names_dict(fastqs: List[Path]) -> Dict[str, Tuple[Path, Pat
     """
     snames_to_fastq_tuples = {}
     stripped_lens = [get_stripped_length(i) for i in fastqs]
-    # choose smaller trim len if a tie
-    lens = Counter(stripped_lens)
-    maxo = lens.most_common()[0][1]
-    strip_len = min([i[0] for i in lens.most_common() if i[1] == maxo])
-    # strip same length from all names
-    names = [i.name[:-strip_len] for i in fastqs]
+    # Strip the suffix from each fastq file. Allow the suffix length
+    # to vary to account for mixed file naming (e.g. .fq.gz & .fastq.gz)
+    names = [i.name[:-stripped_lens[idx]] for idx,i in enumerate(fastqs)]
     return {i: (j, '') for i, j in zip(names, fastqs)}
 
 
