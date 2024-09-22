@@ -18,6 +18,7 @@ import socket
 import pandas as pd
 import numpy as np
 import string
+import subprocess as sps
 
 import ipyrad
 
@@ -489,6 +490,24 @@ def get_threaded_view(ipyclient, split=True):
     #threaded = hostdict.values()
     #assert len(ipyclient.ids) <= len(list(itertools.chain(*threaded)))
     return hostdict
+
+
+def muscle_version():
+    """
+    Detect muscle version to handle difference between command
+    line format requirements of v3 and v5
+    """
+    cmd = [ipyrad.bins.muscle, "-version"]
+    proc = sps.Popen(cmd, stderr=sps.STDOUT, stdout=sps.PIPE)
+    msg = proc.communicate()[0]
+    ret = msg.decode()
+    if "v3" in ret:
+        v = "v3"
+    elif " 5" in ret:
+        v = "v5"
+    else:
+        raise IPyradError(f"  Unrecognized muscle version: {ret}")
+    return v
 
 
 ##############################################################
