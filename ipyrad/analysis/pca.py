@@ -55,6 +55,13 @@ You can use the ld_block_size parameter of the PCA() constructor to change
 this value.
 """
 
+_NUMPY_VERSION_ERROR = """
+PCA module requires numpy < 2.0.0 (see issue #578). Roll back to a
+supported version of numpy.
+
+conda install -c conda-forge numpy\<2.0.0
+"""
+
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
 
 
@@ -120,6 +127,8 @@ class PCA(object):
             raise IPyradError(_MISSING_SKLEARN)
         if not sys.modules.get("toyplot"):
             raise IPyradError(_MISSING_TOYPLOT)
+        if np.lib.NumpyVersion(np.__version__) >= '2.0.0':
+            raise IPyradError(_NUMPY_VERSION_ERROR)
 
         # init attributes
         self.quiet = quiet
