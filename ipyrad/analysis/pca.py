@@ -199,7 +199,7 @@ class PCA(object):
             index=self.names, columns=["missing"])
 
         # impute missing data
-        if (self.impute_method is not False) and self._mvals:
+        if (self.impute_method is not None) and self._mvals:
             self._impute_data()
 
 
