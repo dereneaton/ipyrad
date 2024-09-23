@@ -199,7 +199,7 @@ class PCA(object):
             index=self.names, columns=["missing"])
 
         # impute missing data
-        if (self.impute_method is not None) and self._mvals:
+        if self._mvals:
             self._impute_data()
 
 
@@ -229,11 +229,16 @@ class PCA(object):
             self.snps = self._impute_kmeans(
                 self.topcov, self.niters, self.quiet)
 
-        else:
-            #self.snps[self.snps == 9] = 0
+        elif self.impute_method == "random":
             missing = self.snps == 9
-            self.snps[self.snps == 9] = 0
             self.snps[missing] += np.random.choice([0,1,2], self.snps.shape)[missing].astype(np.uint64)
+            self._print(
+                "Imputation (Random; sets to ~U[0,1,2]): {:.1f}%, {:.1f}%, {:.1f}%"
+                .format(33.3, 33.3, 33.3)
+            )
+
+        else:
+            self.snps[self.snps == 9] = 0
             self._print(
                 "Imputation (null; sets to 0): {:.1f}%, {:.1f}%, {:.1f}%"
                 .format(100, 0, 0)
