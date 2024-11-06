@@ -8,12 +8,14 @@ from builtins import range
 
 # standard lib
 import datetime
+import glob
 import time
 import sys
 import os
 
 # third party
 import numpy as np
+import pandas as pd
 from numba import njit, prange
 
 
@@ -208,6 +210,33 @@ def progressbar(finished, total, start, message):
         end="")
     sys.stdout.flush()    
 
+
+def read_popsfile(popfile):
+    ## glob it in case of fuzzy matching
+    popfile = glob.glob(popfile)[0]
+    if not os.path.exists(popfile):
+        raise Exception(
+            "Population assignment file not found: {}"
+            .format(self.params.pop_assign_file))
+
+    try:
+        ## parse populations file
+        popdat = pd.read_csv(
+            popfile, header=None,
+            sep=r"\s+",
+            names=["inds", "pops"],
+            comment="#",
+            dtype=str)
+
+        popdict = {
+            key: group.inds.values.tolist() for key, group in
+            popdat.groupby("pops")}
+
+    except (ValueError, IOError):
+        raise Exception(
+            "  Populations file malformed - {}".format(popfile))
+
+    return popdict
 
 
 class Params(object):
