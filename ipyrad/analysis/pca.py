@@ -88,7 +88,7 @@ class PCA(object):
     minmaf: float or int
         The minimum minor allele frequency for a SNP to be retained in the
         dataset.
-    impute_method: (str; default='sample')
+    impute_method: (str; default=None)
         None, "sample", or an integer for the number of kmeans clusters.
     topcov: (float; default=0.9)
         Affects kmeans method only.
@@ -111,7 +111,7 @@ class PCA(object):
     def __init__(
         self,
         data,
-        impute_method=None,
+        impute_method='random',
         imap=None,
         minmap=None,
         mincov=0.1,
