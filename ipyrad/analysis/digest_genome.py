@@ -12,7 +12,7 @@ from ..assemble.utils import comp
 class DigestGenome(object):
     """
     Digest a fasta genome file with one or two restriction enzymes to create
-    pseudo-fastq files to treat as samples in a RAD assembly. 
+    pseudo-fastq files to treat as samples in a RAD assembly.
 
     Parameters
     ----------
@@ -20,14 +20,14 @@ class DigestGenome(object):
         Path to a fasta genome file (optionally gzipped).
 
     workdir (str):
-        Directory in which to write output fastq files. Will be created if 
+        Directory in which to write output fastq files. Will be created if
         it does not yet exist.
 
     name (str):
         Name prefix for output files.
 
     readlen (int):
-        The length of the sequenced read extending from the cut site when 
+        The length of the sequenced read extending from the cut site when
         creating fastq reads from the digested fragments.
 
     re1 (str):
@@ -48,28 +48,28 @@ class DigestGenome(object):
     Example:
     --------
     dg = ipa.digest_genome(
-        fasta="genome.fa", 
+        fasta="genome.fa",
         workdir="digested_genomes",
         name="quinoa",
         re1="AATCGG",
         re2="CCGG",
         ncopies=5,
         readlen=150,
-        paired=True,        
+        paired=True,
         )
     dg.run()
     """
     def __init__(
-        self, 
-        fasta, 
-        name="digested", 
+        self,
+        fasta,
+        name="digested",
         workdir="digested_genomes",
-        re1="CTGCAG", 
-        re2=None, 
+        re1="CTGCAG",
+        re2=None,
         ncopies=1,
-        readlen=150, 
-        paired=True, 
-        min_size=None, 
+        readlen=150,
+        paired=True,
+        min_size=None,
         max_size=None,
         nscaffolds=None,
         ):
@@ -91,7 +91,6 @@ class DigestGenome(object):
             self.min_size = self.readlen
         if not self.max_size:
             self.max_size = 9999999
-
 
     def run(self):
         """
@@ -118,7 +117,7 @@ class DigestGenome(object):
             scaffolds = fio.read().decode().split(">")[1:]
         else:
             fio = open(self.fasta)
-            scaffolds = fio.read().split(">")[1:]           
+            scaffolds = fio.read().split(">")[1:]
 
         # sort scaffolds by length
         scaffolds = sorted(scaffolds, key=lambda x: len(x), reverse=True)
@@ -126,7 +125,7 @@ class DigestGenome(object):
         # iterate over scaffolds
         for scaff in scaffolds[:self.nscaffolds]:
 
-            # get name 
+            # get name
             name, seq = scaff.split("\n", 1)
 
             # no funny characters in names plz
@@ -137,15 +136,19 @@ class DigestGenome(object):
 
             # digest scaffold into fragments and discard scaff ends
             bits = ["1{}1".format(i) for i in seq.split(self.re1)][1:-1]
+            # bits = re.split(r"({self.re1})")
+            # bits = bits if re1 in bits[0] else bits[1:]
+            # bits = [bits[i] + bits[i + 1].strip() for i in range(0, len(bits) - 1, 2)]
 
             # digest each fragment into second cut fragment
             if not self.re2:
                 bits1 = []
                 for fragment in bits:
                     if len(fragment) > self.min_size:
-                        
                         # forward read on fragment
-                        bits1.append((fragment[1:-1], 0, self.max_size))
+                        bits1.append(fragment[1:-1])
+                        # bits1.append((fragment[1:-1], 0, self.max_size))
+                        # bits1.append((fragment[len(self.re1):], 0, self.max_size))
                 bits = bits1
 
             else:
@@ -153,29 +156,35 @@ class DigestGenome(object):
                 bits = []
                 pos = 0
                 for fragment in bits1:
+                    # parts = re.split(f"({self.re2})", fragment)
+                    # if len(parts) > 1:
+                    #     frag = ("".join(parts[:2])[:-len(self.re2)])
+                    #     bits.append((frag, 0, self.))
                     fbits = fragment.split(self.re2)
                     if len(fbits) > 1:
                         # remove the 1
-                        fbit = fbits[0][1:]       # 1----2
-                        rbit = fbits[1][:-1]      # 2----1
+                        fbit = fbits[0][1:]        # 1----2
+                        rbit = fbits[-1][:-1]      # 2----1
 
                         lef = len(fbit)
                         if (lef > self.min_size) and (lef <= self.max_size):
                             #pos = seq.index(fbit)
-                            bits.append((fbit, pos, lef))
+                            # bits.append((fbit, pos, lef))
+                            bits.append(fbit)
 
                         lef = len(rbit)
                         if (lef > self.min_size) and (lef <= self.max_size):
                             res = comp(rbit)[::-1]
                             #pos = seq.index(res)
-                            bits.append((res, pos, lef))
+                            # bits.append((res, pos, lef))
+                            bits.append(res)
 
             # turn fragments into (paired) reads
             fastq_r1s = []
-            fastq_r2s = []            
+            fastq_r2s = []
 
             for fragment in bits:
-                fragment, pos, end = fragment
+                #fragment, pos, end = fragment
                 r1 = fragment[:self.readlen]
                 r2 = comp(fragment[-self.readlen:])[::-1]
 
@@ -188,16 +197,16 @@ class DigestGenome(object):
                         # 'pos': pos,
                         # 'end': end,
                         'copy': copy,
-                        'read': r1, 
+                        'read': r1,
                         'qual': "B" * len(r1),
                     })
                     fastq_r1s.append(fastq)
 
-                    if self.paired:                   
+                    if self.paired:
                         fastq = "@{name}_loc{loc}_rep{copy} 2:N:0:\n{read}\n+\n{qual}"
                         fastq = fastq.format(**{
                             'name': name,
-                            'loc': iloc, 
+                            'loc': iloc,
                             'copy': copy,
                             'read': r2,
                             'qual': "B" * len(r2),
@@ -219,3 +228,31 @@ class DigestGenome(object):
 
         # report stats
         print("extracted reads from {} positions".format(iloc))
+
+
+if __name__ == "__main__":
+
+    re1 = "CCGG"
+    re2 = "AAGCTT"
+    null = ("A" * 10)
+    #     -------- ------------------------ ------------------------- --------------------------------------- -------
+    #     xxxxxxxx ------------ ----------- xxxxxxxxxxxxxxxxxxxxxxxxx ------------ XXXXXXXXXXXXX ------------
+    #     --------|************|***********|-------------|-----------|************|-------------|------------|
+    #3'         GGCC        TTCGAA<<<<<<<<GGCC                     GGCC         TTCGAA       TTCGAA<<<<<<<<GGCC
+    #5'         CCGG>>>>>>>>AAGCTT        CCGG                     CCGG>>>>>>>>>AAGCTT       AAGCTT        CCGG
+    seq = null + re1 + null + re2 + null + re1 + null + re1 + null + re1 + null + re2 + null + re2 + null + re1 + null
+    bits = ["1{}1".format(i) for i in seq.split(re1)][1:-1]
+    # bits = re.split(f"({re1})", seq)
+    # bits = bits if re1 in bits[0] else bits[1:]
+    # bits = [bits[i] + bits[i + 1].strip() for i in range(0, len(bits) - 1, 2)]
+    for bit in bits:
+        print(bit.split(re2))
+
+
+    bits1 = bits
+    bits = []
+    for bit in bits1:
+        parts = re.split(f"({self.re2})", bit)
+        if len(parts) > 1:
+            bits.append("".join(parts[:2]))
+    print(bits)
