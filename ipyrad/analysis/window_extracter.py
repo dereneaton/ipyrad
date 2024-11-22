@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Extract, filter and format a locus from a scaffold, start, and end 
+Extract, filter and format a locus from a scaffold, start, and end
 tuple. Intended for extracting concatenated sequence windows.
 """
 
@@ -29,7 +29,7 @@ from ipyrad.assemble.write_outputs import NEXHEADER
 
 class WindowExtracter(object):
     """
-    Extract and filter a sequence alignment from a genomic window. You can 
+    Extract and filter a sequence alignment from a genomic window. You can
     subselect or filter to include certain samples, and to require that data
     are not missing across some number of them, or to relabel them.
 
@@ -38,49 +38,49 @@ class WindowExtracter(object):
     data (str):
         A seqs.hdf5 file from ipyrad.
     name (str):
-        Prefix name used for outfiles. If None then it is created from the 
+        Prefix name used for outfiles. If None then it is created from the
         scaffold, start and end positions.
     workdir (str):
         Location for output files to be written. Created if it doesn't exist.
     scaffold_idxs (int, list, or range):
         Select scaffold(s) by index number. If unsure, leave this
         empty when loading a file and then check the .scaffold_table to view
-        the indices of scaffolds. 
+        the indices of scaffolds.
     start (int):
         The starting position on a scaffold to obtain data from (default=0)
     end (int):
         The final position on a scaffold to obtain data from (default=end).
     mincov (int):
         The minimum number of individuals that must have data at a site for it
-        to be included in the concatenated alignment (default=4). 
+        to be included in the concatenated alignment (default=4).
     exclude (list):
         A list of sample names to exclude from the data set. Samples can also
         be excluded by using an imap dictionary and not including them.
     imap (dict):
-        A dictionary mapping group names (keys) to lists of samples names 
-        (values) to be included in the analysis. 
+        A dictionary mapping group names (keys) to lists of samples names
+        (values) to be included in the analysis.
     minmap (dict):
         A dictionary mapping group names (keys) to integers or floats to act
-        as a filter requiring that at least N (or N%) of samples in this 
+        as a filter requiring that at least N (or N%) of samples in this
         group have data for a locus to be retained in the dataset. When using
         consensus_reduce=True the imap applies to the reduced data set, i.e.,
         it applies to the groups (keys) so that all values must be <= 1.
     consensus_reduce (bool):
-        The samples in imap groups will be reduced to a consensus sequence 
-        that randomly samples two alleles based on the frequency of alleles 
-        in the group. This can reduce overall missing data in alignments. 
+        The samples in imap groups will be reduced to a consensus sequence
+        that randomly samples two alleles based on the frequency of alleles
+        in the group. This can reduce overall missing data in alignments.
     quiet (bool):
         Do not print progress information.
 
     """
     def __init__(
-        self, 
-        data, 
+        self,
+        data,
         name=None,
         workdir="analysis-window_extracter",
-        scaffold_idxs=None, 
-        start=None, 
-        end=None, 
+        scaffold_idxs=None,
+        start=None,
+        end=None,
         mincov=4,
         rmincov=0,
         exclude=None,
@@ -190,7 +190,7 @@ class WindowExtracter(object):
             stats = []
             phymaps = []
 
-            # iterate over scaffs 
+            # iterate over scaffs
             for scaff in self.scaffold_idxs:
                 self._scaffold_idx = scaff
                 self.start = self.end = None
@@ -207,13 +207,13 @@ class WindowExtracter(object):
             # if no data passed filtering for any loci then bail out
             if not stats:
                 print("no data passed filtering")
-                return 
+                return
 
             # concat chunks and stats
             self.phymap = pd.concat(phymaps, ignore_index=True)
             self._stats = pd.concat(stats)
             self.names = sorted(set(itertools.chain(*names)))
-            self.pnames = sorted(set(itertools.chain(*pnames)))            
+            self.pnames = sorted(set(itertools.chain(*pnames)))
 
             # special order: if 'reference' it goes first
             if "reference" in self.names:
@@ -229,7 +229,7 @@ class WindowExtracter(object):
             # fill concat seqarr allowing for missing taxa in each block
             nsites = int(self._stats.sites.postfilter.sum())
             self.seqarr = np.zeros((len(self.names), nsites), dtype=np.uint8)
-            idx = 0           
+            idx = 0
             for (inames, iblock) in zip(names, blocks):
                 # get index of each name in this block
                 for pdx in range(len(inames)):
@@ -247,8 +247,8 @@ class WindowExtracter(object):
 
             # recalc stats as a concat block
             totals = pd.DataFrame({
-                "scaffold": ["concatenated"], 
-                "start": [0], 
+                "scaffold": ["concatenated"],
+                "start": [0],
                 "end": [nsites],
                 "sites": [nsites],
                 "snps": [self._stats.snps.postfilter.sum()],
@@ -264,9 +264,9 @@ class WindowExtracter(object):
     def _single_prep(self):
         """
         This load the full data for all samples from the database and stores
-        to .names, .pnames, .scaffold_table. 
+        to .names, .pnames, .scaffold_table.
 
-        Then it subselects ._scaffold_idx and 
+        Then it subselects ._scaffold_idx and
         Applies to a single scaffold/locus.
         """
         # output prefix name, e.g., scaff0-0-1000
@@ -275,7 +275,7 @@ class WindowExtracter(object):
         # convert minmap to ints based on current imap.
         # only needs to be done once unless consensus reduce, then always.
         if self.consensus_reduce or (not self._filters_checked):
-            self._set_filters_type()           
+            self._set_filters_type()
 
         # stats is overwritten if fillseqar runs
         self.stats = "No stats because no scaffolds selected."
@@ -288,7 +288,7 @@ class WindowExtracter(object):
         self._extract_seqarr()
         if not self.seqarr.size:
             self._print("No data in selected window.")
-            return 
+            return
 
         # get stats on window (ntaxa missing; nsnps, ntrimmed sites)
         self._calc_initial_stats()
@@ -347,7 +347,7 @@ class WindowExtracter(object):
             self.pnames = np.array([
                 "{}{}".format(name, " " * (self._longname - len(name)))
                 for name in self.pnames
-            ])               
+            ])
 
             # parse scaf names and lengths from db
             try:
@@ -359,14 +359,14 @@ class WindowExtracter(object):
                 data={
                     "scaffold_name": scafnames,
                     "scaffold_length": scaflens,
-                }, 
+                },
                 columns=["scaffold_name", "scaffold_length"],
             )
 
 
     def _get_name(self, name):
         """
-        sets output prefix name. If 
+        sets output prefix name. If
         """
         # use provided name else auto gen a name (scaff-start-end)
         if not name:
@@ -398,7 +398,7 @@ class WindowExtracter(object):
         # global filter can be int or float
         self._minmap = copy(self.minmap)
         self._mincov = (
-            self.mincov if isinstance(self.mincov, int) 
+            self.mincov if isinstance(self.mincov, int)
             else int(self.mincov * nsamples)
         )
 
@@ -421,7 +421,7 @@ class WindowExtracter(object):
                 # get int value entered by user
                 imincov = self.minmap[ikey]
                 self._minmap[ikey] = (
-                    imincov if isinstance(imincov, int) 
+                    imincov if isinstance(imincov, int)
                     else int(imincov * len(self.imap[ikey]))
                 )
 
@@ -432,7 +432,7 @@ class WindowExtracter(object):
     def _extract_phymap_df(self):
         """
         This extracts the phymap DataFrame.
-        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table. 
+        scaffs are 1-indexed in h5 phymap, 0-indexed in scaffold_table.
         """
         with h5py.File(self.data, 'r') as io5:
             colnames = io5["phymap"].attrs["columns"]
@@ -471,10 +471,10 @@ class WindowExtracter(object):
     def _extract_seqarr(self):
         """
         Extracts seqarr of the full selected window and computes stats on
-        the window. This initially includes all taxa in the imap. 
-        The phymap contains all selected scaffolds and is used to project 
+        the window. This initially includes all taxa in the imap.
+        The phymap contains all selected scaffolds and is used to project
         the selected positions e.g., 100-200 into their column indices in the
-        phy alignment e.g., 0-100. 
+        phy alignment e.g., 0-100.
 
         If we selected that we wanted scaffolds 0-20 then this will extract
         sequence data to concatenate from all of these scaffolds.
@@ -495,7 +495,7 @@ class WindowExtracter(object):
         # get mask to select window array region. No mask for denovo
         self.seqarr = np.zeros((len(self.names), 0))
 
-        # select a single scaffold to pull start-stop alignment from.        
+        # select a single scaffold to pull start-stop alignment from.
         if self.end:
 
             # get the chrom/loc that includes pos=start]
@@ -507,7 +507,7 @@ class WindowExtracter(object):
             # bail out if block is empty
             if not block.size:
                 self.seqarr = np.array([])
-                return 
+                return
 
             # get start pos as phy position (how far past pos0 is start)
             # wmin_offset = self.start - block.iloc[0, 3]
@@ -559,7 +559,7 @@ class WindowExtracter(object):
 
             # get subarray for this group
             match = [np.where(self.names == i)[0] for i in ivals]
-            sidxs = [i[0] for i in match if i.size]        
+            sidxs = [i[0] for i in match if i.size]
             subarr = self.seqarr[sidxs, :]
 
             # get consensus sequence
@@ -582,7 +582,7 @@ class WindowExtracter(object):
 
     def _new_filter_seqarr(self):
         """
-        Apply row and column filters to the seqarr based on imap/minmap, 
+        Apply row and column filters to the seqarr based on imap/minmap,
         mincov and rmincov (_mincov, _minmap, ...)
         """
         # convert dash (-) to Ns
@@ -625,9 +625,9 @@ class WindowExtracter(object):
             self._pnames = self.wpnames[keep]
 
 
-    def run(self, force=False, nexus=False):
+    def run(self, force=False, phy=True, nexus=False, fasta=False):
         """
-        Write sequence alignment to a file 
+        Write sequence alignment to a file in phylip, nexus or fasta.
         """
         # bail if user never selected a window.
         if self._scaffold_idx is None:
@@ -638,25 +638,29 @@ class WindowExtracter(object):
             raise IPyradError("No data in selected region.")
 
         # make outfile path name
-        if nexus:           
-            self.outfile = os.path.join(
-                self.workdir, self.name + ".nex")
-        else:
-            self.outfile = os.path.join(
-                self.workdir, self.name + ".phy")
-
-        # check for force/overwrite
-        if force or (not os.path.exists(self.outfile)):
-
-            # convert to file format
-            if nexus:
-                self._write_to_nex()
-            else:
+        if phy:
+            self.outfile = os.path.join(self.workdir, self.name + ".phy")
+            if force or (not os.path.exists(self.outfile)):
                 self._write_to_phy()
-            self._print("Wrote data to {}".format(self.outfile))
-        else:
-            raise IOError(
-                "Output file already exists. Use force to overwrite.")
+                self._print("Wrote data to {}".format(self.outfile))
+            else:
+                raise IOError("Output file already exists. Use force to overwrite.")
+
+        if nexus:
+            self.outfile = os.path.join(self.workdir, self.name + ".nex")
+            if force or (not os.path.exists(self.outfile)):
+                self._write_to_nex()
+                self._print("Wrote data to {}".format(self.outfile))
+            else:
+                raise IOError("Output file already exists. Use force to overwrite.")
+
+        if fasta:
+            self.outfile = os.path.join(self.workdir, self.name + ".fa")
+            if force or (not os.path.exists(self.outfile)):
+                self._write_to_fasta()
+                self._print("Wrote data to {}".format(self.outfile))
+            else:
+                raise IOError("Output file already exists. Use force to overwrite.")
 
 
     def _print(self, message):
@@ -702,6 +706,17 @@ class WindowExtracter(object):
             out.write("\n".join(phy))
 
 
+    def _write_to_fasta(self):
+        """
+        Writes the .seqarr matrix as a fasta string to .outfile.
+        """
+        phy = []
+        with open(self.outfile, 'w') as out:
+            for idx, name in enumerate(self.pnames):
+                seq = bytes(self.seqarr[idx]).decode()
+                out.write(">{}\n{}\n".format(name, seq))
+
+
     def _write_to_nex(self):
         """
         Writes concatenated alignment to nex format...
@@ -714,10 +729,10 @@ class WindowExtracter(object):
 
         # grab a big block of data
         # sidx = 0
-        for block in range(0, self.seqarr.shape[1], 100):           
+        for block in range(0, self.seqarr.shape[1], 100):
             # store interleaved seqs 100 chars with longname+2 before
             stop = min(block + 100, self.seqarr.shape[1])
-            for idx, name in enumerate(self.pnames):  
+            for idx, name in enumerate(self.pnames):
 
                 # py2/3 compat --> b"TGCGGG..."
                 seqdat = self.seqarr[idx, block:stop]
@@ -784,7 +799,7 @@ def consens_sample(iseq, consdict):
 
     # def _imap_consensus_reduce(self):
     #     """
-    #     Get consensus sequence for all samples in clade. 
+    #     Get consensus sequence for all samples in clade.
     #     And resets .names, ._pnames as alphanumeric imap keys for writing.
     #     """
     #     # skip if no imap
@@ -804,7 +819,7 @@ def consens_sample(iseq, consdict):
 
     #         # get subarray for this group
     #         match = [np.where(self.names == i)[0] for i in ivals]
-    #         sidxs = [i[0] for i in match if i.size]        
+    #         sidxs = [i[0] for i in match if i.size]
     #         subarr = self.seqarr[sidxs, :]
 
     #         # get consensus sequence
@@ -826,7 +841,7 @@ def consens_sample(iseq, consdict):
 
     # def _filter_seqarr(self):
     #     """
-    #     Apply filters to remove sites from alignment and to drop taxa if 
+    #     Apply filters to remove sites from alignment and to drop taxa if
     #     they end up having all Ns.
     #     """
     #     # drop SITES that are too many Ns given (global) mincov
@@ -850,7 +865,7 @@ def consens_sample(iseq, consdict):
     #                 drop += np.sum(subarr != 78, axis=0) < self._minmap[ikey]
 
     #     # apply site filter
-    #     keep = np.invert(drop)        
+    #     keep = np.invert(drop)
     #     self.seqarr = self.seqarr[:, keep]
 
     #     # convert dash (-) to Ns
@@ -873,8 +888,8 @@ def consens_sample(iseq, consdict):
     # def write_to_fasta(self):
     #     """
     #     Split into separate loci, only include samples in a locus if they are
-    #     not empty, apply filters for locus inclusion. 
-    #     """       
+    #     not empty, apply filters for locus inclusion.
+    #     """
 
     #     # make outfile path name
     #     self.outfile = os.path.join(
@@ -905,8 +920,8 @@ def consens_sample(iseq, consdict):
     # def write_to_loci(self):
     #     """
     #     Split into separate loci, only include samples in a locus if they are
-    #     not empty, apply filters for locus inclusion. 
-    #     """           
+    #     not empty, apply filters for locus inclusion.
+    #     """
     #     raise NotImplementedError("coming soon")
     #     # build loci
     #     locs = []
@@ -925,4 +940,4 @@ def consens_sample(iseq, consdict):
 
     #     # write to file
     #     with open(self.outfile, 'w') as out:
-    #         out.write("\n\n".join(locs))        
+    #         out.write("\n\n".join(locs))
