@@ -750,7 +750,7 @@ class WindowExtracter(object):
 
     def get_sample_stats(self):
         """Return dataframe with nsites and %missing per sample."""
-        data = pd.DataFrame(index=self.allnames, columns=["nsites", "percent_missing"])
+        data = pd.DataFrame(index=self.names, columns=["nsites", "percent_missing"])
         data["nsites"] = np.sum(self.seqarr != 78, axis=1)
         data["percent_missing"] = data["nsites"] / self.seqarr.shape[1]
         return data
