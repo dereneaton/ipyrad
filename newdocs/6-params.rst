@@ -595,7 +595,8 @@ Affected steps = 7. Example entries to params.txt
 
 23. max_Indels_locus
 ---------------------
-The maximum number of Indels allowed in a final locus. This helps to filter
+The maximum number of internal indels allowed in a final locus (terminal 5'/3' indels
+are not counted for the purpose of this filter). This helps to filter
 out poor final alignments, particularly for paired-end data.
 The default is 8.
 
