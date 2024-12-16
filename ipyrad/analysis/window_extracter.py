@@ -757,7 +757,7 @@ class WindowExtracter(object):
 
         data = pd.DataFrame(index=names, columns=["nsites", "percent_missing"])
         data["nsites"] = np.sum(self.seqarr != 78, axis=1)
-        data["percent_missing"] = 1 - round(data["nsites"] / self.seqarr.shape[1], 5)
+        data["percent_missing"] = round(1 - (data["nsites"] / self.seqarr.shape[1]), 5)
         return data
 
 
