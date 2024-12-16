@@ -750,10 +750,11 @@ class WindowExtracter(object):
     def get_sample_stats(self):
         """Return dataframe with nsites and %missing per sample."""
         # hack: select an appropriate sorted list of names after some may have been dropped
-        if len(self.scaffold_idxs) == 1:
-            names = self._names
-        else:
+        if isinstance(self.scaffold_idxs, (list, tuple, np.ndarray, range)):
             names = self.names
+        else:
+            names = self._names
+
         data = pd.DataFrame(index=names, columns=["nsites", "percent_missing"])
         data["nsites"] = np.sum(self.seqarr != 78, axis=1)
         data["percent_missing"] = 1 - round(data["nsites"] / self.seqarr.shape[1], 5)
