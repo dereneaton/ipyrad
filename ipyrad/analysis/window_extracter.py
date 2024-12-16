@@ -259,8 +259,6 @@ class WindowExtracter(object):
             self.quiet = 0  # quiet
 
 
-
-
     def _single_prep(self):
         """
         This load the full data for all samples from the database and stores
@@ -465,7 +463,7 @@ class WindowExtracter(object):
             "missing": [0.],
             "samples": [0],
         }, index=["prefilter", "postfilter"],
-        )
+    )
 
 
     def _extract_seqarr(self):
@@ -748,11 +746,17 @@ class WindowExtracter(object):
         with open(self.outfile, 'w') as out:
             out.write("".join(lines))
 
+
     def get_sample_stats(self):
         """Return dataframe with nsites and %missing per sample."""
-        data = pd.DataFrame(index=self.names, columns=["nsites", "percent_missing"])
+        # hack: select an appropriate sorted list of names after some may have been dropped
+        if len(self.scaffold_idxs) == 1:
+            names = self._names
+        else:
+            names = self.names
+        data = pd.DataFrame(index=names, columns=["nsites", "percent_missing"])
         data["nsites"] = np.sum(self.seqarr != 78, axis=1)
-        data["percent_missing"] = data["nsites"] / self.seqarr.shape[1]
+        data["percent_missing"] = 1 - round(data["nsites"] / self.seqarr.shape[1], 5)
         return data
 
 
