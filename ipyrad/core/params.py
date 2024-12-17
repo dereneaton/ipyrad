@@ -44,6 +44,7 @@ class Hackers(object):
             ("exclude_reference", True),
             ("trim_loci_min_sites", 4),
             ("mask_restriction_sites", False),
+            ("max_raw_reads_sample", 0),
         ])
 
     # pretty printing of object
@@ -177,6 +178,13 @@ class Hackers(object):
     def mask_restriction_sites(self, value):
         self._data["mask_restriction_sites"] = bool(value)
    
+    @property
+    def max_raw_reads_sample(self):
+        return self._data["max_raw_reads_sample"]
+    @max_raw_reads_sample.setter
+    def max_filtered_reads_sample(self, value):
+        self._data["max_raw_reads_sample"] = int(value)
+
 
 class Params(object):
     def __init__(self, data):
