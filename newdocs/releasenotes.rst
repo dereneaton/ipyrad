@@ -4,6 +4,13 @@
 Release Notes
 =============
 
+0.9.104
+-------
+**January 06, 2025**
+
+- fix max_raw_reads_sample setter
+- analysis.bpp - update docs to remove refs to bpp.params
+
 0.9.103
 -------
 **December 17, 2024**
