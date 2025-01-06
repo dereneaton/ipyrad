@@ -182,7 +182,7 @@ class Hackers(object):
     def max_raw_reads_sample(self):
         return self._data["max_raw_reads_sample"]
     @max_raw_reads_sample.setter
-    def max_filtered_reads_sample(self, value):
+    def max_raw_reads_sample(self, value):
         self._data["max_raw_reads_sample"] = int(value)
 
 
