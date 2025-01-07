@@ -366,6 +366,12 @@ def cutadaptit_single(data, sample):
     adapter filters. 
     """
     sname = sample.name
+
+    if data.hackersonly.max_raw_reads_sample > 0:
+        _sample_max_raw_reads(data, sample)
+
+    finput_r1 = sample.files.concat[0][0]
+
     # if (GBS, ddRAD) we look for the second cut site + adapter. For SE
     # data we don't bother trying to remove the second barcode since it's not
     # as critical as with PE data.
@@ -433,7 +439,7 @@ def cutadaptit_single(data, sample):
         "--trim-n", 
         "--output", os.path.join(
             data.dirs.edits, sname + ".trimmed_R1_.fastq.gz"),
-        sample.files.concat[0][0],
+        finput_r1,
         ]
 
     if int(data.params.filter_adapters):
@@ -485,6 +491,9 @@ def cutadaptit_pairs(data, sample):
     a warning about this when filter_adapters=2 and no barcodes?
     """
     sname = sample.name
+
+    if data.hackersonly.max_raw_reads_sample > 0:
+        _sample_max_raw_reads(data, sample)
 
     ## applied to read pairs
     finput_r1 = sample.files.concat[0][0]
@@ -707,6 +716,90 @@ def concat_multiple_inputs(data, sample):
 
         # store new file handles
         sample.files.concat = [(conc1, conc2)]
+    return sample.files.concat
+
+
+## Called inside cutadaptit_single/cutadaptit_pairs prior to cutadapt
+def _sample_max_raw_reads(data, sample):
+    """
+    Subsample incoming raw reads to a given maximum value.
+    Only used if the hackersonly["max_raw_reads_sample"] > 0
+    """
+
+    # Grab indices for R1/R2 from post-concatenated input files
+    r1_in = sample.files.concat[0][0]
+    r2_in = sample.files.concat[0][1]
+
+    # subsample R1/R2 to a maximum value. Multiply by 4 to account for
+    # 4 lines per read in the input fastq. Cast to str so sps is happy
+    nsubsample_reads = str(data.hackersonly.max_raw_reads_sample * 4)
+
+    # Pushing ungzipped files through `cat` simplifies the code to handle
+    # both gz and flat files (so that both have 2 calls to sps.Popen) and the
+    # additional cat (rather than simply head) of the flat files should have
+    # identical performance.
+    isgzip = ".gz"
+    if r1_in.endswith(".gz"):
+        cmd_cat1 = ["gunzip", "-c", r1_in]
+        cmd_cat2 = ["gunzip", "-c", r2_in]
+    else:
+        cmd_cat1 = ["cat", r1_in]
+        cmd_cat2 = ["cat", r2_in]
+        isgzip = ""
+
+    # Catch only the first n reads
+    cmd_samp1 = ["head", "-n", nsubsample_reads]
+    cmd_samp2 = ["head", "-n", nsubsample_reads]
+
+    # write to new subsampled file handle (gzip happens downstream, if
+    # the input file was gzipped)
+    subsamp1 = os.path.join(
+        data.dirs.edits, sample.name + ".subsample_R1_.fq")
+    with open(subsamp1, 'w') as cout1:
+        # gzip/cat the data to a pipe
+        proc1 = sps.Popen(
+            cmd_cat1, stderr=sps.STDOUT, stdout=sps.PIPE)
+        # catch the data and peel off the first n reads
+        proc2 = sps.Popen(
+            cmd_samp1, stderr=sps.STDOUT, stdout=cout1, stdin=proc1.stdout)
+        res2 = proc2.communicate()[0]
+    if proc2.returncode:
+        raise IPyradError("error in: {} | {}, {}".format(cmd_cat1, cmd_samp1, res2))
+
+    # Only set conc2 if R2 actually exists
+    subsamp2 = 0
+    if "pair" in data.params.datatype:
+        subsamp2 = os.path.join(
+            data.dirs.edits, sample.name + ".subsample_R2_.fq")
+        with open(subsamp2, 'w') as cout2:
+            # gzip/cat the data to a pipe
+            proc1 = sps.Popen(
+                cmd_cat2, stderr=sps.STDOUT, stdout=sps.PIPE)
+            # catch the data and peel off the first n reads
+            proc2 = sps.Popen(
+                cmd_samp2, stderr=sps.STDOUT, stdout=cout2, stdin=proc1.stdout)
+            res2 = proc2.communicate()[0]
+        if proc2.returncode:
+            raise IPyradError("error in: {} | {}, {}".format(cmd_cat2, cmd_samp2, res2))
+
+    # Re-gzip the subsampled files to match status of the input file
+    if isgzip:
+        for infile in [subsamp1, subsamp2]:
+            if not infile:
+                # Don't try to gzip a file that doesn't exist
+                continue
+            cmd_gz1 = ["gzip", "-f", infile]
+            proc3 = sps.Popen(
+                cmd_gz1, stderr=sps.STDOUT)
+            res3 = proc3.communicate()[0]
+            if proc3.returncode:
+                raise IPyradError("error in: {}, {}".format(cmd_gz1, res3))
+        # Fix the suffix to agree with the file format
+        subsamp1 += ".gz"
+        if subsamp2: subsamp2 += ".gz"
+
+    # store new file handles (replaces concat files with subsampled files)
+    sample.files.concat = [(subsamp1, subsamp2)]
     return sample.files.concat
 
 

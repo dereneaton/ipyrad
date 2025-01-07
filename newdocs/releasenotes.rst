@@ -4,6 +4,35 @@
 Release Notes
 =============
 
+0.9.104
+-------
+**January 06, 2025**
+
+- fix max_raw_reads_sample setter
+- analysis.bpp - update docs to remove refs to bpp.params
+
+0.9.103
+-------
+**December 17, 2024**
+
+- Step 2 added _sample_max_raw_reads() and hackersonly.max_raw_reads_sample
+- bugfix wex again
+- Merge branch 'master' of github.com:dereneaton/ipyrad
+- bugfix for wex sample stats for one scaff or concat
+- Update 6-params.rst
+- debugging sample stats in wex
+- add func to view sample coverages after wex
+- digest genomes simplified a bit
+- window extracter write to fasta option added
+- change default impute method temporarily
+- fix the default pca impute_method
+- add analysis.utils.read_popsfile function to load imap from file
+- pca: fix impute_method logic so None means all 0s
+- snps_extracter allow to pass imap samples as pd.Index (makes groupby pop assignment easier)
+- pca impute_method for no imputation should be None and not False
+- pca: warn if numpy > 2.0
+- add muscle_version util
+
 0.9.102
 -------
 **September 06, 2024**
