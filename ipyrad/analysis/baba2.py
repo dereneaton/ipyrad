@@ -857,10 +857,10 @@ class TreeParser:
 
         # tree to traverse
         if isinstance(tree, toytree.ToyTree):
-            self.tree = tree.copy()
+            tree = tree.copy()
         else:
-            self.tree = toytree.tree(tree)
-        if not self.tree.is_rooted(): 
+            tree = toytree.tree(tree)
+        if not tree.is_rooted(): 
             raise IPyradError(
                 "generate_tests_from_tree(): tree must be rooted and resolved")
 
@@ -895,7 +895,7 @@ class TreeParser:
         self.xdict = np.array(self.xdict).astype(bool)
 
         # get tests
-        self.loop(self.tree.treenode)
+        self.loop(tree.treenode)
 
         # order and check redundancy
         tests = []
