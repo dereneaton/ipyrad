@@ -1,6 +1,21 @@
 #!/usr/bin/env python
 
-"D-statistic calculations"
+"""D-statistic calculations
+
+Set up and run ABBA-BABA tests for introgression.
+
+Example
+-------
+>>> imap = {
+>>>     "p1": ["a1"],
+>>>     "p2": ["b1", "b2"],
+>>>     "p3": ["c1", "c2"],
+>>>     "p4": ["d1"],
+>>> }
+>>> minmap = {i: 1 for i in imap}
+>>> baba = ipa.baba2(SNPS)
+>>> baba.run_test(imap, minmap=minmap, nboots=100)
+"""
 
 # py2/3 compat
 from __future__ import print_function, division
@@ -464,10 +479,10 @@ class Baba:
             ntests = []
             for test in tests:
                 tdict = {
-                    "p1": tree.get_tip_labels(test[0]),
-                    "p2": tree.get_tip_labels(test[1]),
-                    "p3": tree.get_tip_labels(test[2]),
-                    "p4": tree.get_tip_labels(test[3]),
+                    "p1": tree[test[0]].get_leaf_names(),
+                    "p2": tree[test[1]].get_leaf_names(),
+                    "p3": tree[test[2]].get_leaf_names(),
+                    "p4": tree[test[3]].get_leaf_names(),
                 }
                 ntests.append(tdict)
             tests = ntests
@@ -841,7 +856,10 @@ class TreeParser:
         self.hold = [0, 0, 0, 0]
 
         # tree to traverse
-        self.tree = toytree.tree(tree)
+        if isinstance(tree, toytree.ToyTree):
+            self.tree = tree.copy()
+        else:
+            self.tree = toytree.tree(tree)
         if not self.tree.is_rooted(): 
             raise IPyradError(
                 "generate_tests_from_tree(): tree must be rooted and resolved")
@@ -881,7 +899,11 @@ class TreeParser:
 
         # order and check redundancy
         tests = []
-        coords = tree.get_node_coordinates(layout='d')
+
+        tree.style.layout = 'd'
+        coords = toytree.layout.LinearLayout(tree, tree.style).coords
+        # coords = tree.get_node_coordinates(layout='d')
+        
         for test in self.testset:
             stest = sorted(test[:2], key=lambda x: coords[x, 0])
             ntest = stest[0], stest[1], test[2], test[3]
