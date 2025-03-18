@@ -389,7 +389,7 @@ class Baba:
         self.results_table = df
 
         # concat sample names to df strings
-        self.taxon_table = pd.DataFrame(imaps).applymap(lambda x: ",".join(x))
+        self.taxon_table = pd.DataFrame(imaps).map(lambda x: ",".join(x))
 
 
 
@@ -539,7 +539,7 @@ class Drawing:
             for cell in self.tests.values.flatten():
                 for tax_ in cell.split(","):
                     intree.add(tax_)
-            tree = tree.drop_tips(
+            tree = tree.mod.drop_tips(
                 [i for i in tree.get_tip_labels() if i not in intree]
             )
         
@@ -552,8 +552,8 @@ class Drawing:
             # split to make cell into a list
             sindex = (
                 self.tests
-                .applymap(lambda x: x.split(","))
-                .applymap(self.tree.get_mrca_idx_from_tip_labels)
+                .map(lambda x: x.split(","))
+                .map(lambda x: self.tree.get_mrca_node(*x))
                 .sort_values(by=["p4", "p3", "p2", "p1"])
             ).index
 
@@ -879,9 +879,7 @@ class TreeParser:
             for cidx, pop in enumerate(["p1", "p2", "p3", "p4"]):
                 const = constraint_dict[cidx]
                 if isinstance(const, int):
-                    self.cdict[pop] = (
-                        tree.get_tip_labels(const)
-                    )
+                    self.cdict[pop] = tree[const].get_leaf_names()
 
         # constraint setting [True, True, False, False]
         self.xdict = constraint_exact
