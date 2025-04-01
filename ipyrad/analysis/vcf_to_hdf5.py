@@ -380,6 +380,9 @@ class VCFtoHDF5(object):
             e1 = 0
             e2 = 0
 
+        # hotfix b/c of a TypeError 4/1/2025
+        e1 = np.uint32(e1)
+
         # snpsmap: if ipyrad denovo it's easy, and they should just use hdf5.
         if ("ipyrad" in self.source) and ("pseudo-ref" in self.reference):
 
