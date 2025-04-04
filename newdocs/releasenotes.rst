@@ -4,6 +4,18 @@
 Release Notes
 =============
 
+0.9.105
+-------
+**April 04, 2025**
+
+- update step 6 params docs
+- np casting error
+- toytree v3 update to baba draw
+- string fix
+- generate tests updated for toytree
+- Merge branch 'master' of github.com:dereneaton/ipyrad
+- generate tests updated for toytree
+
 0.9.104
 -------
 **January 06, 2025**
