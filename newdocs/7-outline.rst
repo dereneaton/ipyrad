@@ -197,17 +197,18 @@ used or required (\*) for step5:
 6. Clustering / Mapping reads among Samples and alignment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Step6 clusters consensus sequences across Samples using the same assembly method 
-as in step 3. One allele is randomly sampled before clustering so that ambiguous
-characters have a lesser effect on clustering, but the resulting data retain
-information for heterozygotes. The clustered sequences are then aligned using 
-muscle_.
+as in step 3. During step 6 sequence similarity for clustering is established by
+the :ref:`clust_threshold<clust_threshold>` parameter. One allele is randomly 
+sampled before clustering so that ambiguous characters have a lesser effect on 
+clustering, but the resulting data retain information for heterozygotes. The 
+clustered sequences are then aligned using  muscle_.
 
 The following :ref:`parameters<parameters>` are *potentially*
 used or required (\*) for step6: 
 
 * :ref:`*assembly_name<assembly_name>`  
 * :ref:`*project_dir<project_dir>`  
-* :ref:`*datatype<datatype>`  
+* :ref:`*clust_threshold<clust_threshold>`  
 
 
 7. Filtering and formatting output files
