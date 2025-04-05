@@ -582,7 +582,7 @@ class PCA(object):
         tsne_kwargs = {
             'perplexity': perplexity,
             'init': 'pca',
-            'n_iter': int(max_iter),
+            'max_iter': int(max_iter),
             'random_state': seed,
         }
         tsne_kwargs.update(kwargs)
