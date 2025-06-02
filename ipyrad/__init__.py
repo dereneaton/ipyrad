@@ -23,8 +23,8 @@ class _Bins:
 _IMPORT_ERROR = """
   Missing requirement: {}
 
-  Please run 'conda install {} -c bioconda' or to install
-  all requirements run 'conda upgrade ipyrad -c bioconda'.
+  Please run 'conda install {} -c conda-forge -c bioconda' or to install
+  all requirements run 'conda upgrade ipyrad -c conda-forge -c bioconda'.
 """
 
 _MUSCLE_VERSION_ERROR = """
