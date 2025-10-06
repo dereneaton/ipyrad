@@ -934,7 +934,7 @@ class Processor(object):
             locus.append(
                 "{}{}".format(
                     self.data.pnames[name],
-                    block[idx, :].tostring().decode())
+                    block[idx, :].tobytes().decode())
             )
         locus.append("{}{}|{}|".format(
             self.data.snppad, snpstring, nidxstring))

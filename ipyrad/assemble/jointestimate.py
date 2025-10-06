@@ -422,7 +422,7 @@ def optim(data, sample):
                 .format(sample.name, bfreqs))
 
         ## put into array, count array items as Byte strings
-        tstack = Counter([j.tostring() for j in stacked])
+        tstack = Counter([j.tobytes() for j in stacked])
 
         ## get keys back as arrays and store vals as separate arrays
         ustacks = np.array(
