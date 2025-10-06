@@ -4,6 +4,16 @@
 Release Notes
 =============
 
+0.9.106
+-------
+**October 06, 2025**
+
+- change ndarray.tostring to ndarray.tobytes in 2 files to resolve #609
+- fix bad link to output formats
+- update missing dependency error message
+- Merge branch 'master' of github.com:dereneaton/ipyrad
+- fixed depr warnings to ipa
+
 0.9.105
 -------
 **April 04, 2025**
