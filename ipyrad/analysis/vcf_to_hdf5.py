@@ -522,7 +522,7 @@ def chunk_to_arrs(chunkdf, nsamples):
     arrpos = arrpos.astype(np.int64)
 
     # base calls as int8 (0/1/2/3/9)
-    ref = chunkdf.iloc[:, 3].astype(bytes).astype(np.int8).values
+    ref = np.frombuffer(''.join(chunkdf.iloc[:, 3]).encode('ascii'), dtype=np.int8)
     alts = chunkdf.iloc[:, 4].astype(bytes)
     sas = np.char.replace(alts, b",", b"")
     alts1 = np.zeros(alts.size, dtype=np.int8)
