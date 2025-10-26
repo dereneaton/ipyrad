@@ -6,6 +6,7 @@ channels:
   - eaton-lab
 dependencies:
   - ipyrad
+  - ipyparallel
   - ipcoal
   - toytree
   - raxml
