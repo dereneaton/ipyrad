@@ -637,11 +637,19 @@ class Bpp(object):
 
         # get tree with delimiters on names
         tmptre = self.tree.copy()
-        tmptre = tmptre.set_node_values(
-            "name", 
-            {i: DELIM + str(j.name) for (i, j) in tmptre.idx_dict.items()},
-        )
-
+        try:
+            # toytree v2 syntax
+            tmptre = tmptre.set_node_values(
+                "name", 
+                {i: DELIM + str(j.name) for (i, j) in tmptre.idx_dict.items()},
+            )
+        except AttributeError:
+            # toytree v3 syntax
+            tmptre = tmptre.set_node_data(
+                "name",
+                {i: DELIM + str(tmptre[i].name) for i in range(tmptre.ntips)},
+            )
+            
         # expand options to fill ctl file
         ctlstring = CTLFILE.format(**{
             "seqfile": self.seqfile,
@@ -714,12 +722,13 @@ class Bpp(object):
 
 
 
-    def summarize_results(self, algorithm, individual_results=False, quiet=False):
+    def summarize_results(self, algorithm=None, individual_results=False, quiet=False):
         """ 
         Prints a summarized table of results from replicate runs, or,
         if individual_result=True, then returns a list of separate
         dataframes for each replicate run. 
         """
+        if not algorithm: algorithm = self._algorithm
         # reports number of results found
         self._load_existing_results(self.name, self.workdir, quiet)
         assert algorithm in ["00", "01", "10", "11"]
