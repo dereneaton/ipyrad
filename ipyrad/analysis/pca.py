@@ -56,10 +56,10 @@ this value.
 """
 
 _NUMPY_VERSION_ERROR = r"""
-PCA module requires numpy < 2.0.0 (see issue #578). Roll back to a
-supported version of numpy.
+PCA module requires agreement between numpy and toyplot modules (see issue #578). 
+Easiest thing to do is simply update numpy & toyplot to the most recent versions.
 
-conda install -c conda-forge "numpy <2.0.0"
+    conda update numpy toyplot
 """
 
 # TODO: could allow LDA as alternative to PCA for supervised (labels) dsets.
@@ -127,7 +127,9 @@ class PCA(object):
             raise IPyradError(_MISSING_SKLEARN)
         if not sys.modules.get("toyplot"):
             raise IPyradError(_MISSING_TOYPLOT)
-        if np.lib.NumpyVersion(np.__version__) >= '2.0.0':
+        if np.lib.NumpyVersion(np.__version__) >= '2.0.0' and\
+            np.lib.NumpyVersion(toyplot.__version__) < '2.0.0':
+            
             raise IPyradError(_NUMPY_VERSION_ERROR)
 
         # init attributes
