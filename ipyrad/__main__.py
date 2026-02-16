@@ -5,7 +5,6 @@
 from __future__ import print_function
 
 from ipyrad.assemble.utils import IPyradError, detect_cpus
-from pkg_resources import get_distribution
 import ipyparallel as ipp
 import ipyrad as ip
 import argparse
@@ -14,6 +13,10 @@ import os
 
 from .core.Parallel import Parallel
 
+try: # Python 3.8+
+    from importlib.metadata import version
+except Exception: # pragma: no cover - fallback for very old Pythons
+    from importlib_metadata import version # type: ignore
 
 class CLI:
     def __init__(self):
@@ -117,7 +120,7 @@ class CLI:
         self.parser.add_argument(
             '-v', '--version', 
             action='version', 
-            version=str(get_distribution('ipyrad')),
+            version=str(version('ipyrad')),
         )
         self.parser.add_argument('-r', "--results", action='store_true',
             help="show results summary for Assembly in params.txt and exit")
@@ -531,7 +534,7 @@ HEADER = """
   ipyrad [v.{}]
   Interactive assembly and analysis of RAD-seq data
  -------------------------------------------------------------\
- """.format(str(get_distribution('ipyrad')).split()[1])
+ """.format(str(version('ipyrad')))
 # ip.__version__)
 
 
