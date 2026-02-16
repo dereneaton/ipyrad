@@ -4,6 +4,16 @@
 Release Notes
 =============
 
+0.9.108
+-------
+**February 16, 2026**
+
+- Remove dependency on pkg_resources.get_distribution (deprecated), solves #620
+- pca: fix numpy/toyplot discontinuity #578
+- bpp: handle toytree v3
+- update binder link in docs so JupyterLab opens by default
+- add ipyparallel to binder env.yaml
+
 0.9.107
 -------
 **October 21, 2025**
