@@ -47,7 +47,7 @@ Eaton DAR & Overcast I. "ipyrad: Interactive assembly and analysis of RADseq dat
 
 Contributors
 ------------
-+ `Deren Eaton <deren.eaton@yale.edu>`_  
++ `Deren Eaton <de2356@columbia.edu>`_  
 + `Isaac Overcast <isaac.overcast@gmail.com>`_  
 
 
